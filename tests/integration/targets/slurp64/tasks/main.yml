@@ -1,0 +1,141 @@
+# vim: ts=2:sw=2:sts=2:et:ft=yaml.ansible
+# -*- mode: yaml; yaml-indent-offset: 2; indent-tabs-mode: nil; -*-
+#
+# GNU General Public License v3.0+
+# SPDX-License-Identifier: GPL-3.0-or-later
+# (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
+#
+# Copyright (c) 2025 oØ.o (@o0-o)
+#
+# This file is part of the o0_o.posix Ansible Collection.
+
+- name: Create a temporary file
+  ansible.builtin.command:
+    argv:
+      - mktemp
+  register: result_tmp
+
+- name: Define the tmp file path
+  ansible.builtin.set_fact:
+    tmp: "{{ result_tmp['stdout_lines'][0] }}"
+
+- name: Create a test file with known content
+  ansible.builtin.copy:
+    dest: "{{ tmp }}"
+    content: "This is a test\nAcross multiple lines\nFinal line"
+
+- name: Try
+  block:
+
+    - name: Run slurp64 module normally
+      o0_o.posix.slurp64:
+        src: "{{ tmp }}"
+      register: result_normal
+
+    - name: Assert normal slurp64 returned expected content
+      ansible.builtin.assert:
+        that:
+          - 'result_normal["raw"] is defined'
+          - 'result_normal["raw"] == false'
+          - result_normal is not changed
+          - '"This is a test" in result_normal["content"]'
+          - '"Final line" in result_normal["content"]'
+
+    - name: Run slurp64 module normally with check mode
+      o0_o.posix.slurp64:
+        src: "{{ tmp }}"
+      check_mode: true
+      register: result_normal_check
+
+    - name: Assert normal slurp64 with check mode results are equal to without
+        check mode
+      ansible.builtin.assert:
+        that:
+          - result_normal_check == result_normal
+
+    - name: Run slurp64 with raw fallback forced
+      o0_o.posix.slurp64:
+        src: "{{ tmp }}"
+        _force_raw: true
+      register: result_raw
+
+    - name: Assert forced raw slurp64 worked
+      ansible.builtin.assert:
+        that:
+          - 'result_raw["raw"] is defined'
+          - 'result_raw["raw"] == true'
+          - result_raw is not changed
+          - '"This is a test" in result_raw["content"]'
+          - '"Final line" in result_raw["content"]'
+
+    - name: Run slurp64 with raw fallback forced and check mode
+      o0_o.posix.slurp64:
+        src: "{{ tmp }}"
+        _force_raw: true
+      check_mode: true
+      register: result_raw_check
+
+    - name: Assert raw slurp64 with check mode results are equal to without
+        check mode
+      ansible.builtin.assert:
+        that:
+          - result_raw_check[item] == result_raw[item]
+      loop:
+        - changed
+        - content
+        - failed
+        - module_stdout
+        - msg
+        - raw
+        - source
+
+    - name: Run slurp64 with async mode enabled
+      o0_o.posix.slurp64:
+        src: "{{ tmp }}"
+      async: 5
+      poll: 1
+      register: result_async
+      ignore_errors: true
+
+    - name: Assert async mode failed
+      ansible.builtin.assert:
+        that:
+          - result_async is failed
+          - >
+            'async' in result_async['msg']
+            or 'No job id' in result_async['msg']
+
+    - name: Run slurp64 on a non-existent file (raw fallback)
+      o0_o.posix.slurp64:
+        src: "/nonexistent/file/path"
+        _force_raw: true
+      register: result_missing
+      ignore_errors: true
+
+    - name: Assert missing file produced error
+      ansible.builtin.assert:
+        that:
+          - result_missing is failed
+          - >
+            'No such file' in result_missing['msg']
+            or result_missing['rc'] != 0
+
+    - name: Run slurp64 with an invalid argument
+      o0_o.posix.slurp64:
+        src: "{{ tmp }}"
+        unexpected_param: true
+      register: result_invalid
+      ignore_errors: true
+
+    - name: Assert invalid param caused failure
+      ansible.builtin.assert:
+        that:
+          - result_invalid is failed
+          - "'unexpected_param' in result_invalid['msg']"
+
+  always:
+
+    - name: Clean up test file
+      ansible.builtin.file:
+        path: "{{ tmp }}"
+        state: absent

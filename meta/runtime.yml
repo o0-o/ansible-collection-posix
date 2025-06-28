@@ -1,0 +1,7 @@
+# vim: ts=2:sw=2:sts=2:et:ft=yaml
+# -*- mode: yaml; yaml-indent-offset: 2; indent-tabs-mode: nil; -*-
+---
+
+# Generally, the required Ansible version will follow whichever version pip
+# installs on the oldest supported version of Python (currently Python 3.9)
+requires_ansible: '>=2.15'

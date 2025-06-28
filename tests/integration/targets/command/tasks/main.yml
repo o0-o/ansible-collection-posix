@@ -1,0 +1,319 @@
+# vim: ts=2:sw=2:sts=2:et:ft=yaml.ansible
+# -*- mode: yaml; yaml-indent-offset: 2; indent-tabs-mode: nil; -*-
+#
+# GNU General Public License v3.0+
+# SPDX-License-Identifier: GPL-3.0-or-later
+# (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
+#
+# Copyright (c) 2025 oØ.o (@o0-o)
+#
+# This file is part of the o0_o.posix Ansible Collection.
+
+- name: Run command with argv
+  o0_o.posix.command:
+    argv:
+      - echo
+      - foo
+  register: reg
+
+- name: Assert command output
+  ansible.builtin.assert:
+    that:
+      - reg['rc'] == 0
+      - reg['stdout'].rstrip() == 'foo'
+      - reg['stdout_lines'] == ['foo']
+
+- name: Run command with cmd
+  o0_o.posix.command:
+    cmd: echo foo
+  register: reg
+
+- name: Assert command output
+  ansible.builtin.assert:
+    that:
+      - reg['rc'] == 0
+      - reg['stdout'].rstrip() == 'foo'
+      - reg['stdout_lines'] == ['foo']
+
+- name: Run command with cmd as shell
+  o0_o.posix.command:
+    cmd: echo foo
+    _uses_shell: true
+  register: reg
+
+- name: Assert command output
+  ansible.builtin.assert:
+    that:
+      - reg['rc'] == 0
+      - reg['stdout'].rstrip() == 'foo'
+      - reg['stdout_lines'] == ['foo']
+
+- name: 'Run command with _force_raw=true'
+  o0_o.posix.command:
+    cmd: echo foo
+    _force_raw: true
+  register: reg
+
+- name: Assert command output
+  ansible.builtin.assert:
+    that:
+      - reg['rc'] == 0
+      - reg['stdout'].rstrip() == 'foo'
+      - reg['stdout_lines'] == ['foo']
+
+- name: 'Run command with _uses_shell=true'
+  o0_o.posix.command:
+    cmd: echo foo
+    _force_raw: false
+    _uses_shell: true
+  register: reg
+
+- name: Assert command output
+  ansible.builtin.assert:
+    that:
+      - reg['rc'] == 0
+      - reg['stdout'].rstrip() == 'foo'
+      - reg['stdout_lines'] == ['foo']
+
+- name: 'Run raw command with variable expansion'
+  o0_o.posix.command:
+    cmd: echo "$HOME"
+    _force_raw: true
+    _uses_shell: true
+    expand_argument_vars: true
+  ignore_errors: true
+  register: raw_reg
+
+- name: Assert command output (Ansible >= 2.16)
+  ansible.builtin.assert:
+    that:
+      - raw_reg is not failed
+      - '"$HOME" not in raw_reg["stdout"]'
+  when: (ansible_version.major, ansible_version.minor) >= (2, 16)
+
+- name: Assert command output (Ansible < 2.16)
+  ansible.builtin.assert:
+    that:
+      - raw_reg is failed
+  when: (ansible_version.major, ansible_version.minor) < (2, 16)
+
+- name: 'Run builtin command with variable expansion'
+  ansible.builtin.command:
+    _raw_params: echo "$HOME"
+    _uses_shell: true
+    expand_argument_vars: true
+  ignore_errors: true
+  register: builtin_reg
+
+- name: Assert command output (Ansible >= 2.16)
+  ansible.builtin.assert:
+    that:
+      - builtin_reg is not failed
+      - '"$HOME" not in builtin_reg["stdout"]'
+  when: (ansible_version.major, ansible_version.minor) >= (2, 16)
+
+- name: Assert command output (Ansible < 2.16)
+  ansible.builtin.assert:
+    that:
+      - builtin_reg is failed
+  when: (ansible_version.major, ansible_version.minor) < (2, 16)
+
+- name: Assert builtin and raw command output is the same
+  ansible.builtin.assert:
+    that:
+      - raw_reg['stdout'] == builtin_reg['stdout']
+      - raw_reg['stdout_lines'] == builtin_reg['stdout_lines']
+  when: (ansible_version.major, ansible_version.minor) >= (2, 16)
+
+- name: 'Run raw command without variable expansion'
+  o0_o.posix.command:
+    cmd: echo "$HOME"
+    _force_raw: true
+    _uses_shell: false
+    expand_argument_vars: false
+  ignore_errors: true
+  register: raw_reg
+
+- name: Assert command output (Ansible >= 2.16)
+  ansible.builtin.assert:
+    that:
+      - raw_reg is not failed
+      - '"$HOME" in raw_reg["stdout"]'
+  when: (ansible_version.major, ansible_version.minor) >= (2, 16)
+
+- name: Assert command output (Ansible < 2.16)
+  ansible.builtin.assert:
+    that:
+      - raw_reg is failed
+  when: (ansible_version.major, ansible_version.minor) < (2, 16)
+
+- name: 'Run builtin command without variable expansion'
+  ansible.builtin.command:
+    _raw_params: echo "$HOME"
+    _uses_shell: false
+    expand_argument_vars: false
+  ignore_errors: true
+  register: builtin_reg
+
+- name: Assert command output (Ansible >= 2.16)
+  ansible.builtin.assert:
+    that:
+      - builtin_reg is not failed
+      - '"$HOME" in builtin_reg["stdout"]'
+  when: (ansible_version.major, ansible_version.minor) >= (2, 16)
+
+- name: Assert command output (Ansible < 2.16)
+  ansible.builtin.assert:
+    that:
+      - builtin_reg is failed
+  when: (ansible_version.major, ansible_version.minor) < (2, 16)
+
+- name: Assert builtin and raw command output is the same
+  ansible.builtin.assert:
+    that:
+      - raw_reg['stdout'] == builtin_reg['stdout']
+      - raw_reg['stdout_lines'] == builtin_reg['stdout_lines']
+  when: (ansible_version.major, ansible_version.minor) >= (2, 16)
+
+- name: Run async command
+  o0_o.posix.command:
+    argv: [sleep, 1]
+  async: 5
+  poll: 1
+  register: reg
+
+- name: Assert async command started
+  ansible.builtin.assert:
+    that:
+      - reg['ansible_job_id'] is defined
+      - reg['started'] == 1
+
+- name: Pause
+  pause:
+    seconds: 2
+
+- name: Assert async command completed
+  ansible.builtin.assert:
+    that:
+      - reg['rc'] == 0
+
+- name: Run with creates when file already exists (should skip)
+  o0_o.posix.command:
+    cmd: echo should not run
+    creates: /dev/null
+    _force_raw: true
+  check_mode: true
+  register: reg
+
+- name: Assert command skipped due to creates
+  ansible.builtin.assert:
+    that:
+      - reg['changed'] == false
+      - reg['rc'] == 0
+
+- name: Ensure dummy file is absent
+  file:
+    path: /tmp/o0o_dummy_create_me
+    state: absent
+
+- name: Run with creates when file is missing (should run or be marked changed)
+  o0_o.posix.command:
+    cmd: echo would run
+    creates: /nonexistent
+    _force_raw: true
+  check_mode: true
+  register: reg
+
+- name: Assert command would run due to creates missing
+  ansible.builtin.assert:
+    that:
+      - reg['changed'] == true
+      - reg['rc'] == 0
+
+- name: Run with removes when file exists (should run or be marked changed)
+  o0_o.posix.command:
+    cmd: echo would run
+    removes: /dev/null
+    _force_raw: true
+  check_mode: true
+  register: reg
+
+- name: Assert command would run due to file existing
+  ansible.builtin.assert:
+    that:
+      - reg['changed'] == true
+      - reg['rc'] == 0
+
+- name: Run with removes when file is missing (should skip)
+  o0_o.posix.command:
+    cmd: echo should not run
+    removes: /nonexistent
+    _force_raw: true
+  check_mode: true
+  register: reg
+
+- name: Assert command skipped due to removes missing
+  ansible.builtin.assert:
+    that:
+      - reg['changed'] == false
+      - reg['rc'] == 0
+
+# === Failure Cases for o0_o.posix.command ===
+
+- name: 'Fail: Run command in nonexistent directory'
+  o0_o.posix.command:
+    cmd: echo foo
+    chdir: /does/not/exist
+    _force_raw: true
+  ignore_errors: true
+  register: result
+
+- name: Assert failure due to missing directory
+  ansible.builtin.assert:
+    that:
+      - result.failed
+      - "'Unable to change directory' in result.msg"
+
+- name: 'Fail: Multiple command variants (cmd + argv)'
+  o0_o.posix.command:
+    cmd: echo foo
+    argv: [echo, foo]
+    _force_raw: true
+  ignore_errors: true
+  register: reg
+
+- name: Assert error for mutually exclusive args
+  ansible.builtin.assert:
+    that:
+      - reg['failed']
+      - "'Only one of' in reg['msg']"
+
+- name: 'Fail: Missing all command inputs'
+  o0_o.posix.command:
+    creates: /tmp/placeholder  # unrelated arg to force arg check
+    _force_raw: true
+  ignore_errors: true
+  register: reg
+
+- name: Assert failure for missing command input
+  ansible.builtin.assert:
+    that:
+      - reg['failed']
+      - "'One of' in reg['msg']"
+
+- name: 'Fail: Variable expansion requested without shell (Ansible >=2.16)'
+  o0_o.posix.command:
+    argv: [echo, $HOME]
+    _uses_shell: false
+    expand_argument_vars: true
+    _force_raw: true
+  ignore_errors: true
+  register: reg
+  when: (ansible_version.major, ansible_version.minor) >= (2, 16)
+
+- name: Assert failure due to shell mismatch (Ansible >= 2.16)
+  ansible.builtin.assert:
+    that:
+      - reg['failed']
+      - "'expand_argument_vars and _uses_shell to be the same' in reg['msg']"
+  when: (ansible_version.major, ansible_version.minor) >= (2, 16)
