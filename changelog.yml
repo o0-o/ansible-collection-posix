@@ -3,6 +3,12 @@
 ---
 releases:
 
+  "1.1.1":
+    changes:
+      changes:
+        - Add missing lineinfile_dedupe entry in the module stub section of the
+          readme
+
   "1.1.0":
     changes:
       added:
