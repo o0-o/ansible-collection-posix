@@ -1,0 +1,161 @@
+# vim: ts=2:sw=2:sts=2:et:ft=yaml.ansible
+# -*- mode: yaml; yaml-indent-offset: 2; indent-tabs-mode: nil; -*-
+---
+# GNU General Public License v3.0+
+# SPDX-License-Identifier: GPL-3.0-or-later
+# (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
+#
+# Copyright (c) 2025 oØ.o (@o0-o)
+#
+# This file is part of the o0_o.posix Ansible Collection.
+
+- name: Reset test file
+  ansible.builtin.copy:
+    src: files/canonical.txt
+    dest: "{{ lif_test_dir }}/test.txt"
+    mode: '0600'
+  check_mode: false
+
+- name: Remove duplicate using literal match
+  o0_o.posix.lineinfile_dedupe:
+    path: "{{ lif_test_dir }}/test.txt"
+    line: 'path=/usr/local/bin'
+    state: present
+    dedupe: true
+    _force_raw: "{{ _force_raw }}"
+  register: reg_literal
+
+- name: Assert only one literal remains
+  when: not ansible_check_mode
+  block:
+
+    - name: Slurp content
+      o0_o.posix.slurp64:
+        src: "{{ lif_test_dir }}/test.txt"
+      register: slurp_literal
+
+    - name: Count matches
+      ansible.builtin.set_fact:
+        count_literal: >-
+          {{  slurp_literal.content_lines
+              | select('equalto', 'path=/usr/local/bin')
+              | list
+              | length }}
+
+    - name: Assert count == 1
+      ansible.builtin.assert:
+        that:
+          - count_literal | int == 1
+
+- name: Reset canonical file
+  ansible.builtin.copy:
+    src: files/canonical.txt
+    dest: "{{ lif_test_dir }}/test.txt"
+    mode: '0600'
+
+- name: Remove duplicates using search_string
+  o0_o.posix.lineinfile_dedupe:
+    path: "{{ lif_test_dir }}/test.txt"
+    line: 'path=/usr/local/bin'
+    state: present
+    search_string: 'path=/usr/local/bin'
+    dedupe: true
+    _force_raw: "{{ _force_raw }}"
+  register: reg_search
+
+- name: Assert only one search match remains
+  when: not ansible_check_mode
+  block:
+
+    - name: Slurp content
+      o0_o.posix.slurp64:
+        src: "{{ lif_test_dir }}/test.txt"
+      register: slurp_search
+
+    - name: Count matches
+      ansible.builtin.set_fact:
+        count_search: >-
+          {{  slurp_search.content_lines
+              | select('equalto', 'path=/usr/local/bin')
+              | list
+              | length }}
+
+    - name: Assert count == 1
+      ansible.builtin.assert:
+        that:
+          - count_search | int == 1
+
+- name: Reset canonical file
+  ansible.builtin.copy:
+    src: files/canonical.txt
+    dest: "{{ lif_test_dir }}/test.txt"
+    mode: '0600'
+
+- name: Remove duplicates using regexp
+  o0_o.posix.lineinfile_dedupe:
+    path: "{{ lif_test_dir }}/test.txt"
+    line: 'path=/usr/local/bin'
+    state: present
+    regexp: '^path=.*'
+    dedupe: true
+    _force_raw: "{{ _force_raw }}"
+  register: reg_regex
+
+- name: Assert only one regex match remains
+  when: not ansible_check_mode
+  block:
+
+    - name: Slurp content
+      o0_o.posix.slurp64:
+        src: "{{ lif_test_dir }}/test.txt"
+      register: slurp_regex
+
+    - name: Count matches
+      ansible.builtin.set_fact:
+        count_regex: >-
+          {{  slurp_regex.content_lines
+              | select('match', '^path=.*')
+              | list
+              | length }}
+
+    - name: Assert count == 1
+      ansible.builtin.assert:
+        that:
+          - count_regex | int == 1
+
+- name: Reset canonical file
+  ansible.builtin.copy:
+    src: files/canonical.txt
+    dest: "{{ lif_test_dir }}/test.txt"
+    mode: '0600'
+
+- name: Confirm dedupe = false does not remove duplicates
+  o0_o.posix.lineinfile_dedupe:
+    path: "{{ lif_test_dir }}/test.txt"
+    line: 'path=/usr/local/bin'
+    state: present
+    dedupe: false
+    _force_raw: "{{ _force_raw }}"
+  register: reg_nodedupe
+
+- name: Assert duplicates are retained
+  when: not ansible_check_mode
+  block:
+
+    - name: Slurp content
+      o0_o.posix.slurp64:
+        src: "{{ lif_test_dir }}/test.txt"
+      register: slurp_nodedupe
+
+    - name: Count matches
+      ansible.builtin.set_fact:
+        count_nodedupe: >-
+          {{  slurp_nodedupe.content_lines
+              | select('equalto', 'path=/usr/local/bin')
+              | list
+              | length }}
+
+    - name: Assert count > 1
+      ansible.builtin.assert:
+        that:
+          - count_nodedupe | int > 1

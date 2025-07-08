@@ -79,6 +79,10 @@ content:
   description: UTF-8-decoded content of the file.
   type: str
   returned: success
+content_lines:
+  description: Content as a list of lines
+  type: list
+  returned: success
 raw:
   description: Whether the raw fallback mechanism was used.
   type: bool

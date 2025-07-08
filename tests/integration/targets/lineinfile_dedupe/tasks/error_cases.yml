@@ -1,0 +1,89 @@
+# vim: ts=2:sw=2:sts=2:et:ft=yaml.ansible
+# -*- mode: yaml; yaml-indent-offset: 2; indent-tabs-mode: nil; -*-
+---
+# GNU General Public License v3.0+
+# SPDX-License-Identifier: GPL-3.0-or-later
+# (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
+#
+# Copyright (c) 2025 oØ.o (@o0-o)
+#
+# This file is part of the o0_o.posix Ansible Collection.
+
+- name: Fail if backrefs used without regexp
+  block:
+
+    - name: Run with backrefs but no regexp
+      o0_o.posix.lineinfile_dedupe:
+        path: "{{ lif_test_dir }}/test.txt"
+        line: 'something'
+        state: present
+        backrefs: true
+        _force_raw: "{{ _force_raw }}"
+
+  rescue:
+
+    - name: Confirm failure occurred
+      ansible.builtin.debug:
+        msg: "Correctly failed on backrefs without regexp"
+
+- name: 'Fail if state=present and no line provided'
+  block:
+
+    - name: Run with state=present but no line
+      o0_o.posix.lineinfile_dedupe:
+        path: "{{ lif_test_dir }}/test.txt"
+        state: present
+        _force_raw: "{{ _force_raw }}"
+
+  rescue:
+
+    - name: Confirm failure occurred
+      ansible.builtin.debug:
+        msg: "Correctly failed on state=present with no line"
+
+- name: 'Fail if state=absent and no match condition provided'
+  block:
+
+    - name: 'Run with state=absent but no regexp, line, or search_string'
+      o0_o.posix.lineinfile_dedupe:
+        path: "{{ lif_test_dir }}/test.txt"
+        state: absent
+        _force_raw: "{{ _force_raw }}"
+
+  rescue:
+    - name: Confirm failure occurred
+      ansible.builtin.debug:
+        msg: "Correctly failed on state=absent with no match parameters"
+
+- name: Fail if both insertafter and insertbefore set
+  block:
+
+    - name: Run with both insertafter and insertbefore
+      o0_o.posix.lineinfile_dedupe:
+        path: "{{ lif_test_dir }}/test.txt"
+        line: 'test'
+        insertafter: '^#'
+        insertbefore: '^#'
+        _force_raw: "{{ _force_raw }}"
+
+  rescue:
+
+    - name: Confirm failure occurred
+      ansible.builtin.debug:
+        msg: "Correctly failed with both insertafter and insertbefore set"
+
+- name: Fail on invalid regexp pattern
+  block:
+
+    - name: Run with invalid regexp
+      o0_o.posix.lineinfile_dedupe:
+        path: "{{ lif_test_dir }}/test.txt"
+        line: 'test'
+        regexp: '[invalid'
+        _force_raw: "{{ _force_raw }}"
+
+  rescue:
+
+    - name: Confirm failure occurred
+      ansible.builtin.debug:
+        msg: "Correctly failed on invalid regexp"

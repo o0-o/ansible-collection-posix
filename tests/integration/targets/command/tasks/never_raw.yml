@@ -1,0 +1,58 @@
+# vim: ts=2:sw=2:sts=2:et:ft=yaml.ansible
+# -*- mode: yaml; yaml-indent-offset: 2; indent-tabs-mode: nil; -*-
+#
+# GNU General Public License v3.0+
+# SPDX-License-Identifier: GPL-3.0-or-later
+# (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
+#
+# Copyright (c) 2025 oØ.o (@o0-o)
+#
+# This file is part of the o0_o.posix Ansible Collection.
+
+- name: Run builtin command with variable expansion
+  o0_o.posix.command:
+    cmd: 'echo "My home: ${HOME}"'
+    _uses_shell: true
+    expand_argument_vars: true
+  ignore_errors: true
+  register: var_exp_builtin_reg
+
+- name: 'Run builtin command without variable expansion'
+  o0_o.posix.command:
+    cmd: 'echo "My home: ${HOME}"'
+    _uses_shell: false
+    expand_argument_vars: false
+  ignore_errors: true
+  register: no_var_exp_builtin_reg
+
+- name: 'Ansible 2.16 or later'
+  when: (ansible_version.major, ansible_version.minor) >= (2, 16)
+  block:
+
+    - name: Assert variable expansion commands succeeded (Ansible >= 2.16)
+      ansible.builtin.assert:
+        that:
+          - var_exp_builtin_reg is not failed
+          - no_var_exp_builtin_reg is not failed
+
+    - name: Assert command output (Ansible >= 2.16)
+      ansible.builtin.assert:
+        that:
+          - '"HOME" not in var_exp_builtin_reg["stdout"]'
+          - '"HOME" in no_var_exp_builtin_reg["stdout"]'
+          - '"My home" in var_exp_builtin_reg["stdout"]'
+          - '"My home" in no_var_exp_builtin_reg["stdout"]'
+      when: not ansible_check_mode
+
+- name: Assert raw execution is as intended
+  ansible.builtin.assert:
+    that:
+      - var_exp_builtin_reg['raw'] == false
+      - no_var_exp_builtin_reg['raw'] == false
+
+- name: Assert command output (Ansible < 2.16)
+  ansible.builtin.assert:
+    that:
+      - var_exp_builtin_reg is failed
+      - no_var_exp_builtin_reg is failed
+  when: (ansible_version.major, ansible_version.minor) < (2, 16)

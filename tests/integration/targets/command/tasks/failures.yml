@@ -1,0 +1,72 @@
+# vim: ts=2:sw=2:sts=2:et:ft=yaml.ansible
+# -*- mode: yaml; yaml-indent-offset: 2; indent-tabs-mode: nil; -*-
+---
+# GNU General Public License v3.0+
+# SPDX-License-Identifier: GPL-3.0-or-later
+# (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
+#
+# Copyright (c) 2025 oØ.o (@o0-o)
+#
+# This file is part of the o0_o.posix Ansible Collection.
+
+- name: Skip for check_mode
+  when: not ansible_check_mode
+  block:
+
+    - name: 'Fail: Exit code 1'
+      o0_o.posix.command:
+        argv:
+          - return
+          - 1
+        _force_raw: "{{ _force_raw }}"
+      ignore_errors: true
+      register: reg
+
+    - name: Assert failure due non-zero exit code
+      ansible.builtin.assert:
+        that:
+          - reg['rc'] == 1
+          - reg is failed
+
+    - name: 'Fail: Run command in nonexistent directory'
+      o0_o.posix.command:
+        argv:
+          - echo
+          - foo
+        chdir: /does/not/exist
+        _force_raw: "{{ _force_raw }}"
+      ignore_errors: true
+      register: reg
+
+    - name: Assert failure due to missing directory
+      ansible.builtin.assert:
+        that:
+          - reg is failed
+          - "'Unable to change directory' in reg.msg"
+
+- name: 'Fail: Multiple command variants (cmd + argv)'
+  o0_o.posix.command:
+    cmd: echo foo
+    argv: [echo, foo]
+    _force_raw: "{{ _force_raw }}"
+  ignore_errors: true
+  register: reg
+
+- name: Assert error for mutually exclusive args
+  ansible.builtin.assert:
+    that:
+      - reg is failed
+      - "'Only one of' in reg['msg']"
+
+- name: 'Fail: Missing all command inputs'
+  o0_o.posix.command:
+    creates: /tmp/placeholder  # unrelated arg to force arg check
+    _force_raw: "{{ _force_raw }}"
+  ignore_errors: true
+  register: reg
+
+- name: Assert failure for missing command input
+  ansible.builtin.assert:
+    that:
+      - reg is failed
+      - "'One of' in reg['msg']"

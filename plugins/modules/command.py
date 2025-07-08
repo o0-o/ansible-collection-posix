@@ -27,8 +27,7 @@ description:
     C(ansible.builtin.command) module.
   - If a Python interpreter is unavailable, it automatically falls back to raw
     POSIX-compatible execution using C(sh) or C(cat).
-  - Supports check mode, async mode, and idempotence using
-    C(creates)/C(removes).
+  - Supports check mode and idempotence using C(creates)/C(removes).
 options:
   cmd:
     description:
@@ -101,15 +100,16 @@ attributes:
   check_mode:
     support: full
     description:
-      - This module fully supports check mode. It simulates command execution without making changes.
+      - This module fully supports check mode. It simulates command execution
+        without making changes.
   diff_mode:
     support: none
     description:
       - This module does not produce diff output.
   async:
-    support: full
+    support: none
     description:
-      - Supports asynchronous execution via C(async) mode in the action plugin.
+      - This module does not support asynchronous execution.
   platform:
     platforms: posix
     description:

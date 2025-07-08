@@ -56,6 +56,12 @@ class ActionModule(PosixBase):
         strip = module_args['strip_empty_ends']
         expand_vars = module_args['expand_argument_vars'] or None
 
+        if stdin and stdin_add_newline:
+            if not stdin.endswith('\n'):
+                stdin = stdin + '\n'
+        if isinstance(stdin, str):
+            stdin = stdin.encode('utf-8')
+
         if expand_vars is not None and expand_vars != shell:
             raise AnsibleError(
                 "Raw fallback requires expand_argument_vars and _uses_shell "
@@ -85,9 +91,6 @@ class ActionModule(PosixBase):
                 f"'{executable}'."
             )
             executable = None
-
-        if stdin and stdin_add_newline and not stdin.endswith('\n'):
-            stdin += '\n'
 
         # Tokenize raw params if using non-shell mode
         if not shell and args:
@@ -202,8 +205,6 @@ class ActionModule(PosixBase):
         if r['rc'] != 0:
             r['msg'] = 'non-zero return code'
 
-        r['raw'] = True
-
         return r
 
     def run(self, tmp=None, task_vars=None):
@@ -212,7 +213,7 @@ class ActionModule(PosixBase):
         is not available on the remote host.
         """
         task_vars = task_vars or {}
-        self._supports_async = True
+        self._supports_async = False
         check_mode = self._task.check_mode
 
         if PACKAGING_IMPORT_ERROR:
@@ -242,7 +243,7 @@ class ActionModule(PosixBase):
         validation_result, new_module_args = self.validate_argument_spec(
             argument_spec=argument_spec
         )
-        _force_raw = new_module_args.pop('_force_raw')
+        self.force_raw = new_module_args.pop('_force_raw')
         if parse_version(ansible_version) < parse_version("2.16"):
             if new_module_args.get("expand_argument_vars") is not None:
                 raise AnsibleError(
@@ -264,21 +265,17 @@ class ActionModule(PosixBase):
                 "Only one of 'cmd', or 'argv' can be specified"
             )
 
-        # Determine whether async wrapping is needed
-        wrap_async = (
-            self._task.async_val and not self._connection.has_native_async
-        )
-
         # Initialize results using base Action class
         results = super().run(tmp, task_vars)
-        results['raw'] = False
+        results['invocation'] = self._task.args.copy()
         del tmp
 
-        if _force_raw:
+        if self.force_raw:
             cmd_results = self._raw_cmd(module_args=new_module_args)
             results.update(cmd_results)
+            results['raw'] = True
         else:
-            # Attempt to use the builtin command module first
+            # Attempt to use the builtin command module
             builtin_module_args = new_module_args.copy()
             if builtin_module_args.get('expand_argument_vars') is None:
                 builtin_module_args.pop('expand_argument_vars')
@@ -288,12 +285,14 @@ class ActionModule(PosixBase):
                     module_name='ansible.builtin.command',
                     module_args=builtin_module_args,
                     task_vars=task_vars,
-                    wrap_async=wrap_async
                 )
+                ansible_cmd_mod.pop('invocation')
             except Exception as e:
                 self._display.warning(
                     f"Error calling ansible.builtin.command: {to_text(e)}"
                 )
+                self._display.vvv(f"Failed command result: {ansible_cmd_mod}")
+                self._display.vvv(f"Failed command args: {builtin_module_args}")
                 ansible_cmd_mod = {
                     'failed': True,
                     'rc': 127,
@@ -303,18 +302,17 @@ class ActionModule(PosixBase):
             # Check for missing interpreter and fall back if needed
             if self._is_interpreter_missing(ansible_cmd_mod):
                 self._display.warning(
-                    f"Ansible command module failed on host "
-                    f"{task_vars.get('inventory_hostname', 'UNKNOWN')}, "
-                    "falling back to raw command. Variable expansion is "
-                    "not supported."
+                    "Ansible command module failed on host, falling back to "
+                    "raw command."
                 )
                 cmd_results = self._raw_cmd(module_args=new_module_args)
                 results.update(cmd_results)
+                results['raw'] = True
             else:
                 results.update(ansible_cmd_mod)
+                results['raw'] = False
 
-        # Clean up temp files unless using async
-        if not wrap_async:
-            self._remove_tmp_path(self._connection._shell.tmpdir)
+        # Clean up temp files
+        self._remove_tmp_path(self._connection._shell.tmpdir)
 
         return results

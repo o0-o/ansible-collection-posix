@@ -1,0 +1,35 @@
+# vim: ts=2:sw=2:sts=2:et:ft=yaml
+# -*- mode: yaml; yaml-indent-offset: 2; indent-tabs-mode: nil; -*-
+---
+releases:
+
+  "1.1.0":
+    changes:
+      added:
+        - New `lineinfile_dedupe` module with deduplication and raw fallback
+          support.
+        - New `content_lines` field added to `slurp64` for line-by-line access
+          to decoded content.
+        - Shared documentation fragment `o0_o.posix.file` for file-related
+          parameters and SELinux options.
+        - Structured debug logging in raw fallback code paths for easier
+          troubleshooting.
+      changed:
+        - Improved handling of `check_mode` and `diff` in all raw-compatible
+          modules.
+        - README updated with examples for `lineinfile_dedupe` and Galaxy
+          badge.
+      fixed:
+        - Edge case bugs in `command` fallback when using `_uses_shell` and
+          `argv`.
+        - Argument validation for raw-mode execution and fallback consistency.
+
+  "1.0.0":
+    changes:
+      added:
+        - New `command` module with fallback to raw execution when Python is
+          unavailable.
+        - New `slurp64` module for reading and decoding remote files, with
+          fallback to `cat`.
+        - Initial test coverage (unit + integration) for raw fallback
+          compatibility.

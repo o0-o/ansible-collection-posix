@@ -1,0 +1,54 @@
+# vim: ts=4:sw=4:sts=4:et:ft=python
+# -*- mode: python; tab-width: 4; indent-tabs-mode: nil; -*-
+#
+# GNU General Public License v3.0+
+# SPDX-License-Identifier: GPL-3.0-or-later
+# (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
+#
+# Copyright (c) 2025 oØ.o (@o0-o)
+#
+# This file is part of the o0_o.posix Ansible Collection.
+
+import os
+import pytest
+from ansible.errors import AnsibleError
+
+
+def test_write_temp_file_success(monkeypatch, base):
+    """
+    Verify _write_temp_file writes the expected content to the temp file
+    and returns a zero exit code.
+    """
+    tmpfile = os.path.join(base._connection._shell.tmpdir, "file.txt")
+    written = {}
+
+    def mock_cmd(cmd, task_vars=None, check_mode=False, **kwargs):
+        # Expect ['tee', tmpfile] as cmd, and 'stdin' as a kwarg
+        if cmd == ["chmod", "0600", tmpfile]:
+            return {"rc": 0}
+        elif cmd == ["tee", tmpfile]:
+            written["path"] = tmpfile
+            written["content"] = kwargs.get("stdin")
+            return {"rc": 0}
+        raise Exception(f"unexpected cmd: {cmd}")
+
+    monkeypatch.setattr(base, "_cmd", mock_cmd)
+
+    result = base._write_temp_file(["one", "two"], tmpfile, task_vars={})
+
+    assert result["rc"] == 0
+    assert written["path"] == tmpfile
+    assert written["content"].splitlines() == ["one", "two"]
+
+
+def test_write_temp_file_failure(monkeypatch, base):
+    """
+    Verify _write_temp_file raises an error when the tee command fails.
+    """
+    def mock_cmd(cmd, task_vars=None, check_mode=False, **kwargs):
+        return {"rc": 1, "stderr": "no tee"}
+
+    monkeypatch.setattr(base, "_cmd", mock_cmd)
+
+    with pytest.raises(AnsibleError, match=r"Failed to write temp file .*no tee"):
+        base._write_temp_file(["oops"], "/tmp/fail", task_vars={})

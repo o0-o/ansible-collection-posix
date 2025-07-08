@@ -9,41 +9,40 @@
 #
 # This file is part of the o0_o.posix Ansible Collection.
 
+from ansible.errors import AnsibleError
 import subprocess
 
 
-def real_cmd(cmd, task_vars=None, check_mode=None, **kwargs):
+def real_cmd(cmd, stdin=None, task_vars=None, check_mode=None, **kwargs):
     """
-    Execute the given command locally using subprocess and return
-    a result dictionary compatible with Ansible's _cmd method.
-
-    :param cmd: List of args or shell string
-    :param task_vars: Ignored, for interface compatibility
-    :param check_mode: Ignored, for interface compatibility
-    :param kwargs: Catch-all to prevent breakage on extra args
-    :return: dict with rc, stdout, stderr, stdout_lines, stderr_lines
+    Simulate the fallback _cmd logic using real subprocess execution.
+    Supports both list and string commands, and optional stdin input.
     """
-    if isinstance(cmd, str):
-        use_shell = True
-        executable = "/bin/sh"
+    if isinstance(cmd, list):
+        shell = False
+    elif isinstance(cmd, str):
+        shell = True
     else:
-        use_shell = False
-        executable = None
+        raise TypeError(
+            f"Expected cmd to be str or list, got {type(cmd).__name__}"
+        )
 
-    result = subprocess.run(
-        cmd,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        check=False,
-        text=True,
-        shell=use_shell,
-        executable=executable
-    )
-
-    return {
-        "rc": result.returncode,
-        "stdout": result.stdout,
-        "stderr": result.stderr,
-        "stdout_lines": result.stdout.splitlines(),
-        "stderr_lines": result.stderr.splitlines(),
-    }
+    try:
+        result = subprocess.run(
+            cmd,
+            input=stdin.encode("utf-8") if stdin else None,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            shell=shell,
+            check=False,
+        )
+        return {
+            "rc": result.returncode,
+            "stdout": result.stdout.decode("utf-8"),
+            "stderr": result.stderr.decode("utf-8"),
+            "stdout_lines": result.stdout.decode("utf-8").splitlines(),
+            "stderr_lines": result.stderr.decode("utf-8").splitlines(),
+            "cmd": cmd,
+        }
+    except Exception as e:
+        raise AnsibleError(f"real_cmd failed: {e}")

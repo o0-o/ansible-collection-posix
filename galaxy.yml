@@ -4,7 +4,7 @@
 
 namespace: o0_o
 name: posix
-version: 1.0.0
+version: 1.1.0
 readme: README.md
 authors:
   - oØ.o (@o0-o)
@@ -17,6 +17,8 @@ tags:
   - slurp
   - raw
   - posix
+  - lineinfile
+  - deduplication
 repository: https://github.com/o0-o/ansible-collection-posix
 issues: https://github.com/o0-o/ansible-collection-posix/issues
 build_ignore:

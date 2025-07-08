@@ -1,0 +1,90 @@
+# vim: ts=2:sw=2:sts=2:et:ft=yaml.ansible
+# -*- mode: yaml; yaml-indent-offset: 2; indent-tabs-mode: nil; -*-
+---
+# GNU General Public License v3.0+
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+# Copyright (c) 2025 oØ.o (@o0-o)
+#
+# This file is part of the o0_o.posix Ansible Collection.
+
+# Need to reset on each run
+- name: Reset test file
+  ansible.builtin.copy:
+    src: files/canonical.txt
+    dest: "{{ lif_test_dir }}/test.txt"
+    mode: '0600'
+  check_mode: false
+
+- name: Replace 'log_level' line with new value
+  o0_o.posix.lineinfile_dedupe:
+    path: "{{ lif_test_dir }}/test.txt"
+    regexp: '^log_level=.*'
+    line: 'log_level=debug'
+    state: present
+    _force_raw: "{{ _force_raw }}"
+  register: reg
+
+- name: Assert raw is expected value
+  ansible.builtin.assert:
+    that:
+      - reg['raw'] == _force_raw
+
+- name: Assert change (unless in check mode)
+  ansible.builtin.assert:
+    that:
+      - (reg is changed) or ansible_check_mode
+
+- name: If not check mode
+  when: not ansible_check_mode
+  block:
+
+    - name: Read file contents
+      o0_o.posix.slurp64:
+        src: "{{ lif_test_dir }}/test.txt"
+      register: slurp_reg
+
+    - name: Assert the new line is present
+      ansible.builtin.assert:
+        that:
+          - "'log_level=debug' in slurp_reg.content_lines"
+
+    - name: Assert the old line is gone
+      ansible.builtin.assert:
+        that:
+          - "'log_level=info' not in slurp_reg.content_lines"
+
+- name: Re-run task to verify idempotency
+  o0_o.posix.lineinfile_dedupe:
+    path: "{{ lif_test_dir }}/test.txt"
+    regexp: '^log_level=.*'
+    line: 'log_level=debug'
+    state: present
+    _force_raw: "{{ _force_raw }}"
+  register: rerun_reg
+
+- name: Assert raw is expected value
+  ansible.builtin.assert:
+    that:
+      - rerun_reg['raw'] == _force_raw
+
+- name: Assert no change on second identical run
+  ansible.builtin.assert:
+    that:
+      - rerun_reg is not changed
+
+- name: If check mode
+  when: ansible_check_mode
+  block:
+
+    - name: Read original file to compare against
+      o0_o.posix.slurp64:
+        src: "{{ lif_test_dir }}/test.txt"
+      register: slurp_before
+
+    - name: Assert reported change but no actual file modification
+      ansible.builtin.assert:
+        that:
+          - reg is changed
+          - "'log_level=info' in slurp_before.content_lines"
+          - "'log_level=debug' not in slurp_before.content_lines"

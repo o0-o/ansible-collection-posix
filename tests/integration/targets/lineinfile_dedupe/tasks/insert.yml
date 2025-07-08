@@ -1,0 +1,30 @@
+# vim: ts=2:sw=2:sts=2:et:ft=yaml.ansible
+# -*- mode: yaml; yaml-indent-offset: 2; indent-tabs-mode: nil; -*-
+---
+# GNU General Public License v3.0+
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (c) 2025 oØ.o (@o0-o)
+# This file is part of the o0_o.posix Ansible Collection.
+
+- name: Run each permutation of insert_before/after and firstmatch
+  ansible.builtin.include_tasks: insert_variations.yml
+  loop: "{{ [true, false] | product([true, false], [true, false]) }}"
+  loop_control:
+    loop_var: insert_params
+  vars:
+    insertbefore: "{{ '# Anchor Middle' if insert_params[0] else '' }}"
+    insertafter: "{{ '' if insert_params[0] else '# Anchor Middle' }}"
+    firstmatch: "{{ insert_params[1] }}"
+    dedupe: "{{ insert_params[2] }}"
+    line: >-
+      {{  '### INSERTED LINE BEFORE ###' if insert_params[0]
+          else '### INSERTED LINE AFTER ###' }}
+    validation_file_components:
+      - 'insert'
+      - "{{ insert_params[0] | ternary('before', 'after') }}"
+      - "{{ insert_params[1] | ternary('first', 'last') }}"
+      - "{{ insert_params[2] | ternary('dedupe', 'no-dedupe') }}"
+    validation_file: >-
+      {{ tasks_dir }}/files/{{ validation_file_components | join('_') }}.txt
+    validation_content: >-
+      {{ lookup('ansible.builtin.file', validation_file) }}

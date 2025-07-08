@@ -1,0 +1,182 @@
+# vim: ts=2:sw=2:sts=2:et:ft=yaml.ansible
+# -*- mode: yaml; yaml-indent-offset: 2; indent-tabs-mode: nil; -*-
+---
+# GNU General Public License v3.0+
+# SPDX-License-Identifier: GPL-3.0-or-later
+# (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
+#
+# Copyright (c) 2025 oØ.o (@o0-o)
+#
+# This file is part of the o0_o.posix Ansible Collection.
+
+- name: Run command with argv
+  o0_o.posix.command:
+    argv:
+      - echo
+      - foo
+    _force_raw: "{{ _force_raw }}"
+  register: reg
+
+- name: Assert command output
+  ansible.builtin.assert:
+    that:
+      - reg['stdout'].rstrip() == 'foo'
+      - reg['stdout_lines'] == ['foo']
+  when: not ansible_check_mode
+
+- name: Assert raw execution is as intended
+  ansible.builtin.assert:
+    that:
+      - reg['raw'] == _force_raw
+
+- name: Run command with cmd
+  o0_o.posix.command:
+    cmd: echo foo
+    _force_raw: "{{ _force_raw }}"
+  register: reg
+
+- name: Assert command output
+  ansible.builtin.assert:
+    that:
+      - reg['stdout'].rstrip() == 'foo'
+      - reg['stdout_lines'] == ['foo']
+  when: not ansible_check_mode
+
+- name: Assert raw execution is as intended
+  ansible.builtin.assert:
+    that:
+      - reg['raw'] == _force_raw
+
+- name: Assert command output (Check mode)
+  ansible.builtin.assert:
+    that:
+      - reg['stdout'] == ''
+      - reg['stdout_lines'] == []
+  when: ansible_check_mode
+
+- name: Run command with cmd
+  o0_o.posix.command:
+    cmd: echo foo
+    _force_raw: "{{ _force_raw }}"
+  register: reg
+
+- name: Assert command output
+  ansible.builtin.assert:
+    that:
+      - reg['stdout'].rstrip() == 'foo'
+      - reg['stdout_lines'] == ['foo']
+  when: not ansible_check_mode
+
+- name: Assert raw execution is as intended
+  ansible.builtin.assert:
+    that:
+      - reg['raw'] == _force_raw
+
+- name: Run command with stdin
+  o0_o.posix.command:
+    argv: [cat]
+    stdin: "hello\nworld"
+    _force_raw: "{{ _force_raw }}"
+  register: reg
+
+- name: Assert stdin was passed correctly
+  ansible.builtin.assert:
+    that:
+      - reg['stdout_lines'] == ['hello', 'world']
+  when: not ansible_check_mode
+
+- name: Assert raw execution is as intended
+  ansible.builtin.assert:
+    that:
+      - reg['raw'] == _force_raw
+
+- name: Run with creates when file already exists (should skip)
+  o0_o.posix.command:
+    argv:
+      - echo
+      - should
+      - not
+      - run
+    creates: /dev/null
+    _force_raw: "{{ _force_raw }}"
+  register: reg
+
+- name: Assert command skipped due to creates
+  ansible.builtin.assert:
+    that:
+      - reg['changed'] == false
+      - reg['rc'] == 0
+
+- name: Assert raw execution is as intended
+  ansible.builtin.assert:
+    that:
+      - reg['raw'] == _force_raw
+
+- name: Ensure dummy file is absent
+  ansible.builtin.file:
+    path: /tmp/o0_foo
+    state: absent
+
+- name: Run with creates when file is missing (should run or be marked changed)
+  o0_o.posix.command:
+    argv:
+      - echo
+      - would
+      - run
+    creates: /tmp/o0_foo
+    _force_raw: "{{ _force_raw }}"
+  register: reg
+
+- name: Assert raw execution is as intended
+  ansible.builtin.assert:
+    that:
+      - reg['raw'] == _force_raw
+
+- name: Assert command would run due to creates missing
+  ansible.builtin.assert:
+    that:
+      - reg['changed'] == true
+      - reg['rc'] == 0
+
+- name: Run with removes when file exists (should run or be marked changed)
+  o0_o.posix.command:
+    argv:
+      - echo
+      - would
+      - run
+    removes: /dev/null
+    _force_raw: "{{ _force_raw }}"
+  register: reg
+
+- name: Assert command would run due to file existing
+  ansible.builtin.assert:
+    that:
+      - reg['changed'] == true
+      - reg['rc'] == 0
+
+- name: Assert raw execution is as intended
+  ansible.builtin.assert:
+    that:
+      - reg['raw'] == _force_raw
+
+- name: Run with removes when file is missing (should skip)
+  o0_o.posix.command:
+    argv:
+      - echo
+      - should
+      - not
+      - run
+    removes: /tmp/o0_foo
+    _force_raw: "{{ _force_raw }}"
+  register: reg
+
+- name: Assert command skipped due to removes missing
+  ansible.builtin.assert:
+    that:
+      - reg['changed'] == false
+      - reg['rc'] == 0
+
+- name: Assert raw execution is as intended
+  ansible.builtin.assert:
+    that:
+      - reg['raw'] == _force_raw

@@ -1,5 +1,7 @@
 # o0_o.posix
 
+[![Ansible Galaxy](https://img.shields.io/ansible/collection/v/o0_o/posix.svg?color=brightgreen&label=ansible%20galaxy)](https://galaxy.ansible.com/o0_o/posix)
+
 Ansible Collection for POSIX-compatible modules and action plugins with raw fallback support.
 
 ## Overview
@@ -11,7 +13,7 @@ The `o0_o.posix` collection provides enhanced versions of common Ansible modules
 - Fallback to raw POSIX tools (`sh`, `cat`, etc.) when Python is missing
 - Check mode, async, and idempotence support where applicable
 - Comprehensive unit and integration test coverage
-- _Mostly_ drop-in replacements for `ansible.builtin.command` and `ansible.builtin.slurp` behavior
+- _Mostly_ drop-in replacements for `ansible.builtin.command`, `ansible.builtin.slurp` and `ansible.builtin.lineinfile` modules with some quality-of-life enhancements
 
 ## Plugins
 
@@ -21,6 +23,7 @@ The `o0_o.posix` collection provides enhanced versions of common Ansible modules
 |------------|-----------------------------------------------------------------------------|
 | `command`  | Enhanced `command` module with raw execution fallback and _nearly_ full param parity |
 | `slurp64`  | Read remote file contents with automatic base64 decoding, fallback to raw `cat`       |
+| `lineinfile_dedupe`| Manage lines with deduplication, regex support, and enforced relative insertion; fallback included |
 
 ### Module Stubs
 
@@ -51,6 +54,31 @@ These exist to support `ansible-doc` and collection metadata. Do not use directl
 - name: Read file content with slurp64
   o0_o.posix.slurp64:
     src: "/etc/hosts"
+```
+
+### `lineinfile_dedupe`
+
+```yaml
+- name: Insert a line if not already present and deduplicate
+  o0_o.posix.lineinfile_dedupe:
+    path: /etc/myapp.conf
+    line: "enabled=true"
+    regexp: '^enabled='
+    create: true
+    dedupe: true
+
+- name: Remove all matching lines
+  o0_o.posix.lineinfile_dedupe:
+    path: /etc/myapp.conf
+    regexp: '^debug='
+    state: absent
+
+- name: Insert a line after a comment section
+  o0_o.posix.lineinfile_dedupe:
+    path: /etc/myapp.conf
+    line: "enabled=true"
+    insertafter: '^# Feature toggles'
+    create: true
 ```
 
 ## Installation

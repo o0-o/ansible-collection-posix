@@ -1,0 +1,38 @@
+# This is a config file
+# Anchor Start
+setting_one = true
+
+# The following line is for dedupe tests:
+### INSERTED LINE AFTER ###
+
+# Repeated Line
+path=/usr/local/bin
+
+# Some filler text
+setting_two = false
+# Anchor Middle
+### INSERTED LINE AFTER ###
+log_level=info
+
+# Another comment
+# Anchor Start
+# Repeated Line
+timeout=30
+
+setting_three = true
+path=/usr/local/bin
+# Anchor End
+setting_four = false
+
+# A line that looks like an email: test@example.com
+path=/usr/local/bin
+# Anchor Middle
+setting_five = true
+# Repeated Line
+
+# The following line is for dedupe tests:
+### INSERTED LINE BEFORE ###
+
+path=/etc/myapp
+
+# Final comment

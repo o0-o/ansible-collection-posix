@@ -1,0 +1,84 @@
+# vim: ts=2:sw=2:sts=2:et:ft=yaml.ansible
+# -*- mode: yaml; yaml-indent-offset: 2; indent-tabs-mode: nil; -*-
+---
+# GNU General Public License v3.0+
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (c) 2025 oØ.o (@o0-o)
+# This file is part of the o0_o.posix Ansible Collection.
+
+- name: Validation file exists
+  ansible.builtin.assert:
+    that:
+      - lookup( 'ansible.builtin.pipe',
+        'test -e '
+        + validation_file | quote
+        + ' && echo true || echo false' )
+
+- name: Inserting
+  ansible.builtin.debug:
+    msg: "{{ 'Before' if insert_params[0] else 'After' }}"
+
+- name: First match
+  ansible.builtin.debug:
+    var: firstmatch
+
+- name: Dedupe
+  ansible.builtin.debug:
+    var: dedupe
+
+- name: Reset test file
+  ansible.builtin.copy:
+    src: files/canonical.txt
+    dest: "{{ lif_test_dir }}/test.txt"
+    mode: '0600'
+  check_mode: false
+
+- name: Run lineinfile_dedupe
+  o0_o.posix.lineinfile_dedupe:
+    path: "{{ lif_test_dir }}/test.txt"
+    line: "{{ line }}"
+    insertbefore: "{{ insertbefore | default(omit, True) }}"
+    insertafter: "{{ insertafter | default(omit, True) }}"
+    state: present
+    firstmatch: "{{ firstmatch }}"
+    dedupe: "{{ dedupe }}"
+    _force_raw: "{{ _force_raw }}"
+  register: reg
+
+- name: Slurp actual result
+  o0_o.posix.slurp64:
+    src: "{{ lif_test_dir }}/test.txt"
+  register: slurp_result
+
+- name: Compare with expected result
+  when: not ansible_check_mode
+  block:
+
+    - name: Try
+      vars:
+        diff_command: >-
+          diff -u --label=expected --label=actual '{{ validation_file }}'
+          '{{ lif_test_dir }}/test.txt' || test $? -eq 1
+        diff_result: "{{ lookup('ansible.builtin.pipe', diff_command) }}"
+      block:
+
+        - name: Mismatching lines
+          ansible.builtin.debug:
+            msg: "{{ diff_result }}"
+          when: diff_result != ''
+
+        - name: Confirm output matches expected
+          ansible.builtin.assert:
+            that:
+              - diff_result == ''
+
+    - name: Confirm raw execution is as expected
+      ansible.builtin.assert:
+        that:
+          - reg.raw == _force_raw
+
+- name: Confirm no change to file if check mode
+  ansible.builtin.assert:
+    that:
+      - result.content == canonical_content
+  when: ansible_check_mode

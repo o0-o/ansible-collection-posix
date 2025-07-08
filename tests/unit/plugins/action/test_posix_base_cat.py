@@ -37,6 +37,7 @@ def test_cat_file_content(base, content, expect_error, expected_output):
             with open(path, "w", encoding="utf-8") as f:
                 f.write(content)
 
+        base.force_raw = True
         result = base._cat(path)
 
         if expect_error:
@@ -48,7 +49,6 @@ def test_cat_file_content(base, content, expect_error, expected_output):
             assert result["changed"] is False
             assert result["source"] == path
             assert result["content"] == expected_output
-            assert result["raw"] is True
 
         # Common postconditions: these keys must not be present
         for forbidden in ("stdout", "stderr", "stdout_lines", "stderr_lines"):

@@ -26,6 +26,7 @@ class ActionModule(PosixBase):
     """
 
     TRANSFERS_FILES = False
+    supports_check_mode = True
 
     def run(self, tmp=None, task_vars=None):
         """
@@ -34,6 +35,8 @@ class ActionModule(PosixBase):
         """
         task_vars = task_vars or {}
         self._supports_async = False
+
+        self._display.vvv("slurp64: starting run()")
 
         # Define the expected input parameters
         argument_spec = dict(
@@ -46,27 +49,39 @@ class ActionModule(PosixBase):
             argument_spec=argument_spec
         )
         src = new_module_args.get('src')
-        force_raw = new_module_args.get('_force_raw')
+        self.force_raw = new_module_args.pop('_force_raw')
+
+        self._display.vvv(
+            f"slurp64: parsed src={src}, _force_raw={self.force_raw}"
+        )
 
         # Initialize the result structure from the base Action class
         results = super().run(tmp, task_vars)
-        del tmp  # tmp is no longer needed
+        results["invocation"] = self._task.args.copy()
+        results['msg'] = ''
+        del tmp
 
-        if force_raw:
+        if self.force_raw:
+            self._display.vvv("slurp64: forcing raw mode, calling _cat()")
             cat_results = self._cat(src, task_vars=task_vars)
+            self._display.vvv(f"slurp64: _cat() returned {cat_results}")
             results.update(cat_results)
             results['raw'] = True
         else:
-            # Try using the builtin slurp module first
+            self._display.vvv("slurp64: attempting ansible.builtin.slurp")
+
             try:
                 ansible_slurp_mod = self._execute_module(
                     module_name='ansible.builtin.slurp',
                     module_args={'src': src},
                     task_vars=task_vars,
                 )
+                self._display.vvv(
+                    f"slurp64: builtin slurp: {ansible_slurp_mod}"
+                )
+                ansible_slurp_mod.pop('invocation')
                 results['raw'] = False
             except Exception as e:
-                # Handle failures due to module load or Python unavailability
                 self._display.warning(
                     f"Error calling ansible.builtin.slurp: {str(e)}"
                 )
@@ -76,35 +91,53 @@ class ActionModule(PosixBase):
                     'module_stderr': str(e)
                 }
 
-            # Check if the module failed due to a missing Python interpreter
             if self._is_interpreter_missing(ansible_slurp_mod):
                 self._display.warning(
                     "Ansible slurp module failed on host "
                     f"{task_vars.get('inventory_hostname', 'UNKNOWN')}, "
                     "falling back to raw 'cat'."
                 )
+                self._display.vvv(
+                    "slurp64: falling back to _cat() due to interpreter error"
+                )
                 cat_results = self._cat(src, task_vars=task_vars)
+                self._display.vvv(
+                    f"slurp64: _cat() fallback returned {cat_results}"
+                )
                 results.update(cat_results)
                 results['raw'] = True
-            elif 'content' in ansible_slurp_mod:
-                # Try decoding base64 content from slurp result
-                try:
-                    ansible_slurp_mod.pop('encoding', None)
-                    ansible_slurp_mod['content'] = b64decode(
-                        ansible_slurp_mod['content']
-                    ).decode('utf-8')
-                except Exception as decode_error:
-                    raise AnsibleError(
-                        "Failed to base64 decode slurp content: "
-                        f"{decode_error}"
+            else:
+                if 'content' in ansible_slurp_mod:
+                    self._display.vvv("slurp64: decoding slurp content")
+                    try:
+                        ansible_slurp_mod.pop('encoding', None)
+                        ansible_slurp_mod['content'] = b64decode(
+                            ansible_slurp_mod['content']
+                        ).decode('utf-8')
+                        self._display.vvv("slurp64: decode succeeded")
+                    except Exception as decode_error:
+                        raise AnsibleError(
+                            "Failed to base64 decode slurp content: "
+                            f"{decode_error}"
+                        )
+
+                else:
+                    self._display.warning(
+                        "slurp64: builtin slurp did not return 'content'"
                     )
 
                 results.update(ansible_slurp_mod)
 
-        # Slurp never changes
-        results["changed"] = False
+        if 'content' in results:
+            results['content_lines'] = results['content'].splitlines()
+            self._display.vvv(
+                f"slurp64: split content into {len(results['content_lines'])} "
+                "lines"
+            )
 
-        # Clean up temporary files
+        results['changed'] = False
+
+        self._display.vvv("slurp64: finished run(), returning results")
         self._remove_tmp_path(self._connection._shell.tmpdir)
 
         return results

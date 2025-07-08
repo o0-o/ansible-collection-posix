@@ -1,0 +1,51 @@
+# vim: ts=2:sw=2:sts=2:et:ft=yaml.ansible
+# -*- mode: yaml; yaml-indent-offset: 2; indent-tabs-mode: nil; -*-
+---
+# GNU General Public License v3.0+
+# SPDX-License-Identifier: GPL-3.0-or-later
+# (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
+# Copyright (c) 2025 oØ.o (@o0-o)
+#
+# This file is part of the o0_o.posix Ansible Collection.
+
+- name: Run slurp64 module normally
+  o0_o.posix.slurp64:
+    src: "{{ tmp }}"
+    _force_raw: "{{ _force_raw }}"
+  register: result_normal
+
+- name: Assert normal slurp64 returned expected content
+  ansible.builtin.assert:
+    that:
+      - 'result_normal["raw"] == _force_raw'
+      - result_normal is not changed
+      - '"This is a test" in result_normal["content"]'
+      - '"Final line" in result_normal["content"]'
+
+- name: Run slurp64 on a non-existent file
+  o0_o.posix.slurp64:
+    src: "/nonexistent/file/path"
+    _force_raw: "{{ _force_raw }}"
+  register: result_missing
+  ignore_errors: true
+
+- name: Assert missing file produced error
+  ansible.builtin.assert:
+    that:
+      - 'result_normal["raw"] == _force_raw'
+      - result_missing is failed
+
+- name: Run slurp64 with an invalid argument
+  o0_o.posix.slurp64:
+    src: "{{ tmp }}"
+    unexpected_param: true
+    _force_raw: "{{ _force_raw }}"
+  register: result_invalid
+  ignore_errors: true
+
+- name: Assert invalid param caused failure
+  ansible.builtin.assert:
+    that:
+      - 'result_normal["raw"] == _force_raw'
+      - result_invalid is failed
+      - "'unexpected_param' in result_invalid['msg']"
