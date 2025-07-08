@@ -31,6 +31,7 @@ These exist to support `ansible-doc` and collection metadata. Do not use directl
 
 - `command`: see [`plugins/action/command.py`](plugins/action/command.py)
 - `slurp64`: see [`plugins/action/slurp64.py`](plugins/action/slurp64.py)
+- `lineinfile_dedupe`: see [`plugins/action/lineinfile_dedupe.py`](plugins/action/lineinfile_dedupe.py)
 
 ## Usage
 
