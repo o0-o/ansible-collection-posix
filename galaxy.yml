@@ -4,7 +4,7 @@
 
 namespace: o0_o
 name: posix
-version: 1.1.1
+version: 1.2.0
 readme: README.md
 authors:
   - oØ.o (@o0-o)
@@ -16,6 +16,7 @@ tags:
   - command
   - slurp
   - raw
+  - template
   - posix
   - lineinfile
   - deduplication

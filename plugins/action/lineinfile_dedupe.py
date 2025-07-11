@@ -20,7 +20,6 @@ from ansible.module_utils.common.file import get_file_arg_spec
 from ansible.module_utils.common.text.converters import to_text
 from ansible_collections.o0_o.posix.plugins.action_utils import PosixBase
 import re
-from os import path
 
 
 class ActionModule(PosixBase):
@@ -32,38 +31,6 @@ class ActionModule(PosixBase):
     TRANSFERS_FILES = False
     supports_check_mode = True
     supports_diff = True
-
-    def _mk_dest_dir(self, task_vars=None):
-        """
-        Create the parent directory of the target file if it does not exist.
-
-        Returns:
-            dict: {
-                'changed' (bool): True if directory would be or was created,
-                'failed' (bool): True if directory creation failed
-                                 (only in non-check mode),
-                'msg' (str): Error message if applicable
-            }
-        """
-        destpath = path.dirname(self.path)
-        destpath_stat = self._pseudo_stat(destpath, task_vars=task_vars)
-        if not destpath_stat['exists']:
-            if self._task.check_mode:
-                self.results['changed'] = True
-            else:
-                try:
-                    mkdir_results = self._mkdir(
-                        destpath, task_vars=task_vars
-                    )
-                except Exception as e:
-                    self.results.update({
-                        'rc': 256,
-                        'msg': (
-                            f"Error creating {destpath} "
-                            f"({to_text(e)})"
-                        ),
-                        'failed': True,
-                    })
 
     def _ensure_line_present(self, task_vars=None):
         """
@@ -91,7 +58,7 @@ class ActionModule(PosixBase):
             self._display.vvv(
                 "Creating destination parent directories (create=true)"
             )
-            self._mk_dest_dir(task_vars=task_vars)
+            self._mk_dest_dir(self.path, task_vars=task_vars)
             if self.results.get('failed', False):
                 self._display.vvv("Directory creation failed, aborting")
                 return

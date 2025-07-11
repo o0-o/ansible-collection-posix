@@ -1,0 +1,44 @@
+# vim: ts=2:sw=2:sts=2:et:ft=yaml.ansible
+# -*- mode: yaml; yaml-indent-offset: 2; indent-tabs-mode: nil; -*-
+---
+# GNU General Public License v3.0+
+# SPDX-License-Identifier: GPL-3.0-or-later
+# (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
+#
+# Copyright (c) 2025 oØ.o (@o0-o)
+#
+# This file is part of the o0_o.posix Ansible Collection.
+
+- name: Clean target test directory
+  file:
+    path: "{{ tmpl_test_dir }}/"
+    state: absent
+
+- name: Create test directory
+  file:
+    path: "{{ tmpl_test_dir }}/"
+    state: directory
+    mode: '0755'
+
+- name: Render metadata template
+  o0_o.posix.template:
+    src: meta_vars.j2
+    dest: "{{ tmpl_test_dir }}/meta_vars.txt"
+    mode: '0644'
+    _force_raw: "{{ _force_raw }}"
+  register: meta_result
+
+- name: Slurp rendered template
+  o0_o.posix.slurp64:
+    src: "{{ tmpl_test_dir }}/meta_vars.txt"
+    _force_raw: "{{ _force_raw }}"
+  register: meta_slurp
+  when: not ansible_check_mode
+
+- name: Assert template metadata vars rendered
+  assert:
+    that:
+      - meta_slurp.content is defined
+      - "'template_path: ' + 'meta_vars.j2' in meta_slurp.content"
+      - "'template_destpath: ' + tmpl_test_dir in meta_slurp.content"
+  when: not ansible_check_mode

@@ -66,7 +66,7 @@ def test_pseudo_stat_unsupported_type(base, tmp_path):
 
     # Remove all type detection logic from this test by patching _cmd
     # to always return rc=1 after test -e
-    def fake_cmd(args, task_vars=None):
+    def fake_cmd(args, task_vars=None, check_mode=None):
         if args == ["test", "-e", str(fifo_path)]:
             return {"rc": 0, "raw": False}
         return {"rc": 1, "raw": False}
