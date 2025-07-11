@@ -1,0 +1,53 @@
+# vim: ts=2:sw=2:sts=2:et:ft=yaml.ansible
+# -*- mode: yaml; yaml-indent-offset: 2; indent-tabs-mode: nil; -*-
+---
+# GNU General Public License v3.0+
+# SPDX-License-Identifier: GPL-3.0-or-later
+# (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
+#
+# Copyright (c) 2025 oØ.o (@o0-o)
+#
+# This file is part of the o0_o.posix Ansible Collection.
+
+- name: Create temporary directory for integration tests
+  ansible.builtin.tempfile:
+    state: directory
+    suffix: template
+  register: test_tmpdir
+
+- name: Set tasks directory
+  ansible.builtin.set_fact:
+    tasks_dir: "{{ playbook_dir }}/targets/template/tasks"
+
+- name: Set template directory
+  ansible.builtin.set_fact:
+    tmpl_dir: "{{ playbook_dir }}/targets/template/tasks/templates"
+
+- name: Set test directory fact
+  ansible.builtin.set_fact:
+    tmpl_test_dir: "{{ test_tmpdir.path }}"
+
+- name: Try
+  block:
+
+    - name: Run test set with permutations of force_raw and check_mode
+      ansible.builtin.include_tasks: "{{ item[0] }}"
+      loop: "{{ test_sets | ansible.builtin.product(loop_list) }}"
+      vars:
+        loop_list: >-
+          {{ [true, false] | ansible.builtin.product([true, false]) }}
+        test_sets:
+          - simple_template.yml
+          - validate_command.yml
+          - overwrite_protection.yml
+          - meta_vars.yml
+          - error_cases.yml
+        _force_raw: "{{ item[1][0] }}"
+        ansible_check_mode: "{{ item[1][1] }}"
+
+  always:
+
+    - name: Clean up temporary test directory
+      ansible.builtin.file:
+        path: "{{ tmpl_test_dir }}"
+        state: absent

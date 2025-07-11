@@ -1,0 +1,95 @@
+# vim: ts=2:sw=2:sts=2:et:ft=yaml.ansible
+# -*- mode: yaml; yaml-indent-offset: 2; indent-tabs-mode: nil; -*-
+---
+# GNU General Public License v3.0+
+# SPDX-License-Identifier: GPL-3.0-or-later
+# (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
+#
+# Copyright (c) 2025 oØ.o (@o0-o)
+#
+# This file is part of the o0_o.posix Ansible Collection.
+
+- name: Ensure test directory is clean
+  ansible.builtin.file:
+    path: "{{ tmpl_test_dir }}/"
+    state: absent
+  when: not ansible_check_mode
+
+- name: Create test directory
+  ansible.builtin.file:
+    path: "{{ tmpl_test_dir }}/"
+    state: directory
+    mode: '0755'
+
+- name: Prepare overwrite target file
+  ansible.builtin.copy:
+    dest: "{{ tmpl_test_dir }}/force_test.txt"
+    content: "Original content"
+    mode: '0644'
+  when: not ansible_check_mode
+
+- name: 'Try overwrite with default force=true'
+  o0_o.posix.template:
+    src: hello.j2
+    dest: "{{ tmpl_test_dir }}/force_test.txt"
+    mode: '0644'
+    _force_raw: "{{ _force_raw }}"
+  register: overwrite_default
+  vars:
+    greeting: Hello world
+
+- name: 'Assert outcome for force=true'
+  ansible.builtin.assert:
+    that:
+      - (not ansible_check_mode and overwrite_default.changed) or
+        (ansible_check_mode and overwrite_default.changed)
+      - overwrite_default.raw == _force_raw
+
+- name: 'Reset file before force=false test'
+  ansible.builtin.copy:
+    dest: "{{ tmpl_test_dir }}/force_test.txt"
+    content: "Original content"
+    mode: '0644'
+  when: not ansible_check_mode
+
+- name: 'Try overwrite with force=false'
+  o0_o.posix.template:
+    src: hello.j2
+    dest: "{{ tmpl_test_dir }}/force_test.txt"
+    force: false
+    mode: '0644'
+    _force_raw: "{{ _force_raw }}"
+  register: overwrite_protect
+  vars:
+    greeting: Hello world
+
+- name: 'Assert outcome for force=false'
+  ansible.builtin.assert:
+    that:
+      - not overwrite_protect.changed
+      - overwrite_protect.raw == _force_raw
+
+- name: 'Setup file for check mode force=false test'
+  ansible.builtin.copy:
+    dest: "{{ tmpl_test_dir }}/check_protect.txt"
+    content: "Original content"
+    mode: '0644'
+  when: not ansible_check_mode
+
+- name: 'Try check mode with force=false'
+  o0_o.posix.template:
+    src: hello.j2
+    dest: "{{ tmpl_test_dir }}/check_protect.txt"
+    force: false
+    mode: '0644'
+    _force_raw: "{{ _force_raw }}"
+  check_mode: true
+  register: check_protect
+  vars:
+    greeting: Hello world
+
+- name: 'Assert check mode result with force=false'
+  ansible.builtin.assert:
+    that:
+      - not check_protect.changed
+      - check_protect.raw == _force_raw

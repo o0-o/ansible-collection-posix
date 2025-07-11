@@ -70,3 +70,21 @@
     that:
       - reg is failed
       - "'One of' in reg['msg']"
+
+- name: 'Fail: Explicit return code check (false command)'
+  o0_o.posix.command:
+    argv:
+      - 'test'
+      - '-d'
+      - '/dev/null'
+    _force_raw: "{{ _force_raw }}"
+  ignore_errors: true
+  register: reg_false
+
+- name: 'Assert false command returned rc=1 and failed'
+  ansible.builtin.assert:
+    that:
+      - reg_false.rc == 1
+      - reg_false is failed
+      - reg_false.stdout == ''
+      - reg_false.stderr == ''

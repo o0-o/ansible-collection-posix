@@ -29,13 +29,13 @@ def test_write_file_rejects_invalid_content(base):
     Ensure _write_file raises AnsibleError for unsupported content types
     such as None, integers, or mixed-type lists.
     """
-    path = generate_temp_path()
+    tmp_path = generate_temp_path()
     try:
         for invalid in [None, 123, [object()], ["foo", object()]]:
             with pytest.raises(AnsibleError):
-                base._write_file(content=invalid, dest=path, task_vars={})
+                base._write_file(content=invalid, dest=tmp_path, task_vars={})
     finally:
-        cleanup_path(path)
+        cleanup_path(tmp_path)
 
 
 def test_write_file_basic_write(base):
@@ -43,17 +43,17 @@ def test_write_file_basic_write(base):
     Test basic functionality of _write_file writing string content
     to a file and marking the operation as changed.
     """
-    path = generate_temp_path()
+    tmp_path = generate_temp_path()
     try:
         result = base._write_file(
-            content="hello\nworld\n", dest=path, task_vars={}
+            content="hello\nworld\n", dest=tmp_path, task_vars={}
         )
         assert result["changed"] is True
         assert result["rc"] == 0
-        with open(path, encoding="utf-8") as f:
+        with open(tmp_path, encoding="utf-8") as f:
             assert f.read().splitlines() == ["hello", "world"]
     finally:
-        cleanup_path(path)
+        cleanup_path(tmp_path)
 
 
 def test_write_file_backup_and_validate(base):
@@ -61,8 +61,8 @@ def test_write_file_backup_and_validate(base):
     Ensure _write_file triggers validation and creates a backup
     when content is changed and backup=True.
     """
-    path = generate_temp_path()
-    with open(path, "w") as f:
+    tmp_path = generate_temp_path()
+    with open(tmp_path, "w") as f:
         f.write("existing")
 
     base._validate_file = lambda tmp, cmd, task_vars: None
@@ -70,7 +70,7 @@ def test_write_file_backup_and_validate(base):
 
     result = base._write_file(
         content="new",
-        dest=path,
+        dest=tmp_path,
         task_vars={},
         validate_cmd="cat %s",
         backup=True
@@ -79,8 +79,8 @@ def test_write_file_backup_and_validate(base):
     assert result["changed"] is True
     assert result["backup_file"].endswith(".bak")
 
-    cleanup_path(path)
-    cleanup_path(path + ".bak")
+    cleanup_path(tmp_path)
+    cleanup_path(tmp_path + ".bak")
 
 
 def test_write_file_check_mode_and_diff(base):
@@ -88,21 +88,21 @@ def test_write_file_check_mode_and_diff(base):
     Test that check_mode=True avoids actual changes but sets changed=True
     and includes the correct diff content.
     """
-    path = generate_temp_path()
+    tmp_path = generate_temp_path()
     original = "old content\n"
     updated = "new content\n"
     try:
-        with open(path, "w") as f:
+        with open(tmp_path, "w") as f:
             f.write(original)
 
-        base._slurp = lambda path, task_vars=None: {
+        base._slurp = lambda tmp_path, task_vars=None: {
             "content": original,
             "content_lines": original.splitlines(),
         }
 
         result = base._write_file(
             content=updated,
-            dest=path,
+            dest=tmp_path,
             task_vars={"diff": True},
             check_mode=True
         )
@@ -111,10 +111,10 @@ def test_write_file_check_mode_and_diff(base):
         assert "diff" in result
         assert result["diff"]["before"] == original
         assert result["diff"]["after"] == updated
-        with open(path, encoding="utf-8") as f:
+        with open(tmp_path, encoding="utf-8") as f:
             assert f.read() == original
     finally:
-        cleanup_path(path)
+        cleanup_path(tmp_path)
 
 
 def test_write_file_applies_permissions(base):
@@ -122,7 +122,7 @@ def test_write_file_applies_permissions(base):
     Confirm that _write_file applies owner, group, and mode
     permissions correctly.
     """
-    path = generate_temp_path()
+    tmp_path = generate_temp_path()
     uid = os.getuid()
     gid = os.getgid()
     perms = {
@@ -133,15 +133,15 @@ def test_write_file_applies_permissions(base):
     try:
         result = base._write_file(
             content="secure",
-            dest=path,
+            dest=tmp_path,
             perms=perms,
             task_vars={}
         )
         assert result["changed"] is True
-        check_path_mode(path, perms)
-        check_path_ownership(path, perms)
+        check_path_mode(tmp_path, perms)
+        check_path_ownership(tmp_path, perms)
     finally:
-        cleanup_path(path)
+        cleanup_path(tmp_path)
 
 
 def test_write_file_selinux_tools_missing(base):
@@ -153,14 +153,14 @@ def test_write_file_selinux_tools_missing(base):
         None if name == "chcon" else "/usr/sbin/semanage"
     )
     base._display = MagicMock()
-    dest = generate_temp_path()
+    tmp_path = generate_temp_path()
     try:
         with pytest.raises(AnsibleError, match="requires 'chcon'"):
             base._write_file(
                 content="foo",
-                dest=dest,
+                dest=tmp_path,
                 perms={"setype": "foo_t"},
                 task_vars={}
             )
     finally:
-        cleanup_path(dest)
+        cleanup_path(tmp_path)

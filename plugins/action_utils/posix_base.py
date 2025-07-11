@@ -20,7 +20,9 @@ when Python is not available on the remote host.
 
 from ansible.errors import AnsibleError
 from ansible.plugins.action import ActionBase
+from ansible.module_utils.common.text.converters import to_text
 from datetime import datetime, timezone
+from os import path
 import stat
 import hashlib
 import shlex
@@ -131,9 +133,6 @@ class PosixBase(ActionBase):
         if getattr(self, "force_raw", False):
             task.args["_force_raw"] = True
 
-        if check_mode is not None:
-            task.check_mode = check_mode
-
         plugin = self._shared_loader_obj.action_loader.get(
             plugin_name,
             task=task,
@@ -143,6 +142,9 @@ class PosixBase(ActionBase):
             templar=self._templar,
             shared_loader_obj=self._shared_loader_obj,
         )
+
+        if check_mode is not None:
+            plugin._task.check_mode = check_mode
 
         result = plugin.run(task_vars=task_vars)
 
@@ -264,7 +266,7 @@ class PosixBase(ActionBase):
         :raises: AnsibleError if type cannot be determined.
         """
         exists_test = self._cmd(
-            ["test", "-e", target_path], task_vars=task_vars
+            ["test", "-e", target_path], task_vars=task_vars, check_mode=False
         )
 
         result = {'raw': exists_test.get("raw", False)}
@@ -277,14 +279,14 @@ class PosixBase(ActionBase):
         result["exists"] = True
 
         symlink_test = self._cmd(
-            ["test", "-L", target_path], task_vars=task_vars
+            ["test", "-L", target_path], task_vars=task_vars, check_mode=False
         )
 
         result["is_symlink"] = symlink_test["rc"] == 0
 
         type_tests = [
-            ("file", ["-f"]),
             ("directory", ["-d"]),
+            ("file", ["-f"]),
             ("block", ["-b"]),
             ("char", ["-c"]),
             ("pipe", ["-p"]),
@@ -293,7 +295,9 @@ class PosixBase(ActionBase):
 
         for type_name, flag in type_tests:
             check = self._cmd(
-                ["test"] + flag + [target_path], task_vars=task_vars
+                ["test"] + flag + [target_path],
+                task_vars=task_vars,
+                check_mode=False
             )
             if check["rc"] == 0:
                 result["type"] = type_name
@@ -324,7 +328,8 @@ class PosixBase(ActionBase):
             return {"rc": 0, "changed": False}
         if stat["exists"]:
             raise AnsibleError(
-                f"Path '{target_path}' exists but is not a directory"
+                f"Path '{target_path}' exists but is not a directory "
+                f"({stat['type']})"
             )
 
         # Attempt to create directory
@@ -358,7 +363,7 @@ class PosixBase(ActionBase):
         shell = self._connection._shell
         return getattr(shell, "quote", shlex.quote)(s)
 
-    def _generate_ansible_backup_path(self, path):
+    def _generate_ansible_backup_path(self, target_path):
         """
         Generate an Ansible-style backup file name based on the path.
 
@@ -367,9 +372,9 @@ class PosixBase(ActionBase):
         :param path: The full remote file path to back up.
         :return: Backup file name as a string.
         """
-        digest = hashlib.md5(path.encode("utf-8")).hexdigest()
+        digest = hashlib.md5(target_path.encode("utf-8")).hexdigest()
         timestamp = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")
-        return f"{path}.{digest}.{timestamp}"
+        return f"{target_path}.{digest}.{timestamp}"
 
     def _validate_file(self, tmpfile, validate_cmd, task_vars=None):
         """
@@ -384,7 +389,7 @@ class PosixBase(ActionBase):
         if not validate_cmd:
             return
 
-        shell = self._action._connection._shell
+        shell = self._connection._shell
         cmd = validate_cmd % self._quote(tmpfile)
         result = self._cmd(cmd, task_vars=task_vars)
 
@@ -1045,3 +1050,37 @@ class PosixBase(ActionBase):
 
         self._display.vvv(f"_write_file completed: {results}")
         return results
+
+    def _mk_dest_dir(self, file_path, task_vars=None):
+        """
+        Create the parent directory of the target file if it does not exist.
+
+        Returns:
+            dict: {
+                'changed' (bool): True if directory would be or was created,
+                'failed' (bool): True if directory creation failed
+                                 (only in non-check mode),
+                'msg' (str): Error message if applicable
+            }
+        """
+        self._display.vvv(f"Starting _mk_dest_dir ({file_path})")
+        dir_path = path.dirname(file_path)
+        dir_stat = self._pseudo_stat(dir_path, task_vars=task_vars)
+        if not dir_stat['exists']:
+            if self._task.check_mode:
+                self.results['changed'] = True
+            else:
+                try:
+                    mkdir_results = self._mkdir(
+                        dir_path, task_vars=task_vars
+                    )
+                    self.results['changed'] = True
+                except Exception as e:
+                    self.results.update({
+                        'rc': 256,
+                        'msg': (
+                            f"Error creating {dir_path} "
+                            f"({to_text(e)})"
+                        ),
+                        'failed': True,
+                    })

@@ -19,11 +19,12 @@ The `o0_o.posix` collection provides enhanced versions of common Ansible modules
 
 ### Action Plugins
 
-| Name       | Description                                                                 |
-|------------|-----------------------------------------------------------------------------|
-| `command`  | Enhanced `command` module with raw execution fallback and _nearly_ full param parity |
-| `slurp64`  | Read remote file contents with automatic base64 decoding, fallback to raw `cat`       |
-| `lineinfile_dedupe`| Manage lines with deduplication, regex support, and enforced relative insertion; fallback included |
+| Name                | Description                                                                 |
+|---------------------|-----------------------------------------------------------------------------|
+| `command`           | Enhanced `command` module with raw execution fallback and _nearly_ full param parity |
+| `slurp64`           | Read remote file contents with automatic base64 decoding, fallback to raw `cat`       |
+| `lineinfile_dedupe` | Manage lines with deduplication, regex support, and enforced relative insertion; fallback included |
+| `template`          | Drop-in replacement for `template` with raw fallback and enhanced check mode and force logic |
 
 ### Module Stubs
 
@@ -32,6 +33,7 @@ These exist to support `ansible-doc` and collection metadata. Do not use directl
 - `command`: see [`plugins/action/command.py`](plugins/action/command.py)
 - `slurp64`: see [`plugins/action/slurp64.py`](plugins/action/slurp64.py)
 - `lineinfile_dedupe`: see [`plugins/action/lineinfile_dedupe.py`](plugins/action/lineinfile_dedupe.py)
+- `template`: see [`plugins/action/template.py`](plugins/action/template.py)
 
 ## Usage
 
@@ -80,6 +82,18 @@ These exist to support `ansible-doc` and collection metadata. Do not use directl
     line: "enabled=true"
     insertafter: '^# Feature toggles'
     create: true
+```
+
+### `template`
+
+```yaml
+- name: Render a template with fallback if Python is missing
+  o0_o.posix.template:
+    src: hello.j2
+    dest: /tmp/hello.txt
+    mode: '0644'
+  vars:
+    greeting: Hello world
 ```
 
 ## Installation
