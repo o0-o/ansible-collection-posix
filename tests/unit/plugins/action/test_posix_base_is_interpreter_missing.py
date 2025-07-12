@@ -15,24 +15,36 @@ import pytest
 @pytest.mark.parametrize(
     "result, expected",
     [
-        # Positive cases: rc=127 and relevant stderr messages
-        ({'rc': 127, 'module_stderr': 'python: command not found'}, True),
-        ({'rc': 127, 'module_stderr': 'no such file or directory'}, True),
-        ({'rc': 127, 'module_stderr': 'bad interpreter'}, True),
-        ({'rc': 127, 'module_stderr': "can't open"}, True),
+        # Positive: canary string appears in msg and rc is 127
+        ({
+            'rc': 127,
+            'msg': (
+                'The module failed to execute correctly, you probably need to '
+                'set the interpreter for this host'
+            )
+        }, True),
 
-        # Negative cases: rc is not 127 or stderr doesn't match
-        ({'rc': 0, 'module_stderr': 'python: command not found'}, False),
-        ({'rc': 1, 'module_stderr': 'bad interpreter'}, False),
-        ({'rc': 127, 'module_stderr': 'unexpected error'}, False),
-        ({'rc': 127, 'module_stderr': ''}, False),
-        ({'rc': 127}, False),
+        # Negative: rc is wrong or msg doesn't match
+        ({
+            'rc': 0,
+            'msg': (
+                'The module failed to execute correctly, you probably need to '
+                'set the interpreter'
+            )
+        }, False),
+        ({
+            'rc': 127,
+            'msg': 'unexpected failure message'
+        }, False),
+        ({
+            'rc': 127,
+        }, False),
         ({}, False),
-        ('not a dict', False),  # malformed input
+        ('not a dict', False),
     ]
 )
-def test_is_interpreter_missing_variants(base, result, expected):
+def test_is_interpreter_missing_canary_only(base, result, expected):
     """
-    Test interpreter detection logic with various result dicts.
+    Verify _is_interpreter_missing detects Python errors by msg content.
     """
     assert base._is_interpreter_missing(result) is expected

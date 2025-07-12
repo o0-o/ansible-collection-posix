@@ -77,8 +77,7 @@ class PosixBase(ActionBase):
 
         :param result: A result dict from _execute_module or fallback
                        command.
-        :return: True if failure likely due to missing Python, else
-                 False.
+        :return: True if failure likely due to missing Python, else False.
         """
         if not isinstance(result, dict):
             return False
@@ -86,18 +85,18 @@ class PosixBase(ActionBase):
         if result.get('rc') != 127:
             return False
 
-        stderr = result.get('module_stderr', '')
-        keywords = (
-            'python: command not found',
-            'no such file or directory',
-            'bad interpreter',
-            "can't open",
+        msg = result.get('msg', '')
+        if not isinstance(msg, str):
+            return False
+
+        canary_str = (
+            'The module failed to execute correctly, you probably need to set '
+            'the interpreter'
         )
 
-        if any(kw in stderr.lower() for kw in keywords):
-            self._display.v(f"Python missing condition met: {stderr}")
-            self._display.vvv(f"Command attempt: {result}")
+        if canary_str.lower() in msg.lower():
             self.force_raw = True
+            self._display.vv('Python not found, proceeding with raw commands')
             return True
 
         return False

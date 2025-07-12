@@ -286,24 +286,25 @@ class ActionModule(PosixBase):
                     module_args=builtin_module_args,
                     task_vars=task_vars,
                 )
-                ansible_cmd_mod.pop('invocation')
+                ansible_cmd_mod.pop('invocation', None)
             except Exception as e:
                 self._display.warning(
                     f"Error calling ansible.builtin.command: {to_text(e)}"
                 )
-                self._display.vvv(f"Failed command result: {ansible_cmd_mod}")
-                self._display.vvv(f"Failed command args: {builtin_module_args}")
                 ansible_cmd_mod = {
                     'failed': True,
                     'rc': 127,
                     'module_stderr': to_text(e)
                 }
+                self._display.vvv(f"Failed command result: {ansible_cmd_mod}")
+                self._display.vvv(f"Failed command args: {builtin_module_args}")
 
             # Check for missing interpreter and fall back if needed
             if self._is_interpreter_missing(ansible_cmd_mod):
                 self._display.warning(
-                    "Ansible command module failed on host, falling back to "
-                    "raw command."
+                    "Ansible command module failed on host "
+                    f"{task_vars.get('inventory_hostname', 'UNKOWN')}, "
+                    "falling back to raw command."
                 )
                 cmd_results = self._raw_cmd(module_args=new_module_args)
                 results.update(cmd_results)
