@@ -3,6 +3,11 @@
 ---
 releases:
 
+  "1.2.1":
+    changes:
+      - fixed:
+          - Fix missing interpreter detection
+
   "1.2.0":
     changes:
       - added:
