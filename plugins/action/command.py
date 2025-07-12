@@ -15,7 +15,7 @@
 
 from __future__ import annotations
 
-from ansible.errors import AnsibleError
+from ansible.errors import AnsibleActionFail, AnsibleConnectionFailure
 from ansible_collections.o0_o.posix.plugins.action_utils import PosixBase
 from ansible import __version__ as ansible_version
 from ansible.module_utils.common.text.converters import to_text, to_native
@@ -38,7 +38,9 @@ class ActionModule(PosixBase):
     """
 
     TRANSFERS_FILES = False
-    supports_check_mode = True
+    _requires_connection = True
+    _supports_check_mode = True
+    _supports_async = False
 
     def _raw_cmd(self, module_args=None):
         """Execute a command using low-level methods."""
@@ -63,7 +65,7 @@ class ActionModule(PosixBase):
             stdin = stdin.encode('utf-8')
 
         if expand_vars is not None and expand_vars != shell:
-            raise AnsibleError(
+            raise AnsibleActionFail(
                 "Raw fallback requires expand_argument_vars and _uses_shell "
                 "to be the same. Shell-based execution expands variables "
                 "remotely. If expand_argument_vars is true but _uses_shell is "
@@ -119,7 +121,7 @@ class ActionModule(PosixBase):
                 executable=executable
             )
             if cd_result['rc'] != 0:
-                raise AnsibleError(
+                raise AnsibleActionFail(
                     f"Unable to change directory before execution: {chdir}"
                 )
 
@@ -213,13 +215,12 @@ class ActionModule(PosixBase):
         is not available on the remote host.
         """
         task_vars = task_vars or {}
-        self._supports_async = False
         check_mode = self._task.check_mode
 
         if PACKAGING_IMPORT_ERROR:
-            raise AnsibleError(
-                "The 'packaging' Python module is required to run this plugin. "
-                f"Import failed: {PACKAGING_IMPORT_ERROR}"
+            raise AnsibleActionFail(
+                "The 'packaging' Python module is required to run this "
+                f"plugin. Import failed: {PACKAGING_IMPORT_ERROR}"
             )
 
         # Define supported module arguments
@@ -229,7 +230,6 @@ class ActionModule(PosixBase):
             argv=dict(type='list', elements='str'),
             chdir=dict(type='path'),
             executable=dict(),
-            # Unlike builtin, expand is linked to shell
             expand_argument_vars=dict(type='bool'),
             creates=dict(type='path'),
             removes=dict(type='path'),
@@ -239,81 +239,66 @@ class ActionModule(PosixBase):
             _force_raw=dict(type='bool', default=False),
         )
 
-        # Validate input and extract usable arguments
         validation_result, new_module_args = self.validate_argument_spec(
             argument_spec=argument_spec
         )
         self.force_raw = new_module_args.pop('_force_raw')
         if parse_version(ansible_version) < parse_version("2.16"):
             if new_module_args.get("expand_argument_vars") is not None:
-                raise AnsibleError(
+                raise AnsibleActionFail(
                     "expand_argument_vars is not supported on Ansible "
                     "versions before 2.16"
                 )
 
-        # Enforce that exactly one input style is used
         input_keys = ('cmd', 'argv')
-        provided = [k for k in input_keys if new_module_args.get(k) is not None]
+        provided = [
+            k for k in input_keys if new_module_args.get(k) is not None
+        ]
 
         if not provided:
-            raise AnsibleError(
+            raise AnsibleActionFail(
                 "One of 'cmd', or 'argv' must be specified"
             )
 
         if len(provided) > 1:
-            raise AnsibleError(
+            raise AnsibleActionFail(
                 "Only one of 'cmd', or 'argv' can be specified"
             )
 
-        # Initialize results using base Action class
         results = super().run(tmp, task_vars)
         results['invocation'] = self._task.args.copy()
         del tmp
 
-        if self.force_raw:
-            cmd_results = self._raw_cmd(module_args=new_module_args)
-            results.update(cmd_results)
-            results['raw'] = True
-        else:
-            # Attempt to use the builtin command module
+        if not self.force_raw:
             builtin_module_args = new_module_args.copy()
             if builtin_module_args.get('expand_argument_vars') is None:
                 builtin_module_args.pop('expand_argument_vars')
             builtin_module_args['_raw_params'] = builtin_module_args.pop('cmd')
-            try:
-                ansible_cmd_mod = self._execute_module(
-                    module_name='ansible.builtin.command',
-                    module_args=builtin_module_args,
-                    task_vars=task_vars,
-                )
-                ansible_cmd_mod.pop('invocation', None)
-            except Exception as e:
-                self._display.warning(
-                    f"Error calling ansible.builtin.command: {to_text(e)}"
-                )
-                ansible_cmd_mod = {
-                    'failed': True,
-                    'rc': 127,
-                    'module_stderr': to_text(e)
-                }
-                self._display.vvv(f"Failed command result: {ansible_cmd_mod}")
-                self._display.vvv(f"Failed command args: {builtin_module_args}")
 
-            # Check for missing interpreter and fall back if needed
-            if self._is_interpreter_missing(ansible_cmd_mod):
+            ansible_cmd_mod = self._execute_module(
+                module_name='ansible.builtin.command',
+                module_args=builtin_module_args,
+                task_vars=task_vars,
+            )
+            ansible_cmd_mod.pop('invocation', None)
+
+            if not self._is_interpreter_missing(ansible_cmd_mod):
+                results.update(ansible_cmd_mod)
+                results['raw'] = False
+            else:
                 self._display.warning(
                     "Ansible command module failed on host "
                     f"{task_vars.get('inventory_hostname', 'UNKOWN')}, "
                     "falling back to raw command."
                 )
-                cmd_results = self._raw_cmd(module_args=new_module_args)
-                results.update(cmd_results)
-                results['raw'] = True
-            else:
-                results.update(ansible_cmd_mod)
-                results['raw'] = False
+                self.force_raw = True
 
-        # Clean up temp files
+        if self.force_raw:
+            cmd_results = self._raw_cmd(module_args=new_module_args)
+            stderr = cmd_results.get('module_stderr', '').lower()
+            results.update(cmd_results)
+            results['raw'] = True
+
         self._remove_tmp_path(self._connection._shell.tmpdir)
 
         return results

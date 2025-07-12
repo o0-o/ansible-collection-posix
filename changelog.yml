@@ -3,6 +3,12 @@
 ---
 releases:
 
+  "1.2.2":
+    changes:
+      - fixed:
+          - Fallback logic and error handling improvements to the command
+            action plugin
+
   "1.2.1":
     changes:
       - fixed:
