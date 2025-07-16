@@ -3,6 +3,11 @@
 ---
 releases:
 
+  "1.3.0":
+    changes:
+      - added:
+          - '`facts` module, action plugin and tests'
+
   "1.2.2":
     changes:
       - fixed:
