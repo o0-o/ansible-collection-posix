@@ -15,7 +15,7 @@
 
 from __future__ import annotations
 
-from ansible.errors import AnsibleActionFail, AnsibleConnectionFailure
+from ansible.errors import AnsibleActionFail
 from ansible_collections.o0_o.posix.plugins.action_utils import PosixBase
 from ansible import __version__ as ansible_version
 from ansible.module_utils.common.text.converters import to_text, to_native
