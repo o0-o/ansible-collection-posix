@@ -38,7 +38,7 @@
         _force_raw: "{{ item[1] }}"
 
     - name: Run failures tests
-      ansible.builtin.include_tasks: successes.yml
+      ansible.builtin.include_tasks: failures.yml
       loop: "{{ loop_list }}"
       vars:
         ansible_check_mode: "{{ item[0] }}"

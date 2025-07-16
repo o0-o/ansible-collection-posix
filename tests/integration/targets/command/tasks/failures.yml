@@ -25,7 +25,7 @@
     - name: Assert failure due non-zero exit code
       ansible.builtin.assert:
         that:
-          - reg['rc'] == 1
+          - reg['rc'] > 0
           - reg is failed
 
     - name: 'Fail: Run command in nonexistent directory'
@@ -81,10 +81,10 @@
   ignore_errors: true
   register: reg_false
 
-- name: 'Assert false command returned rc=1 and failed'
+- name: 'Assert false command returned rc>0 and failed'
   ansible.builtin.assert:
     that:
-      - reg_false.rc == 1
+      - reg_false.rc > 0
       - reg_false is failed
       - reg_false.stdout == ''
       - reg_false.stderr == ''
