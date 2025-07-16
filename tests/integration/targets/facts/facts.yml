@@ -1,0 +1,63 @@
+# vim: ts=2:sw=2:et:ft=yaml.ansible
+# -*- mode: yaml; tab-width: 2; indent-tabs-mode: nil; -*-
+---
+# GNU General Public License v3.0+
+# SPDX-License-Identifier: GPL-3.0-or-later
+# (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
+#
+# Copyright (c) 2025 oØ.o (@o0-o)
+#
+# This file is part of the o0_o.posix Ansible Collection.
+
+- name: Run with default gather_subset (should equal 'all')
+  o0_o.posix.facts:
+  check_mode: true
+
+- name: Assert default run returns both o0_os and o0_hardware
+  assert:
+    that:
+      - o0_os.kernel.name is string
+      - o0_hardware.cpu.architecture is string
+
+- name: "Run with gather_subset=['kernel']"
+  o0_o.posix.facts:
+    gather_subset: ['kernel']
+  register: result_kernel
+
+- name: Assert only o0_os.kernel returned
+  assert:
+    that:
+      - result_kernel.ansible_facts.o0_os.kernel.name is defined
+      - result_kernel.ansible_facts.o0_hardware is not defined
+
+- name: "Run with gather_subset=['arch']"
+  o0_o.posix.facts:
+    gather_subset: ['arch']
+  register: result_arch
+
+- name: Assert only o0_hardware.cpu returned
+  assert:
+    that:
+      - result_arch.ansible_facts.o0_hardware.cpu.architecture is defined
+      - result_arch.ansible_facts.o0_os is not defined
+
+- name: "Run with gather_subset=['!kernel']"
+  o0_o.posix.facts:
+    gather_subset: ['!kernel']
+  register: result_no_kernel
+
+- name: Assert kernel facts excluded, hardware present
+  assert:
+    that:
+      - result_no_kernel.ansible_facts.o0_os is not defined
+      - result_no_kernel.ansible_facts.o0_hardware.cpu.architecture is defined
+
+- name: "Run with gather_subset=['!all']"
+  o0_o.posix.facts:
+    gather_subset: ['!all']
+  register: result_no_all
+
+- name: Assert no facts returned
+  assert:
+    that:
+      - result_no_all.ansible_facts == {}
