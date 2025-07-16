@@ -8,6 +8,8 @@ releases:
       - fixed:
           - Fallback logic and error handling improvements to the command
             action plugin
+      - fixed:
+          - Missing failures integration tests for the command module
 
   "1.2.1":
     changes:
