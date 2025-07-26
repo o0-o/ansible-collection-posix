@@ -131,17 +131,17 @@ from ansible.module_utils.basic import AnsibleModule
 
 def main():
     """Fail if this module is run directly without the action plugin."""
-    argument_spec = dict(
-        gather_subset=dict(
-            type='list',
-            elements='str',
-            default=['all'],
-            choices=[
+    argument_spec = {
+        'gather_subset': {
+            'type': 'list',
+            'elements': 'str',
+            'default': ['all'],
+            'choices': [
                 'all', 'kernel', 'arch',
                 '!all', '!kernel', '!arch'
             ]
-        )
-    )
+        }
+    }
 
     module = AnsibleModule(
         argument_spec=argument_spec,

@@ -99,10 +99,10 @@ from ansible.module_utils.basic import AnsibleModule
 
 def main():
     module = AnsibleModule(
-        argument_spec=dict(
-            src=dict(type='str', required=True),
-            _force_raw=dict(type='bool', default=False),
-        ),
+        argument_spec={
+            'src': {'type': 'str', 'required': True},
+            '_force_raw': {'type': 'bool', 'default': False},
+        },
         supports_check_mode=True,
     )
     module.fail_json(msg="This module must be run via its action plugin.")

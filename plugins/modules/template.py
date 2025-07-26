@@ -193,45 +193,45 @@ from ansible.module_utils.common.file import get_file_arg_spec
 def main():
     argument_spec = get_file_arg_spec()
     argument_spec.pop('attributes')
-    argument_spec.update(dict(
-        block_end_string=dict(
-            type='str',
-            default='%}',
-        ),
-        block_start_string=dict(
-            type='str',
-            default='{%'
-        ),
-        comment_end_string=dict(
-            type='str',
-            default='#}',
-        ),
-        comment_start_string=dict(
-            type='str',
-            default='{#',
-        ),
-        dest=dict(type='path', required=True),
-        force=dict(type='bool', default=True),
-        lstrip_blocks=dict(type='bool', default=False),
-        newline_sequence=dict(
-            type='str',
-            choices=['\n', '\r', '\r\n'],
-            default='\n',
-        ),
-        src=dict(type='path', required=True),
-        trim_blocks=dict(type='bool', default=True),
-        backup=dict(type='bool', default=False),
-        validate=dict(type='str'),
-        variable_end_string=dict(
-            type='str',
-            default='}}',
-        ),
-        variable_start_string=dict(
-            type='str',
-            default='{{',
-        ),
-        _force_raw=dict(type='bool', default=False),
-    ))
+    argument_spec.update({
+        'block_end_string': {
+            'type': 'str',
+            'default': '%}',
+        },
+        'block_start_string': {
+            'type': 'str',
+            'default': '{%'
+        },
+        'comment_end_string': {
+            'type': 'str',
+            'default': '#}',
+        },
+        'comment_start_string': {
+            'type': 'str',
+            'default': '{#',
+        },
+        'dest': {'type': 'path', 'required': True},
+        'force': {'type': 'bool', 'default': True},
+        'lstrip_blocks': {'type': 'bool', 'default': False},
+        'newline_sequence': {
+            'type': 'str',
+            'choices': ['\n', '\r', '\r\n'],
+            'default': '\n',
+        },
+        'src': {'type': 'path', 'required': True},
+        'trim_blocks': {'type': 'bool', 'default': True},
+        'backup': {'type': 'bool', 'default': False},
+        'validate': {'type': 'str'},
+        'variable_end_string': {
+            'type': 'str',
+            'default': '}}',
+        },
+        'variable_start_string': {
+            'type': 'str',
+            'default': '{{',
+        },
+        '_force_raw': {'type': 'bool', 'default': False},
+    })
 
     module = AnsibleModule(
         argument_spec=argument_spec,

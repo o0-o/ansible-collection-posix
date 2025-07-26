@@ -211,20 +211,20 @@ from ansible.module_utils.basic import AnsibleModule
 def main():
     # This module is used only to support documentation and validation.
     module = AnsibleModule(
-        argument_spec=dict(
-            _uses_shell=dict(type='bool', default=False),
-            cmd=dict(),
-            argv=dict(type='list', elements='str'),
-            chdir=dict(type='path'),
-            executable=dict(),
-            expand_argument_vars=dict(type='bool'),
-            creates=dict(type='path'),
-            removes=dict(type='path'),
-            stdin=dict(required=False),
-            stdin_add_newline=dict(type='bool', default=True),
-            strip_empty_ends=dict(type='bool', default=True),
-            _force_raw=dict(type='bool', default=False),
-        ),
+        argument_spec={
+            '_uses_shell': {'type': 'bool', 'default': False},
+            'cmd': {},
+            'argv': {'type': 'list', 'elements': 'str'},
+            'chdir': {'type': 'path'},
+            'executable': {},
+            'expand_argument_vars': {'type': 'bool'},
+            'creates': {'type': 'path'},
+            'removes': {'type': 'path'},
+            'stdin': {'required': False},
+            'stdin_add_newline': {'type': 'bool', 'default': True},
+            'strip_empty_ends': {'type': 'bool', 'default': True},
+            '_force_raw': {'type': 'bool', 'default': False},
+        },
         supports_check_mode=True,
     )
     module.fail_json(msg="This module must be run via its action plugin.")

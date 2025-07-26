@@ -404,30 +404,30 @@ class ActionModule(PosixBase):
         self._display.vvv("Defining argument spec")
         argument_spec = get_file_arg_spec()
         argument_spec.pop('attributes')
-        argument_spec.update(dict(
-            path=dict(
-                type='path',
-                required=True,
-                aliases=['dest', 'destfile', 'name']
-            ),
-            regexp=dict(type='str', aliases=['regex']),
-            search_string=dict(type='str'),
-            state=dict(
-                type='str',
-                choices=['absent', 'present'],
-                default='present'
-            ),
-            line=dict(type='str', aliases=['value']),
-            backrefs=dict(type='bool', default=False),
-            insertafter=dict(type='str'),
-            insertbefore=dict(type='str'),
-            create=dict(type='bool', default=False),
-            backup=dict(type='bool', default=False),
-            firstmatch=dict(type='bool', default=False),
-            dedupe=dict(type='bool', default=True),
-            validate=dict(type='str'),
-            _force_raw=dict(type='bool', default=False),
-        ))
+        argument_spec.update({
+            'path': {
+                'type': 'path',
+                'required': True,
+                'aliases': ['dest', 'destfile', 'name']
+            },
+            'regexp': {'type': 'str', 'aliases': ['regex']},
+            'search_string': {'type': 'str'},
+            'state': {
+                'type': 'str',
+                'choices': ['absent', 'present'],
+                'default': 'present'
+            },
+            'line': {'type': 'str', 'aliases': ['value']},
+            'backrefs': {'type': 'bool', 'default': False},
+            'insertafter': {'type': 'str'},
+            'insertbefore': {'type': 'str'},
+            'create': {'type': 'bool', 'default': False},
+            'backup': {'type': 'bool', 'default': False},
+            'firstmatch': {'type': 'bool', 'default': False},
+            'dedupe': {'type': 'bool', 'default': True},
+            'validate': {'type': 'str'},
+            '_force_raw': {'type': 'bool', 'default': False},
+        })
         mutually_exclusive = [
             ['insertbefore', 'insertafter'],
             ['regexp', 'search_string'],
