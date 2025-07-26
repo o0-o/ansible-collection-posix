@@ -11,7 +11,7 @@
 
 import os
 import pytest
-from ansible.errors import AnsibleError
+from ansible.errors import AnsibleActionFail
 
 
 def test_write_temp_file_success(monkeypatch, base):
@@ -50,5 +50,5 @@ def test_write_temp_file_failure(monkeypatch, base):
 
     monkeypatch.setattr(base, "_cmd", mock_cmd)
 
-    with pytest.raises(AnsibleError, match=r"Failed to write temp file .*no tee"):
+    with pytest.raises(AnsibleActionFail, match=r"Failed to write temp file .*no tee"):
         base._write_temp_file(["oops"], "/tmp/fail", task_vars={})

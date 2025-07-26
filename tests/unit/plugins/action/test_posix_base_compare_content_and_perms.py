@@ -10,7 +10,7 @@
 # This file is part of the o0_o.posix Ansible Collection.
 
 import pytest
-from ansible.errors import AnsibleError
+from ansible.errors import AnsibleActionFail
 
 
 @pytest.mark.parametrize(
@@ -131,7 +131,7 @@ def test_compare_content_and_perms(
     base._get_perms = lambda path, selinux=False, task_vars=None: old_perms
 
     if expect_change == "error":
-        with pytest.raises(AnsibleError):
+        with pytest.raises(AnsibleActionFail):
             base._compare_content_and_perms(
                 lines=content.splitlines(),
                 dest=dest,

@@ -10,7 +10,7 @@
 # This file is part of the o0_o.posix Ansible Collection.
 
 import pytest
-from ansible.errors import AnsibleError
+from ansible.errors import AnsibleActionFail
 
 
 @pytest.mark.parametrize("cmd_output, selinux, expected", [
@@ -83,14 +83,14 @@ def test_get_perms_valid(base, cmd_output, selinux, expected):
 
 def test_get_perms_fails_on_error(base):
     """
-    Ensure _get_perms raises AnsibleError when ls command fails.
+    Ensure _get_perms raises AnsibleActionFail when ls command fails.
     """
     base._cmd = lambda *args, **kwargs: {
         "rc": 1,
         "stderr": "ls: cannot access"
     }
 
-    with pytest.raises(AnsibleError, match="Could not stat"):
+    with pytest.raises(AnsibleActionFail, match="Could not stat"):
         base._get_perms("/fake/file", selinux=False)
 
 
@@ -106,5 +106,5 @@ def test_get_perms_raises_on_malformed_selinux_output(base):
         ]
     }
 
-    with pytest.raises(AnsibleError, match="Unexpected SELinux output"):
+    with pytest.raises(AnsibleActionFail, match="Unexpected SELinux output"):
         base._get_perms("/fake/file", selinux=True)

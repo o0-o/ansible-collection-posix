@@ -11,7 +11,7 @@
 
 from __future__ import annotations
 
-from ansible.errors import AnsibleError
+from ansible.errors import AnsibleActionFail
 from ansible_collections.o0_o.posix.plugins.action_utils import PosixBase
 from base64 import b64decode
 
@@ -116,7 +116,7 @@ class ActionModule(PosixBase):
                         ).decode('utf-8')
                         self._display.vvv("slurp64: decode succeeded")
                     except Exception as decode_error:
-                        raise AnsibleError(
+                        raise AnsibleActionFail(
                             "Failed to base64 decode slurp content: "
                             f"{decode_error}"
                         )

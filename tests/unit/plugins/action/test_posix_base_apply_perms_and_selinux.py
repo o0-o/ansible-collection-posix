@@ -10,7 +10,7 @@
 # This file is part of the o0_o.posix Ansible Collection.
 
 import pytest
-from ansible.errors import AnsibleError
+from ansible.errors import AnsibleActionFail
 from ansible_collections.o0_o.posix.tests.utils import (
     generate_temp_path,
     cleanup_path,
@@ -83,7 +83,7 @@ def test_apply_perms_and_selinux_confirmation(
         base._get_perms = mock_get_perms
 
         if should_fail:
-            with pytest.raises(AnsibleError):
+            with pytest.raises(AnsibleActionFail):
                 base._apply_perms_and_selinux(
                     path, perms, selinux=selinux, task_vars={}
                 )

@@ -18,7 +18,7 @@ Used by custom action plugins to gracefully degrade to raw execution
 when Python is not available on the remote host.
 """
 
-from ansible.errors import AnsibleError
+from ansible.errors import AnsibleActionFail
 from ansible.plugins.action import ActionBase
 from ansible.module_utils.common.text.converters import to_text
 from datetime import datetime, timezone
@@ -120,7 +120,7 @@ class PosixBase(ActionBase):
         requested_fqcn = plugin_name.lower().strip()
 
         if requested_fqcn == current_fqcn:
-            raise AnsibleError(
+            raise AnsibleActionFail(
                 f"CompatAction attempted to call '{plugin_name}' from within "
                 'itself. This would result in infinite recursion.'
             )
@@ -262,7 +262,7 @@ class PosixBase(ActionBase):
                 "symlink": bool,    # True if the path is a symbolic link.
                 "raw": bool,        # True if fallback (raw) logic was used.
             }
-        :raises: AnsibleError if type cannot be determined.
+        :raises: AnsibleActionFail if type cannot be determined.
         """
         exists_test = self._cmd(
             ["test", "-e", target_path], task_vars=task_vars, check_mode=False
@@ -302,7 +302,7 @@ class PosixBase(ActionBase):
                 result["type"] = type_name
                 return result
 
-        raise AnsibleError(
+        raise AnsibleActionFail(
             f"All POSIX 'test' commands failed on '{target_path}'"
         )
 
@@ -316,7 +316,7 @@ class PosixBase(ActionBase):
         :param parents: Whether to create parent directories (`mkdir -p`)
         :param mode: Optional permission mode string (e.g. "0755")
         :returns: dict with {'changed': bool}
-        :raises: AnsibleError on error
+        :raises: AnsibleActionFail on error
         """
         self._display.vvv(f"Creating directory: {target_path}")
 
@@ -326,7 +326,7 @@ class PosixBase(ActionBase):
             self._display.vvv(f"Directory already exists: {target_path}")
             return {"rc": 0, "changed": False}
         if stat["exists"]:
-            raise AnsibleError(
+            raise AnsibleActionFail(
                 f"Path '{target_path}' exists but is not a directory "
                 f"({stat['type']})"
             )
@@ -341,7 +341,7 @@ class PosixBase(ActionBase):
 
         mkdir_results = self._cmd(args, task_vars=task_vars)
         if mkdir_results["rc"] != 0:
-            raise AnsibleError(
+            raise AnsibleActionFail(
                 f"Failed to create directory '{target_path}': "
                 f"{mkdir_results.get('stderr', '').strip()}"
             )
@@ -382,7 +382,7 @@ class PosixBase(ActionBase):
         :param tmpfile: the temporary file to validate
         :param validate_cmd: the validation command template
         :param task_vars: task vars from the calling action
-        :raises: AnsibleError if validation fails
+        :raises: AnsibleActionFail if validation fails
         """
         self._display.vvv(f"Validating {tmpfile}")
         if not validate_cmd:
@@ -393,7 +393,7 @@ class PosixBase(ActionBase):
         result = self._cmd(cmd, task_vars=task_vars)
 
         if result['rc'] != 0:
-            raise AnsibleError(
+            raise AnsibleActionFail(
                 f"Validation failed: {validate_cmd} => "
                 f"{result.get('stderr', '')}"
             )
@@ -405,7 +405,7 @@ class PosixBase(ActionBase):
         :param dest: destination file to back up
         :param task_vars: task vars from the calling action
         :returns: path to the backup file or None if not created
-        :raises: AnsibleError if backup fails
+        :raises: AnsibleActionFail if backup fails
         """
         result = self._cmd(["test", "-e", dest], task_vars=task_vars)
         if result['rc'] != 0:
@@ -418,7 +418,7 @@ class PosixBase(ActionBase):
         )
 
         if result['rc'] != 0:
-            raise AnsibleError(f"Backup failed: {result.get('stderr', '')}")
+            raise AnsibleActionFail(f"Backup failed: {result.get('stderr', '')}")
 
         return backup_path
 
@@ -433,7 +433,7 @@ class PosixBase(ActionBase):
         :param dest: Target file path on the remote host
         :param perms: Dict of SELinux keys (seuser, serole, setype, selevel)
         :param task_vars: Ansible task_vars from the calling context
-        :raises: AnsibleError if context application fails
+        :raises: AnsibleActionFail if context application fails
         """
         self._display.vvv(f"Handling SELinux for {dest}")
         if not perms:
@@ -464,7 +464,7 @@ class PosixBase(ActionBase):
             ]
             result = self._cmd(semanage_cmd, task_vars=task_vars)
             if result["rc"] != 0:
-                raise AnsibleError(
+                raise AnsibleActionFail(
                     'Failed to register SELinux context with semanage: '
                     f"{result.get('stderr', '')}"
                 )
@@ -472,7 +472,7 @@ class PosixBase(ActionBase):
             restorecon_cmd = ["restorecon", dest]
             result = self._cmd(restorecon_cmd, task_vars=task_vars)
             if result["rc"] != 0:
-                raise AnsibleError(
+                raise AnsibleActionFail(
                     'Failed to apply SELinux context with restorecon: '
                     f"{result.get('stderr', '')}"
                 )
@@ -492,7 +492,7 @@ class PosixBase(ActionBase):
 
         result = self._cmd(chcon_cmd, task_vars=task_vars)
         if result["rc"] != 0:
-            raise AnsibleError(
+            raise AnsibleActionFail(
                 'Failed to set SELinux context with chcon: '
                 f"{result.get('stderr', '')}"
             )
@@ -567,7 +567,7 @@ class PosixBase(ActionBase):
             }
 
         Raises:
-            AnsibleError: If the `ls` command fails or produces unexpected output.
+            AnsibleActionFail: If the `ls` command fails or produces unexpected output.
         """
         self._display.vvv(f"Getting permissions of {target}")
         ls_args = ["ls"]
@@ -579,7 +579,7 @@ class PosixBase(ActionBase):
 
         cmd_results = self._cmd(ls_args, task_vars=task_vars)
         if cmd_results["rc"] != 0:
-            raise AnsibleError(f"Could not stat {target}: {cmd_results['stderr']}")
+            raise AnsibleActionFail(f"Could not stat {target}: {cmd_results['stderr']}")
 
         parts = cmd_results["stdout_lines"][0].split()
 
@@ -592,7 +592,7 @@ class PosixBase(ActionBase):
                 group = parts[3]
                 seuser, serole, setype, selevel = context.split(":")
             except Exception:
-                raise AnsibleError(
+                raise AnsibleActionFail(
                     "Unexpected SELinux output from ls -Zd: "
                     f"{cmd_results['stdout']}"
                 )
@@ -624,12 +624,12 @@ class PosixBase(ActionBase):
 
         Accepts either a string or a list of strings/numbers. Ensures the
         output string ends with a newline character and all list elements are
-        converted to strings. Raises an AnsibleError on unsupported input
+        converted to strings. Raises an AnsibleActionFail on unsupported input
         types.
 
         :param content: The input to normalize (str or list of str/int/float)
         :return: Tuple (lines: List[str], content: str)
-        :raises: AnsibleError if input is of invalid type or contains
+        :raises: AnsibleActionFail if input is of invalid type or contains
                  non-stringlike items
         """
         if isinstance(content, str):
@@ -639,11 +639,11 @@ class PosixBase(ActionBase):
             if not all(
                 isinstance(line, (str, int, float)) for line in content
             ):
-                raise AnsibleError("_write_file() requires strings or numbers")
+                raise AnsibleActionFail("_write_file() requires strings or numbers")
             lines = [str(line) for line in content]
             normalized = '\n'.join(lines) + '\n'
         else:
-            raise AnsibleError(
+            raise AnsibleActionFail(
                 "_write_file() requires a string or list of strings"
             )
         self._display.vvv(f"Normalized lines: {lines}")
@@ -662,7 +662,7 @@ class PosixBase(ActionBase):
             task_vars=task_vars,
         )
         if write_result.get("rc", 1) != 0:
-            raise AnsibleError(
+            raise AnsibleActionFail(
                 f"Failed to write temp file {tmpfile}: "
                 f"{write_result.get('stderr', '')}"
             )
@@ -672,7 +672,7 @@ class PosixBase(ActionBase):
             ["chmod", "0600", tmpfile], task_vars=task_vars
         )
         if chmod_result.get("rc", 1) != 0:
-            raise AnsibleError(
+            raise AnsibleActionFail(
                 f"Failed to chmod temp file: {chmod_result.get('stderr', '')}"
             )
         return write_result
@@ -680,7 +680,7 @@ class PosixBase(ActionBase):
     def _check_selinux_tools(self, perms, task_vars):
         """
         Check whether SELinux tools are available if SELinux parameters
-        are requested. Raises AnsibleError if required tools are missing.
+        are requested. Raises AnsibleActionFail if required tools are missing.
 
         :param perms: dict of permission settings
         :param task_vars: Ansible task_vars
@@ -704,12 +704,12 @@ class PosixBase(ActionBase):
 
         if not chcon_path:
             if not semanage_path:
-                raise AnsibleError(
+                raise AnsibleActionFail(
                     "SELinux parameters were specified, but both 'chcon' "
                     "and 'semanage' are missing on the remote host"
                 )
             else:
-                raise AnsibleError(
+                raise AnsibleActionFail(
                     "SELinux requires 'chcon' to apply contexts, but it is "
                     "missing on the remote host"
                 )
@@ -728,14 +728,14 @@ class PosixBase(ActionBase):
 
         :param octal_mode: A stringable octal mode (e.g. 644, '0755')
         :return: String of the symbolic mode without type or ACL symbols
-        :raises: AnsibleError on conversion error
+        :raises: AnsibleActionFail on conversion error
         """
         int_mode = int(str(octal_mode), 8)
         try:
             # Strip type and ACL symbols
             symbolic_mode = stat.filemode(int_mode)[1:10]
         except Exception as e:
-            raise AnsibleError(
+            raise AnsibleActionFail(
                 f"Error converting mode {octal_mode} to symbols"
             )
         return symbolic_mode
@@ -757,7 +757,7 @@ class PosixBase(ActionBase):
         :param selinux: Whether SELinux attributes are in use
         :param task_vars: Ansible task_vars from run()
         :return: Tuple of (changed: bool, old_content: str, old_lines: List[str])
-        :raises: AnsibleError on invalid input
+        :raises: AnsibleActionFail on invalid input
         """
         self._display.vvv(f"Comparing content and permissions with {dest}")
         changed = False
@@ -802,7 +802,7 @@ class PosixBase(ActionBase):
                         )
                         changed = True
                 except Exception as e:
-                    raise AnsibleError(
+                    raise AnsibleActionFail(
                         f"Invalid mode: {perms['mode']}: {e}"
                     )
 
@@ -824,7 +824,7 @@ class PosixBase(ActionBase):
         :param perms: Dictionary with keys 'owner', 'group', 'mode', etc.
         :param selinux: Boolean indicating whether SELinux handling is enabled
         :param task_vars: Ansible task variables
-        :raises: AnsibleError on failure to apply or verify any permission or
+        :raises: AnsibleActionFail on failure to apply or verify any permission or
                  SELinux step
         """
         self._display.vvv(f"Applying permissions to {dest}")
@@ -836,7 +836,7 @@ class PosixBase(ActionBase):
                     ["chown", perms["owner"], dest], task_vars=task_vars
                 )
                 if chown_result["rc"] != 0:
-                    raise AnsibleError(
+                    raise AnsibleActionFail(
                         f"Failed to chown {dest}: "
                         f"{chown_result.get('stderr', '')}"
                     )
@@ -846,7 +846,7 @@ class PosixBase(ActionBase):
                     ["chgrp", perms["group"], dest], task_vars=task_vars
                 )
                 if chgrp_result["rc"] != 0:
-                    raise AnsibleError(
+                    raise AnsibleActionFail(
                         f"Failed to chgrp {dest}: "
                         f"{chgrp_result.get('stderr', '')}"
                     )
@@ -856,7 +856,7 @@ class PosixBase(ActionBase):
                     ["chmod", perms["mode"], dest], task_vars=task_vars
                 )
                 if chmod_result["rc"] != 0:
-                    raise AnsibleError(
+                    raise AnsibleActionFail(
                         f"Failed to chmod {dest}: "
                         f"{chmod_result.get('stderr', '')}"
                     )
@@ -874,7 +874,7 @@ class PosixBase(ActionBase):
                 "owner", "group", "selevel", "serole", "setype", "seuser"
             ]:
                 if perms.get(key) and final_perms.get(key) != perms.get(key):
-                    raise AnsibleError(
+                    raise AnsibleActionFail(
                         f"Post-apply verification failed: expected {key}="
                         f"{perms[key]}, got {final_perms.get(key)}"
                     )
@@ -886,12 +886,12 @@ class PosixBase(ActionBase):
                     )
                     actual_mode = final_perms.get("mode")
                     if actual_mode != expected_mode:
-                        raise AnsibleError(
+                        raise AnsibleActionFail(
                             'Post-apply verification failed: expected mode='
                             f"{expected_mode}, got {actual_mode}"
                         )
                 except Exception as e:
-                    raise AnsibleError(
+                    raise AnsibleActionFail(
                         f"Invalid mode format: {perms['mode']}: {e}"
                     )
 
@@ -902,7 +902,7 @@ class PosixBase(ActionBase):
         Returns:
             str: The path to the created temporary directory.
         Raises:
-            AnsibleError: If directory creation fails.
+            AnsibleActionFail: If directory creation fails.
         """
         cmd = self._cmd
         shell = self._connection._shell
@@ -915,7 +915,7 @@ class PosixBase(ActionBase):
             cmd_results = cmd(tmp_path_cmd, task_vars=task_vars)
 
             if cmd_results['rc'] != 0 or not cmd_results['stdout']:
-                raise AnsibleError(
+                raise AnsibleActionFail(
                     "Failed to create temporary directory via raw fallback: "
                     f"{cmd_results['stderr']}"
                 )
@@ -945,7 +945,7 @@ class PosixBase(ActionBase):
         :param backup: whether to back up the existing file
         :param validate_cmd: shell command for validation, should include '%s'
         :return: dict with 'changed', 'rc', 'msg', and optional 'backup_file'
-        :raises: AnsibleError on any critical failure
+        :raises: AnsibleActionFail on any critical failure
         """
         self._display.vvv(f"Starting _write_file to {dest}")
 
@@ -964,7 +964,7 @@ class PosixBase(ActionBase):
         old_stat = self._pseudo_stat(dest, task_vars=task_vars)
         self._display.vvv(f"Old stat: {old_stat}")
         if old_stat['exists'] and old_stat['type'] != 'file':
-            raise AnsibleError(f"Cannot write over {old_stat['type']}")
+            raise AnsibleActionFail(f"Cannot write over {old_stat['type']}")
 
         # Normalize content and lines list
         lines, content = self._normalize_content(content)
@@ -1027,7 +1027,7 @@ class PosixBase(ActionBase):
                 mv_result = cmd(["mv", tmpfile, dest], task_vars=task_vars)
                 self._display.vvv(f"mv result: {mv_result}")
                 if mv_result["rc"] != 0:
-                    raise AnsibleError(
+                    raise AnsibleActionFail(
                         'Failed to move temp file into place: '
                         f"{mv_result.get('stderr', '')}"
                     )

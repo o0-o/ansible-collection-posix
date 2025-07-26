@@ -10,7 +10,7 @@
 # Unit tests for _normalize_content in PosixBase
 
 import pytest
-from ansible.errors import AnsibleError
+from ansible.errors import AnsibleActionFail
 
 
 @pytest.mark.parametrize(
@@ -66,7 +66,7 @@ def test_normalize_content_list(
 )
 def test_normalize_content_rejects_invalid_input(base, invalid_content):
     """
-    Verify that invalid input types raise an AnsibleError.
+    Verify that invalid input types raise an AnsibleActionFail.
     """
-    with pytest.raises(AnsibleError, match="_write_file.*"):
+    with pytest.raises(AnsibleActionFail, match="_write_file.*"):
         base._normalize_content(invalid_content)

@@ -11,7 +11,7 @@
 
 import pytest
 from ansible_collections.o0_o.posix.tests.utils import generate_temp_path
-from ansible.errors import AnsibleError
+from ansible.errors import AnsibleActionFail
 
 
 @pytest.mark.parametrize(
@@ -124,7 +124,7 @@ def test_handle_selinux_context_logic(
     base._cmd = mock_cmd
 
     if expected_error:
-        with pytest.raises(AnsibleError, match=expected_error):
+        with pytest.raises(AnsibleActionFail, match=expected_error):
             base._handle_selinux_context(dest, perms)
     else:
         base._handle_selinux_context(dest, perms)

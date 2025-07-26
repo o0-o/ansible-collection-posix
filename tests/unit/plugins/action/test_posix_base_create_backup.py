@@ -11,7 +11,7 @@
 
 import pytest
 from unittest.mock import MagicMock
-from ansible.errors import AnsibleError
+from ansible.errors import AnsibleActionFail
 
 
 @pytest.mark.parametrize("file_exists, cp_success, expect_error", [
@@ -32,7 +32,7 @@ def test_create_backup_behavior(base, file_exists, cp_success, expect_error):
     )
 
     if expect_error:
-        with pytest.raises(AnsibleError, match="Backup failed"):
+        with pytest.raises(AnsibleActionFail, match="Backup failed"):
             base._create_backup(dest_path)
     else:
         result = base._create_backup(dest_path)

@@ -13,7 +13,7 @@ import os
 import pwd
 import grp
 import pytest
-from ansible.errors import AnsibleError
+from ansible.errors import AnsibleActionFail
 from unittest.mock import MagicMock
 
 from ansible_collections.o0_o.posix.tests.utils import (
@@ -26,13 +26,13 @@ from ansible_collections.o0_o.posix.tests.utils import (
 
 def test_write_file_rejects_invalid_content(base):
     """
-    Ensure _write_file raises AnsibleError for unsupported content types
+    Ensure _write_file raises AnsibleActionFail for unsupported content types
     such as None, integers, or mixed-type lists.
     """
     tmp_path = generate_temp_path()
     try:
         for invalid in [None, 123, [object()], ["foo", object()]]:
-            with pytest.raises(AnsibleError):
+            with pytest.raises(AnsibleActionFail):
                 base._write_file(content=invalid, dest=tmp_path, task_vars={})
     finally:
         cleanup_path(tmp_path)
@@ -155,7 +155,7 @@ def test_write_file_selinux_tools_missing(base):
     base._display = MagicMock()
     tmp_path = generate_temp_path()
     try:
-        with pytest.raises(AnsibleError, match="requires 'chcon'"):
+        with pytest.raises(AnsibleActionFail, match="requires 'chcon'"):
             base._write_file(
                 content="foo",
                 dest=tmp_path,

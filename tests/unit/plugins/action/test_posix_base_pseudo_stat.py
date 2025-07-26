@@ -11,7 +11,7 @@
 
 import os
 import pytest
-from ansible.errors import AnsibleError
+from ansible.errors import AnsibleActionFail
 
 
 @pytest.mark.parametrize("file_type, flag, expected_type, is_symlink", [
@@ -73,5 +73,5 @@ def test_pseudo_stat_unsupported_type(base, tmp_path):
 
     base._cmd = fake_cmd
 
-    with pytest.raises(AnsibleError, match="All POSIX 'test' commands failed"):
+    with pytest.raises(AnsibleActionFail, match="All POSIX 'test' commands failed"):
         base._pseudo_stat(str(fifo_path))

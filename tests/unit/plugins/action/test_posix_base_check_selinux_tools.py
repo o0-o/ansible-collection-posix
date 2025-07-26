@@ -10,7 +10,7 @@
 # This file is part of the o0_o.posix Ansible Collection.
 
 import pytest
-from ansible.errors import AnsibleError
+from ansible.errors import AnsibleActionFail
 
 
 def test_selinux_not_requested(base):
@@ -29,7 +29,7 @@ def test_selinux_tools_missing_both(base, monkeypatch):
         base, "_which", lambda tool, task_vars=None: None
     )
 
-    with pytest.raises(AnsibleError, match="both 'chcon' and 'semanage'"):
+    with pytest.raises(AnsibleActionFail, match="both 'chcon' and 'semanage'"):
         base._check_selinux_tools(
             perms={"setype": "something"},
             task_vars={},
@@ -45,7 +45,7 @@ def test_selinux_chcon_missing_only(base, monkeypatch):
 
     monkeypatch.setattr(base, "_which", fake_which)
 
-    with pytest.raises(AnsibleError, match="requires 'chcon'"):
+    with pytest.raises(AnsibleActionFail, match="requires 'chcon'"):
         base._check_selinux_tools(
             perms={"setype": "something"},
             task_vars={},

@@ -10,7 +10,7 @@
 # This file is part of the o0_o.posix Ansible Collection.
 
 import pytest
-from ansible.errors import AnsibleError
+from ansible.errors import AnsibleActionFail
 
 
 def test_validate_file_noop_for_none(base):
@@ -59,7 +59,7 @@ def test_validate_file_failure_raises(monkeypatch, base):
     """
     Simulate a failed validation command.
 
-    Ensures that _validate_file raises an AnsibleError when the validation
+    Ensures that _validate_file raises an AnsibleActionFail when the validation
     command fails (non-zero return code).
     """
     def mock_cmd(argv, task_vars=None):
@@ -68,5 +68,5 @@ def test_validate_file_failure_raises(monkeypatch, base):
     base._cmd = mock_cmd
     base._quote = lambda s: s  # No quoting for this test
 
-    with pytest.raises(AnsibleError, match="Validation failed:"):
+    with pytest.raises(AnsibleActionFail, match="Validation failed:"):
         base._validate_file("/etc/foo", "validate %s")

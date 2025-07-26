@@ -12,7 +12,7 @@
 import os
 
 import pytest
-from ansible.errors import AnsibleError
+from ansible.errors import AnsibleActionFail
 from ansible_collections.o0_o.posix.tests.utils import (
     generate_temp_path,
     cleanup_path,
@@ -59,7 +59,7 @@ def test_mkdir_behavior(
             os.chmod(restricted, 0o000)
 
             try:
-                with pytest.raises(AnsibleError) as excinfo:
+                with pytest.raises(AnsibleActionFail) as excinfo:
                     base._mkdir(os.path.join(restricted, "fail"))
                 if error_msg:
                     assert error_msg in str(excinfo.value)
@@ -77,7 +77,7 @@ def test_mkdir_behavior(
                     f.write("conflict file")
 
         if expect_error:
-            with pytest.raises(AnsibleError) as excinfo:
+            with pytest.raises(AnsibleActionFail) as excinfo:
                 base._mkdir(path)
             if error_msg:
                 assert error_msg in str(excinfo.value)
@@ -95,13 +95,13 @@ def test_mkdir_invalid_mode(base):
     Test _mkdir with an invalid mode argument.
 
     This simulates developer misuse by passing an invalid (non-integer) mode.
-    The method should fail gracefully and raise an AnsibleError with an
+    The method should fail gracefully and raise an AnsibleActionFail with an
     appropriate message.
     """
     path = generate_temp_path()
 
     try:
-        with pytest.raises(AnsibleError) as excinfo:
+        with pytest.raises(AnsibleActionFail) as excinfo:
             base._mkdir(path, mode="invalid")
         assert "Failed to create directory" in str(excinfo.value)
     finally:

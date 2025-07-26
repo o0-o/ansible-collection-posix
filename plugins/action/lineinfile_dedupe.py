@@ -15,7 +15,7 @@
 
 from __future__ import annotations
 
-from ansible.errors import AnsibleError
+from ansible.errors import AnsibleActionFail
 from ansible.module_utils.common.file import get_file_arg_spec
 from ansible.module_utils.common.text.converters import to_text
 from ansible_collections.o0_o.posix.plugins.action_utils import PosixBase
@@ -129,7 +129,7 @@ class ActionModule(PosixBase):
                             f"insertbefore match at {insert_index}"
                         )
                     else:
-                        raise AnsibleError(
+                        raise AnsibleActionFail(
                             "'relative_insert_indices' should never be "
                             "populated if insertafter and insertbefore are "
                             "'None'"
@@ -215,7 +215,7 @@ class ActionModule(PosixBase):
                 self._display.vvv(
                     "No match or insertion index found, raising error"
                 )
-                raise AnsibleError('No lines found, added or replaced')
+                raise AnsibleActionFail('No lines found, added or replaced')
 
         if self.dedupe:
             self._display.vvv("Deduplication enabled, removing duplicates")
@@ -379,7 +379,7 @@ class ActionModule(PosixBase):
         the Python `slurp` module or a raw fallback.
 
         Raises:
-            AnsibleError: If the file could not be read.
+            AnsibleActionFail: If the file could not be read.
         """
         self._display.vvv(f"Reading file: {self.path}")
         self.lines = []
@@ -387,7 +387,7 @@ class ActionModule(PosixBase):
         if self.stat['exists']:
             slurp_results = self._slurp(self.path, task_vars=task_vars)
             if slurp_results.get('failed', False):
-                raise AnsibleError(
+                raise AnsibleActionFail(
                     f"Could not read contents of file '{self.path}': "
                     f"{slurp_results['msg']}"
                 )
