@@ -39,10 +39,10 @@ class ActionModule(PosixBase):
         self._display.vvv("slurp64: starting run()")
 
         # Define the expected input parameters
-        argument_spec = dict(
-            src=dict(type='str', required=True),
-            _force_raw=dict(type='bool', default=False),
-        )
+        argument_spec = {
+            'src': {'type': 'str', 'required': True},
+            '_force_raw': {'type': 'bool', 'default': False},
+        }
 
         # Validate input against spec and extract usable values
         validation_result, new_module_args = self.validate_argument_spec(

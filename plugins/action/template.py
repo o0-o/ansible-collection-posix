@@ -53,45 +53,45 @@ class ActionModule(PosixBase):
         self._display.vvv("Defining argument spec")
         argument_spec = get_file_arg_spec()
         argument_spec.pop('attributes')
-        argument_spec.update(dict(
-            block_end_string=dict(
-                type='str',
-                default=BLOCK_END_STRING,
-            ),
-            block_start_string=dict(
-                type='str',
-                default=BLOCK_START_STRING,
-            ),
-            comment_end_string=dict(
-                type='str',
-                default=COMMENT_END_STRING,
-            ),
-            comment_start_string=dict(
-                type='str',
-                default=COMMENT_START_STRING,
-            ),
-            dest=dict(type='path', required=True),
-            force=dict(type='bool', default=True),
-            lstrip_blocks=dict(type='bool', default=False),
-            newline_sequence=dict(
-                type='str',
-                choices=['\n', '\r', '\r\n'],
-                default='\n',
-            ),
-            src=dict(type='path', required=True),
-            trim_blocks=dict(type='bool', default=True),
-            backup=dict(type='bool', default=False),
-            validate=dict(type='str'),
-            variable_end_string=dict(
-                type='str',
-                default=VARIABLE_END_STRING,
-            ),
-            variable_start_string=dict(
-                type='str',
-                default=VARIABLE_START_STRING,
-            ),
-            _force_raw=dict(type='bool', default=False),
-        ))
+        argument_spec.update({
+            'block_end_string': {
+                'type': 'str',
+                'default': BLOCK_END_STRING,
+            },
+            'block_start_string': {
+                'type': 'str',
+                'default': BLOCK_START_STRING,
+            },
+            'comment_end_string': {
+                'type': 'str',
+                'default': COMMENT_END_STRING,
+            },
+            'comment_start_string': {
+                'type': 'str',
+                'default': COMMENT_START_STRING,
+            },
+            'dest': {'type': 'path', 'required': True},
+            'force': {'type': 'bool', 'default': True},
+            'lstrip_blocks': {'type': 'bool', 'default': False},
+            'newline_sequence': {
+                'type': 'str',
+                'choices': ['\n', '\r', '\r\n'],
+                'default': '\n',
+            },
+            'src': {'type': 'path', 'required': True},
+            'trim_blocks': {'type': 'bool', 'default': True},
+            'backup': {'type': 'bool', 'default': False},
+            'validate': {'type': 'str'},
+            'variable_end_string': {
+                'type': 'str',
+                'default': VARIABLE_END_STRING,
+            },
+            'variable_start_string': {
+                'type': 'str',
+                'default': VARIABLE_START_STRING,
+            },
+            '_force_raw': {'type': 'bool', 'default': False},
+        })
 
         validation_result, new_module_args = self.validate_argument_spec(
             argument_spec=argument_spec,

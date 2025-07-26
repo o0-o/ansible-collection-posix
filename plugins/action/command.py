@@ -66,10 +66,10 @@ class ActionModule(PosixBase):
 
         if expand_vars is not None and expand_vars != shell:
             raise AnsibleActionFail(
-                "Raw fallback requires expand_argument_vars and _uses_shell "
-                "to be the same. Shell-based execution expands variables "
-                "remotely. If expand_argument_vars is true but _uses_shell is "
-                "false, the fallback cannot expand variables."
+                'Raw fallback requires expand_argument_vars and _uses_shell '
+                'to be the same. Shell-based execution expands variables '
+                'remotely. If expand_argument_vars is true but _uses_shell is '
+                'false, the fallback cannot expand variables.'
             )
 
         # Initialize return dict (mimics command module output)
@@ -224,20 +224,20 @@ class ActionModule(PosixBase):
             )
 
         # Define supported module arguments
-        argument_spec = dict(
-            _uses_shell=dict(type='bool', default=False),
-            cmd=dict(),
-            argv=dict(type='list', elements='str'),
-            chdir=dict(type='path'),
-            executable=dict(),
-            expand_argument_vars=dict(type='bool'),
-            creates=dict(type='path'),
-            removes=dict(type='path'),
-            stdin=dict(required=False),
-            stdin_add_newline=dict(type='bool', default=True),
-            strip_empty_ends=dict(type='bool', default=True),
-            _force_raw=dict(type='bool', default=False),
-        )
+        argument_spec = {
+            '_uses_shell': {'type': 'bool', 'default': False},
+            'cmd': {},
+            'argv': {'type': 'list', 'elements': 'str'},
+            'chdir': {'type': 'path'},
+            'executable': {},
+            'expand_argument_vars': {'type': 'bool'},
+            'creates': {'type': 'path'},
+            'removes': {'type': 'path'},
+            'stdin': {'required': False},
+            'stdin_add_newline': {'type': 'bool', 'default': True},
+            'strip_empty_ends': {'type': 'bool', 'default': True},
+            '_force_raw': {'type': 'bool', 'default': False},
+        }
 
         validation_result, new_module_args = self.validate_argument_spec(
             argument_spec=argument_spec

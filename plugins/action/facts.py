@@ -69,17 +69,17 @@ class ActionModule(PosixBase):
         task_vars = task_vars or {}
         tmp = None  # unused in modern Ansible
 
-        argument_spec = dict(
-            gather_subset=dict(
-                type='list',
-                elements='str',
-                default=['all'],
-                choices=[
+        argument_spec = {
+            'gather_subset': {
+                'type': 'list',
+                'elements': 'str',
+                'default': ['all'],
+                'choices': [
                     'all', 'kernel', 'arch',
                     '!all', '!kernel', '!arch'
                 ]
-            )
-        )
+            }
+        }
 
         validation_result, new_module_args = self.validate_argument_spec(
             argument_spec=argument_spec
@@ -99,7 +99,7 @@ class ActionModule(PosixBase):
             )
             result.update({
                 'skipped': True,
-                'skip_reason': "This does not appear to be a POSIX system.",
+                'skip_reason': 'This does not appear to be a POSIX system.',
                 'ansible_facts': {}
             })
             return result
