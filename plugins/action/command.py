@@ -89,7 +89,7 @@ class ActionModule(PosixBase):
         if not shell and executable:
             self._display.warning(
                 "As of Ansible 2.4, the parameter 'executable' is no "
-                f"longer supported with the 'command' module. Not using "
+                "longer supported with the 'command' module. Not using "
                 f"'{executable}'."
             )
             executable = None

@@ -122,7 +122,7 @@ class PosixBase(ActionBase):
         if requested_fqcn == current_fqcn:
             raise AnsibleError(
                 f"CompatAction attempted to call '{plugin_name}' from within "
-                f"itself. This would result in infinite recursion."
+                'itself. This would result in infinite recursion.'
             )
 
         task = self._task.copy()
@@ -465,7 +465,7 @@ class PosixBase(ActionBase):
             result = self._cmd(semanage_cmd, task_vars=task_vars)
             if result["rc"] != 0:
                 raise AnsibleError(
-                    f"Failed to register SELinux context with semanage: "
+                    'Failed to register SELinux context with semanage: '
                     f"{result.get('stderr', '')}"
                 )
 
@@ -473,7 +473,7 @@ class PosixBase(ActionBase):
             result = self._cmd(restorecon_cmd, task_vars=task_vars)
             if result["rc"] != 0:
                 raise AnsibleError(
-                    f"Failed to apply SELinux context with restorecon: "
+                    'Failed to apply SELinux context with restorecon: '
                     f"{result.get('stderr', '')}"
                 )
             return
@@ -493,7 +493,7 @@ class PosixBase(ActionBase):
         result = self._cmd(chcon_cmd, task_vars=task_vars)
         if result["rc"] != 0:
             raise AnsibleError(
-                f"Failed to set SELinux context with chcon: "
+                'Failed to set SELinux context with chcon: '
                 f"{result.get('stderr', '')}"
             )
 
@@ -887,7 +887,7 @@ class PosixBase(ActionBase):
                     actual_mode = final_perms.get("mode")
                     if actual_mode != expected_mode:
                         raise AnsibleError(
-                            f"Post-apply verification failed: expected mode="
+                            'Post-apply verification failed: expected mode='
                             f"{expected_mode}, got {actual_mode}"
                         )
                 except Exception as e:
@@ -1028,7 +1028,7 @@ class PosixBase(ActionBase):
                 self._display.vvv(f"mv result: {mv_result}")
                 if mv_result["rc"] != 0:
                     raise AnsibleError(
-                        f"Failed to move temp file into place: "
+                        'Failed to move temp file into place: '
                         f"{mv_result.get('stderr', '')}"
                     )
 
