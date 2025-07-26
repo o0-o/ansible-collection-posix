@@ -26,7 +26,10 @@ class ActionModule(PosixBase):
     """
 
     TRANSFERS_FILES = False
-    supports_check_mode = True
+    _requires_connection = True
+    _supports_check_mode = True
+    _supports_async = False
+    _supports_diff = False
 
     def run(self, tmp=None, task_vars=None):
         """
@@ -34,7 +37,6 @@ class ActionModule(PosixBase):
         fall back to raw 'cat' if no Python interpreter is available.
         """
         task_vars = task_vars or {}
-        self._supports_async = False
 
         self._display.vvv("slurp64: starting run()")
 

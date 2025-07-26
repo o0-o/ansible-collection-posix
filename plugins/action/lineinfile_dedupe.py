@@ -29,8 +29,10 @@ class ActionModule(PosixBase):
     """
 
     TRANSFERS_FILES = False
-    supports_check_mode = True
-    supports_diff = True
+    _requires_connection = True
+    _supports_check_mode = True
+    _supports_async = False
+    _supports_diff = True
 
     def _ensure_line_present(self, task_vars=None):
         """
@@ -473,7 +475,6 @@ class ActionModule(PosixBase):
         """
         self._display.vvv("Starting lineinfile_dedupe run()")
         task_vars = task_vars or {}
-        self._supports_async = False
 
         new_module_args = self._def_args()
         self._display.vvv(f"new_module_args: {new_module_args}")

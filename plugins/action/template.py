@@ -39,8 +39,10 @@ from ansible.template import generate_ansible_template_vars
 class ActionModule(PosixBase):
 
     TRANSFERS_FILES = True
-    supports_check_mode = True
-    supports_diff = True
+    _requires_connection = True
+    _supports_check_mode = True
+    _supports_async = False
+    _supports_diff = True
 
     def _def_args(self):
         """
@@ -113,7 +115,6 @@ class ActionModule(PosixBase):
 
         self._display.vvv("Starting template run()")
         task_vars = task_vars or {}
-        self._supports_async = False
 
         new_module_args = self._def_args()
 

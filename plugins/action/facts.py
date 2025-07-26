@@ -21,9 +21,10 @@ class ActionModule(PosixBase):
     """Gather basic POSIX kernel and hardware facts"""
 
     TRANSFERS_FILES = False
-    _requires_connection = False
+    _requires_connection = True
     _supports_check_mode = True
     _supports_async = False
+    _supports_diff = False
 
     def _get_kernel_and_hardware(self, task_vars=None):
         """
