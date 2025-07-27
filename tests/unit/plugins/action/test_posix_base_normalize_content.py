@@ -9,7 +9,10 @@
 #
 # Unit tests for _normalize_content in PosixBase
 
+from __future__ import annotations
+
 import pytest
+
 from ansible.errors import AnsibleActionFail
 
 
@@ -23,11 +26,8 @@ from ansible.errors import AnsibleActionFail
 )
 def test_normalize_content_string(
     base, input_str, expected_lines, expected_content
-):
-    """
-    Verify that string input is split into lines and normalized with
-    a trailing newline.
-    """
+) -> None:
+    """Test _normalize_content with string input."""
     lines, normalized = base._normalize_content(input_str)
     assert lines == expected_lines
     assert normalized == expected_content
@@ -43,11 +43,8 @@ def test_normalize_content_string(
 )
 def test_normalize_content_list(
     base, input_list, expected_lines, expected_content
-):
-    """
-    Verify that list input is coerced to strings and joined with
-    newlines, ending with a newline.
-    """
+) -> None:
+    """Test _normalize_content with list input."""
     lines, normalized = base._normalize_content(input_list)
     assert lines == expected_lines
     assert normalized == expected_content
@@ -64,9 +61,7 @@ def test_normalize_content_list(
         [{"dict": "nope"}],
     ]
 )
-def test_normalize_content_rejects_invalid_input(base, invalid_content):
-    """
-    Verify that invalid input types raise an AnsibleActionFail.
-    """
+def test_normalize_content_rejects_invalid_input(base, invalid_content) -> None:
+    """Test _normalize_content rejects invalid input types."""
     with pytest.raises(AnsibleActionFail, match="_write_file.*"):
         base._normalize_content(invalid_content)

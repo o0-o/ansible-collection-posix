@@ -9,7 +9,10 @@
 #
 # This file is part of the o0_o.posix Ansible Collection.
 
+from __future__ import annotations
+
 import pytest
+
 from ansible.errors import AnsibleActionFail
 from ansible_collections.o0_o.posix.tests.utils import (
     generate_temp_path,
@@ -57,11 +60,8 @@ from ansible_collections.o0_o.posix.tests.utils import (
 )
 def test_apply_perms_and_selinux_confirmation(
     base, perms, selinux, should_fail, expected_mode, mock_selinux_keys
-):
-    """
-    Functional test of _apply_perms_and_selinux against real files and
-    _get_perms confirmation. SELinux behavior is mocked when selinux=True.
-    """
+) -> None:
+    """Test _apply_perms_and_selinux against real files."""
     path = generate_temp_path()
     try:
         with open(path, "w", encoding="utf-8") as f:

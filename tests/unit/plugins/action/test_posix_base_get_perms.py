@@ -9,7 +9,10 @@
 #
 # This file is part of the o0_o.posix Ansible Collection.
 
+from __future__ import annotations
+
 import pytest
+
 from ansible.errors import AnsibleActionFail
 
 
@@ -67,24 +70,15 @@ from ansible.errors import AnsibleActionFail
         }
     )
 ])
-def test_get_perms_valid(base, cmd_output, selinux, expected):
-    """
-    Verify _get_perms parses POSIX and SELinux output correctly.
-
-    Includes:
-    - Basic POSIX mode
-    - SELinux context extraction
-    - Stripping ACL/attribute symbols
-    """
+def test_get_perms_valid(base, cmd_output, selinux, expected) -> None:
+    """Test _get_perms parses POSIX and SELinux output correctly."""
     base._cmd = lambda *args, **kwargs: cmd_output
     result = base._get_perms("/fake/file", selinux=selinux)
     assert result == expected
 
 
-def test_get_perms_fails_on_error(base):
-    """
-    Ensure _get_perms raises AnsibleActionFail when ls command fails.
-    """
+def test_get_perms_fails_on_error(base) -> None:
+    """Test _get_perms raises AnsibleActionFail when ls command fails."""
     base._cmd = lambda *args, **kwargs: {
         "rc": 1,
         "stderr": "ls: cannot access"
@@ -94,10 +88,8 @@ def test_get_perms_fails_on_error(base):
         base._get_perms("/fake/file", selinux=False)
 
 
-def test_get_perms_raises_on_malformed_selinux_output(base):
-    """
-    Ensure _get_perms raises if SELinux fields cannot be parsed.
-    """
+def test_get_perms_raises_on_malformed_selinux_output(base) -> None:
+    """Test _get_perms raises on malformed SELinux output."""
     base._cmd = lambda *args, **kwargs: {
         "rc": 0,
         "stdout": "badselinux -rw-r--r-- user group",

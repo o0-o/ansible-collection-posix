@@ -9,13 +9,13 @@
 #
 # This file is part of the o0_o.posix Ansible Collection.
 
-from __future__ import absolute_import, division, print_function
-__metaclass__ = type
+from __future__ import annotations
 
 import os
 import shutil
 import stat
 import tempfile
+from typing import Any, Dict, Optional
 
 from jinja2.defaults import (
     BLOCK_END_STRING,
@@ -28,15 +28,29 @@ from jinja2.defaults import (
 
 from ansible import constants as C
 from ansible.errors import AnsibleActionFail, AnsibleError
-from ansible.module_utils.common.text.converters import (
-    to_bytes, to_text
-)
 from ansible.module_utils.common.file import get_file_arg_spec
-from ansible_collections.o0_o.posix.plugins.action_utils import PosixBase
+from ansible.module_utils.common.text.converters import to_bytes, to_text
 from ansible.template import generate_ansible_template_vars
+from ansible_collections.o0_o.posix.plugins.action_utils import PosixBase
 
 
 class ActionModule(PosixBase):
+    """Template files with Jinja2 and transfer to remote hosts.
+    
+    This action plugin processes Jinja2 templates with configurable
+    syntax and transfers the rendered content to remote hosts. It
+    supports custom template delimiters, newline handling, and
+    automatic fallback to raw mode when Python is unavailable on
+    the remote host.
+    
+    The plugin preserves file permissions when requested and supports
+    all standard file module parameters including backup, validation,
+    and SELinux context handling.
+    
+    .. note::
+       This plugin transfers files to remote hosts and requires
+       a connection. It supports both native and raw execution modes.
+    """
 
     TRANSFERS_FILES = True
     _requires_connection = True
@@ -44,13 +58,20 @@ class ActionModule(PosixBase):
     _supports_async = False
     _supports_diff = True
 
-    def _def_args(self):
-        """
-        Define and parse module arguments using the file argument spec,
-        and store validated values as instance attributes.
-
-        Returns:
-            dict: The validated argument dictionary.
+    def _def_args(self) -> Dict[str, Any]:
+        """Define and parse module arguments using the file argument spec.
+        
+        Builds a comprehensive argument specification that includes all
+        file module parameters plus template-specific options like
+        Jinja2 syntax customization and raw mode forcing.
+        
+        :returns Dict[str, Any]: The validated argument dictionary
+            containing all parsed and validated module parameters
+        :raises AnsibleActionFail: When argument validation fails
+        
+        .. note::
+           This method removes the 'attributes' parameter from the file
+           argument spec as it's not supported by this plugin.
         """
         self._display.vvv("Defining argument spec")
         argument_spec = get_file_arg_spec()
@@ -101,16 +122,29 @@ class ActionModule(PosixBase):
 
         return new_module_args
 
-    def run(self, tmp=None, task_vars=None):
-        """
-        Main entry point for the action plugin.
-
-        Performs its own line presence/removal logic with raw fallback support,
-        including reading, editing, and writing the file using POSIX-safe
-        methods.
-
-        Returns:
-            dict: Standard Ansible result dictionary.
+    def run(
+        self, tmp: Optional[str] = None, task_vars: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
+        """Main entry point for the template action plugin.
+        
+        Processes Jinja2 templates with custom syntax options and
+        transfers the rendered content to remote hosts. Automatically
+        falls back to raw mode when Python interpreter is unavailable
+        on the remote host.
+        
+        :param Optional[str] tmp: Temporary directory path (unused in
+            modern Ansible)
+        :param Optional[Dict[str, Any]] task_vars: Task variables dictionary
+            containing template context
+        :returns Dict[str, Any]: Standard Ansible result dictionary
+        
+        :raises AnsibleActionFail: When template processing fails,
+            required parameters are missing, or file operations fail
+        
+        .. note::
+           This method attempts native execution first via the copy
+           module, then falls back to raw POSIX file operations if
+           Python is unavailable on the remote host.
         """
 
         self._display.vvv("Starting template run()")

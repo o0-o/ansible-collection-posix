@@ -9,9 +9,13 @@
 #
 # This file is part of the o0_o.posix Ansible Collection.
 
+from __future__ import annotations
+
 import pytest
+
 from ansible_collections.o0_o.posix.tests.utils import (
-    generate_temp_path, cleanup_path
+    cleanup_path,
+    generate_temp_path,
 )
 
 
@@ -21,15 +25,8 @@ from ansible_collections.o0_o.posix.tests.utils import (
     ("line1\nline2\n", False, "line1\nline2\n"),     # multiple lines
     (None, True, None),                              # file does not exist
 ])
-def test_cat_file_content(base, content, expect_error, expected_output):
-    """
-    Test _cat reads file contents correctly or fails with non-existent file.
-
-    Covers:
-    - Reading normal, empty, or multiline files
-    - Handling a missing file with a proper error message
-    - Ensures stdout, stderr, stdout_lines, and stderr_lines are removed
-    """
+def test_cat_file_content(base, content, expect_error, expected_output) -> None:
+    """Test _cat method file reading with various content scenarios."""
     path = generate_temp_path()
 
     try:

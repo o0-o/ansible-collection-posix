@@ -9,9 +9,12 @@
 #
 # This file is part of the o0_o.posix Ansible Collection.
 
+from __future__ import annotations
+
 import os
 
 import pytest
+
 from ansible.errors import AnsibleActionFail
 from ansible_collections.o0_o.posix.tests.utils import (
     generate_temp_path,
@@ -40,14 +43,8 @@ from ansible_collections.o0_o.posix.tests.utils import (
 )
 def test_mkdir_behavior(
     base, exists, is_dir, setup, expect_error, error_msg, changed
-):
-    """
-    Parameterized tests for _mkdir behavior:
-    - Normal creation
-    - Skip if already exists
-    - Error on conflicting file
-    - Error on restricted permissions
-    """
+) -> None:
+    """Test _mkdir behavior in various scenarios."""
     path = generate_temp_path()
 
     try:
@@ -90,14 +87,8 @@ def test_mkdir_behavior(
         cleanup_path(path)
 
 
-def test_mkdir_invalid_mode(base):
-    """
-    Test _mkdir with an invalid mode argument.
-
-    This simulates developer misuse by passing an invalid (non-integer) mode.
-    The method should fail gracefully and raise an AnsibleActionFail with an
-    appropriate message.
-    """
+def test_mkdir_invalid_mode(base) -> None:
+    """Test _mkdir with invalid mode argument."""
     path = generate_temp_path()
 
     try:

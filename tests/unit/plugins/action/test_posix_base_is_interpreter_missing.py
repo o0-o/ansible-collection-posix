@@ -9,6 +9,8 @@
 #
 # This file is part of the o0_o.posix Ansible Collection.
 
+from __future__ import annotations
+
 import pytest
 
 
@@ -43,8 +45,6 @@ import pytest
         ('not a dict', False),
     ]
 )
-def test_is_interpreter_missing_canary_only(base, result, expected):
-    """
-    Verify _is_interpreter_missing detects Python errors by msg content.
-    """
+def test_is_interpreter_missing_canary_only(base, result, expected) -> None:
+    """Test _is_interpreter_missing detects Python errors by msg content."""
     assert base._is_interpreter_missing(result) is expected

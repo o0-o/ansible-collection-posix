@@ -9,13 +9,16 @@
 #
 # This file is part of the o0_o.posix Ansible Collection.
 
-import os
-import pwd
-import grp
-import pytest
-from ansible.errors import AnsibleActionFail
+from __future__ import annotations
 from unittest.mock import MagicMock
 
+import grp
+import os
+import pwd
+
+import pytest
+
+from ansible.errors import AnsibleActionFail
 from ansible_collections.o0_o.posix.tests.utils import (
     generate_temp_path,
     cleanup_path,
@@ -24,11 +27,8 @@ from ansible_collections.o0_o.posix.tests.utils import (
 )
 
 
-def test_write_file_rejects_invalid_content(base):
-    """
-    Ensure _write_file raises AnsibleActionFail for unsupported content types
-    such as None, integers, or mixed-type lists.
-    """
+def test_write_file_rejects_invalid_content(base) -> None:
+    """Test _write_file rejects invalid content types."""
     tmp_path = generate_temp_path()
     try:
         for invalid in [None, 123, [object()], ["foo", object()]]:
@@ -38,11 +38,8 @@ def test_write_file_rejects_invalid_content(base):
         cleanup_path(tmp_path)
 
 
-def test_write_file_basic_write(base):
-    """
-    Test basic functionality of _write_file writing string content
-    to a file and marking the operation as changed.
-    """
+def test_write_file_basic_write(base) -> None:
+    """Test basic _write_file functionality."""
     tmp_path = generate_temp_path()
     try:
         result = base._write_file(
@@ -56,11 +53,8 @@ def test_write_file_basic_write(base):
         cleanup_path(tmp_path)
 
 
-def test_write_file_backup_and_validate(base):
-    """
-    Ensure _write_file triggers validation and creates a backup
-    when content is changed and backup=True.
-    """
+def test_write_file_backup_and_validate(base) -> None:
+    """Test _write_file backup and validation features."""
     tmp_path = generate_temp_path()
     with open(tmp_path, "w") as f:
         f.write("existing")
@@ -83,11 +77,8 @@ def test_write_file_backup_and_validate(base):
     cleanup_path(tmp_path + ".bak")
 
 
-def test_write_file_check_mode_and_diff(base):
-    """
-    Test that check_mode=True avoids actual changes but sets changed=True
-    and includes the correct diff content.
-    """
+def test_write_file_check_mode_and_diff(base) -> None:
+    """Test _write_file check mode and diff functionality."""
     tmp_path = generate_temp_path()
     original = "old content\n"
     updated = "new content\n"
@@ -117,11 +108,8 @@ def test_write_file_check_mode_and_diff(base):
         cleanup_path(tmp_path)
 
 
-def test_write_file_applies_permissions(base):
-    """
-    Confirm that _write_file applies owner, group, and mode
-    permissions correctly.
-    """
+def test_write_file_applies_permissions(base) -> None:
+    """Test _write_file applies permissions correctly."""
     tmp_path = generate_temp_path()
     uid = os.getuid()
     gid = os.getgid()
@@ -144,11 +132,8 @@ def test_write_file_applies_permissions(base):
         cleanup_path(tmp_path)
 
 
-def test_write_file_selinux_tools_missing(base):
-    """
-    Ensure _write_file raises an error when SELinux setype is requested
-    but required tools like 'chcon' are missing.
-    """
+def test_write_file_selinux_tools_missing(base) -> None:
+    """Test _write_file error when SELinux tools missing."""
     base._which = lambda name, task_vars=None: (
         None if name == "chcon" else "/usr/sbin/semanage"
     )

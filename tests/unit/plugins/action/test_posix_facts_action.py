@@ -9,17 +9,19 @@
 #
 # This file is part of the o0_o.posix Ansible Collection.
 
+from __future__ import annotations
+
+from typing import Generator
+
 import pytest
+
 from ansible.errors import AnsibleConnectionFailure
 from ansible_collections.o0_o.posix.plugins.action.facts import ActionModule
 
 
 @pytest.fixture
-def plugin(base):
-    """
-    Create an ActionModule instance with patched dependencies from the
-    shared `base` fixture for testing purposes.
-    """
+def plugin(base) -> Generator[ActionModule, None, None]:
+    """Create an ActionModule instance with patched dependencies."""
     base._task.async_val = False
     base._task.action = 'facts'
 
@@ -36,10 +38,8 @@ def plugin(base):
     return plugin
 
 
-def test_get_kernel_and_hardware_success(monkeypatch, plugin):
-    """
-    Test successful gathering of POSIX kernel and hardware facts using `uname`.
-    """
+def test_get_kernel_and_hardware_success(monkeypatch, plugin) -> None:
+    """Test successful gathering of POSIX kernel and hardware facts."""
     monkeypatch.setattr(
         plugin, '_cmd',
         lambda cmd, task_vars=None, **kwargs: {
@@ -56,11 +56,8 @@ def test_get_kernel_and_hardware_success(monkeypatch, plugin):
     assert cpu['architecture'] == 'x86_64'
 
 
-def test_get_kernel_and_hardware_connection_failure(monkeypatch, plugin):
-    """
-    Test that a connection failure during `_cmd` raises
-    `AnsibleConnectionFailure` as expected.
-    """
+def test_get_kernel_and_hardware_connection_failure(monkeypatch, plugin) -> None:
+    """Test that connection failures are properly propagated."""
     monkeypatch.setattr(
         plugin, '_cmd',
         lambda *args, **kwargs: (x for x in ()).throw(
@@ -72,11 +69,8 @@ def test_get_kernel_and_hardware_connection_failure(monkeypatch, plugin):
         plugin._get_kernel_and_hardware(task_vars={})
 
 
-def test_run_skips_on_non_posix(monkeypatch, plugin):
-    """
-    Test that the action plugin gracefully skips if `_cmd` raises a non-fatal
-    error indicating the host is not POSIX.
-    """
+def test_run_skips_on_non_posix(monkeypatch, plugin) -> None:
+    """Test graceful handling of non-POSIX systems."""
     monkeypatch.setattr(
         plugin, '_cmd',
         lambda *args, **kwargs: (x for x in ()).throw(
@@ -96,10 +90,8 @@ def test_run_skips_on_non_posix(monkeypatch, plugin):
     (['arch'], False, True),
     (['!kernel'], False, True),
 ])
-def test_run_subset_selection(monkeypatch, plugin, subset, expect_os, expect_hw):
-    """
-    Test gather_subset filtering and resulting fact inclusion logic.
-    """
+def test_run_subset_selection(monkeypatch, plugin, subset, expect_os, expect_hw) -> None:
+    """Test gather_subset filtering and fact inclusion logic."""
     monkeypatch.setattr(
         plugin, '_cmd',
         lambda cmd, task_vars=None, **kwargs: {

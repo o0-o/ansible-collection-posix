@@ -11,6 +11,8 @@
 
 from __future__ import annotations
 
+from typing import Any, Dict, Optional, Tuple
+
 from ansible.errors import AnsibleActionFail, AnsibleConnectionFailure
 from ansible_collections.o0_o.posix.plugins.action_utils.posix_base import (
     PosixBase
@@ -18,7 +20,22 @@ from ansible_collections.o0_o.posix.plugins.action_utils.posix_base import (
 
 
 class ActionModule(PosixBase):
-    """Gather basic POSIX kernel and hardware facts"""
+    """Gather basic POSIX kernel and hardware facts.
+    
+    This action plugin collects minimal operating system and hardware
+    information from remote POSIX-compliant systems using standard
+    uname commands. It provides facts under the o0_os and o0_hardware
+    namespaces.
+    
+    The plugin supports subset filtering to gather only specific
+    categories of facts (kernel, architecture) and gracefully handles
+    non-POSIX systems by skipping fact collection.
+    
+    .. note::
+       This plugin requires a connection to the remote host and uses
+       the uname command which should be available on all POSIX
+       systems.
+    """
 
     TRANSFERS_FILES = False
     _requires_connection = True
@@ -26,9 +43,21 @@ class ActionModule(PosixBase):
     _supports_async = False
     _supports_diff = False
 
-    def _get_kernel_and_hardware(self, task_vars=None):
-        """
-        Collect minimal OS facts from the remote POSIX system using `uname`.
+    def _get_kernel_and_hardware(
+        self, task_vars: Optional[Dict[str, Any]] = None
+    ) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+        """Collect minimal OS facts from the remote POSIX system using uname.
+        
+        Executes uname commands to gather kernel name, version, and
+        architecture information from the remote system.
+        
+        :param Optional[Dict[str, Any]] task_vars: Task variables dictionary
+        :returns Tuple[Dict[str, Any], Dict[str, Any]]: Tuple containing
+            (kernel_facts, cpu_facts) dictionaries
+        :raises AnsibleConnectionFailure: When connection to remote host
+            fails
+        :raises Exception: When uname commands fail or return unexpected
+            output
         """
         un_s = self._cmd(
             ['uname', '-s'], task_vars=task_vars, check_mode=False
@@ -62,10 +91,27 @@ class ActionModule(PosixBase):
 
         return kernel, cpu
 
-    def run(self, tmp=None, task_vars=None):
-        """
-        Main entry point for the action plugin. Returns gathered facts
-        under `o0_os` and `o0_hardware`.
+    def run(
+        self, tmp: Optional[str] = None, task_vars: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
+        """Main entry point for the action plugin.
+        
+        Gathers POSIX kernel and hardware facts based on the specified
+        subset filter and returns them under the o0_os and o0_hardware
+        fact namespaces.
+        
+        :param Optional[str] tmp: Temporary directory path (unused in
+            modern Ansible)
+        :param Optional[Dict[str, Any]] task_vars: Task variables dictionary
+        :returns Dict[str, Any]: Standard Ansible result dictionary
+        
+        :raises AnsibleActionFail: When invalid gather_subset values are
+            provided
+        
+        .. note::
+           This method validates the gather_subset parameter against
+           allowed values: 'all', 'kernel', 'arch', '!all', '!kernel',
+           '!arch'
         """
         task_vars = task_vars or {}
         tmp = None  # unused in modern Ansible

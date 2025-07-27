@@ -9,35 +9,25 @@
 #
 # This file is part of the o0_o.posix Ansible Collection.
 
+from __future__ import annotations
+
 import pytest
+
 from ansible.errors import AnsibleActionFail
 
 
-def test_validate_file_noop_for_none(base):
-    """
-    Ensure _validate_file() is a no-op when validate_cmd is None.
-
-    This allows skipping validation when no command is given.
-    """
+def test_validate_file_noop_for_none(base) -> None:
+    """Test _validate_file no-op when validate_cmd is None."""
     base._validate_file("/tmp/somefile", None)
 
 
-def test_validate_file_noop_for_empty_string(base):
-    """
-    Ensure _validate_file() is a no-op when validate_cmd is an empty string.
-
-    Validation should not run for empty command input.
-    """
+def test_validate_file_noop_for_empty_string(base) -> None:
+    """Test _validate_file no-op when validate_cmd is empty."""
     base._validate_file("/tmp/somefile", "")
 
 
-def test_validate_file_success(monkeypatch, base):
-    """
-    Simulate a successful validation command.
-
-    Ensures that _validate_file runs the expected shell command when
-    a validation command is provided and the return code is 0.
-    """
+def test_validate_file_success(monkeypatch, base) -> None:
+    """Test _validate_file successful validation."""
     called = {}
 
     def mock_cmd(argv, task_vars=None):
@@ -55,13 +45,8 @@ def test_validate_file_success(monkeypatch, base):
     assert called["cmd"] == "validate '/tmp/foo.conf'"
 
 
-def test_validate_file_failure_raises(monkeypatch, base):
-    """
-    Simulate a failed validation command.
-
-    Ensures that _validate_file raises an AnsibleActionFail when the validation
-    command fails (non-zero return code).
-    """
+def test_validate_file_failure_raises(monkeypatch, base) -> None:
+    """Test _validate_file raises error on validation failure."""
     def mock_cmd(argv, task_vars=None):
         return {"rc": 1, "stderr": "syntax error"}
 

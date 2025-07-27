@@ -9,22 +9,21 @@
 #
 # This file is part of the o0_o.posix Ansible Collection.
 
+from __future__ import annotations
+
 import pytest
+
 from ansible.errors import AnsibleActionFail
 
 
-def test_selinux_not_requested(base):
-    """
-    If no SELinux parameters are provided, the method should return False.
-    """
+def test_selinux_not_requested(base) -> None:
+    """Test _check_selinux_tools returns False when SELinux not requested."""
     result = base._check_selinux_tools(perms={}, task_vars={})
     assert result is False
 
 
-def test_selinux_tools_missing_both(base, monkeypatch):
-    """
-    If both chcon and semanage are missing, an error should be raised.
-    """
+def test_selinux_tools_missing_both(base, monkeypatch) -> None:
+    """Test _check_selinux_tools raises error when both tools missing."""
     monkeypatch.setattr(
         base, "_which", lambda tool, task_vars=None: None
     )
@@ -36,10 +35,8 @@ def test_selinux_tools_missing_both(base, monkeypatch):
         )
 
 
-def test_selinux_chcon_missing_only(base, monkeypatch):
-    """
-    If chcon is missing but semanage is present, an error should be raised.
-    """
+def test_selinux_chcon_missing_only(base, monkeypatch) -> None:
+    """Test _check_selinux_tools raises error when chcon missing."""
     def fake_which(tool, task_vars=None):
         return "/usr/sbin/semanage" if tool == "semanage" else None
 
@@ -52,10 +49,8 @@ def test_selinux_chcon_missing_only(base, monkeypatch):
         )
 
 
-def test_selinux_semanage_missing_warns(base, monkeypatch):
-    """
-    If semanage is missing but chcon is present, a warning should be issued.
-    """
+def test_selinux_semanage_missing_warns(base, monkeypatch) -> None:
+    """Test _check_selinux_tools warns when semanage missing."""
     monkeypatch.setattr(
         base,
         "_which",
@@ -83,10 +78,8 @@ def test_selinux_semanage_missing_warns(base, monkeypatch):
     assert any("chcon is available but semanage is not" in w for w in warnings)
 
 
-def test_selinux_both_tools_present(base, monkeypatch):
-    """
-    If both chcon and semanage are found, method should return True.
-    """
+def test_selinux_both_tools_present(base, monkeypatch) -> None:
+    """Test _check_selinux_tools succeeds when both tools present."""
     monkeypatch.setattr(
         base,
         "_which",

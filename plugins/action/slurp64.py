@@ -11,18 +11,29 @@
 
 from __future__ import annotations
 
+from base64 import b64decode
+from typing import Any, Dict, Optional
+
 from ansible.errors import AnsibleActionFail
 from ansible_collections.o0_o.posix.plugins.action_utils import PosixBase
-from base64 import b64decode
 
 
 class ActionModule(PosixBase):
-    """
-    Read the contents of a file from the remote host using the
-    built-in slurp module, with fallback to raw 'cat' if the remote
-    Python interpreter is unavailable.
-
-    Returns UTF-8 decoded content in the 'content' key.
+    """Read file contents from remote hosts with raw fallback support.
+    
+    This action plugin reads file contents from remote hosts using the
+    standard Ansible slurp module, automatically falling back to raw
+    'cat' execution when Python interpreter is unavailable on the
+    remote host.
+    
+    The plugin decodes base64 content returned by the slurp module
+    and provides UTF-8 decoded content in the 'content' key, along
+    with 'content_lines' for convenient line-by-line access.
+    
+    .. note::
+       This plugin does not transfer files but requires a connection
+       to read from remote hosts. It supports both native slurp and
+       raw cat fallback modes.
     """
 
     TRANSFERS_FILES = False
@@ -31,10 +42,26 @@ class ActionModule(PosixBase):
     _supports_async = False
     _supports_diff = False
 
-    def run(self, tmp=None, task_vars=None):
-        """
-        Read the base64 contents of a file from the remote host and
-        fall back to raw 'cat' if no Python interpreter is available.
+    def run(
+        self, tmp: Optional[str] = None, task_vars: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
+        """Read file contents from remote host with raw fallback.
+        
+        Attempts to read file contents using the standard Ansible slurp
+        module first, then falls back to raw 'cat' execution if Python
+        interpreter is missing on the remote host.
+        
+        :param Optional[str] tmp: Temporary directory path (unused in
+            modern Ansible)
+        :param Optional[Dict[str, Any]] task_vars: Task variables dictionary
+        :returns Dict[str, Any]: Standard Ansible result dictionary
+        
+        :raises AnsibleActionFail: When file reading fails, base64
+            decoding fails, or required parameters are missing
+        
+        .. note::
+           This method validates the 'src' parameter and supports
+           '_force_raw' to bypass native slurp module usage.
         """
         task_vars = task_vars or {}
 

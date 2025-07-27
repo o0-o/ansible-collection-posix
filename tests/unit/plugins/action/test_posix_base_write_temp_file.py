@@ -9,16 +9,17 @@
 #
 # This file is part of the o0_o.posix Ansible Collection.
 
+from __future__ import annotations
+
 import os
+
 import pytest
+
 from ansible.errors import AnsibleActionFail
 
 
-def test_write_temp_file_success(monkeypatch, base):
-    """
-    Verify _write_temp_file writes the expected content to the temp file
-    and returns a zero exit code.
-    """
+def test_write_temp_file_success(monkeypatch, base) -> None:
+    """Test _write_temp_file writes content successfully."""
     tmpfile = os.path.join(base._connection._shell.tmpdir, "file.txt")
     written = {}
 
@@ -41,10 +42,8 @@ def test_write_temp_file_success(monkeypatch, base):
     assert written["content"].splitlines() == ["one", "two"]
 
 
-def test_write_temp_file_failure(monkeypatch, base):
-    """
-    Verify _write_temp_file raises an error when the tee command fails.
-    """
+def test_write_temp_file_failure(monkeypatch, base) -> None:
+    """Test _write_temp_file raises error when tee command fails."""
     def mock_cmd(cmd, task_vars=None, check_mode=False, **kwargs):
         return {"rc": 1, "stderr": "no tee"}
 

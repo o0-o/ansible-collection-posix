@@ -9,6 +9,8 @@
 #
 # This file is part of the o0_o.posix Ansible Collection.
 
+from __future__ import annotations
+
 import pytest
 
 
@@ -88,10 +90,8 @@ import pytest
         ),
     ]
 )
-def test_which_logic(base, binary, cmd_outputs, expected_result):
-    """
-    Test PosixBase._which() behavior with mock _cmd output.
-    """
+def test_which_logic(base, binary, cmd_outputs, expected_result) -> None:
+    """Test PosixBase._which() behavior with various command outputs."""
     def mock_cmd(cmd, task_vars=None):
         return cmd_outputs.get(tuple(cmd), {"rc": 1, "stdout": ""})
 

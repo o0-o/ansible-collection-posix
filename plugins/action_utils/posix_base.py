@@ -18,15 +18,19 @@ Used by custom action plugins to gracefully degrade to raw execution
 when Python is not available on the remote host.
 """
 
-from ansible.errors import AnsibleActionFail
-from ansible.plugins.action import ActionBase
-from ansible.module_utils.common.text.converters import to_text
-from datetime import datetime, timezone
-from os import path
-import stat
+from __future__ import annotations
+
+import difflib
 import hashlib
 import shlex
-import difflib
+import stat
+from datetime import datetime, timezone
+from os import path
+from typing import Any, Dict, List, Optional, Union, Tuple
+
+from ansible.errors import AnsibleActionFail
+from ansible.module_utils.common.text.converters import to_text
+from ansible.plugins.action import ActionBase
 
 
 class PosixBase(ActionBase):
@@ -55,29 +59,26 @@ class PosixBase(ActionBase):
                 ...
     """
 
-    def run(self, tmp=None, task_vars=None):
-        """
-        Base run method that initializes the result structure but must
-        be extended by subclasses.
-
-        This replaces the NotImplementedError with a minimal
-        implementation so that child classes can safely call
-        super().run() to get a standard results dict.
-
-        :param tmp: Temporary path (optional)
-        :param task_vars: Task variables dict
-        :return: Initial results dictionary
+    def run(
+        self, tmp: Optional[str] = None, task_vars: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
+        """Base run method that initializes the result structure.
+        
+        This replaces the NotImplementedError with a minimal implementation
+        so that child classes can safely call super().run() to get a
+        standard results dict.
+        
+        :param Optional[str] tmp: Temporary path (unused in modern Ansible)
+        :param Optional[Dict[str, Any]] task_vars: Task variables dictionary
+        :returns Dict[str, Any]: Initial results dictionary
         """
         return super().run(tmp, task_vars)
 
-    def _is_interpreter_missing(self, result):
-        """
-        Check if failure was likely caused by a missing Python
-        interpreter.
+    def _is_interpreter_missing(self, result: Dict[str, Any]) -> bool:
+        """Check if failure was likely caused by a missing Python interpreter.
 
-        :param result: A result dict from _execute_module or fallback
-                       command.
-        :return: True if failure likely due to missing Python, else False.
+        :param result: A result dict from _execute_module or fallback command
+        :returns bool: True if failure likely due to missing Python, else False
         """
         if not isinstance(result, dict):
             return False
@@ -102,19 +103,17 @@ class PosixBase(ActionBase):
         return False
 
     def _run_action(
-        self, plugin_name, plugin_args, task_vars=None, check_mode: bool = None
-    ):
-        """
-        Execute another action plugin using the provided arguments.
+        self, plugin_name: str, plugin_args: Dict[str, Any], task_vars: Optional[Dict[str, Any]] = None, check_mode: Optional[bool] = None
+    ) -> Dict[str, Any]:
+        """Execute another action plugin using the provided arguments.
 
-        :param plugin_name: Fully qualified name of the plugin to run
-                            (e.g. 'ansible.builtin.command').
-        :param plugin_args: Dictionary of arguments to pass to the
-                            plugin.
-        :param task_vars: Dictionary of task variables from the calling
-                          task.
-        :return: The result dictionary returned by the plugin's run
-                 method.
+        :param str plugin_name: Fully qualified name of the plugin to run
+            (e.g. 'ansible.builtin.command')
+        :param dict plugin_args: Dictionary of arguments to pass to the plugin
+        :param Optional[dict] task_vars: Dictionary of task variables from
+            the calling task
+        :param Optional[bool] check_mode: Override check mode setting
+        :returns dict: The result dictionary returned by the plugin's run method
         """
         current_fqcn = self._task.action.lower().strip()
         requested_fqcn = plugin_name.lower().strip()
@@ -152,16 +151,16 @@ class PosixBase(ActionBase):
 
         return result
 
-    def _cmd(self, cmd, stdin=None, task_vars=None, check_mode: bool = None):
-        """
-        Run the fallback-compatible 'command' action plugin with arguments.
+    def _cmd(self, cmd: Union[str, List[str]], stdin: Optional[str] = None, task_vars: Optional[Dict[str, Any]] = None, check_mode: Optional[bool] = None) -> Dict[str, Any]:
+        """Run the fallback-compatible 'command' action plugin with arguments.
 
-        :param cmd: Command to execute. Can be a shell string or a list of
-                    arguments.
-        :param stdin: Optional standard input to pass to the command.
-        :param task_vars: Dictionary of task variables from the calling task.
-        :param check_mode: Optional override for Ansible check mode.
-        :return: The result dictionary from the command plugin.
+        :param Union[str, List[str]] cmd: Command to execute. Can be a shell
+            string or a list of arguments
+        :param Optional[str] stdin: Optional standard input to pass to the command
+        :param Optional[dict] task_vars: Dictionary of task variables from
+            the calling task
+        :param Optional[bool] check_mode: Optional override for Ansible check mode
+        :returns dict: The result dictionary from the command plugin
         """
         task_vars = task_vars or {}
 
@@ -183,15 +182,13 @@ class PosixBase(ActionBase):
             check_mode=check_mode,
         )
 
-    def _slurp(self, src, task_vars=None):
-        """
-        Run the fallback-compatible 'slurp64' action plugin to read
-        remote files.
+    def _slurp(self, src: str, task_vars: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        """Run the fallback-compatible 'slurp64' action plugin to read remote files.
 
-        :param src: The path to the file to slurp on the remote host.
-        :param task_vars: Dictionary of task variables from the calling
-                          task.
-        :return: The result dictionary from the slurp64 plugin.
+        :param str src: The path to the file to slurp on the remote host
+        :param Optional[dict] task_vars: Dictionary of task variables from
+            the calling task
+        :returns dict: The result dictionary from the slurp64 plugin
         """
         return self._run_action(
             'o0_o.posix.slurp64',
@@ -199,14 +196,13 @@ class PosixBase(ActionBase):
             task_vars=task_vars,
         )
 
-    def _cat(self, src, task_vars=None):
-        """
-        Fallback method to read the contents of a file using 'cat'.
+    def _cat(self, src: str, task_vars: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        """Fallback method to read the contents of a file using 'cat'.
 
-        :param src: Path to the file on the remote host.
-        :param task_vars: Dictionary of task variables from the calling
-                          task.
-        :return: Dictionary with read results or error.
+        :param str src: Path to the file on the remote host
+        :param Optional[dict] task_vars: Dictionary of task variables from
+            the calling task
+        :returns dict: Dictionary with read results or error
         """
         cmd_result = self._cmd(
             ['cat', src],
@@ -227,42 +223,31 @@ class PosixBase(ActionBase):
 
         return results
 
-    def _sanitize_args(self, args):
-        """
-        Return a copy of the argument dictionary with all keys that have a
-        value of None removed.
+    def _sanitize_args(self, args: Dict[str, Any]) -> Dict[str, Any]:
+        """Return a copy of the argument dictionary with all None values removed.
 
         This is useful when passing arguments to Ansible modules that enforce
         mutually exclusive parameters or expect missing values to be omitted
         rather than explicitly set to null/None.
 
-        :param args: Dictionary of module arguments to sanitize.
-        :type args: dict
-        :return: A new dictionary with all None values removed.
-        :rtype: dict
+        :param dict args: Dictionary of module arguments to sanitize
+        :returns dict: A new dictionary with all None values removed
         """
         return {k: v for k, v in args.items() if v is not None}
 
-    def _pseudo_stat(self, target_path, task_vars=None):
-        """
-        Fallback-compatible file stat using POSIX `test` commands.
+    def _pseudo_stat(self, target_path: str, task_vars: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        """Fallback-compatible file stat using POSIX ``test`` commands.
 
-        This method uses a combination of `test` shell commands to detect
+        This method uses a combination of ``test`` shell commands to detect
         if a remote path exists, what type of object it is (e.g., file,
         directory, etc.), and whether it is a symlink.
 
-        :param target_path: The remote path to test.
-        :param task_vars: Ansible task_vars from run(), passed to _cmd().
-        :returns:
-            dict: {
-                "exists": bool,     # Whether the target exists.
-                "type": str or None,  # POSIX type, one of: file,
-                                      # directory, block, char, pipe,
-                                      # socket. None if nonexistent.
-                "symlink": bool,    # True if the path is a symbolic link.
-                "raw": bool,        # True if fallback (raw) logic was used.
-            }
-        :raises: AnsibleActionFail if type cannot be determined.
+        :param str target_path: The remote path to test
+        :param Optional[dict] task_vars: Ansible task_vars from run(),
+            passed to _cmd()
+        :returns dict: Dictionary with keys 'exists' (bool), 'type'
+            (str or None), 'is_symlink' (bool), 'raw' (bool)
+        :raises AnsibleActionFail: if type cannot be determined
         """
         exists_test = self._cmd(
             ["test", "-e", target_path], task_vars=task_vars, check_mode=False
@@ -306,17 +291,20 @@ class PosixBase(ActionBase):
             f"All POSIX 'test' commands failed on '{target_path}'"
         )
 
-    def _mkdir(self, target_path, task_vars=None, parents=True, mode=None):
-        """
-        Ensure a directory exists on the remote host, optionally applying a
-        permission mode, using fallback-compatible methods.
+    def _mkdir(self, target_path: str, task_vars: Optional[Dict[str, Any]] = None, parents: bool = True, mode: Optional[str] = None) -> Dict[str, Any]:
+        """Ensure a directory exists on the remote host.
 
-        :param target_path: The remote directory path to create
-        :param task_vars: Ansible task_vars from run()
-        :param parents: Whether to create parent directories (`mkdir -p`)
-        :param mode: Optional permission mode string (e.g. "0755")
-        :returns: dict with {'changed': bool}
-        :raises: AnsibleActionFail on error
+        Creates a directory on the remote host using fallback-compatible
+        methods, optionally applying a permission mode.
+
+        :param str target_path: The remote directory path to create
+        :param Optional[dict] task_vars: Ansible task_vars from ``run()``
+        :param bool parents: Whether to create parent directories
+            (``mkdir -p``)
+        :param Optional[str] mode: Optional permission mode string
+            (e.g. "0755")
+        :returns dict: Dictionary with ``changed`` boolean key
+        :raises AnsibleActionFail: On directory creation error
         """
         self._display.vvv(f"Creating directory: {target_path}")
 
@@ -348,41 +336,38 @@ class PosixBase(ActionBase):
 
         return {"rc": mkdir_results["rc"], "changed": True, "raw": stat["raw"]}
 
-    def _quote(self, s):
-        """
-        Quote a string for safe use in shell commands on the remote host.
+    def _quote(self, s: str) -> str:
+        """Quote a string for safe use in shell commands.
 
-        This method uses the remote connection's shell quoting logic if
-        available (e.g., for non-POSIX shells), falling back to Python's
-        `shlex.quote()` for standard POSIX-compatible escaping.
+        Uses the remote connection's shell quoting logic if available
+        (e.g., for non-POSIX shells), falling back to Python's
+        ``shlex.quote()`` for standard POSIX-compatible escaping.
 
-        :param s: the string to quote
-        :return: the safely quoted string
+        :param str s: The string to quote
+        :returns str: The safely quoted string
         """
         shell = self._connection._shell
         return getattr(shell, "quote", shlex.quote)(s)
 
-    def _generate_ansible_backup_path(self, target_path):
-        """
-        Generate an Ansible-style backup file name based on the path.
+    def _generate_ansible_backup_path(self, target_path: str) -> str:
+        """Generate an Ansible-style backup file name based on the path.
 
-        The format is: <path>.<md5_digest>.<UTC timestamp>
+        The format is: ``<path>.<md5_digest>.<UTC timestamp>``
 
-        :param path: The full remote file path to back up.
-        :return: Backup file name as a string.
+        :param str target_path: The full remote file path to back up
+        :returns str: Backup file name as a string
         """
         digest = hashlib.md5(target_path.encode("utf-8")).hexdigest()
         timestamp = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")
         return f"{target_path}.{digest}.{timestamp}"
 
-    def _validate_file(self, tmpfile, validate_cmd, task_vars=None):
-        """
-        Run a validation command against a temporary file.
+    def _validate_file(self, tmpfile: str, validate_cmd: str, task_vars: Optional[Dict[str, Any]] = None) -> None:
+        """Run a validation command against a temporary file.
 
-        :param tmpfile: the temporary file to validate
-        :param validate_cmd: the validation command template
-        :param task_vars: task vars from the calling action
-        :raises: AnsibleActionFail if validation fails
+        :param str tmpfile: The temporary file to validate
+        :param str validate_cmd: The validation command template
+        :param Optional[dict] task_vars: Task vars from the calling action
+        :raises AnsibleActionFail: If validation fails
         """
         self._display.vvv(f"Validating {tmpfile}")
         if not validate_cmd:
@@ -398,14 +383,14 @@ class PosixBase(ActionBase):
                 f"{result.get('stderr', '')}"
             )
 
-    def _create_backup(self, dest, task_vars=None):
-        """
-        Create a backup of the destination file if it exists.
+    def _create_backup(self, dest: str, task_vars: Optional[Dict[str, Any]] = None) -> Optional[str]:
+        """Create a backup of the destination file if it exists.
 
-        :param dest: destination file to back up
-        :param task_vars: task vars from the calling action
-        :returns: path to the backup file or None if not created
-        :raises: AnsibleActionFail if backup fails
+        :param str dest: Destination file to back up
+        :param Optional[dict] task_vars: Task vars from the calling action
+        :returns Optional[str]: Path to the backup file or None if not
+            created
+        :raises AnsibleActionFail: If backup fails
         """
         result = self._cmd(["test", "-e", dest], task_vars=task_vars)
         if result['rc'] != 0:
@@ -422,18 +407,19 @@ class PosixBase(ActionBase):
 
         return backup_path
 
-    def _handle_selinux_context(self, dest, perms, task_vars=None):
-        """
-        Apply SELinux context to the destination file.
+    def _handle_selinux_context(self, dest: str, perms: Dict[str, Any], task_vars: Optional[Dict[str, Any]] = None) -> None:
+        """Apply SELinux context to the destination file.
 
-        If both 'semanage' and 'restorecon' are available, persist the context
-        via semanage and apply it with restorecon. Otherwise, fall back to
-        chcon.
+        If both ``semanage`` and ``restorecon`` are available, persist
+        the context via semanage and apply it with restorecon. Otherwise,
+        fall back to ``chcon``.
 
-        :param dest: Target file path on the remote host
-        :param perms: Dict of SELinux keys (seuser, serole, setype, selevel)
-        :param task_vars: Ansible task_vars from the calling context
-        :raises: AnsibleActionFail if context application fails
+        :param str dest: Target file path on the remote host
+        :param dict perms: Dictionary of SELinux keys (seuser, serole,
+            setype, selevel)
+        :param Optional[dict] task_vars: Ansible task_vars from the
+            calling context
+        :raises AnsibleActionFail: If context application fails
         """
         self._display.vvv(f"Handling SELinux for {dest}")
         if not perms:
@@ -497,21 +483,20 @@ class PosixBase(ActionBase):
                 f"{result.get('stderr', '')}"
             )
 
-    def _which(self, binary, task_vars=None):
-        """
-        Locate the full path of a binary using POSIX-compliant methods.
+    def _which(self, binary: str, task_vars: Optional[Dict[str, Any]] = None) -> Optional[str]:
+        """Locate the full path of a binary using POSIX-compliant methods.
 
         Attempts to resolve the path to an executable by first using the
-        POSIX-compliant `command -v`, and falls back to `which` if necessary.
-        If the binary is a shell builtin or function, returns its name.
+        POSIX-compliant ``command -v``, and falls back to ``which`` if
+        necessary. If the binary is a shell builtin or function, returns
+        its name.
 
-        Args:
-            binary (str): The name of the binary to locate (e.g., 'chcon').
-            task_vars (dict): Ansible task variables passed to the _cmd method.
-
-        Returns:
-            str or None: Path to the binary or the name if it's a shell
-                         builtin.
+        :param str binary: The name of the binary to locate
+            (e.g., "chcon")
+        :param Optional[dict] task_vars: Ansible task variables passed
+            to the ``_cmd`` method
+        :returns Optional[str]: Path to the binary or the name if it's
+            a shell builtin
         """
         # POSIX-compliant check first
         cmd_result = self._cmd(
@@ -539,35 +524,28 @@ class PosixBase(ActionBase):
 
         return None
 
-    def _get_perms(self, target, selinux=False, task_vars=None):
-        """
-        Retrieve POSIX file permissions (and optionally SELinux context)
-        for a given file or directory using `ls`.
+    def _get_perms(self, target: str, selinux: bool = False, task_vars: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        """Retrieve POSIX file permissions using ``ls``.
 
-        When `selinux=True`, the SELinux context (if available) is also
-        parsed and returned alongside mode, owner, and group. Any trailing
-        ACL/attribute indicators (e.g., '+', '@') are stripped from the
-        mode field.
+        Retrieves POSIX file permissions and optionally SELinux context
+        for a given file or directory. When ``selinux=True``, the SELinux
+        context (if available) is also parsed and returned alongside mode,
+        owner, and group. Any trailing ACL/attribute indicators
+        (e.g., "+", "@") are stripped from the mode field.
 
-        Args:
-            target (str): Path to the file or directory to inspect.
-            task_vars (dict): Ansible task variables for command execution.
-            selinux (bool): Whether to include SELinux context information.
-
-        Returns:
-            dict: {
-                'mode' (str): Symbolic file mode (e.g., '-rw-r--r--'),
-                'owner' (str): File owner,
-                'group' (str): File group,
-                Optional SELinux keys:
-                    'seuser' (str): SELinux user,
-                    'setype' (str): SELinux type,
-                    'serole' (str): SELinux role,
-                    'selevel' (str): SELinux level
-            }
-
-        Raises:
-            AnsibleActionFail: If the `ls` command fails or produces unexpected output.
+        :param str target: Path to the file or directory to inspect
+        :param bool selinux: Whether to include SELinux context
+            information
+        :param Optional[dict] task_vars: Ansible task variables for
+            command execution
+        :returns dict: Dictionary containing file permissions with keys:
+            - ``mode`` (str): Symbolic file mode (e.g., "-rw-r--r--")
+            - ``owner`` (str): File owner
+            - ``group`` (str): File group
+            - Optional SELinux keys: ``seuser``, ``setype``, ``serole``,
+              ``selevel``
+        :raises AnsibleActionFail: If the ``ls`` command fails or
+            produces unexpected output
         """
         self._display.vvv(f"Getting permissions of {target}")
         ls_args = ["ls"]
@@ -617,20 +595,19 @@ class PosixBase(ActionBase):
                 "group": group,
             }
 
-    def _normalize_content(self, content):
-        """
-        Normalize input content to a list of lines and a
-        newline-terminated string.
+    def _normalize_content(self, content: Union[str, List[str]]) -> Tuple[List[str], str]:
+        """Normalize input content to a list of lines and string.
 
         Accepts either a string or a list of strings/numbers. Ensures the
-        output string ends with a newline character and all list elements are
-        converted to strings. Raises an AnsibleActionFail on unsupported input
-        types.
+        output string ends with a newline character and all list elements
+        are converted to strings. Raises an AnsibleActionFail on
+        unsupported input types.
 
-        :param content: The input to normalize (str or list of str/int/float)
-        :return: Tuple (lines: List[str], content: str)
-        :raises: AnsibleActionFail if input is of invalid type or contains
-                 non-stringlike items
+        :param Union[str, List[Union[str, int, float]]] content: The input
+            to normalize
+        :returns Tuple[List[str], str]: Tuple of (lines, content)
+        :raises AnsibleActionFail: If input is of invalid type or contains
+            non-stringlike items
         """
         if isinstance(content, str):
             lines = content.splitlines()
@@ -649,10 +626,17 @@ class PosixBase(ActionBase):
         self._display.vvv(f"Normalized lines: {lines}")
         return lines, normalized
 
-    def _write_temp_file(self, lines, tmpfile, task_vars=None):
-        """
-        Write lines to a remote temp file using `tee` and stdin,
-        then chmod it to 0600.
+    def _write_temp_file(self, lines: List[str], tmpfile: str, task_vars: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        """Write lines to a remote temp file using ``tee`` and stdin.
+
+        Writes content to a temporary file on the remote host, then applies
+        ``chmod 0600`` for security.
+
+        :param List[str] lines: Content lines to write
+        :param str tmpfile: Temporary file path on remote host
+        :param Optional[dict] task_vars: Ansible task variables
+        :returns dict: Result from the ``tee`` command
+        :raises AnsibleActionFail: If writing or chmod fails
         """
         self._display.vvv(f"Writing to temp file: {tmpfile}")
         lines_str = "\n".join(lines)
@@ -677,9 +661,8 @@ class PosixBase(ActionBase):
             )
         return write_result
 
-    def _check_selinux_tools(self, perms, task_vars):
-        """
-        Check whether SELinux tools are available if SELinux parameters
+    def _check_selinux_tools(self, perms: Dict[str, Any], task_vars: Dict[str, Any]) -> bool:
+        """Check whether SELinux tools are available if SELinux parameters
         are requested. Raises AnsibleActionFail if required tools are missing.
 
         :param perms: dict of permission settings
@@ -722,13 +705,17 @@ class PosixBase(ActionBase):
 
         return True
 
-    def _convert_octal_mode_to_symbolic(self, octal_mode):
-        """
-        Convert an octal representation of POSIX mode permissions into symbols.
+    def _convert_octal_mode_to_symbolic(self, octal_mode: Union[str, int]) -> str:
+        """Convert octal mode permissions to symbolic representation.
 
-        :param octal_mode: A stringable octal mode (e.g. 644, '0755')
-        :return: String of the symbolic mode without type or ACL symbols
-        :raises: AnsibleActionFail on conversion error
+        Converts an octal representation of POSIX mode permissions into
+        symbolic format without type or ACL symbols.
+
+        :param Union[str, int] octal_mode: A stringable octal mode
+            (e.g. 644, "0755")
+        :returns str: String of the symbolic mode without type or ACL
+            symbols
+        :raises AnsibleActionFail: On conversion error
         """
         int_mode = int(str(octal_mode), 8)
         try:
@@ -742,22 +729,24 @@ class PosixBase(ActionBase):
 
     def _compare_content_and_perms(
         self,
-        dest,
-        lines,
-        perms=None,
-        selinux=False,
-        task_vars=None,
-    ):
-        """
-        Compare existing file contents and permissions to the desired state.
+        dest: str,
+        lines: List[str],
+        perms: Optional[Dict[str, Any]] = None,
+        selinux: bool = False,
+        task_vars: Optional[Dict[str, Any]] = None,
+    ) -> Tuple[bool, Optional[str], List[str]]:
+        """Compare existing file contents and permissions to desired state.
 
-        :param dest: Path to destination file on the remote host
-        :param lines: Desired content lines to compare
-        :param perms: Desired permissions dict (may include owner, group, mode, etc.)
-        :param selinux: Whether SELinux attributes are in use
-        :param task_vars: Ansible task_vars from run()
-        :return: Tuple of (changed: bool, old_content: str, old_lines: List[str])
-        :raises: AnsibleActionFail on invalid input
+        :param str dest: Path to destination file on the remote host
+        :param List[str] lines: Desired content lines to compare
+        :param Optional[dict] perms: Desired permissions dict (may
+            include owner, group, mode, etc.)
+        :param bool selinux: Whether SELinux attributes are in use
+        :param Optional[dict] task_vars: Ansible task_vars from
+            ``run()``
+        :returns Tuple[bool, Optional[str], List[str]]: Tuple of
+            (changed, old_content, old_lines)
+        :raises AnsibleActionFail: On invalid input
         """
         self._display.vvv(f"Comparing content and permissions with {dest}")
         changed = False
@@ -811,21 +800,23 @@ class PosixBase(ActionBase):
         return changed, old_content, old_lines
 
     def _apply_perms_and_selinux(
-            self, dest, perms, selinux=False, task_vars=None
-    ):
-        """
-        Apply ownership, permission mode, and SELinux context to a remote file.
+            self, dest: str, perms: Dict[str, Any], selinux: bool = False, task_vars: Optional[Dict[str, Any]] = None
+    ) -> None:
+        """Apply ownership, permission mode, and SELinux context to file.
 
-        This method sets the owner, group, and file mode on the destination
-        path if specified in `perms`. It also applies the SELinux context if
-        `selinux` is True. Then verifies the applied values match expectations.
+        Sets the owner, group, and file mode on the destination path if
+        specified in ``perms``. Also applies the SELinux context if
+        ``selinux`` is True. Then verifies the applied values match
+        expectations.
 
-        :param dest: Remote file path to update
-        :param perms: Dictionary with keys 'owner', 'group', 'mode', etc.
-        :param selinux: Boolean indicating whether SELinux handling is enabled
-        :param task_vars: Ansible task variables
-        :raises: AnsibleActionFail on failure to apply or verify any permission or
-                 SELinux step
+        :param str dest: Remote file path to update
+        :param dict perms: Dictionary with keys "owner", "group",
+            "mode", etc.
+        :param bool selinux: Boolean indicating whether SELinux handling
+            is enabled
+        :param Optional[dict] task_vars: Ansible task variables
+        :raises AnsibleActionFail: On failure to apply or verify any
+            permission or SELinux step
         """
         self._display.vvv(f"Applying permissions to {dest}")
         cmd = self._cmd
@@ -895,14 +886,16 @@ class PosixBase(ActionBase):
                         f"Invalid mode format: {perms['mode']}: {e}"
                     )
 
-    def _make_raw_tmp_path(self, task_vars=None):
-        """
-        Create a temporary directory on the remote host using raw shell fallback.
+    def _make_raw_tmp_path(self, task_vars: Optional[Dict[str, Any]] = None) -> str:
+        """Create a temporary directory using raw shell fallback.
 
-        Returns:
-            str: The path to the created temporary directory.
-        Raises:
-            AnsibleActionFail: If directory creation fails.
+        Creates a temporary directory on the remote host using raw shell
+        commands when standard Ansible temporary directory creation is
+        not available.
+
+        :param Optional[dict] task_vars: Ansible task variables
+        :returns str: The path to the created temporary directory
+        :raises AnsibleActionFail: If directory creation fails
         """
         cmd = self._cmd
         shell = self._connection._shell
@@ -925,27 +918,34 @@ class PosixBase(ActionBase):
 
     def _write_file(
         self,
-        content,
-        dest,
-        perms=None,
-        backup=False,
-        validate_cmd=None,
-        check_mode=None,
-        task_vars=None,
-    ):
-        """
-        Write content to the destination file on the remote host using
-        fallback-compatible methods. Also supports optional validation,
-        backup creation, and permission handling.
+        content: Union[str, List[str]],
+        dest: str,
+        perms: Optional[Dict[str, Any]] = None,
+        backup: bool = False,
+        validate_cmd: Optional[str] = None,
+        check_mode: Optional[bool] = None,
+        task_vars: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        """Write content to destination file using fallback-compatible methods.
 
-        :param content: a string or a list of strings to write
-        :param dest: the remote destination file path
-        :param task_vars: Ansible task_vars from run()
-        :param perms: dict with keys like owner, group, mode, seuser, etc.
-        :param backup: whether to back up the existing file
-        :param validate_cmd: shell command for validation, should include '%s'
-        :return: dict with 'changed', 'rc', 'msg', and optional 'backup_file'
-        :raises: AnsibleActionFail on any critical failure
+        Writes content to the destination file on the remote host with
+        support for optional validation, backup creation, and permission
+        handling.
+
+        :param Union[str, List[str]] content: A string or list of strings
+            to write
+        :param str dest: The remote destination file path
+        :param Optional[dict] perms: Dictionary with keys like owner,
+            group, mode, seuser, etc.
+        :param bool backup: Whether to back up the existing file
+        :param Optional[str] validate_cmd: Shell command for validation,
+            should include "%s"
+        :param Optional[bool] check_mode: Whether to run in check mode
+        :param Optional[dict] task_vars: Ansible task_vars from
+            ``run()``
+        :returns dict: Dictionary with "changed", "rc", "msg", and
+            optional "backup_file"
+        :raises AnsibleActionFail: On any critical failure
         """
         self._display.vvv(f"Starting _write_file to {dest}")
 
@@ -1040,7 +1040,7 @@ class PosixBase(ActionBase):
                 results['msg'] = 'File written successfully'
             else:
                 self._display.vvv('Files identical, no change necessary')
-                results['msg']: "File not changed"
+                results['msg'] = "File not changed"
 
         results['rc'] = 0
 
@@ -1050,17 +1050,20 @@ class PosixBase(ActionBase):
         self._display.vvv(f"_write_file completed: {results}")
         return results
 
-    def _mk_dest_dir(self, file_path, task_vars=None):
-        """
-        Create the parent directory of the target file if it does not exist.
+    def _mk_dest_dir(self, file_path: str, task_vars: Optional[Dict[str, Any]] = None) -> None:
+        """Create the parent directory of the target file if needed.
 
-        Returns:
-            dict: {
-                'changed' (bool): True if directory would be or was created,
-                'failed' (bool): True if directory creation failed
-                                 (only in non-check mode),
-                'msg' (str): Error message if applicable
-            }
+        Creates the parent directory of the target file if it does not
+        exist.
+
+        :param str file_path: The target file path
+        :param Optional[dict] task_vars: Ansible task variables
+        :returns dict: Dictionary with keys:
+            - ``changed`` (bool): True if directory would be or was
+              created
+            - ``failed`` (bool): True if directory creation failed
+              (only in non-check mode)
+            - ``msg`` (str): Error message if applicable
         """
         self._display.vvv(f"Starting _mk_dest_dir ({file_path})")
         dir_path = path.dirname(file_path)

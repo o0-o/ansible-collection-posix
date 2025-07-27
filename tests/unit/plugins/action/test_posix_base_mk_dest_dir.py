@@ -9,7 +9,10 @@
 #
 # This file is part of the o0_o.posix Ansible Collection.
 
+from __future__ import annotations
+
 import os
+
 import pytest
 
 
@@ -23,13 +26,8 @@ import pytest
 )
 def test_mk_dest_dir_behavior(
     monkeypatch, base, exists, check_mode, should_create, expect_change
-):
-    """
-    Test _mk_dest_dir in normal conditions:
-    - Directory exists => no change (changed not set or False)
-    - Directory missing + check mode => change flagged
-    - Directory missing + create => actually created
-    """
+) -> None:
+    """Test _mk_dest_dir behavior in various conditions."""
     base._task.check_mode = check_mode
     base.results = {}
 
@@ -56,11 +54,8 @@ def test_mk_dest_dir_behavior(
         assert base.results.get("changed") is not True
 
 
-def test_mk_dest_dir_mkdir_failure(monkeypatch, base):
-    """
-    Simulate a failure during directory creation and ensure the
-    failure is captured in the results dict.
-    """
+def test_mk_dest_dir_mkdir_failure(monkeypatch, base) -> None:
+    """Test _mk_dest_dir handles mkdir failures properly."""
     base._task.check_mode = False
     base.results = {}
 

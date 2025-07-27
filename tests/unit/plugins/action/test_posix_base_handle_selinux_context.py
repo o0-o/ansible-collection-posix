@@ -9,9 +9,12 @@
 #
 # This file is part of the o0_o.posix Ansible Collection.
 
+from __future__ import annotations
+
 import pytest
-from ansible_collections.o0_o.posix.tests.utils import generate_temp_path
+
 from ansible.errors import AnsibleActionFail
+from ansible_collections.o0_o.posix.tests.utils import generate_temp_path
 
 
 @pytest.mark.parametrize(
@@ -103,11 +106,8 @@ from ansible.errors import AnsibleActionFail
 )
 def test_handle_selinux_context_logic(
     base, perms, which_map, expected_cmds, fail_cmd, expected_error
-):
-    """
-    Unit test for _handle_selinux_context().
-    Mocks _which() and _cmd() to simulate tool presence and command outcomes.
-    """
+) -> None:
+    """Test _handle_selinux_context with various tool configurations."""
     dest = generate_temp_path()
     issued_cmds = []
 

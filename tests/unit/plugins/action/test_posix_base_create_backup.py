@@ -9,8 +9,11 @@
 #
 # This file is part of the o0_o.posix Ansible Collection.
 
-import pytest
+from __future__ import annotations
 from unittest.mock import MagicMock
+
+import pytest
+
 from ansible.errors import AnsibleActionFail
 
 
@@ -19,7 +22,7 @@ from ansible.errors import AnsibleActionFail
     (True, True, False),   # File exists, cp succeeds, returns path
     (True, False, True),   # File exists, cp fails, error
 ])
-def test_create_backup_behavior(base, file_exists, cp_success, expect_error):
+def test_create_backup_behavior(base, file_exists, cp_success, expect_error) -> None:
     """Test _create_backup handles existence, success, and error cases."""
     dest_path = "/tmp/testfile.txt"
 
@@ -42,8 +45,8 @@ def test_create_backup_behavior(base, file_exists, cp_success, expect_error):
             assert result is None
 
 
-def test_generate_ansible_backup_path_format(base):
-    """Ensure backup path is correctly generated."""
+def test_generate_ansible_backup_path_format(base) -> None:
+    """Test backup path generation format."""
     path = "/etc/hosts"
     backup_path = base._generate_ansible_backup_path(path)
 

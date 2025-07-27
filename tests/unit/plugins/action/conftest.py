@@ -9,19 +9,34 @@
 #
 # This file is part of the o0_o.posix Ansible Collection.
 
+from __future__ import annotations
+
 import os
 import tempfile
-import pytest
+from typing import Generator
 from unittest.mock import MagicMock
+
+import pytest
+
 from ansible_collections.o0_o.posix.plugins.action_utils import PosixBase
 from ansible_collections.o0_o.posix.tests.utils import real_cmd
 
 
 @pytest.fixture
-def base():
-    """
-    Create a mocked PosixBase instance for unit testing with real command
-    execution and isolated tmpdir for file operations.
+def base() -> Generator[PosixBase, None, None]:
+    """Create a mocked PosixBase instance for unit testing.
+    
+    Provides a PosixBase instance with mocked Ansible dependencies
+    but real command execution capabilities for integration-style
+    testing. Creates an isolated temporary directory for file
+    operations.
+    
+    :returns Generator[PosixBase, None, None]: Configured PosixBase
+        instance with mocked dependencies and real command execution
+    
+    .. note::
+       This fixture uses real command execution via real_cmd for
+       testing actual POSIX command behavior.
     """
     # MagicMock action to override command execution
     action = MagicMock()

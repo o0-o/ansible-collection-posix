@@ -9,7 +9,10 @@
 #
 # This file is part of the o0_o.posix Ansible Collection.
 
+from __future__ import annotations
+
 import pytest
+
 from ansible.errors import AnsibleActionFail
 
 
@@ -116,11 +119,8 @@ from ansible.errors import AnsibleActionFail
 def test_compare_content_and_perms(
     base, old_stat, old_content, old_perms,
     content, perms, selinux, expect_change
-):
-    """
-    Unit test for _compare_content_and_perms().
-    Covers file existence, content differences, permission changes, and SELinux metadata.
-    """
+) -> None:
+    """Test _compare_content_and_perms logic."""
     dest = "/tmp/testfile"
 
     base._pseudo_stat = lambda path, task_vars=None: old_stat

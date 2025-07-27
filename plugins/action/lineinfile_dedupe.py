@@ -15,17 +15,30 @@
 
 from __future__ import annotations
 
+import re
+from typing import Any, Dict, Optional
+
 from ansible.errors import AnsibleActionFail
 from ansible.module_utils.common.file import get_file_arg_spec
 from ansible.module_utils.common.text.converters import to_text
 from ansible_collections.o0_o.posix.plugins.action_utils import PosixBase
-import re
 
 
 class ActionModule(PosixBase):
-    """
-    Insert or remove a line in a file with optional deduplication,
-    and fallback support for raw mode if the Python interpreter is missing.
+    """Insert or remove lines in files with deduplication and raw fallback.
+    
+    This action plugin provides enhanced lineinfile functionality with
+    built-in deduplication capabilities and automatic fallback to raw
+    mode when Python interpreter is unavailable on the remote host.
+    
+    The plugin supports all standard lineinfile operations including
+    line insertion, replacement, removal, and complex pattern matching
+    with regular expressions. It adds deduplication logic to
+    automatically remove duplicate lines when inserting content.
+    
+    .. note::
+       This plugin does not transfer files but modifies them in place
+       on remote hosts. It supports both native and raw execution modes.
     """
 
     TRANSFERS_FILES = False
@@ -462,16 +475,25 @@ class ActionModule(PosixBase):
 
         return new_module_args
 
-    def run(self, tmp=None, task_vars=None):
-        """
-        Main entry point for the action plugin.
-
-        Performs its own line presence/removal logic with raw fallback support,
-        including reading, editing, and writing the file using POSIX-safe
-        methods.
-
-        Returns:
-            dict: Standard Ansible result dictionary.
+    def run(
+        self, tmp: Optional[str] = None, task_vars: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
+        """Main entry point for the lineinfile_dedupe action plugin.
+        
+        Performs line presence/removal logic with deduplication and raw
+        fallback support, including reading, editing, and writing files
+        using POSIX-safe methods.
+        
+        :param Optional[str] tmp: Temporary directory path (unused in
+            modern Ansible)
+        :param Optional[Dict[str, Any]] task_vars: Task variables dictionary
+        :returns Dict[str, Any]: Standard Ansible result dictionary
+        :raises AnsibleActionFail: When file operations fail, validation
+            errors occur, or write operations are unsuccessful
+        
+        .. note::
+           This method coordinates argument validation, file reading,
+           line manipulation, and file writing with proper error handling.
         """
         self._display.vvv("Starting lineinfile_dedupe run()")
         task_vars = task_vars or {}

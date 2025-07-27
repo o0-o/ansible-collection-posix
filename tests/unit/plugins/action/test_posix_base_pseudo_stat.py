@@ -9,8 +9,12 @@
 #
 # This file is part of the o0_o.posix Ansible Collection.
 
+from __future__ import annotations
+
 import os
+
 import pytest
+
 from ansible.errors import AnsibleActionFail
 
 
@@ -21,12 +25,8 @@ from ansible.errors import AnsibleActionFail
 ])
 def test_pseudo_stat_detects_type(
     base, tmp_path, file_type, flag, expected_type, is_symlink
-):
-    """
-    Verify that _pseudo_stat correctly detects common POSIX types:
-    regular file, directory, and symlink.
-    Also verifies symlink tracking for symlinked paths.
-    """
+) -> None:
+    """Test _pseudo_stat detects common POSIX file types."""
     # Create appropriate test file
     target = tmp_path / f"test_{file_type}"
     if file_type == "file":
@@ -45,21 +45,16 @@ def test_pseudo_stat_detects_type(
     assert result["is_symlink"] is is_symlink
 
 
-def test_pseudo_stat_nonexistent(base):
-    """
-    Verify that _pseudo_stat correctly reports a non-existent file.
-    """
+def test_pseudo_stat_nonexistent(base) -> None:
+    """Test _pseudo_stat reports non-existent files correctly."""
     fake_path = "/tmp/this/path/should/not/exist"
     result = base._pseudo_stat(fake_path)
     assert result["exists"] is False
     assert result["type"] is None
 
 
-def test_pseudo_stat_unsupported_type(base, tmp_path):
-    """
-    Verify that _pseudo_stat raises an error if the file exists
-    but matches none of the expected POSIX types.
-    """
+def test_pseudo_stat_unsupported_type(base, tmp_path) -> None:
+    """Test _pseudo_stat raises error for unsupported file types."""
     # Make a named pipe (FIFO) and test it
     fifo_path = tmp_path / "fifo"
     os.mkfifo(fifo_path)
