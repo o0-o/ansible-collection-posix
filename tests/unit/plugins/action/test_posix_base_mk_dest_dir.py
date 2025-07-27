@@ -29,7 +29,7 @@ def test_mk_dest_dir_behavior(
 ) -> None:
     """Test _mk_dest_dir behavior in various conditions."""
     base._task.check_mode = check_mode
-    base.results = {}
+    base.result = {}
 
     file_path = "/tmp/some/deep/path/file.txt"
     dir_path = os.path.dirname(file_path)
@@ -48,16 +48,16 @@ def test_mk_dest_dir_behavior(
     base._mk_dest_dir(file_path, task_vars={})
 
     if expect_change:
-        assert base.results.get("changed") is True
+        assert base.result.get("changed") is True
     else:
         # We only assume changed will NOT be True, not necessarily set at all
-        assert base.results.get("changed") is not True
+        assert base.result.get("changed") is not True
 
 
 def test_mk_dest_dir_mkdir_failure(monkeypatch, base) -> None:
     """Test _mk_dest_dir handles mkdir failures properly."""
     base._task.check_mode = False
-    base.results = {}
+    base.result = {}
 
     file_path = "/tmp/fail/path/file.txt"
 
@@ -73,6 +73,6 @@ def test_mk_dest_dir_mkdir_failure(monkeypatch, base) -> None:
 
     base._mk_dest_dir(file_path, task_vars={})
 
-    assert base.results['failed'] is True
-    assert "Error creating" in base.results['msg']
-    assert base.results['rc'] == 256
+    assert base.result['failed'] is True
+    assert "Error creating" in base.result['msg']
+    assert base.result['rc'] == 256

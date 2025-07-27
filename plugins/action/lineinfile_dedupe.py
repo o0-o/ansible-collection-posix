@@ -26,16 +26,16 @@ from ansible_collections.o0_o.posix.plugins.action_utils import PosixBase
 
 class ActionModule(PosixBase):
     """Insert or remove lines in files with deduplication and raw fallback.
-    
+
     This action plugin provides enhanced lineinfile functionality with
     built-in deduplication capabilities and automatic fallback to raw
     mode when Python interpreter is unavailable on the remote host.
-    
+
     The plugin supports all standard lineinfile operations including
     line insertion, replacement, removal, and complex pattern matching
     with regular expressions. It adds deduplication logic to
     automatically remove duplicate lines when inserting content.
-    
+
     .. note::
        This plugin does not transfer files but modifies them in place
        on remote hosts. It supports both native and raw execution modes.
@@ -74,7 +74,7 @@ class ActionModule(PosixBase):
                 "Creating destination parent directories (create=true)"
             )
             self._mk_dest_dir(self.path, task_vars=task_vars)
-            if self.results.get('failed', False):
+            if self.result.get('failed', False):
                 self._display.vvv("Directory creation failed, aborting")
                 return
 
@@ -201,7 +201,7 @@ class ActionModule(PosixBase):
         if insert_index is not None:
             self.new_lines.insert(insert_index, self.line)
             keep_index = insert_index
-            self.results['msg'] = 'line added'
+            self.result['msg'] = 'line added'
             self._display.vvv(f"Inserted line at index {insert_index}")
 
         elif replace_index is not None:
@@ -215,7 +215,7 @@ class ActionModule(PosixBase):
 
             self.new_lines[replace_index] = expanded_line
             keep_index = replace_index
-            self.results['msg'] = 'line replaced'
+            self.result['msg'] = 'line replaced'
             self._display.vvv(
                 f"Replaced line at index {replace_index} with: {expanded_line}"
             )
@@ -245,7 +245,7 @@ class ActionModule(PosixBase):
                     f"Removing duplicate at line: {self.new_lines[1]}"
                 )
                 del self.new_lines[i]
-            self.results['msg'] += f" {dedupe_count} lines deduped"
+            self.result['msg'] += f" {dedupe_count} lines deduped"
             self._display.vvv(f"{dedupe_count} lines deduped")
 
     def _remove_matching_lines(self, task_vars=None):
@@ -266,7 +266,7 @@ class ActionModule(PosixBase):
                 self.new_lines.append(cur_line)
 
         self._display.vvv(f"{removed_count} lines removed")
-        self.results.update({
+        self.result.update({
             'found': removed_count,
             'msg': (
                 f"{removed_count} line(s) removed"
@@ -286,7 +286,7 @@ class ActionModule(PosixBase):
         - Setting default insertion behavior if none specified
 
         Sets `self.re_m` and `self.re_ins` for later use.
-        Updates `self.results` with failure info if validation fails.
+        Updates `self.result` with failure info if validation fails.
         """
         self._display.vvv("Auditing arguments")
 
@@ -308,17 +308,17 @@ class ActionModule(PosixBase):
 
         # Fileysystem state
         self.stat = self._pseudo_stat(self.path, task_vars=task_vars)
-        self.results['raw'] = self.stat['raw']
+        self.result['raw'] = self.stat['raw']
         if self.stat['exists']:
             if self.stat['type'] != 'file':
-                self.results.update({
+                self.result.update({
                     'changed': False,
                     'rc': 256,
                     'msg': f"Path {self.path} is a {self.stat['type']}!",
                     'failed': True
                 })
         elif not self.create:
-            self.results.update({
+            self.result.update({
                 'changed': False,
                 'rc': 257,
                 'msg': f"Destination {self.path} does not exist!",
@@ -328,12 +328,12 @@ class ActionModule(PosixBase):
         # Argument dependencies
         if self.state == 'present':
             if self.backrefs and not self.regexp:
-                self.results.update({
+                self.result.update({
                     'msg': 'regexp is required with backrefs=true',
                     'failed': True,
                 })
             if not self.line:
-                self.results.update({
+                self.result.update({
                     'msg': 'line is required with state=present',
                     'failed': True,
                 })
@@ -345,7 +345,7 @@ class ActionModule(PosixBase):
                     self.regexp, self.search_string, self.line
                 ]
             ):
-                self.results.update({
+                self.result.update({
                     'msg': (
                         'one of line, search_string, or regexp is required '
                         'with state=absent'
@@ -400,13 +400,13 @@ class ActionModule(PosixBase):
         self.lines = []
 
         if self.stat['exists']:
-            slurp_results = self._slurp(self.path, task_vars=task_vars)
-            if slurp_results.get('failed', False):
+            slurp_result = self._slurp(self.path, task_vars=task_vars)
+            if slurp_result.get('failed', False):
                 raise AnsibleActionFail(
                     f"Could not read contents of file '{self.path}': "
-                    f"{slurp_results['msg']}"
+                    f"{slurp_result['msg']}"
                 )
-            self.lines = slurp_results['content'].splitlines()
+            self.lines = slurp_result['content'].splitlines()
 
     def _def_args(self):
         """
@@ -479,18 +479,18 @@ class ActionModule(PosixBase):
         self, tmp: Optional[str] = None, task_vars: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
         """Main entry point for the lineinfile_dedupe action plugin.
-        
+
         Performs line presence/removal logic with deduplication and raw
         fallback support, including reading, editing, and writing files
         using POSIX-safe methods.
-        
+
         :param Optional[str] tmp: Temporary directory path (unused in
             modern Ansible)
         :param Optional[Dict[str, Any]] task_vars: Task variables dictionary
         :returns Dict[str, Any]: Standard Ansible result dictionary
         :raises AnsibleActionFail: When file operations fail, validation
             errors occur, or write operations are unsuccessful
-        
+
         .. note::
            This method coordinates argument validation, file reading,
            line manipulation, and file writing with proper error handling.
@@ -501,8 +501,8 @@ class ActionModule(PosixBase):
         new_module_args = self._def_args()
         self._display.vvv(f"new_module_args: {new_module_args}")
 
-        self.results = super(ActionModule, self).run(tmp, task_vars=task_vars)
-        self.results.update({
+        self.result = super(ActionModule, self).run(tmp, task_vars=task_vars)
+        self.result.update({
             'invocation': self._task.args.copy(),
             'changed': False,
             'raw': False,
@@ -511,7 +511,7 @@ class ActionModule(PosixBase):
         del tmp  # tmp is unused
 
         self._audit_args(task_vars=task_vars)
-        if not self.results.get('failed', False):
+        if not self.result.get('failed', False):
 
             self._read_file(task_vars=task_vars)
 
@@ -520,10 +520,10 @@ class ActionModule(PosixBase):
             else:
                 self._remove_matching_lines(task_vars=task_vars)
 
-            if not self.results.get('failed', False):
+            if not self.result.get('failed', False):
                 try:
-                    changed = self.results['changed']
-                    write_results = self._write_file(
+                    changed = self.result['changed']
+                    write_result = self._write_file(
                         content=self.new_lines,
                         dest=self.path,
                         perms=self.perms,
@@ -532,13 +532,13 @@ class ActionModule(PosixBase):
                         check_mode=self._task.check_mode,
                         task_vars=task_vars,
                     )
-                    self.results.update(write_results)
+                    self.result.update(write_result)
                     # This is not really necessary, but worth
                     # keeping in mind in case things change in the
                     # future.
-                    self.results['changed'] |= changed
+                    self.result['changed'] |= changed
                 except Exception as e:
-                    self.results.update({
+                    self.result.update({
                         'failed': True,
                         'msg': f"Failed to write file: {to_text(e)}"
                     })
@@ -546,4 +546,4 @@ class ActionModule(PosixBase):
         # Clean up temporary files
         self._remove_tmp_path(self._connection._shell.tmpdir)
 
-        return self.results
+        return self.result

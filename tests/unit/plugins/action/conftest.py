@@ -25,15 +25,15 @@ from ansible_collections.o0_o.posix.tests.utils import real_cmd
 @pytest.fixture
 def base() -> Generator[PosixBase, None, None]:
     """Create a mocked PosixBase instance for unit testing.
-    
+
     Provides a PosixBase instance with mocked Ansible dependencies
     but real command execution capabilities for integration-style
     testing. Creates an isolated temporary directory for file
     operations.
-    
+
     :returns Generator[PosixBase, None, None]: Configured PosixBase
         instance with mocked dependencies and real command execution
-    
+
     .. note::
        This fixture uses real command execution via real_cmd for
        testing actual POSIX command behavior.

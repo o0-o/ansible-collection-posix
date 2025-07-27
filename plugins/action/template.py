@@ -36,17 +36,17 @@ from ansible_collections.o0_o.posix.plugins.action_utils import PosixBase
 
 class ActionModule(PosixBase):
     """Template files with Jinja2 and transfer to remote hosts.
-    
+
     This action plugin processes Jinja2 templates with configurable
     syntax and transfers the rendered content to remote hosts. It
     supports custom template delimiters, newline handling, and
     automatic fallback to raw mode when Python is unavailable on
     the remote host.
-    
+
     The plugin preserves file permissions when requested and supports
     all standard file module parameters including backup, validation,
     and SELinux context handling.
-    
+
     .. note::
        This plugin transfers files to remote hosts and requires
        a connection. It supports both native and raw execution modes.
@@ -60,15 +60,15 @@ class ActionModule(PosixBase):
 
     def _def_args(self) -> Dict[str, Any]:
         """Define and parse module arguments using the file argument spec.
-        
+
         Builds a comprehensive argument specification that includes all
         file module parameters plus template-specific options like
         Jinja2 syntax customization and raw mode forcing.
-        
+
         :returns Dict[str, Any]: The validated argument dictionary
             containing all parsed and validated module parameters
         :raises AnsibleActionFail: When argument validation fails
-        
+
         .. note::
            This method removes the 'attributes' parameter from the file
            argument spec as it's not supported by this plugin.
@@ -126,21 +126,21 @@ class ActionModule(PosixBase):
         self, tmp: Optional[str] = None, task_vars: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
         """Main entry point for the template action plugin.
-        
+
         Processes Jinja2 templates with custom syntax options and
         transfers the rendered content to remote hosts. Automatically
         falls back to raw mode when Python interpreter is unavailable
         on the remote host.
-        
+
         :param Optional[str] tmp: Temporary directory path (unused in
             modern Ansible)
         :param Optional[Dict[str, Any]] task_vars: Task variables dictionary
             containing template context
         :returns Dict[str, Any]: Standard Ansible result dictionary
-        
+
         :raises AnsibleActionFail: When template processing fails,
             required parameters are missing, or file operations fail
-        
+
         .. note::
            This method attempts native execution first via the copy
            module, then falls back to raw POSIX file operations if
@@ -152,8 +152,8 @@ class ActionModule(PosixBase):
 
         new_module_args = self._def_args()
 
-        self.results = super(ActionModule, self).run(tmp, task_vars=task_vars)
-        self.results.update({
+        self.result = super(ActionModule, self).run(tmp, task_vars=task_vars)
+        self.result.update({
             'invocation': self._task.args.copy(),
             'changed': False,
             'raw': False,
@@ -271,9 +271,9 @@ class ActionModule(PosixBase):
                 if not self._is_interpreter_missing(copy_result):
                     self._display.vvv("Delegated to ansible.builtin.copy")
                     copy_result.pop('invocation', None)
-                    self.results['raw'] = False
-                    self.results.update(copy_result)
-                    return self.results
+                    self.result['raw'] = False
+                    self.result.update(copy_result)
+                    return self.result
                 else:
                     self._display.vvv(
                         "Python missing — falling back to raw mode"
@@ -308,10 +308,10 @@ class ActionModule(PosixBase):
                             check_mode=self._task.check_mode,
                             task_vars=task_vars,
                         )
-                        self.results.update(write_result)
+                        self.result.update(write_result)
 
                     elif not force:
-                        self.results['msg'] = (
+                        self.result['msg'] = (
                             "File exists and force is disabled, taking no "
                             "action"
                         )
@@ -319,10 +319,10 @@ class ActionModule(PosixBase):
                     else:
                         raise AnsibleActionFail("We should never get here")
 
-                    self.results['raw'] = True
+                    self.result['raw'] = True
 
                 except Exception as e:
-                    self.results.update({
+                    self.result.update({
                         'failed': True,
                         'msg': f"Template rendering or writing failed: {e}"
                     })
@@ -333,4 +333,4 @@ class ActionModule(PosixBase):
             ))
             self._remove_tmp_path(self._connection._shell.tmpdir)
 
-        return self.results
+        return self.result

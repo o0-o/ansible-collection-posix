@@ -35,18 +35,18 @@ else:
 
 class ActionModule(PosixBase):
     """Execute a command on the remote host with raw fallback support.
-    
+
     This action plugin provides robust command execution that
     automatically falls back to raw shell execution when Python is not
     available on the remote host. It supports all standard command
     module features including shell execution, directory changes,
     conditional execution based on file existence, and argument
     validation.
-    
+
     The plugin first attempts to use the standard Ansible command
     module, and if that fails due to missing Python interpreter,
     it seamlessly falls back to low-level shell execution.
-    
+
     .. note::
        This plugin requires the 'packaging' Python module for version
        comparison functionality.
@@ -59,18 +59,18 @@ class ActionModule(PosixBase):
 
     def _raw_cmd(self, module_args: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """Execute a command using low-level methods.
-        
+
         Performs command execution using direct shell invocation when
         the standard Ansible command module is unavailable due to missing
         Python interpreter on the remote host.
-        
+
         :param Optional[Dict[str, Any]] module_args: Module arguments
             dictionary containing command parameters
         :returns Dict[str, Any]: Command execution result dictionary
             containing stdout, stderr, return code, and timing information
         :raises AnsibleActionFail: When command execution fails or
             arguments are invalid
-        
+
         .. note::
            This method handles shell vs non-shell execution modes,
            directory changes, and creates/removes conditional logic.
@@ -244,20 +244,20 @@ class ActionModule(PosixBase):
         self, tmp: Optional[str] = None, task_vars: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
         """Execute the command action with raw fallback capability.
-        
+
         Main entry point that attempts command execution using the
         standard Ansible command module first, then falls back to raw
         shell execution if Python interpreter is missing on the remote
         host.
-        
+
         :param Optional[str] tmp: Temporary directory path (unused in
             modern Ansible)
         :param Optional[Dict[str, Any]] task_vars: Task variables dictionary
         :returns Dict[str, Any]: Standard Ansible result dictionary
-        
+
         :raises AnsibleActionFail: When the packaging module is missing,
             command arguments are invalid, or command execution fails
-        
+
         .. note::
            This method validates arguments against a comprehensive
            specification and handles version compatibility for the
@@ -314,8 +314,8 @@ class ActionModule(PosixBase):
                 "Only one of 'cmd', or 'argv' can be specified"
             )
 
-        results = super().run(tmp, task_vars)
-        results['invocation'] = self._task.args.copy()
+        result = super().run(tmp, task_vars)
+        result['invocation'] = self._task.args.copy()
         del tmp
 
         if not self.force_raw:
@@ -332,8 +332,8 @@ class ActionModule(PosixBase):
             ansible_cmd_mod.pop('invocation', None)
 
             if not self._is_interpreter_missing(ansible_cmd_mod):
-                results.update(ansible_cmd_mod)
-                results['raw'] = False
+                result.update(ansible_cmd_mod)
+                result['raw'] = False
             else:
                 self._display.warning(
                     "Ansible command module failed on host "
@@ -343,11 +343,11 @@ class ActionModule(PosixBase):
                 self.force_raw = True
 
         if self.force_raw:
-            cmd_results = self._raw_cmd(module_args=new_module_args)
-            stderr = cmd_results.get('module_stderr', '').lower()
-            results.update(cmd_results)
-            results['raw'] = True
+            cmd_result = self._raw_cmd(module_args=new_module_args)
+            stderr = cmd_result.get('module_stderr', '').lower()
+            result.update(cmd_result)
+            result['raw'] = True
 
         self._remove_tmp_path(self._connection._shell.tmpdir)
 
-        return results
+        return result

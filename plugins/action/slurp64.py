@@ -20,16 +20,16 @@ from ansible_collections.o0_o.posix.plugins.action_utils import PosixBase
 
 class ActionModule(PosixBase):
     """Read file contents from remote hosts with raw fallback support.
-    
+
     This action plugin reads file contents from remote hosts using the
     standard Ansible slurp module, automatically falling back to raw
     'cat' execution when Python interpreter is unavailable on the
     remote host.
-    
+
     The plugin decodes base64 content returned by the slurp module
     and provides UTF-8 decoded content in the 'content' key, along
     with 'content_lines' for convenient line-by-line access.
-    
+
     .. note::
        This plugin does not transfer files but requires a connection
        to read from remote hosts. It supports both native slurp and
@@ -46,19 +46,19 @@ class ActionModule(PosixBase):
         self, tmp: Optional[str] = None, task_vars: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
         """Read file contents from remote host with raw fallback.
-        
+
         Attempts to read file contents using the standard Ansible slurp
         module first, then falls back to raw 'cat' execution if Python
         interpreter is missing on the remote host.
-        
+
         :param Optional[str] tmp: Temporary directory path (unused in
             modern Ansible)
         :param Optional[Dict[str, Any]] task_vars: Task variables dictionary
         :returns Dict[str, Any]: Standard Ansible result dictionary
-        
+
         :raises AnsibleActionFail: When file reading fails, base64
             decoding fails, or required parameters are missing
-        
+
         .. note::
            This method validates the 'src' parameter and supports
            '_force_raw' to bypass native slurp module usage.
@@ -85,17 +85,17 @@ class ActionModule(PosixBase):
         )
 
         # Initialize the result structure from the base Action class
-        results = super().run(tmp, task_vars)
-        results["invocation"] = self._task.args.copy()
-        results['msg'] = ''
+        result = super().run(tmp, task_vars)
+        result["invocation"] = self._task.args.copy()
+        result['msg'] = ''
         del tmp
 
         if self.force_raw:
             self._display.vvv("slurp64: forcing raw mode, calling _cat()")
-            cat_results = self._cat(src, task_vars=task_vars)
-            self._display.vvv(f"slurp64: _cat() returned {cat_results}")
-            results.update(cat_results)
-            results['raw'] = True
+            cat_result = self._cat(src, task_vars=task_vars)
+            self._display.vvv(f"slurp64: _cat() returned {cat_result}")
+            result.update(cat_result)
+            result['raw'] = True
         else:
             self._display.vvv("slurp64: attempting ansible.builtin.slurp")
 
@@ -109,7 +109,7 @@ class ActionModule(PosixBase):
                     f"slurp64: builtin slurp: {ansible_slurp_mod}"
                 )
                 ansible_slurp_mod.pop('invocation')
-                results['raw'] = False
+                result['raw'] = False
             except Exception as e:
                 self._display.warning(
                     f"Error calling ansible.builtin.slurp: {str(e)}"
@@ -129,12 +129,12 @@ class ActionModule(PosixBase):
                 self._display.vvv(
                     "slurp64: falling back to _cat() due to interpreter error"
                 )
-                cat_results = self._cat(src, task_vars=task_vars)
+                cat_result = self._cat(src, task_vars=task_vars)
                 self._display.vvv(
-                    f"slurp64: _cat() fallback returned {cat_results}"
+                    f"slurp64: _cat() fallback returned {cat_result}"
                 )
-                results.update(cat_results)
-                results['raw'] = True
+                result.update(cat_result)
+                result['raw'] = True
             else:
                 if 'content' in ansible_slurp_mod:
                     self._display.vvv("slurp64: decoding slurp content")
@@ -155,18 +155,18 @@ class ActionModule(PosixBase):
                         "slurp64: builtin slurp did not return 'content'"
                     )
 
-                results.update(ansible_slurp_mod)
+                result.update(ansible_slurp_mod)
 
-        if 'content' in results:
-            results['content_lines'] = results['content'].splitlines()
+        if 'content' in result:
+            result['content_lines'] = result['content'].splitlines()
             self._display.vvv(
-                f"slurp64: split content into {len(results['content_lines'])} "
+                f"slurp64: split content into {len(result['content_lines'])} "
                 "lines"
             )
 
-        results['changed'] = False
+        result['changed'] = False
 
-        self._display.vvv("slurp64: finished run(), returning results")
+        self._display.vvv("slurp64: finished run(), returning result")
         self._remove_tmp_path(self._connection._shell.tmpdir)
 
-        return results
+        return result

@@ -21,16 +21,16 @@ from ansible_collections.o0_o.posix.plugins.action_utils.posix_base import (
 
 class ActionModule(PosixBase):
     """Gather basic POSIX kernel and hardware facts.
-    
+
     This action plugin collects minimal operating system and hardware
     information from remote POSIX-compliant systems using standard
     uname commands. It provides facts under the o0_os and o0_hardware
     namespaces.
-    
+
     The plugin supports subset filtering to gather only specific
     categories of facts (kernel, architecture) and gracefully handles
     non-POSIX systems by skipping fact collection.
-    
+
     .. note::
        This plugin requires a connection to the remote host and uses
        the uname command which should be available on all POSIX
@@ -47,10 +47,10 @@ class ActionModule(PosixBase):
         self, task_vars: Optional[Dict[str, Any]] = None
     ) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         """Collect minimal OS facts from the remote POSIX system using uname.
-        
+
         Executes uname commands to gather kernel name, version, and
         architecture information from the remote system.
-        
+
         :param Optional[Dict[str, Any]] task_vars: Task variables dictionary
         :returns Tuple[Dict[str, Any], Dict[str, Any]]: Tuple containing
             (kernel_facts, cpu_facts) dictionaries
@@ -95,19 +95,19 @@ class ActionModule(PosixBase):
         self, tmp: Optional[str] = None, task_vars: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
         """Main entry point for the action plugin.
-        
+
         Gathers POSIX kernel and hardware facts based on the specified
         subset filter and returns them under the o0_os and o0_hardware
         fact namespaces.
-        
+
         :param Optional[str] tmp: Temporary directory path (unused in
             modern Ansible)
         :param Optional[Dict[str, Any]] task_vars: Task variables dictionary
         :returns Dict[str, Any]: Standard Ansible result dictionary
-        
+
         :raises AnsibleActionFail: When invalid gather_subset values are
             provided
-        
+
         .. note::
            This method validates the gather_subset parameter against
            allowed values: 'all', 'kernel', 'arch', '!all', '!kernel',

@@ -60,17 +60,19 @@ class PosixBase(ActionBase):
     """
 
     def run(
-        self, tmp: Optional[str] = None, task_vars: Optional[Dict[str, Any]] = None
+        self,
+        tmp: Optional[str] = None,
+        task_vars: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
         """Base run method that initializes the result structure.
-        
+
         This replaces the NotImplementedError with a minimal implementation
         so that child classes can safely call super().run() to get a
-        standard results dict.
-        
+        standard result dict.
+
         :param Optional[str] tmp: Temporary path (unused in modern Ansible)
         :param Optional[Dict[str, Any]] task_vars: Task variables dictionary
-        :returns Dict[str, Any]: Initial results dictionary
+        :returns Dict[str, Any]: Initial result dictionary
         """
         return super().run(tmp, task_vars)
 
@@ -103,7 +105,11 @@ class PosixBase(ActionBase):
         return False
 
     def _run_action(
-        self, plugin_name: str, plugin_args: Dict[str, Any], task_vars: Optional[Dict[str, Any]] = None, check_mode: Optional[bool] = None
+        self,
+        plugin_name: str,
+        plugin_args: Dict[str, Any],
+        task_vars: Optional[Dict[str, Any]] = None,
+        check_mode: Optional[bool] = None
     ) -> Dict[str, Any]:
         """Execute another action plugin using the provided arguments.
 
@@ -151,7 +157,12 @@ class PosixBase(ActionBase):
 
         return result
 
-    def _cmd(self, cmd: Union[str, List[str]], stdin: Optional[str] = None, task_vars: Optional[Dict[str, Any]] = None, check_mode: Optional[bool] = None) -> Dict[str, Any]:
+    def _cmd(
+        self, cmd: Union[str, List[str]],
+        stdin: Optional[str] = None,
+        task_vars: Optional[Dict[str, Any]] = None,
+        check_mode: Optional[bool] = None
+    ) -> Dict[str, Any]:
         """Run the fallback-compatible 'command' action plugin with arguments.
 
         :param Union[str, List[str]] cmd: Command to execute. Can be a shell
@@ -182,7 +193,11 @@ class PosixBase(ActionBase):
             check_mode=check_mode,
         )
 
-    def _slurp(self, src: str, task_vars: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    def _slurp(
+        self,
+        src: str,
+        task_vars: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
         """Run the fallback-compatible 'slurp64' action plugin to read remote files.
 
         :param str src: The path to the file to slurp on the remote host
@@ -196,32 +211,36 @@ class PosixBase(ActionBase):
             task_vars=task_vars,
         )
 
-    def _cat(self, src: str, task_vars: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    def _cat(
+        self,
+        src: str,
+        task_vars: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
         """Fallback method to read the contents of a file using 'cat'.
 
         :param str src: Path to the file on the remote host
         :param Optional[dict] task_vars: Dictionary of task variables from
             the calling task
-        :returns dict: Dictionary with read results or error
+        :returns dict: Dictionary with read result or error
         """
         cmd_result = self._cmd(
             ['cat', src],
             task_vars=task_vars,
             check_mode=False
         )
-        results = {'changed': False, 'raw': cmd_result.get('raw', False)}
-        results['source'] = src
+        result = {'changed': False, 'raw': cmd_result.get('raw', False)}
+        result['source'] = src
 
         stdout = cmd_result.pop('stdout', None)
         stderr = cmd_result.pop('stderr', None)
 
         if cmd_result.get('rc') != 0:
-            results['failed'] = True
-            results['msg'] = stderr.strip() or stdout.strip()
+            result['failed'] = True
+            result['msg'] = stderr.strip() or stdout.strip()
         else:
-            results['content'] = stdout.replace('\r', '')
+            result['content'] = stdout.replace('\r', '')
 
-        return results
+        return result
 
     def _sanitize_args(self, args: Dict[str, Any]) -> Dict[str, Any]:
         """Return a copy of the argument dictionary with all None values removed.
@@ -235,7 +254,11 @@ class PosixBase(ActionBase):
         """
         return {k: v for k, v in args.items() if v is not None}
 
-    def _pseudo_stat(self, target_path: str, task_vars: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    def _pseudo_stat(
+        self,
+        target_path: str,
+        task_vars: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
         """Fallback-compatible file stat using POSIX ``test`` commands.
 
         This method uses a combination of ``test`` shell commands to detect
@@ -327,14 +350,14 @@ class PosixBase(ActionBase):
             args.extend(["-m", mode])
         args.append(target_path)
 
-        mkdir_results = self._cmd(args, task_vars=task_vars)
-        if mkdir_results["rc"] != 0:
+        mkdir_result = self._cmd(args, task_vars=task_vars)
+        if mkdir_result["rc"] != 0:
             raise AnsibleActionFail(
                 f"Failed to create directory '{target_path}': "
-                f"{mkdir_results.get('stderr', '').strip()}"
+                f"{mkdir_result.get('stderr', '').strip()}"
             )
 
-        return {"rc": mkdir_results["rc"], "changed": True, "raw": stat["raw"]}
+        return {"rc": mkdir_result["rc"], "changed": True, "raw": stat["raw"]}
 
     def _quote(self, s: str) -> str:
         """Quote a string for safe use in shell commands.
@@ -361,7 +384,12 @@ class PosixBase(ActionBase):
         timestamp = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")
         return f"{target_path}.{digest}.{timestamp}"
 
-    def _validate_file(self, tmpfile: str, validate_cmd: str, task_vars: Optional[Dict[str, Any]] = None) -> None:
+    def _validate_file(
+        self,
+        tmpfile: str,
+        validate_cmd: str,
+        task_vars: Optional[Dict[str, Any]] = None
+    ) -> None:
         """Run a validation command against a temporary file.
 
         :param str tmpfile: The temporary file to validate
@@ -383,7 +411,11 @@ class PosixBase(ActionBase):
                 f"{result.get('stderr', '')}"
             )
 
-    def _create_backup(self, dest: str, task_vars: Optional[Dict[str, Any]] = None) -> Optional[str]:
+    def _create_backup(
+        self,
+        dest: str,
+        task_vars: Optional[Dict[str, Any]] = None
+    ) -> Optional[str]:
         """Create a backup of the destination file if it exists.
 
         :param str dest: Destination file to back up
@@ -407,7 +439,11 @@ class PosixBase(ActionBase):
 
         return backup_path
 
-    def _handle_selinux_context(self, dest: str, perms: Dict[str, Any], task_vars: Optional[Dict[str, Any]] = None) -> None:
+    def _handle_selinux_context(
+        self, dest:
+        str, perms: Dict[str, Any],
+        task_vars: Optional[Dict[str, Any]] = None
+    ) -> None:
         """Apply SELinux context to the destination file.
 
         If both ``semanage`` and ``restorecon`` are available, persist
@@ -483,7 +519,11 @@ class PosixBase(ActionBase):
                 f"{result.get('stderr', '')}"
             )
 
-    def _which(self, binary: str, task_vars: Optional[Dict[str, Any]] = None) -> Optional[str]:
+    def _which(
+        self,
+        binary: str,
+        task_vars: Optional[Dict[str, Any]] = None
+    ) -> Optional[str]:
         """Locate the full path of a binary using POSIX-compliant methods.
 
         Attempts to resolve the path to an executable by first using the
@@ -524,7 +564,12 @@ class PosixBase(ActionBase):
 
         return None
 
-    def _get_perms(self, target: str, selinux: bool = False, task_vars: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    def _get_perms(
+        self,
+        target: str,
+        selinux: bool = False,
+        task_vars: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
         """Retrieve POSIX file permissions using ``ls``.
 
         Retrieves POSIX file permissions and optionally SELinux context
@@ -555,11 +600,11 @@ class PosixBase(ActionBase):
             ls_args.append("-ld")
         ls_args.append(target)
 
-        cmd_results = self._cmd(ls_args, task_vars=task_vars)
-        if cmd_results["rc"] != 0:
-            raise AnsibleActionFail(f"Could not stat {target}: {cmd_results['stderr']}")
+        cmd_result = self._cmd(ls_args, task_vars=task_vars)
+        if cmd_result["rc"] != 0:
+            raise AnsibleActionFail(f"Could not stat {target}: {cmd_result['stderr']}")
 
-        parts = cmd_results["stdout_lines"][0].split()
+        parts = cmd_result["stdout_lines"][0].split()
 
         if selinux:
             try:
@@ -572,7 +617,7 @@ class PosixBase(ActionBase):
             except Exception:
                 raise AnsibleActionFail(
                     "Unexpected SELinux output from ls -Zd: "
-                    f"{cmd_results['stdout']}"
+                    f"{cmd_result['stdout']}"
                 )
 
             return {
@@ -595,7 +640,10 @@ class PosixBase(ActionBase):
                 "group": group,
             }
 
-    def _normalize_content(self, content: Union[str, List[str]]) -> Tuple[List[str], str]:
+    def _normalize_content(
+            self,
+            content: Union[str, List[str]]
+    ) -> Tuple[List[str], str]:
         """Normalize input content to a list of lines and string.
 
         Accepts either a string or a list of strings/numbers. Ensures the
@@ -626,7 +674,12 @@ class PosixBase(ActionBase):
         self._display.vvv(f"Normalized lines: {lines}")
         return lines, normalized
 
-    def _write_temp_file(self, lines: List[str], tmpfile: str, task_vars: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    def _write_temp_file(
+        self,
+        lines: List[str],
+        tmpfile: str,
+        task_vars: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
         """Write lines to a remote temp file using ``tee`` and stdin.
 
         Writes content to a temporary file on the remote host, then applies
@@ -705,7 +758,10 @@ class PosixBase(ActionBase):
 
         return True
 
-    def _convert_octal_mode_to_symbolic(self, octal_mode: Union[str, int]) -> str:
+    def _convert_octal_mode_to_symbolic(
+        self,
+        octal_mode: Union[str, int]
+    ) -> str:
         """Convert octal mode permissions to symbolic representation.
 
         Converts an octal representation of POSIX mode permissions into
@@ -800,7 +856,11 @@ class PosixBase(ActionBase):
         return changed, old_content, old_lines
 
     def _apply_perms_and_selinux(
-            self, dest: str, perms: Dict[str, Any], selinux: bool = False, task_vars: Optional[Dict[str, Any]] = None
+        self,
+        dest: str,
+        perms: Dict[str, Any],
+        selinux: bool = False,
+        task_vars: Optional[Dict[str, Any]] = None
     ) -> None:
         """Apply ownership, permission mode, and SELinux context to file.
 
@@ -886,7 +946,10 @@ class PosixBase(ActionBase):
                         f"Invalid mode format: {perms['mode']}: {e}"
                     )
 
-    def _make_raw_tmp_path(self, task_vars: Optional[Dict[str, Any]] = None) -> str:
+    def _make_raw_tmp_path(
+        self,
+        task_vars: Optional[Dict[str, Any]] = None
+    ) -> str:
         """Create a temporary directory using raw shell fallback.
 
         Creates a temporary directory on the remote host using raw shell
@@ -905,15 +968,15 @@ class PosixBase(ActionBase):
             # Try to create a tmp dir like Ansible's default: /tmp/ansible_xyz
             self._display.vvv("Creating temporary directory")
             tmp_path_cmd = ['mktemp', '-d', '/tmp/ansible.XXXXXX']
-            cmd_results = cmd(tmp_path_cmd, task_vars=task_vars)
+            cmd_result = cmd(tmp_path_cmd, task_vars=task_vars)
 
-            if cmd_results['rc'] != 0 or not cmd_results['stdout']:
+            if cmd_result['rc'] != 0 or not cmd_result['stdout']:
                 raise AnsibleActionFail(
                     "Failed to create temporary directory via raw fallback: "
-                    f"{cmd_results['stderr']}"
+                    f"{cmd_result['stderr']}"
                 )
 
-            tmpdir = cmd_results['stdout_lines'][0]
+            tmpdir = cmd_result['stdout_lines'][0]
             shell.tmpdir = tmpdir  # Simulate Ansible's behavior
 
     def _write_file(
@@ -953,7 +1016,7 @@ class PosixBase(ActionBase):
         shell = self._connection._shell
         backup_path = None
         check_mode = check_mode or False
-        results = {'changed': False}
+        result = {'changed': False}
 
         self._make_raw_tmp_path(task_vars=task_vars)
         tmpdir = shell.tmpdir
@@ -990,10 +1053,10 @@ class PosixBase(ActionBase):
         changed, old_content, old_lines = self._compare_content_and_perms(
             dest, lines, perms, selinux, task_vars=task_vars
         )
-        results['changed'] = changed
+        result['changed'] = changed
 
         # Calculate diff
-        if task_vars.get('diff', False) and results['changed']:
+        if task_vars.get('diff', False) and result['changed']:
             diff = '\n'.join(difflib.unified_diff(
                 old_lines,
                 lines,
@@ -1001,7 +1064,7 @@ class PosixBase(ActionBase):
                 tofile=dest,
                 lineterm=''
             ))
-            results['diff'] = {
+            result['diff'] = {
                 'before_header': dest,
                 'after_header': dest,
                 'before': old_content,
@@ -1012,17 +1075,17 @@ class PosixBase(ActionBase):
 
         if check_mode:
             self._display.vvv("Check mode is enabled")
-            if results['changed']:
-                results.update({
+            if result['changed']:
+                result.update({
                     'msg': 'Check mode: changes would have been made.'
                 })
             else:
-                results.update({
+                result.update({
                     'msg': 'Check mode: no changes needed.'
                 })
 
         else:
-            if results['changed']:
+            if result['changed']:
                 # Move the temp file to the final destination
                 mv_result = cmd(["mv", tmpfile, dest], task_vars=task_vars)
                 self._display.vvv(f"mv result: {mv_result}")
@@ -1037,20 +1100,24 @@ class PosixBase(ActionBase):
                     dest, perms, selinux, task_vars=task_vars
                 )
 
-                results['msg'] = 'File written successfully'
+                result['msg'] = 'File written successfully'
             else:
                 self._display.vvv('Files identical, no change necessary')
-                results['msg'] = "File not changed"
+                result['msg'] = "File not changed"
 
-        results['rc'] = 0
+        result['rc'] = 0
 
         if backup_path:
-            results["backup_file"] = backup_path
+            result["backup_file"] = backup_path
 
-        self._display.vvv(f"_write_file completed: {results}")
-        return results
+        self._display.vvv(f"_write_file completed: {result}")
+        return result
 
-    def _mk_dest_dir(self, file_path: str, task_vars: Optional[Dict[str, Any]] = None) -> None:
+    def _mk_dest_dir(
+        self,
+        file_path: str,
+        task_vars: Optional[Dict[str, Any]] = None
+    ) -> None:
         """Create the parent directory of the target file if needed.
 
         Creates the parent directory of the target file if it does not
@@ -1070,15 +1137,15 @@ class PosixBase(ActionBase):
         dir_stat = self._pseudo_stat(dir_path, task_vars=task_vars)
         if not dir_stat['exists']:
             if self._task.check_mode:
-                self.results['changed'] = True
+                self.result['changed'] = True
             else:
                 try:
-                    mkdir_results = self._mkdir(
+                    mkdir_result = self._mkdir(
                         dir_path, task_vars=task_vars
                     )
-                    self.results['changed'] = True
+                    self.result['changed'] = True
                 except Exception as e:
-                    self.results.update({
+                    self.result.update({
                         'rc': 256,
                         'msg': (
                             f"Error creating {dir_path} "
