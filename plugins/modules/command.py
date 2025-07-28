@@ -21,7 +21,7 @@ DOCUMENTATION = r'''
 ---
 module: command
 short_description: Execute commands on remote hosts with fallback support
-version_added: "1.0.0"
+version_added: '1.0.0'
 description:
   - This module executes commands on remote hosts using the built-in
     C(ansible.builtin.command) module.
@@ -137,7 +137,7 @@ notes:
 EXAMPLES = r'''
 - name: Run a simple command using argv
   o0_o.posix.command:
-    argv: ["ls", "-l", "/etc"]
+    argv: ['ls', '-l', '/etc']
 
 - name: Run a command using shell expression
   o0_o.posix.command:
@@ -147,12 +147,12 @@ EXAMPLES = r'''
 
 - name: Skip command if file already exists
   o0_o.posix.command:
-    argv: ["echo", "Hello world"]
+    argv: ['echo', 'Hello world']
     creates: /tmp/already_exists.txt
 
 - name: Force raw fallback (bypassing builtin command)
   o0_o.posix.command:
-    argv: ["uptime"]
+    argv: ['uptime']
     _force_raw: true
 '''
 
@@ -227,7 +227,7 @@ def main():
         },
         supports_check_mode=True,
     )
-    module.fail_json(msg="This module must be run via its action plugin.")
+    module.fail_json(msg='This module must be run via its action plugin.')
 
 
 if __name__ == '__main__':

@@ -18,7 +18,7 @@ DOCUMENTATION = r'''
 module: slurp64
 short_description: Read a remote file with decoding and raw fallback for
   minimal systems
-version_added: "1.0.0"
+version_added: '1.0.0'
 description:
   - Reads the content of a file from the remote system.
   - Attempts to use C(ansible.builtin.slurp) when a Python interpreter is
@@ -105,7 +105,7 @@ def main():
         },
         supports_check_mode=True,
     )
-    module.fail_json(msg="This module must be run via its action plugin.")
+    module.fail_json(msg='This module must be run via its action plugin.')
 
 
 if __name__ == '__main__':

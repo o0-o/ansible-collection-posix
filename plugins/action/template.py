@@ -73,7 +73,7 @@ class ActionModule(PosixBase):
            This method removes the 'attributes' parameter from the file
            argument spec as it's not supported by this plugin.
         """
-        self._display.vvv("Defining argument spec")
+        self._display.vvv('Defining argument spec')
         argument_spec = get_file_arg_spec()
         argument_spec.pop('attributes')
         argument_spec.update({
@@ -147,7 +147,7 @@ class ActionModule(PosixBase):
            Python is unavailable on the remote host.
         """
 
-        self._display.vvv("Starting template run()")
+        self._display.vvv('Starting template run()')
         task_vars = task_vars or {}
 
         new_module_args = self._def_args()
@@ -166,7 +166,7 @@ class ActionModule(PosixBase):
         src = new_module_args.get('src')
         dest = new_module_args.get('dest')
         if not src or not dest:
-            raise AnsibleActionFail("src and dest are required")
+            raise AnsibleActionFail('src and dest are required')
 
         # Extract options
         newline_sequence = new_module_args.get('newline_sequence')
@@ -269,21 +269,21 @@ class ActionModule(PosixBase):
                 copy_result = copy_action.run(task_vars=task_vars)
 
                 if not self._is_interpreter_missing(copy_result):
-                    self._display.vvv("Delegated to ansible.builtin.copy")
+                    self._display.vvv('Delegated to ansible.builtin.copy')
                     copy_result.pop('invocation', None)
                     self.result['raw'] = False
                     self.result.update(copy_result)
                     return self.result
                 else:
                     self._display.vvv(
-                        "Python missing — falling back to raw mode"
+                        'Python missing — falling back to raw mode'
                     )
                     self.force_raw = True
 
             if self.force_raw:
                 try:
                     self._display.vvv(
-                        "Creating parent directories (if needed)"
+                        'Creating parent directories (if needed)'
                     )
                     self._mk_dest_dir(dest, task_vars=task_vars)
 
@@ -312,12 +312,12 @@ class ActionModule(PosixBase):
 
                     elif not force:
                         self.result['msg'] = (
-                            "File exists and force is disabled, taking no "
-                            "action"
+                            'File exists and force is disabled, taking no '
+                            'action'
                         )
 
                     else:
-                        raise AnsibleActionFail("We should never get here")
+                        raise AnsibleActionFail('We should never get here')
 
                     self.result['raw'] = True
 

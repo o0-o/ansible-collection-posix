@@ -30,30 +30,30 @@ from ansible_collections.o0_o.posix.tests.utils import (
         # ({"owner": "root"}, False, False, None, {}),  # Can't chown
 
         # Group change
-        ({"group": "wheel"}, False, False, None, {}),
+        ({'group': 'wheel'}, False, False, None, {}),
 
         # Mode change
-        ({"mode": "0700"}, False, False, "rwx------", {}),
+        ({'mode': '0700'}, False, False, 'rwx------', {}),
 
         # Invalid mode
-        ({"mode": "bad"}, False, True, None, {}),
+        ({'mode': 'bad'}, False, True, None, {}),
 
         # SELinux metadata confirmation
         (
             {
-                "seuser": "system_u",
-                "setype": "etc_t",
-                "serole": "object_r",
-                "selevel": "s0"
+                'seuser': 'system_u',
+                'setype': 'etc_t',
+                'serole': 'object_r',
+                'selevel': 's0'
             },
             True,
             False,
             None,
             {
-                "seuser": "system_u",
-                "setype": "etc_t",
-                "serole": "object_r",
-                "selevel": "s0",
+                'seuser': 'system_u',
+                'setype': 'etc_t',
+                'serole': 'object_r',
+                'selevel': 's0',
             }
         ),
     ]
@@ -64,12 +64,12 @@ def test_apply_perms_and_selinux_confirmation(
     """Test _apply_perms_and_selinux against real files."""
     path = generate_temp_path()
     try:
-        with open(path, "w", encoding="utf-8") as f:
-            f.write("test")
+        with open(path, 'w', encoding='utf-8') as f:
+            f.write('test')
 
         # Stub _handle_selinux_context to confirm it's called when selinux=True
         called_selinux = {}
-        base._handle_selinux_context = lambda *a, **kw: called_selinux.setdefault("called", True)
+        base._handle_selinux_context = lambda *a, **kw: called_selinux.setdefault('called', True)
 
         # Mock _get_perms when selinux is True
         original_get_perms = base._get_perms
@@ -93,18 +93,18 @@ def test_apply_perms_and_selinux_confirmation(
             )
             confirmed = base._get_perms(path, selinux=False, task_vars={})
 
-            if perms.get("mode"):
-                assert confirmed["mode"] == expected_mode
+            if perms.get('mode'):
+                assert confirmed['mode'] == expected_mode
 
-            if perms.get("owner"):
-                assert confirmed["owner"] == perms["owner"]
+            if perms.get('owner'):
+                assert confirmed['owner'] == perms['owner']
 
-            if perms.get("group"):
-                assert confirmed["group"] == perms["group"]
+            if perms.get('group'):
+                assert confirmed['group'] == perms['group']
 
-            for key in ("seuser", "setype", "serole", "selevel"):
+            for key in ('seuser', 'setype', 'serole', 'selevel'):
                 if perms.get(key):
-                    assert called_selinux.get("called") is True
+                    assert called_selinux.get('called') is True
                     # These won't be in `confirmed` unless selinux=True
                     # So we confirm directly via the earlier mock
                     final = mock_get_perms(path, selinux=True)

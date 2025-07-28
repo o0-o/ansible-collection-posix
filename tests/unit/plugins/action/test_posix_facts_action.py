@@ -61,7 +61,7 @@ def test_get_kernel_and_hardware_connection_failure(monkeypatch, plugin) -> None
     monkeypatch.setattr(
         plugin, '_cmd',
         lambda *args, **kwargs: (x for x in ()).throw(
-            AnsibleConnectionFailure("connection lost")
+            AnsibleConnectionFailure('connection lost')
         )
     )
 
@@ -74,17 +74,17 @@ def test_run_skips_on_non_posix(monkeypatch, plugin) -> None:
     monkeypatch.setattr(
         plugin, '_cmd',
         lambda *args, **kwargs: (x for x in ()).throw(
-            RuntimeError("not POSIX")
+            RuntimeError('not POSIX')
         )
     )
 
     result = plugin.run(tmp=None, task_vars={})
 
     assert result.get('skipped') is True
-    assert "POSIX" in result.get('skip_reason', '')
+    assert 'POSIX' in result.get('skip_reason', '')
 
 
-@pytest.mark.parametrize("subset,expect_os,expect_hw", [
+@pytest.mark.parametrize('subset,expect_os,expect_hw', [
     (['all'], True, True),
     (['kernel'], True, False),
     (['arch'], False, True),

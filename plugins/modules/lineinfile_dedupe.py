@@ -21,7 +21,7 @@ DOCUMENTATION = r'''
 module: lineinfile_dedupe
 short_description: Manage lines in text files with deduplication and raw
   fallback support
-version_added: "1.1.0"
+version_added: '1.1.0'
 description:
   - Ensures a line is present or absent in a file.
   - Supports literal, regex, and string matching.
@@ -130,7 +130,7 @@ EXAMPLES = r'''
 - name: Ensure a line is present with deduplication
   o0_o.posix.lineinfile_dedupe:
     path: /etc/myapp.conf
-    line: "loglevel = DEBUG"
+    line: 'loglevel = DEBUG'
     regexp: '^loglevel\s*='
     create: true
 
@@ -143,7 +143,7 @@ EXAMPLES = r'''
 - name: Insert line after a comment section
   o0_o.posix.lineinfile_dedupe:
     path: /etc/myapp.conf
-    line: "enabled = true"
+    line: 'enabled = true'
     insertafter: '^# Enable logging'
     create: true
 '''
@@ -208,7 +208,7 @@ def main():
         supports_check_mode=True
     )
 
-    module.fail_json(msg="This module must be run via its action plugin.")
+    module.fail_json(msg='This module must be run via its action plugin.')
 
 
 if __name__ == '__main__':

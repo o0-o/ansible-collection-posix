@@ -157,7 +157,7 @@ class ActionModule(PosixBase):
                 )
 
         # Use creates/removes logic for check_mode idempotence
-        shoulda = "Would" if self._task.check_mode else "Did"
+        shoulda = 'Would' if self._task.check_mode else 'Did'
 
         if creates and not r['msg']:
             quoted_creates = shlex.quote(creates)
@@ -176,7 +176,7 @@ class ActionModule(PosixBase):
             if rm['rc'] != 0:
                 r['msg'] = (
                     f"{shoulda} not run command since '{removes}' "
-                    "does not exist"
+                    'does not exist'
                 )
                 r['stdout'] = f"skipped, since {removes} does not exist"
                 r['stdout_lines'] = [r['stdout']]
@@ -194,7 +194,7 @@ class ActionModule(PosixBase):
                 # Determine the final command to execute
                 if shell:
                     if is_iterable(args, include_strings=False):
-                        cmd_str = " ".join(shlex.quote(a) for a in args)
+                        cmd_str = ' '.join(shlex.quote(a) for a in args)
                     else:
                         cmd_str = args
                     cmd = shlex.join(['sh', '-c', cmd_str])
@@ -211,7 +211,7 @@ class ActionModule(PosixBase):
                 r['end'] = datetime.datetime.now()
             else:
                 r['rc'] = 0
-                r['msg'] = "Command would have run if not in check mode"
+                r['msg'] = 'Command would have run if not in check mode'
                 if creates is None and removes is None:
                     r['skipped'] = True
                     r['changed'] = False
@@ -226,12 +226,12 @@ class ActionModule(PosixBase):
         # module stdout/err and stdout/err lines lists.
         if r.get('stdout'):
             if strip:
-                r['stdout'] = to_text(r['stdout']).rstrip("\r\n")
+                r['stdout'] = to_text(r['stdout']).rstrip('\r\n')
             r['module_stdout'] = r['stdout']
             r['stdout_lines'] = r['stdout'].splitlines()
         if r.get('stderr'):
             if strip:
-                r['stderr'] = to_text(r['stderr']).rstrip("\r\n")
+                r['stderr'] = to_text(r['stderr']).rstrip('\r\n')
             r['module_stderr'] = r['stderr']
             r['stderr_lines'] = r['stderr'].splitlines()
 
@@ -292,11 +292,11 @@ class ActionModule(PosixBase):
             argument_spec=argument_spec
         )
         self.force_raw = new_module_args.pop('_force_raw')
-        if parse_version(ansible_version) < parse_version("2.16"):
-            if new_module_args.get("expand_argument_vars") is not None:
+        if parse_version(ansible_version) < parse_version('2.16'):
+            if new_module_args.get('expand_argument_vars') is not None:
                 raise AnsibleActionFail(
-                    "expand_argument_vars is not supported on Ansible "
-                    "versions before 2.16"
+                    'expand_argument_vars is not supported on Ansible '
+                    'versions before 2.16'
                 )
 
         input_keys = ('cmd', 'argv')
@@ -336,9 +336,9 @@ class ActionModule(PosixBase):
                 result['raw'] = False
             else:
                 self._display.warning(
-                    "Ansible command module failed on host "
+                    'Ansible command module failed on host '
                     f"{task_vars.get('inventory_hostname', 'UNKOWN')}, "
-                    "falling back to raw command."
+                    'falling back to raw command.'
                 )
                 self.force_raw = True
 

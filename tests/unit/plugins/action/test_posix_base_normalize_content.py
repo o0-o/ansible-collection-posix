@@ -17,11 +17,11 @@ from ansible.errors import AnsibleActionFail
 
 
 @pytest.mark.parametrize(
-    "input_str, expected_lines, expected_content",
+    'input_str, expected_lines, expected_content',
     [
-        ("foo\nbar\n", ["foo", "bar"], "foo\nbar\n"),
-        ("foo\nbar", ["foo", "bar"], "foo\nbar\n"),
-        ("", [], "\n"),
+        ('foo\nbar\n', ['foo', 'bar'], 'foo\nbar\n'),
+        ('foo\nbar', ['foo', 'bar'], 'foo\nbar\n'),
+        ('', [], '\n'),
     ]
 )
 def test_normalize_content_string(
@@ -34,11 +34,11 @@ def test_normalize_content_string(
 
 
 @pytest.mark.parametrize(
-    "input_list, expected_lines, expected_content",
+    'input_list, expected_lines, expected_content',
     [
-        (["foo", "bar"], ["foo", "bar"], "foo\nbar\n"),
-        (["foo", 123, 4.56], ["foo", "123", "4.56"], "foo\n123\n4.56\n"),
-        ([], [], "\n"),
+        (['foo', 'bar'], ['foo', 'bar'], 'foo\nbar\n'),
+        (['foo', 123, 4.56], ['foo', '123', '4.56'], 'foo\n123\n4.56\n'),
+        ([], [], '\n'),
     ]
 )
 def test_normalize_content_list(
@@ -51,17 +51,17 @@ def test_normalize_content_list(
 
 
 @pytest.mark.parametrize(
-    "invalid_content",
+    'invalid_content',
     [
         123,
         3.14,
         object(),
         [object()],
-        ["valid", object()],
-        [{"dict": "nope"}],
+        ['valid', object()],
+        [{'dict': 'nope'}],
     ]
 )
 def test_normalize_content_rejects_invalid_input(base, invalid_content) -> None:
     """Test _normalize_content rejects invalid input types."""
-    with pytest.raises(AnsibleActionFail, match="_write_file.*"):
+    with pytest.raises(AnsibleActionFail, match='_write_file.*'):
         base._normalize_content(invalid_content)

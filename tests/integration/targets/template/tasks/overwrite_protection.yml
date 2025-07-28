@@ -24,7 +24,7 @@
 - name: Prepare overwrite target file
   ansible.builtin.copy:
     dest: "{{ tmpl_test_dir }}/force_test.txt"
-    content: "Original content"
+    content: 'Original content'
     mode: '0644'
   when: not ansible_check_mode
 
@@ -48,7 +48,7 @@
 - name: 'Reset file before force=false test'
   ansible.builtin.copy:
     dest: "{{ tmpl_test_dir }}/force_test.txt"
-    content: "Original content"
+    content: 'Original content'
     mode: '0644'
   when: not ansible_check_mode
 
@@ -72,7 +72,7 @@
 - name: 'Setup file for check mode force=false test'
   ansible.builtin.copy:
     dest: "{{ tmpl_test_dir }}/check_protect.txt"
-    content: "Original content"
+    content: 'Original content'
     mode: '0644'
   when: not ansible_check_mode
 

@@ -52,7 +52,7 @@ class ActionModule(PosixBase):
         Ensure the specified line is present in the file, with optional
         insertion, replacement, or deduplication behavior.
         """
-        self._display.vvv("Ensuring line is present in file")
+        self._display.vvv('Ensuring line is present in file')
         self._display.vvv(f"Original lines: {self.lines}")
         self._display.vvv(f"Desired line: {self.line}")
         self._display.vvv(
@@ -60,7 +60,7 @@ class ActionModule(PosixBase):
         )
         self._display.vvv(
             f"insertafter: {self.insertafter}, insertbefore: "
-            "{self.insertbefore}"
+            f"{self.insertbefore}"
         )
         self._display.vvv(
             f"firstmatch: {self.firstmatch}, backrefs: {self.backrefs}, "
@@ -71,11 +71,11 @@ class ActionModule(PosixBase):
 
         if self.create:
             self._display.vvv(
-                "Creating destination parent directories (create=true)"
+                'Creating destination parent directories (create=true)'
             )
             self._mk_dest_dir(self.path, task_vars=task_vars)
             if self.result.get('failed', False):
-                self._display.vvv("Directory creation failed, aborting")
+                self._display.vvv('Directory creation failed, aborting')
                 return
 
         line_indices = []
@@ -87,7 +87,7 @@ class ActionModule(PosixBase):
         replace_index = None
         keep_index = None
 
-        self._display.vvv("Scanning lines for matches...")
+        self._display.vvv('Scanning lines for matches...')
 
         for lineno, cur_line in enumerate(self.lines):
             if self.regexp:
@@ -125,10 +125,10 @@ class ActionModule(PosixBase):
                 if not relative_insert_indices:
                     if self.insertbefore == 'BOF':
                         insert_index = 0
-                        self._display.vvv("No matches found, inserting at BOF")
+                        self._display.vvv('No matches found, inserting at BOF')
                     else:
                         insert_index = len(self.new_lines)
-                        self._display.vvv("No matches found, appending at EOF")
+                        self._display.vvv('No matches found, appending at EOF')
                 else:
                     if self.insertafter:
                         insert_index = (
@@ -136,7 +136,7 @@ class ActionModule(PosixBase):
                         )
                         self._display.vvv(
                             f"insertafter match at {insert_index - 1}, "
-                            "inserting at {insert_index}"
+                            f"inserting at {insert_index}"
                         )
                     elif self.insertbefore:
                         insert_index = relative_insert_indices[match_choice]
@@ -146,14 +146,14 @@ class ActionModule(PosixBase):
                     else:
                         raise AnsibleActionFail(
                             "'relative_insert_indices' should never be "
-                            "populated if insertafter and insertbefore are "
+                            'populated if insertafter and insertbefore are '
                             "'None'"
                         )
             else:
                 replace_index = match_indices[match_choice]
                 self._display.vvv(
                     f"regex/search match at line {replace_index} for "
-                    "replacement"
+                    'replacement'
                 )
         else:
             if relative_insert_indices:
@@ -166,12 +166,12 @@ class ActionModule(PosixBase):
                         # Keep instance closest to insertbefore match
                         keep_index = insertbefore_line_indices[-1]
                         self._display.vvv(
-                            "Exact line found before insertbefore line"
+                            'Exact line found before insertbefore line'
                         )
                     else:
                         insert_index = relative_insert_indices[match_choice]
                         self._display.vvv(
-                            "Inserting immediately before insertbefore match"
+                            'Inserting immediately before insertbefore match'
                         )
                 if self.insertafter:
                     insertafter_line_indices = [
@@ -182,14 +182,14 @@ class ActionModule(PosixBase):
                         # Keep instance closest to insertbefore match
                         keep_index = insertafter_line_indices[0]
                         self._display.vvv(
-                            "Exact line found after insertafter line"
+                            'Exact line found after insertafter line'
                         )
                     else:
                         insert_index = (
                             relative_insert_indices[match_choice] + 1
                         )
                         self._display.vvv(
-                            "Inserting immediately after insertafter match"
+                            'Inserting immediately after insertafter match'
                         )
             else:
                 keep_index = line_indices[match_choice]
@@ -223,17 +223,17 @@ class ActionModule(PosixBase):
         else:
             if keep_index:
                 self._display.vvv(
-                    "Line already present; no insert or replace needed"
+                    'Line already present; no insert or replace needed'
                 )
 
             elif not match_indices:
                 self._display.vvv(
-                    "No match or insertion index found, raising error"
+                    'No match or insertion index found, raising error'
                 )
                 raise AnsibleActionFail('No lines found, added or replaced')
 
         if self.dedupe:
-            self._display.vvv("Deduplication enabled, removing duplicates")
+            self._display.vvv('Deduplication enabled, removing duplicates')
             for i in match_indices + line_indices:
                 if i > keep_index and insert_index:
                     dedupe_indices.append(i + 1)
@@ -270,7 +270,7 @@ class ActionModule(PosixBase):
             'found': removed_count,
             'msg': (
                 f"{removed_count} line(s) removed"
-                if removed_count else "no changes made"
+                if removed_count else 'no changes made'
             ),
         })
 
@@ -288,7 +288,7 @@ class ActionModule(PosixBase):
         Sets `self.re_m` and `self.re_ins` for later use.
         Updates `self.result` with failure info if validation fails.
         """
-        self._display.vvv("Auditing arguments")
+        self._display.vvv('Auditing arguments')
 
         # regexp and search_string
         if '' in [self.regexp, self.search_string]:
@@ -383,7 +383,7 @@ class ActionModule(PosixBase):
                 return {
                     'failed': True,
                     'msg': (
-                        "Invalid insertbefore pattern: "
+                        'Invalid insertbefore pattern: '
                         f"{self.insertbefore}: {e}"
                     )
                 }
@@ -416,7 +416,7 @@ class ActionModule(PosixBase):
         Returns:
             dict: The validated argument dictionary.
         """
-        self._display.vvv("Defining argument spec")
+        self._display.vvv('Defining argument spec')
         argument_spec = get_file_arg_spec()
         argument_spec.pop('attributes')
         argument_spec.update({
@@ -495,7 +495,7 @@ class ActionModule(PosixBase):
            This method coordinates argument validation, file reading,
            line manipulation, and file writing with proper error handling.
         """
-        self._display.vvv("Starting lineinfile_dedupe run()")
+        self._display.vvv('Starting lineinfile_dedupe run()')
         task_vars = task_vars or {}
 
         new_module_args = self._def_args()

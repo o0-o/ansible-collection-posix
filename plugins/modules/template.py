@@ -17,7 +17,7 @@ DOCUMENTATION = r'''
 module: template
 short_description: Template a file out to a target host witih raw fallback
   support
-version_added: "1.2.0"
+version_added: '1.2.0'
 description:
   - Renders a Jinja2 template on the controller and transfers the result to
     the remote host.
@@ -60,12 +60,12 @@ options:
     description:
       - The string marking the beginning of a block.
     type: str
-    default: "{%"
+    default: '{%'
   block_end_string:
     description:
       - The string marking the end of a block.
     type: str
-    default: "%}"
+    default: '%}'
   force:
     description:
       - Force indicates that an existing file should be overwritten on change.
@@ -75,22 +75,22 @@ options:
     description:
       - The string marking the beginning of a print statement.
     type: str
-    default: "{{"
+    default: '{{'
   variable_end_string:
     description:
       - The string marking the end of a print statement.
     type: str
-    default: "}}"
+    default: '}}'
   comment_start_string:
     description:
       - The string marking the beginning of a comment.
     type: str
-    default: "{#"
+    default: '{#'
   comment_end_string:
     description:
       - The string marking the end of a comment.
     type: str
-    default: "#}"
+    default: '#}'
   trim_blocks:
     description:
       - If this is set to C(True), the first newline after a block is removed.
@@ -238,7 +238,7 @@ def main():
         supports_check_mode=True
     )
 
-    module.fail_json(msg="This module must be run via its action plugin.")
+    module.fail_json(msg='This module must be run via its action plugin.')
 
 
 if __name__ == '__main__':

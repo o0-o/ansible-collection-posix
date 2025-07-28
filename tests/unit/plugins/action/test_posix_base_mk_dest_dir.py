@@ -17,7 +17,7 @@ import pytest
 
 
 @pytest.mark.parametrize(
-    "exists,check_mode,should_create,expect_change",
+    'exists,check_mode,should_create,expect_change',
     [
         (True, False, False, False),   # already exists
         (False, True, False, True),    # missing, check_mode
@@ -31,27 +31,27 @@ def test_mk_dest_dir_behavior(
     base._task.check_mode = check_mode
     base.result = {}
 
-    file_path = "/tmp/some/deep/path/file.txt"
+    file_path = '/tmp/some/deep/path/file.txt'
     dir_path = os.path.dirname(file_path)
 
     monkeypatch.setattr(
-        base, "_pseudo_stat",
-        lambda p, task_vars=None: {"exists": exists, "type": "directory" if exists else None}
+        base, '_pseudo_stat',
+        lambda p, task_vars=None: {'exists': exists, 'type': 'directory' if exists else None}
     )
 
     if should_create:
         monkeypatch.setattr(
-            base, "_mkdir",
-            lambda p, task_vars=None: {"changed": True}
+            base, '_mkdir',
+            lambda p, task_vars=None: {'changed': True}
         )
 
     base._mk_dest_dir(file_path, task_vars={})
 
     if expect_change:
-        assert base.result.get("changed") is True
+        assert base.result.get('changed') is True
     else:
         # We only assume changed will NOT be True, not necessarily set at all
-        assert base.result.get("changed") is not True
+        assert base.result.get('changed') is not True
 
 
 def test_mk_dest_dir_mkdir_failure(monkeypatch, base) -> None:
@@ -59,20 +59,20 @@ def test_mk_dest_dir_mkdir_failure(monkeypatch, base) -> None:
     base._task.check_mode = False
     base.result = {}
 
-    file_path = "/tmp/fail/path/file.txt"
+    file_path = '/tmp/fail/path/file.txt'
 
     monkeypatch.setattr(
-        base, "_pseudo_stat",
-        lambda p, task_vars=None: {"exists": False}
+        base, '_pseudo_stat',
+        lambda p, task_vars=None: {'exists': False}
     )
 
     def failing_mkdir(p, task_vars=None):
-        raise OSError("simulated mkdir failure")
+        raise OSError('simulated mkdir failure')
 
-    monkeypatch.setattr(base, "_mkdir", failing_mkdir)
+    monkeypatch.setattr(base, '_mkdir', failing_mkdir)
 
     base._mk_dest_dir(file_path, task_vars={})
 
     assert base.result['failed'] is True
-    assert "Error creating" in base.result['msg']
+    assert 'Error creating' in base.result['msg']
     assert base.result['rc'] == 256

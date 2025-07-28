@@ -15,7 +15,7 @@ import pytest
 
 
 @pytest.mark.parametrize(
-    "result, expected",
+    'result, expected',
     [
         # Positive: canary string appears in msg and rc is 127
         ({

@@ -19,7 +19,7 @@
 - name: Ensure a new line is inserted into an empty file
   o0_o.posix.lineinfile_dedupe:
     path: "{{ lif_test_dir }}/test.txt"
-    line: "Hello world"
+    line: 'Hello world'
     state: present
     _force_raw: "{{ _force_raw }}"
   register: reg
@@ -51,7 +51,7 @@
 - name: Remove line
   o0_o.posix.lineinfile_dedupe:
     path: "{{ lif_test_dir }}/test.txt"
-    line: "Hello world"
+    line: 'Hello world'
     state: absent
     _force_raw: "{{ _force_raw }}"
   register: reg

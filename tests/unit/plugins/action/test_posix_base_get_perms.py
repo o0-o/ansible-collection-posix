@@ -16,87 +16,87 @@ import pytest
 from ansible.errors import AnsibleActionFail
 
 
-@pytest.mark.parametrize("cmd_output, selinux, expected", [
+@pytest.mark.parametrize('cmd_output, selinux, expected', [
     (
         {
-            "rc": 0,
-            "stdout_lines": [
-                "-rw-r--r-- 1 user group 123 Jul 1 00:00 file"
+            'rc': 0,
+            'stdout_lines': [
+                '-rw-r--r-- 1 user group 123 Jul 1 00:00 file'
             ],
-            "stdout": ""
+            'stdout': ''
         },
         False,
         {
-            "mode": "rw-r--r--",
-            "owner": "user",
-            "group": "group"
+            'mode': 'rw-r--r--',
+            'owner': 'user',
+            'group': 'group'
         }
     ),
     (
         {
-            "rc": 0,
-            "stdout_lines": [
+            'rc': 0,
+            'stdout_lines': [
                 (
-                    "user_u:object_r:etc_t:s0 -rw-r--r-- user group 123 Jul "
-                    "1 00:00 file"
+                    'user_u:object_r:etc_t:s0 -rw-r--r-- user group 123 Jul '
+                    '1 00:00 file'
                 )
             ],
-            "stdout": ""
+            'stdout': ''
         },
         True,
         {
-            "mode": "rw-r--r--",
-            "owner": "user",
-            "group": "group",
-            "seuser": "user_u",
-            "serole": "object_r",
-            "setype": "etc_t",
-            "selevel": "s0"
+            'mode': 'rw-r--r--',
+            'owner': 'user',
+            'group': 'group',
+            'seuser': 'user_u',
+            'serole': 'object_r',
+            'setype': 'etc_t',
+            'selevel': 's0'
         }
     ),
     (
         {
-            "rc": 0,
-            "stdout_lines": [
-                "-rw-r--r--+ 1 user group 123 Jul 1 00:00 file"
+            'rc': 0,
+            'stdout_lines': [
+                '-rw-r--r--+ 1 user group 123 Jul 1 00:00 file'
             ],
-            "stdout": ""
+            'stdout': ''
         },
         False,
         {
-            "mode": "rw-r--r--",
-            "owner": "user",
-            "group": "group"
+            'mode': 'rw-r--r--',
+            'owner': 'user',
+            'group': 'group'
         }
     )
 ])
 def test_get_perms_valid(base, cmd_output, selinux, expected) -> None:
     """Test _get_perms parses POSIX and SELinux output correctly."""
     base._cmd = lambda *args, **kwargs: cmd_output
-    result = base._get_perms("/fake/file", selinux=selinux)
+    result = base._get_perms('/fake/file', selinux=selinux)
     assert result == expected
 
 
 def test_get_perms_fails_on_error(base) -> None:
     """Test _get_perms raises AnsibleActionFail when ls command fails."""
     base._cmd = lambda *args, **kwargs: {
-        "rc": 1,
-        "stderr": "ls: cannot access"
+        'rc': 1,
+        'stderr': 'ls: cannot access'
     }
 
-    with pytest.raises(AnsibleActionFail, match="Could not stat"):
-        base._get_perms("/fake/file", selinux=False)
+    with pytest.raises(AnsibleActionFail, match='Could not stat'):
+        base._get_perms('/fake/file', selinux=False)
 
 
 def test_get_perms_raises_on_malformed_selinux_output(base) -> None:
     """Test _get_perms raises on malformed SELinux output."""
     base._cmd = lambda *args, **kwargs: {
         "rc": 0,
-        "stdout": "badselinux -rw-r--r-- user group",
+        'stdout': 'badselinux -rw-r--r-- user group',
         "stdout_lines": [
-            "badselinux -rw-r--r-- user group"
+            'badselinux -rw-r--r-- user group'
         ]
     }
 
-    with pytest.raises(AnsibleActionFail, match="Unexpected SELinux output"):
-        base._get_perms("/fake/file", selinux=True)
+    with pytest.raises(AnsibleActionFail, match='Unexpected SELinux output'):
+        base._get_perms('/fake/file', selinux=True)

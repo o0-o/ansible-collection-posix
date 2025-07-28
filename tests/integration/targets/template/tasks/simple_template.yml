@@ -20,7 +20,7 @@
     _force_raw: "{{ _force_raw }}"
   register: reg
   vars:
-    greeting: "Hello world"
+    greeting: 'Hello world'
 
 - name: Assert rendered output
   o0_o.posix.slurp64:
@@ -35,7 +35,7 @@
 - name: Check file content
   ansible.builtin.assert:
     that:
-      - result.content | trim == "Hello world"
+      - result.content | trim == 'Hello world'
 
 - name: Run again to check idempotency
   o0_o.posix.template:
@@ -44,7 +44,7 @@
     _force_raw: "{{ _force_raw }}"
   register: reg
   vars:
-    greeting: "Hello world"
+    greeting: 'Hello world'
 
 - name: Assert that raw execution is as expected
   ansible.builtin.assert:

@@ -16,7 +16,7 @@ DOCUMENTATION = r'''
 ---
 module: facts
 short_description: Gather POSIX facts from the managed host
-version_added: "1.1.0"
+version_added: '1.1.0'
 description:
   - Collects minimal OS and hardware facts from POSIX-compatible remote hosts.
   - Uses raw shell commands like C(uname) to gather kernel name, version,
@@ -148,7 +148,7 @@ def main():
         supports_check_mode=True
     )
 
-    module.fail_json(msg="This module must be run via its action plugin.")
+    module.fail_json(msg='This module must be run via its action plugin.')
 
 
 if __name__ == '__main__':

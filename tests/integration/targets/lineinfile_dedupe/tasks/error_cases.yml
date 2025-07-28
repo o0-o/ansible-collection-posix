@@ -24,7 +24,7 @@
 
     - name: Confirm failure occurred
       ansible.builtin.debug:
-        msg: "Correctly failed on backrefs without regexp"
+        msg: 'Correctly failed on backrefs without regexp'
 
 - name: 'Fail if state=present and no line provided'
   block:
@@ -39,7 +39,7 @@
 
     - name: Confirm failure occurred
       ansible.builtin.debug:
-        msg: "Correctly failed on state=present with no line"
+        msg: 'Correctly failed on state=present with no line'
 
 - name: 'Fail if state=absent and no match condition provided'
   block:
@@ -53,7 +53,7 @@
   rescue:
     - name: Confirm failure occurred
       ansible.builtin.debug:
-        msg: "Correctly failed on state=absent with no match parameters"
+        msg: 'Correctly failed on state=absent with no match parameters'
 
 - name: Fail if both insertafter and insertbefore set
   block:
@@ -70,7 +70,7 @@
 
     - name: Confirm failure occurred
       ansible.builtin.debug:
-        msg: "Correctly failed with both insertafter and insertbefore set"
+        msg: 'Correctly failed with both insertafter and insertbefore set'
 
 - name: Fail on invalid regexp pattern
   block:
@@ -86,4 +86,4 @@
 
     - name: Confirm failure occurred
       ansible.builtin.debug:
-        msg: "Correctly failed on invalid regexp"
+        msg: 'Correctly failed on invalid regexp'
