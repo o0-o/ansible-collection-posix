@@ -16,112 +16,122 @@
     mode: '0755'
 
 - name: 'Fail: Missing src argument'
-  o0_o.posix.template:
-    dest: "{{ tmpl_test_dir }}/missing_src.txt"
-    _force_raw: "{{ _force_raw }}"
-  ignore_errors: true
-  register: missing_src
+  block:
 
-- name: Assert failure for missing src
-  ansible.builtin.assert:
-    that:
-      - missing_src is failed
-      - "\"'src' is required\" in missing_src.msg
-        or 'missing required arguments: src' in missing_src.msg"
+    - name: Run template without src argument
+      o0_o.posix.template:
+        dest: "{{ tmpl_test_dir }}/missing_src.txt"
+        _force_raw: "{{ _force_raw }}"
+
+  rescue:
+
+    - name: Assert failure for missing src
+      ansible.builtin.assert:
+        that:
+          - "\"'src' is required\" in ansible_failed_result.msg
+            or 'missing required arguments: src' in ansible_failed_result.msg"
 
 - name: 'Fail: Nonexistent template file'
-  o0_o.posix.template:
-    src: no_such_template.j2
-    dest: "{{ tmpl_test_dir }}/nonexistent.txt"
-    _force_raw: "{{ _force_raw }}"
-  ignore_errors: true
-  register: bad_path
+  block:
 
-- name: Assert failure for missing file
-  ansible.builtin.assert:
-    that:
-      - bad_path is failed
-      - "\"'no_such_template.j2'\" in bad_path.msg"
+    - name: Run template with nonexistent file
+      o0_o.posix.template:
+        src: no_such_template.j2
+        dest: "{{ tmpl_test_dir }}/nonexistent.txt"
+        _force_raw: "{{ _force_raw }}"
 
-- name: 'Fail: Template source is a directory'
+  rescue:
+
+    - name: Assert failure for missing file
+      ansible.builtin.assert:
+        that:
+          - "\"'no_such_template.j2'\" in ansible_failed_result.msg"
+
+- name: Create directory to test directory-as-template error
   ansible.builtin.file:
     path: "{{ tmpl_dir }}/dir_as_template"
     state: directory
     mode: '0755'
 
-- name: 'Attempt to use directory as template'
-  o0_o.posix.template:
-    src: dir_as_template
-    dest: "{{ tmpl_test_dir }}/dir_template.txt"
-    _force_raw: "{{ _force_raw }}"
-  ignore_errors: true
-  register: is_dir
+- name: 'Fail: Template source is a directory'
+  block:
 
-- name: Assert failure when src is a directory
-  ansible.builtin.assert:
-    that:
-      - is_dir is failed
-      - "'is a directory' in is_dir.msg | lower"
+    - name: Attempt to use directory as template
+      o0_o.posix.template:
+        src: dir_as_template
+        dest: "{{ tmpl_test_dir }}/dir_template.txt"
+        _force_raw: "{{ _force_raw }}"
 
-- name: 'Fail: Template file with bad permissions'
+  rescue:
+
+    - name: Assert failure when src is a directory
+      ansible.builtin.assert:
+        that:
+          - "'is a directory' in ansible_failed_result.msg | lower"
+
+- name: Create unreadable template file
   ansible.builtin.copy:
     dest: "{{ tmpl_dir }}/unreadable.j2"
     content: "{{ '{{ broken' }}"
     mode: '0000'
 
-- name: Try to render unreadable file
-  o0_o.posix.template:
-    src: unreadable.j2
-    dest: "{{ tmpl_test_dir }}/unreadable.txt"
-    _force_raw: "{{ _force_raw }}"
-  ignore_errors: true
-  register: unreadable
+- name: 'Fail: Template file with bad permissions'
+  block:
 
-- name: Assert failure for unreadable file
-  ansible.builtin.assert:
-    that:
-      - unreadable is failed
-      - "'Permission denied' in unreadable.msg
-        or 'unreadable' in unreadable.msg"
+    - name: Try to render unreadable file
+      o0_o.posix.template:
+        src: unreadable.j2
+        dest: "{{ tmpl_test_dir }}/unreadable.txt"
+        _force_raw: "{{ _force_raw }}"
 
-- name: 'Fail: Template syntax error'
+  rescue:
+
+    - name: Assert failure for unreadable file
+      ansible.builtin.assert:
+        that:
+          - "'Permission denied' in ansible_failed_result.msg
+            or 'unreadable' in ansible_failed_result.msg"
+
+- name: Create template file with syntax error
   ansible.builtin.copy:
     dest: "{{ tmpl_dir }}/bad_syntax.j2"
     content: "{{ '{{ broken' }}"
     mode: '0644'
 
-- name: Render with syntax error
-  o0_o.posix.template:
-    src: bad_syntax.j2
-    dest: "{{ tmpl_test_dir }}/bad_syntax.txt"
-    _force_raw: "{{ _force_raw }}"
-  ignore_errors: true
-  register: syntax_err
+- name: 'Fail: Template syntax error'
+  block:
 
-- name: Assert failure for Jinja syntax error
-  ansible.builtin.assert:
-    that:
-      - syntax_err is failed
-      - "'unexpected end of template' in syntax_err.msg
-        or 'unclosed variable' in syntax_err.msg
-        or 'template syntax' in syntax_err.msg"
+    - name: Render with syntax error
+      o0_o.posix.template:
+        src: bad_syntax.j2
+        dest: "{{ tmpl_test_dir }}/bad_syntax.txt"
+        _force_raw: "{{ _force_raw }}"
+
+  rescue:
+
+    - name: Assert failure for Jinja syntax error
+      ansible.builtin.assert:
+        that:
+          - "'unexpected end of template' in ansible_failed_result.msg
+            or 'unclosed variable' in ansible_failed_result.msg
+            or 'template syntax' in ansible_failed_result.msg"
 
 - name: 'Fail: Validate command fails explicitly'
-  o0_o.posix.template:
-    src: hello.j2
-    dest: "{{ tmpl_test_dir }}/validate_fail.txt"
-    validate: "/bin/sh -c 'exit 1' #%s"
-    _force_raw: "{{ _force_raw }}"
-    mode: '0644'
-  vars:
-    greeting: Hello
-  ignore_errors: true
-  register: validate_fail
+  block:
 
-- name: Assert failure for failing validate command
-  ansible.builtin.assert:
-    that:
-      - validate_fail is failed
-      - "'validat' in validate_fail.msg | lower
-        or 'exit code' in validate_fail.msg
-        or 'non-zero' in validate_fail.msg"
+    - name: Run template with failing validate command
+      o0_o.posix.template:
+        src: hello.j2
+        dest: "{{ tmpl_test_dir }}/validate_fail.txt"
+        validate: "/bin/sh -c 'exit 1' #%s"
+        _force_raw: "{{ _force_raw }}"
+        mode: '0644'
+
+  rescue:
+
+    - name: Assert failure for failing validate command
+      ansible.builtin.assert:
+        that:
+          - "'validat' in ansible_failed_result.msg | lower
+            or 'exit code' in ansible_failed_result.msg
+            or 'non-zero' in ansible_failed_result.msg"

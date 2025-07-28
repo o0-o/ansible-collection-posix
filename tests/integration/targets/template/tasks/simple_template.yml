@@ -18,40 +18,36 @@
     src: "{{ tmpl_dir }}/hello.j2"
     dest: "{{ tmpl_dest_path }}"
     _force_raw: "{{ _force_raw }}"
-  register: reg
-  vars:
-    greeting: 'Hello world'
+  register: template_render_reg
 
 - name: Assert rendered output
   o0_o.posix.slurp64:
     src: "{{ tmpl_dest_path }}"
-  register: result
+  register: slurp_content_reg
 
 - name: Assert that raw execution is as expected
   ansible.builtin.assert:
     that:
-      - "reg['raw'] == _force_raw"
+      - "template_render_reg['raw'] == _force_raw"
 
 - name: Check file content
   ansible.builtin.assert:
     that:
-      - result.content | trim == 'Hello world'
+      - slurp_content_reg['content'] | trim == 'Hello world'
 
 - name: Run again to check idempotency
   o0_o.posix.template:
     src: "{{ tmpl_dir }}/hello.j2"
     dest: "{{ tmpl_dest_path }}"
     _force_raw: "{{ _force_raw }}"
-  register: reg
-  vars:
-    greeting: 'Hello world'
+  register: template_idempotent_reg
 
 - name: Assert that raw execution is as expected
   ansible.builtin.assert:
     that:
-      - "reg['raw'] == _force_raw"
+      - "template_idempotent_reg['raw'] == _force_raw"
 
 - name: Assert second run was idempotent
   ansible.builtin.assert:
     that:
-      - reg.changed == false
+      - template_idempotent_reg['changed'] == false

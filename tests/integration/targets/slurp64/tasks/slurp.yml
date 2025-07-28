@@ -12,40 +12,43 @@
   o0_o.posix.slurp64:
     src: "{{ tmp }}"
     _force_raw: "{{ _force_raw }}"
-  register: result_normal
+  register: slurp_normal_reg
 
 - name: Assert normal slurp64 returned expected content
   ansible.builtin.assert:
     that:
-      - 'result_normal["raw"] == _force_raw'
-      - result_normal is not changed
-      - '"This is a test" in result_normal["content"]'
-      - '"Final line" in result_normal["content"]'
+      - 'slurp_normal_reg["raw"] == _force_raw'
+      - slurp_normal_reg is not changed
+      - '"This is a test" in slurp_normal_reg["content"]'
+      - '"Final line" in slurp_normal_reg["content"]'
 
-- name: Run slurp64 on a non-existent file
-  o0_o.posix.slurp64:
-    src: "/nonexistent/file/path"
-    _force_raw: "{{ _force_raw }}"
-  register: result_missing
-  ignore_errors: true
+- name: 'Fail: Run slurp64 on a non-existent file'
+  block:
 
-- name: Assert missing file produced error
-  ansible.builtin.assert:
-    that:
-      - 'result_normal["raw"] == _force_raw'
-      - result_missing is failed
+    - name: Run slurp64 on missing file
+      o0_o.posix.slurp64:
+        src: "/nonexistent/file/path"
+        _force_raw: "{{ _force_raw }}"
 
-- name: Run slurp64 with an invalid argument
-  o0_o.posix.slurp64:
-    src: "{{ tmp }}"
-    unexpected_param: true
-    _force_raw: "{{ _force_raw }}"
-  register: result_invalid
-  ignore_errors: true
+  rescue:
 
-- name: Assert invalid param caused failure
-  ansible.builtin.assert:
-    that:
-      - 'result_normal["raw"] == _force_raw'
-      - result_invalid is failed
-      - "'unexpected_param' in result_invalid['msg']"
+    - name: Assert missing file produced error
+      ansible.builtin.assert:
+        that:
+          - 'ansible_failed_result is defined'
+
+- name: 'Fail: Run slurp64 with invalid argument'
+  block:
+
+    - name: Run slurp64 with unexpected parameter
+      o0_o.posix.slurp64:
+        src: "{{ tmp }}"
+        unexpected_param: true
+        _force_raw: "{{ _force_raw }}"
+
+  rescue:
+
+    - name: Assert invalid param caused failure
+      ansible.builtin.assert:
+        that:
+          - "'unexpected_param' in ansible_failed_result['msg']"

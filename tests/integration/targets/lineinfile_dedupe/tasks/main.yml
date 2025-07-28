@@ -15,9 +15,9 @@
     suffix: lineinfile_dedupe
   register: test_tmpdir
 
-- name: Set tasks directory
+- name: Set files directory
   ansible.builtin.set_fact:
-    tasks_dir: "{{ playbook_dir }}/targets/lineinfile_dedupe/tasks"
+    files_dir: "{{ playbook_dir }}/targets/lineinfile_dedupe/files"
 
 - name: Set test directory fact
   ansible.builtin.set_fact:
@@ -26,7 +26,7 @@
 - name: Define canonical content
   ansible.builtin.set_fact:
     canonical_content: >-
-      {{ lookup('ansible.builtin.file', tasks_dir + '/files/canonical.txt') }}
+      {{ lookup('ansible.builtin.file', files_dir + '/canonical.txt') }}
 
 - name: Try
   block:

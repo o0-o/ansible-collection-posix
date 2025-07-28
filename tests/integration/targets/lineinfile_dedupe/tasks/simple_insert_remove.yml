@@ -22,17 +22,17 @@
     line: 'Hello world'
     state: present
     _force_raw: "{{ _force_raw }}"
-  register: reg
+  register: lineinfile_reg
 
 - name: Assert change
   ansible.builtin.assert:
     that:
-      - reg is changed
+      - lineinfile_reg is changed
 
 - name: Assert raw is expected value
   ansible.builtin.assert:
     that:
-      - reg['raw'] == _force_raw
+      - lineinfile_reg['raw'] == _force_raw
 
 - name: If not check mode
   when: not ansible_check_mode
@@ -54,12 +54,12 @@
     line: 'Hello world'
     state: absent
     _force_raw: "{{ _force_raw }}"
-  register: reg
+  register: lineinfile_reg
 
 - name: Assert raw is expected value
   ansible.builtin.assert:
     that:
-      - reg['raw'] == _force_raw
+      - lineinfile_reg['raw'] == _force_raw
 
 - name: If not check mode
   when: not ansible_check_mode
@@ -74,12 +74,12 @@
       ansible.builtin.assert:
         that:
           - '"Hello world" not in slurp_reg["content_lines"]'
-          - reg is changed
+          - lineinfile_reg is changed
 
 - name: Assert raw is expected value
   ansible.builtin.assert:
     that:
-      - reg['raw'] == _force_raw
+      - lineinfile_reg['raw'] == _force_raw
 
 - name: Check mode
   when: ansible_check_mode
@@ -88,7 +88,7 @@
     - name: Assert no change on check mode run
       ansible.builtin.assert:
         that:
-          - reg is not changed
+          - lineinfile_reg is not changed
 
     - name: Remove extant line
       o0_o.posix.lineinfile_dedupe:
@@ -96,17 +96,17 @@
         line: '# Repeated Line'
         state: absent
         _force_raw: "{{ _force_raw }}"
-      register: reg
+      register: lineinfile_reg
 
     - name: Assert raw is expected value
       ansible.builtin.assert:
         that:
-          - reg['raw'] == _force_raw
+          - lineinfile_reg['raw'] == _force_raw
 
     - name: Assert no change on check mode run
       ansible.builtin.assert:
         that:
-          - reg is changed
+          - lineinfile_reg is changed
 
     - name: Read back file content
       o0_o.posix.slurp64:

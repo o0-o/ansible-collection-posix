@@ -15,80 +15,80 @@
       - echo
       - foo
     _force_raw: "{{ _force_raw }}"
-  register: reg
+  register: command_argv_reg
 
 - name: Assert command output
   ansible.builtin.assert:
     that:
-      - reg['stdout'].rstrip() == 'foo'
-      - reg['stdout_lines'] == ['foo']
+      - command_argv_reg['stdout'].rstrip() == 'foo'
+      - command_argv_reg['stdout_lines'] == ['foo']
   when: not ansible_check_mode
 
 - name: Assert raw execution is as intended
   ansible.builtin.assert:
     that:
-      - reg['raw'] == _force_raw
+      - command_argv_reg['raw'] == _force_raw
 
 - name: Run command with cmd
   o0_o.posix.command:
     cmd: echo foo
     _force_raw: "{{ _force_raw }}"
-  register: reg
+  register: command_cmd_reg
 
 - name: Assert command output
   ansible.builtin.assert:
     that:
-      - reg['stdout'].rstrip() == 'foo'
-      - reg['stdout_lines'] == ['foo']
+      - command_cmd_reg['stdout'].rstrip() == 'foo'
+      - command_cmd_reg['stdout_lines'] == ['foo']
   when: not ansible_check_mode
 
 - name: Assert raw execution is as intended
   ansible.builtin.assert:
     that:
-      - reg['raw'] == _force_raw
+      - command_cmd_reg['raw'] == _force_raw
 
 - name: Assert command output (Check mode)
   ansible.builtin.assert:
     that:
-      - reg['stdout'] == ''
-      - reg['stdout_lines'] == []
+      - command_cmd_reg['stdout'] == ''
+      - command_cmd_reg['stdout_lines'] == []
   when: ansible_check_mode
 
 - name: Run command with cmd
   o0_o.posix.command:
     cmd: echo foo
     _force_raw: "{{ _force_raw }}"
-  register: reg
+  register: command_reg
 
 - name: Assert command output
   ansible.builtin.assert:
     that:
-      - reg['stdout'].rstrip() == 'foo'
-      - reg['stdout_lines'] == ['foo']
+      - command_reg['stdout'].rstrip() == 'foo'
+      - command_reg['stdout_lines'] == ['foo']
   when: not ansible_check_mode
 
 - name: Assert raw execution is as intended
   ansible.builtin.assert:
     that:
-      - reg['raw'] == _force_raw
+      - command_reg['raw'] == _force_raw
 
 - name: Run command with stdin
   o0_o.posix.command:
     argv: [cat]
     stdin: "hello\nworld"
     _force_raw: "{{ _force_raw }}"
-  register: reg
+  register: command_reg
 
 - name: Assert stdin was passed correctly
   ansible.builtin.assert:
     that:
-      - reg['stdout_lines'] == ['hello', 'world']
+      - command_reg['stdout_lines'] == ['hello', 'world']
   when: not ansible_check_mode
 
 - name: Assert raw execution is as intended
   ansible.builtin.assert:
     that:
-      - reg['raw'] == _force_raw
+      - command_reg['raw'] == _force_raw
 
 - name: Run with creates when file already exists (should skip)
   o0_o.posix.command:
@@ -99,18 +99,18 @@
       - run
     creates: /dev/null
     _force_raw: "{{ _force_raw }}"
-  register: reg
+  register: command_reg
 
 - name: Assert command skipped due to creates
   ansible.builtin.assert:
     that:
-      - reg['changed'] == false
-      - reg['rc'] == 0
+      - command_reg['changed'] == false
+      - command_reg['rc'] == 0
 
 - name: Assert raw execution is as intended
   ansible.builtin.assert:
     that:
-      - reg['raw'] == _force_raw
+      - command_reg['raw'] == _force_raw
 
 - name: Ensure dummy file is absent
   ansible.builtin.file:
@@ -125,18 +125,18 @@
       - run
     creates: /tmp/o0_foo
     _force_raw: "{{ _force_raw }}"
-  register: reg
+  register: command_reg
 
 - name: Assert raw execution is as intended
   ansible.builtin.assert:
     that:
-      - reg['raw'] == _force_raw
+      - command_reg['raw'] == _force_raw
 
 - name: Assert command would run due to creates missing
   ansible.builtin.assert:
     that:
-      - reg['changed'] == true
-      - reg['rc'] == 0
+      - command_reg['changed'] == true
+      - command_reg['rc'] == 0
 
 - name: Run with removes when file exists (should run or be marked changed)
   o0_o.posix.command:
@@ -146,18 +146,18 @@
       - run
     removes: /dev/null
     _force_raw: "{{ _force_raw }}"
-  register: reg
+  register: command_reg
 
 - name: Assert command would run due to file existing
   ansible.builtin.assert:
     that:
-      - reg['changed'] == true
-      - reg['rc'] == 0
+      - command_reg['changed'] == true
+      - command_reg['rc'] == 0
 
 - name: Assert raw execution is as intended
   ansible.builtin.assert:
     that:
-      - reg['raw'] == _force_raw
+      - command_reg['raw'] == _force_raw
 
 - name: Run with removes when file is missing (should skip)
   o0_o.posix.command:
@@ -168,15 +168,15 @@
       - run
     removes: /tmp/o0_foo
     _force_raw: "{{ _force_raw }}"
-  register: reg
+  register: command_reg
 
 - name: Assert command skipped due to removes missing
   ansible.builtin.assert:
     that:
-      - reg['changed'] == false
-      - reg['rc'] == 0
+      - command_reg['changed'] == false
+      - command_reg['rc'] == 0
 
 - name: Assert raw execution is as intended
   ansible.builtin.assert:
     that:
-      - reg['raw'] == _force_raw
+      - command_reg['raw'] == _force_raw

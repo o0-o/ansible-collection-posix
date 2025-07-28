@@ -35,8 +35,6 @@
     mode: '0644'
     _force_raw: "{{ _force_raw }}"
   register: overwrite_default
-  vars:
-    greeting: Hello world
 
 - name: 'Assert outcome for force=true'
   ansible.builtin.assert:
@@ -60,8 +58,6 @@
     mode: '0644'
     _force_raw: "{{ _force_raw }}"
   register: overwrite_protect
-  vars:
-    greeting: Hello world
 
 - name: 'Assert outcome for force=false'
   ansible.builtin.assert:
@@ -85,8 +81,6 @@
     _force_raw: "{{ _force_raw }}"
   check_mode: true
   register: check_protect
-  vars:
-    greeting: Hello world
 
 - name: 'Assert check mode result with force=false'
   ansible.builtin.assert:

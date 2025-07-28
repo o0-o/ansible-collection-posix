@@ -12,11 +12,11 @@
   ansible.builtin.command:
     argv:
       - mktemp
-  register: result_tmp
+  register: mktemp_reg
 
 - name: Define the tmp file path
   ansible.builtin.set_fact:
-    tmp: "{{ result_tmp['stdout_lines'][0] }}"
+    tmp: "{{ mktemp_reg['stdout_lines'][0] }}"
 
 - name: Create a test file with known content
   ansible.builtin.copy:

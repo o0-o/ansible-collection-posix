@@ -25,6 +25,6 @@
       - "{{ insert_params[1] | ternary('first', 'last') }}"
       - "{{ insert_params[2] | ternary('dedupe', 'no-dedupe') }}"
     validation_file: >-
-      {{ tasks_dir }}/files/{{ validation_file_components | join('_') }}.txt
+      {{ files_dir }}/{{ validation_file_components | join('_') }}.txt
     validation_content: >-
       {{ lookup('ansible.builtin.file', validation_file) }}

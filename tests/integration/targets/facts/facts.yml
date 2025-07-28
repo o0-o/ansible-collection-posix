@@ -16,48 +16,45 @@
 - name: Assert default run returns both o0_os and o0_hardware
   assert:
     that:
-      - o0_os.kernel.name is string
-      - o0_hardware.cpu.architecture is string
+      - o0_os['kernel']['name'] is string
+      - o0_hardware['cpu']['architecture'] is string
 
 - name: "Run with gather_subset=['kernel']"
   o0_o.posix.facts:
     gather_subset: ['kernel']
-  register: result_kernel
 
 - name: Assert only o0_os.kernel returned
   assert:
     that:
-      - result_kernel.ansible_facts.o0_os.kernel.name is defined
-      - result_kernel.ansible_facts.o0_hardware is not defined
+      - o0_os['kernel']['name'] is defined
+      - o0_hardware is not defined
 
 - name: "Run with gather_subset=['arch']"
   o0_o.posix.facts:
     gather_subset: ['arch']
-  register: result_arch
 
 - name: Assert only o0_hardware.cpu returned
   assert:
     that:
-      - result_arch.ansible_facts.o0_hardware.cpu.architecture is defined
-      - result_arch.ansible_facts.o0_os is not defined
+      - o0_hardware['cpu']['architecture'] is defined
+      - o0_os is not defined
 
 - name: "Run with gather_subset=['!kernel']"
   o0_o.posix.facts:
     gather_subset: ['!kernel']
-  register: result_no_kernel
 
 - name: Assert kernel facts excluded, hardware present
   assert:
     that:
-      - result_no_kernel.ansible_facts.o0_os is not defined
-      - result_no_kernel.ansible_facts.o0_hardware.cpu.architecture is defined
+      - o0_os is not defined
+      - o0_hardware['cpu']['architecture'] is defined
 
 - name: "Run with gather_subset=['!all']"
   o0_o.posix.facts:
     gather_subset: ['!all']
-  register: result_no_all
+  register: facts_empty_reg
 
 - name: Assert no facts returned
   assert:
     that:
-      - result_no_all.ansible_facts == {}
+      - facts_empty_reg['ansible_facts'] == {}

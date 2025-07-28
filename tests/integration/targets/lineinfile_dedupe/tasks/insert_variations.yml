@@ -43,12 +43,12 @@
     firstmatch: "{{ firstmatch }}"
     dedupe: "{{ dedupe }}"
     _force_raw: "{{ _force_raw }}"
-  register: reg
+  register: lineinfile_insert_reg
 
 - name: Slurp actual result
   o0_o.posix.slurp64:
     src: "{{ lif_test_dir }}/test.txt"
-  register: slurp_result
+  register: slurp_actual_reg
 
 - name: Compare with expected result
   when: not ansible_check_mode
@@ -75,10 +75,10 @@
     - name: Confirm raw execution is as expected
       ansible.builtin.assert:
         that:
-          - reg.raw == _force_raw
+          - lineinfile_insert_reg['raw'] == _force_raw
 
 - name: Confirm no change to file if check mode
   ansible.builtin.assert:
     that:
-      - result.content == canonical_content
+      - slurp_actual_reg['content'] == canonical_content
   when: ansible_check_mode

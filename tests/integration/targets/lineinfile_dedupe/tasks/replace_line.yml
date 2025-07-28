@@ -23,17 +23,17 @@
     line: 'log_level=debug'
     state: present
     _force_raw: "{{ _force_raw }}"
-  register: reg
+  register: lineinfile_replace_reg
 
 - name: Assert raw is expected value
   ansible.builtin.assert:
     that:
-      - reg['raw'] == _force_raw
+      - lineinfile_replace_reg['raw'] == _force_raw
 
 - name: Assert change (unless in check mode)
   ansible.builtin.assert:
     that:
-      - (reg is changed) or ansible_check_mode
+      - (lineinfile_replace_reg is changed) or ansible_check_mode
 
 - name: If not check mode
   when: not ansible_check_mode
@@ -47,12 +47,12 @@
     - name: Assert the new line is present
       ansible.builtin.assert:
         that:
-          - "'log_level=debug' in slurp_reg.content_lines"
+          - "'log_level=debug' in slurp_reg['content_lines']"
 
     - name: Assert the old line is gone
       ansible.builtin.assert:
         that:
-          - "'log_level=info' not in slurp_reg.content_lines"
+          - "'log_level=info' not in slurp_reg['content_lines']"
 
 - name: Re-run task to verify idempotency
   o0_o.posix.lineinfile_dedupe:
@@ -80,11 +80,11 @@
     - name: Read original file to compare against
       o0_o.posix.slurp64:
         src: "{{ lif_test_dir }}/test.txt"
-      register: slurp_before
+      register: slurp_before_reg
 
     - name: Assert reported change but no actual file modification
       ansible.builtin.assert:
         that:
-          - reg is changed
-          - "'log_level=info' in slurp_before.content_lines"
-          - "'log_level=debug' not in slurp_before.content_lines"
+          - lineinfile_replace_reg is changed
+          - "'log_level=info' in slurp_before_reg.content_lines"
+          - "'log_level=debug' not in slurp_before_reg.content_lines"

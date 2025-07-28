@@ -14,77 +14,87 @@
   block:
 
     - name: 'Fail: Exit code 1'
-      o0_o.posix.command:
-        argv:
-          - return
-          - 1
-        _force_raw: "{{ _force_raw }}"
-      ignore_errors: true
-      register: reg
+      block:
 
-    - name: Assert failure due non-zero exit code
-      ansible.builtin.assert:
-        that:
-          - reg['rc'] > 0
-          - reg is failed
+        - name: Run command that returns exit code 1
+          o0_o.posix.command:
+            argv:
+              - return
+              - 1
+            _force_raw: "{{ _force_raw }}"
+
+      rescue:
+
+        - name: Assert failure due non-zero exit code
+          ansible.builtin.assert:
+            that:
+              - ansible_failed_result['rc'] > 0
 
     - name: 'Fail: Run command in nonexistent directory'
-      o0_o.posix.command:
-        argv:
-          - echo
-          - foo
-        chdir: /does/not/exist
-        _force_raw: "{{ _force_raw }}"
-      ignore_errors: true
-      register: reg
+      block:
 
-    - name: Assert failure due to missing directory
-      ansible.builtin.assert:
-        that:
-          - reg is failed
-          - "'Unable to change directory' in reg.msg"
+        - name: Run command in nonexistent directory
+          o0_o.posix.command:
+            argv:
+              - echo
+              - foo
+            chdir: /does/not/exist
+            _force_raw: "{{ _force_raw }}"
+
+      rescue:
+
+        - name: Assert failure due to missing directory
+          ansible.builtin.assert:
+            that:
+              - "'Unable to change directory' in ansible_failed_result.msg"
 
 - name: 'Fail: Multiple command variants (cmd + argv)'
-  o0_o.posix.command:
-    cmd: echo foo
-    argv: [echo, foo]
-    _force_raw: "{{ _force_raw }}"
-  ignore_errors: true
-  register: reg
+  block:
 
-- name: Assert error for mutually exclusive args
-  ansible.builtin.assert:
-    that:
-      - reg is failed
-      - "'Only one of' in reg['msg']"
+    - name: Run command with both cmd and argv
+      o0_o.posix.command:
+        cmd: echo foo
+        argv: [echo, foo]
+        _force_raw: "{{ _force_raw }}"
+
+  rescue:
+
+    - name: Assert error for mutually exclusive args
+      ansible.builtin.assert:
+        that:
+          - "'Only one of' in ansible_failed_result['msg']"
 
 - name: 'Fail: Missing all command inputs'
-  o0_o.posix.command:
-    creates: /tmp/placeholder  # unrelated arg to force arg check
-    _force_raw: "{{ _force_raw }}"
-  ignore_errors: true
-  register: reg
+  block:
 
-- name: Assert failure for missing command input
-  ansible.builtin.assert:
-    that:
-      - reg is failed
-      - "'One of' in reg['msg']"
+    - name: Run command without cmd or argv
+      o0_o.posix.command:
+        creates: /tmp/placeholder  # unrelated arg to force arg check
+        _force_raw: "{{ _force_raw }}"
+
+  rescue:
+
+    - name: Assert failure for missing command input
+      ansible.builtin.assert:
+        that:
+          - "'One of' in ansible_failed_result['msg']"
 
 - name: 'Fail: Explicit return code check (false command)'
-  o0_o.posix.command:
-    argv:
-      - 'test'
-      - '-d'
-      - '/dev/null'
-    _force_raw: "{{ _force_raw }}"
-  ignore_errors: true
-  register: reg_false
+  block:
 
-- name: 'Assert false command returned rc>0 and failed'
-  ansible.builtin.assert:
-    that:
-      - reg_false.rc > 0
-      - reg_false is failed
-      - reg_false.stdout == ''
-      - reg_false.stderr == ''
+    - name: Run test command that should fail
+      o0_o.posix.command:
+        argv:
+          - 'test'
+          - '-d'
+          - '/dev/null'
+        _force_raw: "{{ _force_raw }}"
+
+  rescue:
+
+    - name: 'Assert false command returned rc>0 and failed'
+      ansible.builtin.assert:
+        that:
+          - ansible_failed_result.rc > 0
+          - ansible_failed_result.stdout == ''
+          - ansible_failed_result.stderr == ''

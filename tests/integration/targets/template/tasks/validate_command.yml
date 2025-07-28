@@ -26,15 +26,15 @@
     dest: "{{ tmpl_test_dir }}/good.txt"
     validate: "/bin/sh -c 'grep Hello %s'"
     mode: '0644'
-  register: result_pass
+  register: template_validate_pass_reg
   vars:
-    greeting: Hello world
+    greeting_var: Hello world
 
 - name: Assert file does not exist in check mode
   ansible.builtin.stat:
     path: "{{ tmpl_test_dir }}/good.txt"
-  register: stat
-  failed_when: stat.stat.exists
+  register: file_stat_reg
+  failed_when: file_stat_reg.stat.exists
   when: ansible_check_mode
 
 - name: Not check mode
@@ -44,12 +44,12 @@
     - name: Slurp result file
       o0_o.posix.slurp64:
         src: "{{ tmpl_test_dir }}/good.txt"
-      register: good_slurp
+      register: template_content_reg
 
     - name: Assert that content rendered properly
       assert:
         that:
-          - good_slurp.content | trim == "Hello world"
+          - template_content_reg.content | trim == "Hello world"
 
 - name: Try template with failing validate command
   block:
@@ -59,9 +59,7 @@
         src: hello.j2
         dest: "{{ tmpl_test_dir }}/bad.txt"
         validate: "/bin/sh -c 'grep NoMatch %s'"
-      register: result_fail
-      vars:
-        greeting: Hello world
+      register: template_validate_fail_reg
 
   rescue:
 
@@ -73,4 +71,4 @@
     - name: Assert validation failed
       assert:
         that:
-          - result_fail is failed
+          - template_validate_fail_reg is failed
