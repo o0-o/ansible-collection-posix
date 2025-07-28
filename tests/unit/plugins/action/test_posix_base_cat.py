@@ -19,36 +19,41 @@ from ansible_collections.o0_o.posix.tests.utils import (
 )
 
 
-@pytest.mark.parametrize('content, expect_error, expected_output', [
-    ('hello world\n', False, 'hello world\n'),       # simple case
-    ('', False, ''),                                 # empty file
-    ('line1\nline2\n', False, 'line1\nline2\n'),     # multiple lines
-    (None, True, None),                              # file does not exist
-])
-def test_cat_file_content(base, content, expect_error, expected_output) -> None:
+@pytest.mark.parametrize(
+    "content, expect_error, expected_output",
+    [
+        ("hello world\n", False, "hello world\n"),  # simple case
+        ("", False, ""),  # empty file
+        ("line1\nline2\n", False, "line1\nline2\n"),  # multiple lines
+        (None, True, None),  # file does not exist
+    ],
+)
+def test_cat_file_content(
+    base, content, expect_error, expected_output
+) -> None:
     """Test _cat method file reading with various content scenarios."""
     path = generate_temp_path()
 
     try:
         if content is not None:
-            with open(path, 'w', encoding='utf-8') as f:
+            with open(path, "w", encoding="utf-8") as f:
                 f.write(content)
 
         base.force_raw = True
         result = base._cat(path)
 
         if expect_error:
-            assert result['failed'] is True
-            assert 'msg' in result
-            assert 'No such file' in result['msg'] or 'cat' in result['msg']
+            assert result["failed"] is True
+            assert "msg" in result
+            assert "No such file" in result["msg"] or "cat" in result["msg"]
         else:
-            assert result.get('failed', False) is False
-            assert result['changed'] is False
-            assert result['source'] == path
-            assert result['content'] == expected_output
+            assert result.get("failed", False) is False
+            assert result["changed"] is False
+            assert result["source"] == path
+            assert result["content"] == expected_output
 
         # Common postconditions: these keys must not be present
-        for forbidden in ('stdout', 'stderr', 'stdout_lines', 'stderr_lines'):
+        for forbidden in ("stdout", "stderr", "stdout_lines", "stderr_lines"):
             assert forbidden not in result
 
     finally:

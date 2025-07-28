@@ -15,85 +15,64 @@ import pytest
 
 
 @pytest.mark.parametrize(
-    'binary, cmd_outputs, expected_result',
+    "binary, cmd_outputs, expected_result",
     [
         # command -v returns absolute path
         (
-            'true',
+            "true",
             {
-                ('sh', '-c', 'command -v true'): {
-                    'rc': 0,
-                    'stdout': '/usr/bin/true'
+                ("sh", "-c", "command -v true"): {
+                    "rc": 0,
+                    "stdout": "/usr/bin/true",
                 },
             },
-            '/usr/bin/true'
+            "/usr/bin/true",
         ),
-
         # command -v returns shell builtin
         (
-            'echo',
+            "echo",
             {
-                ('sh', '-c', 'command -v echo'): {
-                    'rc': 0,
-                    'stdout': 'echo'
-                },
+                ("sh", "-c", "command -v echo"): {"rc": 0, "stdout": "echo"},
             },
-            'echo'
+            "echo",
         ),
-
         # command -v fails, which succeeds with absolute path
         (
-            'cat',
+            "cat",
             {
-                ('sh', '-c', 'command -v cat'): {
-                    'rc': 1,
-                    'stdout': ''
-                },
-                ('which', 'cat'): {
-                    'rc': 0,
-                    'stdout': '/bin/cat'
-                },
+                ("sh", "-c", "command -v cat"): {"rc": 1, "stdout": ""},
+                ("which", "cat"): {"rc": 0, "stdout": "/bin/cat"},
             },
-            '/bin/cat'
+            "/bin/cat",
         ),
-
         # command -v fails, which returns shell builtin text
         (
-            'printf',
+            "printf",
             {
-                ('sh', '-c', 'command -v printf'): {
-                    'rc': 1,
-                    'stdout': ''
-                },
-                ('which', 'printf'): {
-                    'rc': 0,
-                    'stdout': 'printf: shell built-in command'
+                ("sh", "-c", "command -v printf"): {"rc": 1, "stdout": ""},
+                ("which", "printf"): {
+                    "rc": 0,
+                    "stdout": "printf: shell built-in command",
                 },
             },
-            'printf'
+            "printf",
         ),
-
         # neither method finds it
         (
-            'fakecmd',
+            "fakecmd",
             {
-                ('sh', '-c', 'command -v fakecmd'): {
-                    'rc': 1,
-                    'stdout': ''
-                },
-                ('which', 'fakecmd'): {
-                    'rc': 1,
-                    'stdout': ''
-                },
+                ("sh", "-c", "command -v fakecmd"): {"rc": 1, "stdout": ""},
+                ("which", "fakecmd"): {"rc": 1, "stdout": ""},
             },
-            None
+            None,
         ),
-    ]
+    ],
 )
 def test_which_logic(base, binary, cmd_outputs, expected_result) -> None:
     """Test PosixBase._which() behavior with various command outputs."""
+
     def mock_cmd(cmd, task_vars=None):
-        return cmd_outputs.get(tuple(cmd), {'rc': 1, 'stdout': ''})
+        return cmd_outputs.get(tuple(cmd), {"rc": 1, "stdout": ""})
 
     base._cmd = mock_cmd
     result = base._which(binary, task_vars={})

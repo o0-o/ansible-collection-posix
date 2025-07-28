@@ -55,9 +55,9 @@ def check_path_mode(path, perms):
     if "mode" in perms:
         actual_mode = stat.S_IMODE(os.stat(path).st_mode)
         expected_mode = int(perms["mode"], 8)
-        assert actual_mode == expected_mode, (
-            f"Expected mode {expected_mode:o}, got {actual_mode:o}"
-        )
+        assert (
+            actual_mode == expected_mode
+        ), f"Expected mode {expected_mode:o}, got {actual_mode:o}"
 
 
 def check_path_ownership(path, perms):
@@ -72,12 +72,12 @@ def check_path_ownership(path, perms):
 
     if "owner" in perms:
         expected_uid = pwd.getpwnam(perms["owner"]).pw_uid
-        assert stat_result.st_uid == expected_uid, (
-            f"Expected uid {expected_uid}, got {stat_result.st_uid}"
-        )
+        assert (
+            stat_result.st_uid == expected_uid
+        ), f"Expected uid {expected_uid}, got {stat_result.st_uid}"
 
     if "group" in perms:
         expected_gid = grp.getgrnam(perms["group"]).gr_gid
-        assert stat_result.st_gid == expected_gid, (
-            f"Expected gid {expected_gid}, got {stat_result.st_gid}"
-        )
+        assert (
+            stat_result.st_gid == expected_gid
+        ), f"Expected gid {expected_gid}, got {stat_result.st_gid}"

@@ -10,10 +10,11 @@
 # This file is part of the o0_o.posix Ansible Collection.
 
 from __future__ import absolute_import, division, print_function
+
 __metaclass__ = type
 
 
-DOCUMENTATION = r'''
+DOCUMENTATION = r"""
 ---
 module: slurp64
 short_description: Read a remote file with decoding and raw fallback for
@@ -40,7 +41,9 @@ attributes:
   check_mode:
     support: full
     description:
-      - This module fully supports check mode. It simulates command execution without making changes.
+      - >
+        This module fully supports check mode. It simulates command
+        execution without making changes.
   diff_mode:
     support: none
     description:
@@ -61,9 +64,9 @@ notes:
   - This module must be invoked via its action plugin.
   - If Python is unavailable on the remote host, raw fallback will be used
     automatically.
-'''
+"""
 
-EXAMPLES = r'''
+EXAMPLES = r"""
 - name: Read a file using slurp64
   o0_o.posix.slurp64:
     src: /etc/hostname
@@ -72,9 +75,9 @@ EXAMPLES = r'''
   o0_o.posix.slurp64:
     src: /etc/hostname
     _force_raw: true
-'''
+"""
 
-RETURN = r'''
+RETURN = r"""
 content:
   description: UTF-8-decoded content of the file.
   type: str
@@ -91,22 +94,22 @@ source:
   description: Path to the file that was read.
   type: str
   returned: always
-'''
-
+"""
 
 from ansible.module_utils.basic import AnsibleModule
 
 
 def main():
+    """Fail if this module is run directly without the action plugin."""
     module = AnsibleModule(
         argument_spec={
-            'src': {'type': 'str', 'required': True},
-            '_force_raw': {'type': 'bool', 'default': False},
+            "src": {"type": "str", "required": True},
+            "_force_raw": {"type": "bool", "default": False},
         },
         supports_check_mode=True,
     )
-    module.fail_json(msg='This module must be run via its action plugin.')
+    module.fail_json(msg="This module must be run via its action plugin.")
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

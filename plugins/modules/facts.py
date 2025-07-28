@@ -10,9 +10,11 @@
 # This file is part of the o0_o.posix Ansible Collection.
 
 from __future__ import absolute_import, division, print_function
+
 __metaclass__ = type
 
-DOCUMENTATION = r'''
+
+DOCUMENTATION = r"""
 ---
 module: facts
 short_description: Gather POSIX facts from the managed host
@@ -51,9 +53,9 @@ attributes:
     description: Only POSIX platforms are supported.
     support: full
     platforms: posix
-'''
+"""
 
-EXAMPLES = r'''
+EXAMPLES = r"""
 - name: Gather all POSIX facts
   o0_o.posix.facts:
 
@@ -71,9 +73,9 @@ EXAMPLES = r'''
   o0_o.posix.facts:
     gather_subset:
       - '!kernel'
-'''
+"""
 
-RETURN = r'''
+RETURN = r"""
 ansible_facts:
   description: Dictionary of gathered POSIX facts.
   returned: always
@@ -124,7 +126,7 @@ ansible_facts:
             architecture:
               type: str
               description: CPU architecture (e.g. "x86_64").
-'''
+"""
 
 from ansible.module_utils.basic import AnsibleModule
 
@@ -132,24 +134,20 @@ from ansible.module_utils.basic import AnsibleModule
 def main():
     """Fail if this module is run directly without the action plugin."""
     argument_spec = {
-        'gather_subset': {
-            'type': 'list',
-            'elements': 'str',
-            'default': ['all'],
-            'choices': [
-                'all', 'kernel', 'arch',
-                '!all', '!kernel', '!arch'
-            ]
+        "gather_subset": {
+            "type": "list",
+            "elements": "str",
+            "default": ["all"],
+            "choices": ["all", "kernel", "arch", "!all", "!kernel", "!arch"],
         }
     }
 
     module = AnsibleModule(
-        argument_spec=argument_spec,
-        supports_check_mode=True
+        argument_spec=argument_spec, supports_check_mode=True
     )
 
-    module.fail_json(msg='This module must be run via its action plugin.')
+    module.fail_json(msg="This module must be run via its action plugin.")
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

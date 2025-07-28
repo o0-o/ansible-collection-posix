@@ -9,8 +9,9 @@
 #
 # This file is part of the o0_o.posix Ansible Collection.
 
+
 class ModuleDocFragment:
-    DOCUMENTATION = '''
+    DOCUMENTATION = """
     options:
       owner:
         description:
@@ -70,4 +71,4 @@ class ModuleDocFragment:
         available, or fall back to C(chcon).
       - The value C(_default) is not supported for any SELinux parameter.
       - The C(unsafe_writes) option is not supported.
-    '''
+    """

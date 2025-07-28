@@ -34,7 +34,8 @@ else:
 
 
 class ActionModule(PosixBase):
-    """Execute a command on the remote host with raw fallback support.
+    """
+    Execute a command on the remote host with raw fallback support.
 
     This action plugin provides robust command execution that
     automatically falls back to raw shell execution when Python is not
@@ -57,17 +58,20 @@ class ActionModule(PosixBase):
     _supports_check_mode = True
     _supports_async = False
 
-    def _raw_cmd(self, module_args: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-        """Execute a command using low-level methods.
+    def _raw_cmd(
+        self, module_args: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
+        """
+        Execute a command using low-level methods.
 
         Performs command execution using direct shell invocation when
-        the standard Ansible command module is unavailable due to missing
-        Python interpreter on the remote host.
+        the standard Ansible command module is unavailable due to a
+        missing Python interpreter on the remote host.
 
         :param Optional[Dict[str, Any]] module_args: Module arguments
             dictionary containing command parameters
         :returns Dict[str, Any]: Command execution result dictionary
-            containing stdout, stderr, return code, and timing information
+            containing stdout, stderr, return code, and timing info
         :raises AnsibleActionFail: When command execution fails or
             arguments are invalid
 
@@ -77,43 +81,43 @@ class ActionModule(PosixBase):
         """
 
         # Extract and normalize module arguments
-        shell = module_args['_uses_shell']
-        chdir = module_args['chdir']
-        executable = module_args['executable']
-        args = module_args['cmd']
-        argv = module_args['argv']
-        creates = module_args['creates']
-        removes = module_args['removes']
-        stdin = module_args['stdin']
-        stdin_add_newline = module_args['stdin_add_newline']
-        strip = module_args['strip_empty_ends']
-        expand_vars = module_args['expand_argument_vars'] or None
+        shell = module_args["_uses_shell"]
+        chdir = module_args["chdir"]
+        executable = module_args["executable"]
+        args = module_args["cmd"]
+        argv = module_args["argv"]
+        creates = module_args["creates"]
+        removes = module_args["removes"]
+        stdin = module_args["stdin"]
+        stdin_add_newline = module_args["stdin_add_newline"]
+        strip = module_args["strip_empty_ends"]
+        expand_vars = module_args["expand_argument_vars"] or None
 
         if stdin and stdin_add_newline:
-            if not stdin.endswith('\n'):
-                stdin = stdin + '\n'
+            if not stdin.endswith("\n"):
+                stdin = stdin + "\n"
         if isinstance(stdin, str):
-            stdin = stdin.encode('utf-8')
+            stdin = stdin.encode("utf-8")
 
         if expand_vars is not None and expand_vars != shell:
             raise AnsibleActionFail(
-                'Raw fallback requires expand_argument_vars and _uses_shell '
-                'to be the same. Shell-based execution expands variables '
-                'remotely. If expand_argument_vars is true but _uses_shell is '
-                'false, the fallback cannot expand variables.'
+                "Raw fallback requires expand_argument_vars and _uses_shell "
+                "to be the same. Shell-based execution expands variables "
+                "remotely. If expand_argument_vars is true but _uses_shell is "
+                "false, the fallback cannot expand variables."
             )
 
         # Initialize return dict (mimics command module output)
         r = {
-            'changed': False,
-            'stdout': '',
-            'stderr': '',
-            'rc': None,
-            'cmd': None,
-            'start': None,
-            'end': None,
-            'delta': None,
-            'msg': ''
+            "changed": False,
+            "stdout": "",
+            "stderr": "",
+            "rc": None,
+            "cmd": None,
+            "start": None,
+            "end": None,
+            "delta": None,
+            "msg": "",
         }
 
         # Warn if executable is set without shell=True
@@ -135,115 +139,114 @@ class ActionModule(PosixBase):
         if is_iterable(args, include_strings=False):
             args = [
                 to_native(
-                    arg,
-                    errors='surrogate_or_strict',
-                    nonstring='simplerepr'
+                    arg, errors="surrogate_or_strict", nonstring="simplerepr"
                 )
                 for arg in args
             ]
 
-        r['cmd'] = args
+        r["cmd"] = args
 
         # If chdir is specified, validate the target directory
         if chdir:
             quoted_chdir = shlex.quote(chdir)
             cd_result = self._low_level_execute_command(
-                f"cd {quoted_chdir}",
-                executable=executable
+                f"cd {quoted_chdir}", executable=executable
             )
-            if cd_result['rc'] != 0:
+            if cd_result["rc"] != 0:
                 raise AnsibleActionFail(
                     f"Unable to change directory before execution: {chdir}"
                 )
 
         # Use creates/removes logic for check_mode idempotence
-        shoulda = 'Would' if self._task.check_mode else 'Did'
+        shoulda = "Would" if self._task.check_mode else "Did"
 
-        if creates and not r['msg']:
+        if creates and not r["msg"]:
             quoted_creates = shlex.quote(creates)
             cr = self._low_level_execute_command(f"test -e {quoted_creates}")
-            if cr['rc'] == 0:
-                r['msg'] = f"{shoulda} not run command since '{creates}' exists"
-                r['stdout'] = f"skipped, since {creates} exists"
-                r['stdout_lines'] = [r['stdout']]
-                r['stderr_lines'] = []
-                r['rc'] = 0
+            if cr["rc"] == 0:
+                r["msg"] = (
+                    f"{shoulda} not run command since '{creates}' exists"
+                )
+                r["stdout"] = f"skipped, since {creates} exists"
+                r["stdout_lines"] = [r["stdout"]]
+                r["stderr_lines"] = []
+                r["rc"] = 0
                 return r
 
-        if removes and not r['msg']:
+        if removes and not r["msg"]:
             quoted_removes = shlex.quote(removes)
             rm = self._low_level_execute_command(f"test -e {quoted_removes}")
-            if rm['rc'] != 0:
-                r['msg'] = (
+            if rm["rc"] != 0:
+                r["msg"] = (
                     f"{shoulda} not run command since '{removes}' "
-                    'does not exist'
+                    "does not exist"
                 )
-                r['stdout'] = f"skipped, since {removes} does not exist"
-                r['stdout_lines'] = [r['stdout']]
-                r['stderr_lines'] = []
-                r['rc'] = 0
+                r["stdout"] = f"skipped, since {removes} does not exist"
+                r["stdout_lines"] = [r["stdout"]]
+                r["stderr_lines"] = []
+                r["rc"] = 0
                 return r
 
-        r['changed'] = True
+        r["changed"] = True
 
         # Actually run the command unless in check_mode
-        if not r['msg']:
+        if not r["msg"]:
             if not self._task.check_mode:
-                r['start'] = datetime.datetime.now()
+                r["start"] = datetime.datetime.now()
 
                 # Determine the final command to execute
                 if shell:
                     if is_iterable(args, include_strings=False):
-                        cmd_str = ' '.join(shlex.quote(a) for a in args)
+                        cmd_str = " ".join(shlex.quote(a) for a in args)
                     else:
                         cmd_str = args
-                    cmd = shlex.join(['sh', '-c', cmd_str])
+                    cmd = shlex.join(["sh", "-c", cmd_str])
                 else:
                     cmd = shlex.join(args)
                 # Execute the command
                 exec_result = self._low_level_execute_command(
-                    cmd,
-                    in_data=stdin,
-                    executable=executable,
-                    chdir=chdir
+                    cmd, in_data=stdin, executable=executable, chdir=chdir
                 )
                 r.update(exec_result)
-                r['end'] = datetime.datetime.now()
+                r["end"] = datetime.datetime.now()
             else:
-                r['rc'] = 0
-                r['msg'] = 'Command would have run if not in check mode'
+                r["rc"] = 0
+                r["msg"] = "Command would have run if not in check mode"
                 if creates is None and removes is None:
-                    r['skipped'] = True
-                    r['changed'] = False
+                    r["skipped"] = True
+                    r["changed"] = False
 
         # Convert timestamps and delta to text
-        if r['start'] is not None and r['end'] is not None:
-            r['delta'] = to_text(r['end'] - r['start'])
-            r['end'] = to_text(r['end'])
-            r['start'] = to_text(r['start'])
+        if r["start"] is not None and r["end"] is not None:
+            r["delta"] = to_text(r["end"] - r["start"])
+            r["end"] = to_text(r["end"])
+            r["start"] = to_text(r["start"])
 
         # Strip trailing newlines from output if requested and define
         # module stdout/err and stdout/err lines lists.
-        if r.get('stdout'):
+        if r.get("stdout"):
             if strip:
-                r['stdout'] = to_text(r['stdout']).rstrip('\r\n')
-            r['module_stdout'] = r['stdout']
-            r['stdout_lines'] = r['stdout'].splitlines()
-        if r.get('stderr'):
+                r["stdout"] = to_text(r["stdout"]).rstrip("\r\n")
+            r["module_stdout"] = r["stdout"]
+            r["stdout_lines"] = r["stdout"].splitlines()
+        if r.get("stderr"):
             if strip:
-                r['stderr'] = to_text(r['stderr']).rstrip('\r\n')
-            r['module_stderr'] = r['stderr']
-            r['stderr_lines'] = r['stderr'].splitlines()
+                r["stderr"] = to_text(r["stderr"]).rstrip("\r\n")
+            r["module_stderr"] = r["stderr"]
+            r["stderr_lines"] = r["stderr"].splitlines()
 
-        if r['rc'] != 0:
-            r['msg'] = 'non-zero return code'
+        if r["rc"] != 0:
+            r["msg"] = "non-zero return code"
 
         return r
 
     def run(
-        self, tmp: Optional[str] = None, task_vars: Optional[Dict[str, Any]] = None
+        self,
+        tmp: Optional[str] = None,
+        task_vars: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
-        """Execute the command action with raw fallback capability.
+        """
+        Execute the command action with raw fallback capability.
 
         Main entry point that attempts command execution using the
         standard Ansible command module first, then falls back to raw
@@ -251,8 +254,9 @@ class ActionModule(PosixBase):
         host.
 
         :param Optional[str] tmp: Temporary directory path (unused in
-            modern Ansible)
-        :param Optional[Dict[str, Any]] task_vars: Task variables dictionary
+            modern Ansible versions)
+        :param Optional[Dict[str, Any]] task_vars: Task variables
+            dictionary
         :returns Dict[str, Any]: Standard Ansible result dictionary
 
         :raises AnsibleActionFail: When the packaging module is missing,
@@ -264,7 +268,6 @@ class ActionModule(PosixBase):
            expand_argument_vars parameter (Ansible 2.16+).
         """
         task_vars = task_vars or {}
-        check_mode = self._task.check_mode
 
         if PACKAGING_IMPORT_ERROR:
             raise AnsibleActionFail(
@@ -274,32 +277,32 @@ class ActionModule(PosixBase):
 
         # Define supported module arguments
         argument_spec = {
-            '_uses_shell': {'type': 'bool', 'default': False},
-            'cmd': {},
-            'argv': {'type': 'list', 'elements': 'str'},
-            'chdir': {'type': 'path'},
-            'executable': {},
-            'expand_argument_vars': {'type': 'bool'},
-            'creates': {'type': 'path'},
-            'removes': {'type': 'path'},
-            'stdin': {'required': False},
-            'stdin_add_newline': {'type': 'bool', 'default': True},
-            'strip_empty_ends': {'type': 'bool', 'default': True},
-            '_force_raw': {'type': 'bool', 'default': False},
+            "_uses_shell": {"type": "bool", "default": False},
+            "cmd": {},
+            "argv": {"type": "list", "elements": "str"},
+            "chdir": {"type": "path"},
+            "executable": {},
+            "expand_argument_vars": {"type": "bool"},
+            "creates": {"type": "path"},
+            "removes": {"type": "path"},
+            "stdin": {"required": False},
+            "stdin_add_newline": {"type": "bool", "default": True},
+            "strip_empty_ends": {"type": "bool", "default": True},
+            "_force_raw": {"type": "bool", "default": False},
         }
 
         validation_result, new_module_args = self.validate_argument_spec(
             argument_spec=argument_spec
         )
-        self.force_raw = new_module_args.pop('_force_raw')
-        if parse_version(ansible_version) < parse_version('2.16'):
-            if new_module_args.get('expand_argument_vars') is not None:
+        self.force_raw = new_module_args.pop("_force_raw")
+        if parse_version(ansible_version) < parse_version("2.16"):
+            if new_module_args.get("expand_argument_vars") is not None:
                 raise AnsibleActionFail(
-                    'expand_argument_vars is not supported on Ansible '
-                    'versions before 2.16'
+                    "expand_argument_vars is not supported on Ansible "
+                    "versions before 2.16"
                 )
 
-        input_keys = ('cmd', 'argv')
+        input_keys = ("cmd", "argv")
         provided = [
             k for k in input_keys if new_module_args.get(k) is not None
         ]
@@ -315,38 +318,37 @@ class ActionModule(PosixBase):
             )
 
         result = super().run(tmp, task_vars)
-        result['invocation'] = self._task.args.copy()
+        result["invocation"] = self._task.args.copy()
         del tmp
 
         if not self.force_raw:
             builtin_module_args = new_module_args.copy()
-            if builtin_module_args.get('expand_argument_vars') is None:
-                builtin_module_args.pop('expand_argument_vars')
-            builtin_module_args['_raw_params'] = builtin_module_args.pop('cmd')
+            if builtin_module_args.get("expand_argument_vars") is None:
+                builtin_module_args.pop("expand_argument_vars")
+            builtin_module_args["_raw_params"] = builtin_module_args.pop("cmd")
 
             ansible_cmd_mod = self._execute_module(
-                module_name='ansible.builtin.command',
+                module_name="ansible.builtin.command",
                 module_args=builtin_module_args,
                 task_vars=task_vars,
             )
-            ansible_cmd_mod.pop('invocation', None)
+            ansible_cmd_mod.pop("invocation", None)
 
             if not self._is_interpreter_missing(ansible_cmd_mod):
                 result.update(ansible_cmd_mod)
-                result['raw'] = False
+                result["raw"] = False
             else:
                 self._display.warning(
-                    'Ansible command module failed on host '
+                    "Ansible command module failed on host "
                     f"{task_vars.get('inventory_hostname', 'UNKOWN')}, "
-                    'falling back to raw command.'
+                    "falling back to raw command."
                 )
                 self.force_raw = True
 
         if self.force_raw:
             cmd_result = self._raw_cmd(module_args=new_module_args)
-            stderr = cmd_result.get('module_stderr', '').lower()
             result.update(cmd_result)
-            result['raw'] = True
+            result["raw"] = True
 
         self._remove_tmp_path(self._connection._shell.tmpdir)
 

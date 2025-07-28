@@ -15,12 +15,13 @@ from typing import Any, Dict, Optional, Tuple
 
 from ansible.errors import AnsibleActionFail, AnsibleConnectionFailure
 from ansible_collections.o0_o.posix.plugins.action_utils.posix_base import (
-    PosixBase
+    PosixBase,
 )
 
 
 class ActionModule(PosixBase):
-    """Gather basic POSIX kernel and hardware facts.
+    """
+    Gather basic POSIX kernel and hardware facts.
 
     This action plugin collects minimal operating system and hardware
     information from remote POSIX-compliant systems using standard
@@ -46,12 +47,14 @@ class ActionModule(PosixBase):
     def _get_kernel_and_hardware(
         self, task_vars: Optional[Dict[str, Any]] = None
     ) -> Tuple[Dict[str, Any], Dict[str, Any]]:
-        """Collect minimal OS facts from the remote POSIX system using uname.
+        """
+        Collect minimal OS facts from the remote POSIX system.
 
         Executes uname commands to gather kernel name, version, and
         architecture information from the remote system.
 
-        :param Optional[Dict[str, Any]] task_vars: Task variables dictionary
+        :param Optional[Dict[str, Any]] task_vars: Task variables
+            dictionary
         :returns Tuple[Dict[str, Any], Dict[str, Any]]: Tuple containing
             (kernel_facts, cpu_facts) dictionaries
         :raises AnsibleConnectionFailure: When connection to remote host
@@ -60,41 +63,44 @@ class ActionModule(PosixBase):
             output
         """
         un_s = self._cmd(
-            ['uname', '-s'], task_vars=task_vars, check_mode=False
+            ["uname", "-s"], task_vars=task_vars, check_mode=False
         )
         un_r = self._cmd(
-            ['uname', '-r'], task_vars=task_vars, check_mode=False
+            ["uname", "-r"], task_vars=task_vars, check_mode=False
         )
         un_m = self._cmd(
-            ['uname', '-m'], task_vars=task_vars, check_mode=False
+            ["uname", "-m"], task_vars=task_vars, check_mode=False
         )
 
-        kernel_name = un_s['stdout_lines'][0]
-        kernel_version = un_r['stdout_lines'][0]
-        arch = un_m['stdout_lines'][0]
+        kernel_name = un_s["stdout_lines"][0]
+        kernel_version = un_r["stdout_lines"][0]
+        arch = un_m["stdout_lines"][0]
 
         self._display.vvv(f"Kernel name: {kernel_name}")
         self._display.vvv(f"Kernel version: {kernel_version}")
         self._display.vvv(f"Architecture: {arch}")
 
         kernel = {
-            'pretty': kernel_name,
-            'name': kernel_name.lower().replace(' ', '_'),
-            'version': {
-                'id': kernel_version,
+            "pretty": kernel_name,
+            "name": kernel_name.lower().replace(" ", "_"),
+            "version": {
+                "id": kernel_version,
             },
         }
 
         cpu = {
-            'architecture': arch,
+            "architecture": arch,
         }
 
         return kernel, cpu
 
     def run(
-        self, tmp: Optional[str] = None, task_vars: Optional[Dict[str, Any]] = None
+        self,
+        tmp: Optional[str] = None,
+        task_vars: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
-        """Main entry point for the action plugin.
+        """
+        Main entry point for the action plugin.
 
         Gathers POSIX kernel and hardware facts based on the specified
         subset filter and returns them under the o0_os and o0_hardware
@@ -102,7 +108,8 @@ class ActionModule(PosixBase):
 
         :param Optional[str] tmp: Temporary directory path (unused in
             modern Ansible)
-        :param Optional[Dict[str, Any]] task_vars: Task variables dictionary
+        :param Optional[Dict[str, Any]] task_vars: Task variables
+            dictionary
         :returns Dict[str, Any]: Standard Ansible result dictionary
 
         :raises AnsibleActionFail: When invalid gather_subset values are
@@ -117,21 +124,25 @@ class ActionModule(PosixBase):
         tmp = None  # unused in modern Ansible
 
         argument_spec = {
-            'gather_subset': {
-                'type': 'list',
-                'elements': 'str',
-                'default': ['all'],
-                'choices': [
-                    'all', 'kernel', 'arch',
-                    '!all', '!kernel', '!arch'
-                ]
+            "gather_subset": {
+                "type": "list",
+                "elements": "str",
+                "default": ["all"],
+                "choices": [
+                    "all",
+                    "kernel",
+                    "arch",
+                    "!all",
+                    "!kernel",
+                    "!arch",
+                ],
             }
         }
 
         validation_result, new_module_args = self.validate_argument_spec(
             argument_spec=argument_spec
         )
-        gather_subset = new_module_args['gather_subset']
+        gather_subset = new_module_args["gather_subset"]
 
         result = super().run(tmp, task_vars)
 
@@ -141,29 +152,33 @@ class ActionModule(PosixBase):
             raise
         except Exception as e:
             self._display.vvv(
-                "On error, assume the system isn't POSIX: "
+                f"On error, assume the system isn't POSIX: "
                 f"{type(e).__name__}: {e}"
             )
-            result.update({
-                'skipped': True,
-                'skip_reason': 'This does not appear to be a POSIX system.',
-                'ansible_facts': {}
-            })
+            result.update(
+                {
+                    "skipped": True,
+                    "skip_reason": (
+                        "This does not appear to be a POSIX system."
+                    ),
+                    "ansible_facts": {},
+                }
+            )
             return result
 
         # Subset filtering
-        all_subsets = {'kernel', 'arch'}
-        if all(s.startswith('!') for s in gather_subset):
+        all_subsets = {"kernel", "arch"}
+        if all(s.startswith("!") for s in gather_subset):
             selected_subsets = set(all_subsets)
         else:
             selected_subsets = set()
 
         for s in gather_subset:
-            if s == 'all':
+            if s == "all":
                 selected_subsets = set(all_subsets)
-            elif s == '!all':
+            elif s == "!all":
                 selected_subsets.clear()
-            elif s.startswith('!'):
+            elif s.startswith("!"):
                 selected_subsets.discard(s[1:])
             elif s in all_subsets:
                 selected_subsets.add(s)
@@ -171,32 +186,32 @@ class ActionModule(PosixBase):
                 raise AnsibleActionFail(f"Invalid gather_subset: {s}")
 
         # Pull in existing facts to extend
-        ansible_facts = task_vars.get('ansible_facts', {})
-        os_facts = ansible_facts.get('o0_os', {}).copy()
-        hw_facts = ansible_facts.get('o0_hardware', {}).copy()
+        ansible_facts = task_vars.get("ansible_facts", {})
+        os_facts = ansible_facts.get("o0_os", {}).copy()
+        hw_facts = ansible_facts.get("o0_hardware", {}).copy()
         facts = {}
 
-        if 'kernel' in selected_subsets:
-            os_facts['kernel'] = kernel
+        if "kernel" in selected_subsets:
+            os_facts["kernel"] = kernel
 
-            compliance = os_facts.get('compliance', [])
+            compliance = os_facts.get("compliance", [])
             if not isinstance(compliance, list):
                 compliance = []
 
-            posix_entry = {'name': 'posix', 'pretty': 'POSIX'}
+            posix_entry = {"name": "posix", "pretty": "POSIX"}
             if posix_entry not in compliance:
                 compliance.append(posix_entry)
 
-            os_facts['compliance'] = compliance
+            os_facts["compliance"] = compliance
 
-            facts['o0_os'] = os_facts
+            facts["o0_os"] = os_facts
 
-        if 'arch' in selected_subsets:
-            hw_facts['cpu'] = hw_facts.get('cpu', {}).copy()
-            hw_facts['cpu'].update(cpu)
+        if "arch" in selected_subsets:
+            hw_facts["cpu"] = hw_facts.get("cpu", {}).copy()
+            hw_facts["cpu"].update(cpu)
 
-            facts['o0_hardware'] = hw_facts
+            facts["o0_hardware"] = hw_facts
 
-        result.update({'ansible_facts': facts})
+        result.update({"ansible_facts": facts})
 
         return result

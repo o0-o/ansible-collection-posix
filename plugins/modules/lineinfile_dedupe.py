@@ -14,9 +14,11 @@
 # This file is part of the o0_o.posix Ansible Collection.
 
 from __future__ import absolute_import, division, print_function
+
 __metaclass__ = type
 
-DOCUMENTATION = r'''
+
+DOCUMENTATION = r"""
 ---
 module: lineinfile_dedupe
 short_description: Manage lines in text files with deduplication and raw
@@ -124,9 +126,9 @@ notes:
   - The C(unsafe_writes) option is intentionally not supported.
   - The line will always be inserted at the relative position if not already
     present there.
-'''
+"""
 
-EXAMPLES = r'''
+EXAMPLES = r"""
 - name: Ensure a line is present with deduplication
   o0_o.posix.lineinfile_dedupe:
     path: /etc/myapp.conf
@@ -146,9 +148,9 @@ EXAMPLES = r'''
     line: 'enabled = true'
     insertafter: '^# Enable logging'
     create: true
-'''
+"""
 
-RETURN = r'''
+RETURN = r"""
 changed:
   description: Whether the file was modified.
   type: bool
@@ -169,47 +171,49 @@ diff:
   description: Diff of before and after file content (if diff enabled).
   type: dict
   returned: when supported
-'''
+"""
 
 from ansible.module_utils.basic import AnsibleModule
 from ansible.module_utils.common.file import get_file_arg_spec
 
 
 def main():
+    """Fail if this module is run directly without the action plugin."""
     argument_spec = get_file_arg_spec()
-    argument_spec.pop('attributes')
-    argument_spec.update({
-        'path': {
-            'type': 'path',
-            'required': True,
-            'aliases': ['dest', 'destfile', 'name']
-        },
-        'regexp': {'type': 'str', 'aliases': ['regex']},
-        'search_string': {'type': 'str'},
-        'state': {
-            'type': 'str',
-            'choices': ['absent', 'present'],
-            'default': 'present'
-        },
-        'line': {'type': 'str', 'aliases': ['value']},
-        'backrefs': {'type': 'bool', 'default': False},
-        'insertafter': {'type': 'str'},
-        'insertbefore': {'type': 'str'},
-        'create': {'type': 'bool', 'default': False},
-        'backup': {'type': 'bool', 'default': False},
-        'firstmatch': {'type': 'bool', 'default': False},
-        'dedupe': {'type': 'bool', 'default': True},
-        'validate': {'type': 'str'},
-        '_force_raw': {'type': 'bool', 'default': False},
-    })
-
-    module = AnsibleModule(
-        argument_spec=argument_spec,
-        supports_check_mode=True
+    argument_spec.pop("attributes")
+    argument_spec.update(
+        {
+            "path": {
+                "type": "path",
+                "required": True,
+                "aliases": ["dest", "destfile", "name"],
+            },
+            "regexp": {"type": "str", "aliases": ["regex"]},
+            "search_string": {"type": "str"},
+            "state": {
+                "type": "str",
+                "choices": ["absent", "present"],
+                "default": "present",
+            },
+            "line": {"type": "str", "aliases": ["value"]},
+            "backrefs": {"type": "bool", "default": False},
+            "insertafter": {"type": "str"},
+            "insertbefore": {"type": "str"},
+            "create": {"type": "bool", "default": False},
+            "backup": {"type": "bool", "default": False},
+            "firstmatch": {"type": "bool", "default": False},
+            "dedupe": {"type": "bool", "default": True},
+            "validate": {"type": "str"},
+            "_force_raw": {"type": "bool", "default": False},
+        }
     )
 
-    module.fail_json(msg='This module must be run via its action plugin.')
+    module = AnsibleModule(
+        argument_spec=argument_spec, supports_check_mode=True
+    )
+
+    module.fail_json(msg="This module must be run via its action plugin.")
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

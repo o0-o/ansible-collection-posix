@@ -23,23 +23,24 @@ from ansible_collections.o0_o.posix.tests.utils import (
 
 
 @pytest.mark.parametrize(
-    'exists, is_dir, setup, expect_error, error_msg, changed',
+    "exists, is_dir, setup, expect_error, error_msg, changed",
     [
         # Directory doesn't exist → should be created
         (False, False, None, False, None, True),
-
         # Directory already exists → no change
         (True, True, None, False, None, False),
-
         # File exists at path → should raise error
-        (True, False, None, True, 'not a directory', None),
-
+        (True, False, None, True, "not a directory", None),
         # Permission denied on intermediate dir → should raise error
         (
-            False, False, 'restrictive_subdir', True,
-            'Failed to create directory', None
+            False,
+            False,
+            "restrictive_subdir",
+            True,
+            "Failed to create directory",
+            None,
         ),
-    ]
+    ],
 )
 def test_mkdir_behavior(
     base, exists, is_dir, setup, expect_error, error_msg, changed
@@ -48,16 +49,16 @@ def test_mkdir_behavior(
     path = generate_temp_path()
 
     try:
-        if setup == 'restrictive_subdir':
+        if setup == "restrictive_subdir":
             # Create a subdirectory with no permissions
             os.makedirs(path, exist_ok=True)
-            restricted = os.path.join(path, 'no_access')
+            restricted = os.path.join(path, "no_access")
             os.makedirs(restricted, exist_ok=True)
             os.chmod(restricted, 0o000)
 
             try:
                 with pytest.raises(AnsibleActionFail) as excinfo:
-                    base._mkdir(os.path.join(restricted, 'fail'))
+                    base._mkdir(os.path.join(restricted, "fail"))
                 if error_msg:
                     assert error_msg in str(excinfo.value)
             finally:
@@ -70,8 +71,8 @@ def test_mkdir_behavior(
             if is_dir:
                 os.makedirs(path, exist_ok=True)
             else:
-                with open(path, 'w', encoding='utf-8') as f:
-                    f.write('conflict file')
+                with open(path, "w", encoding="utf-8") as f:
+                    f.write("conflict file")
 
         if expect_error:
             with pytest.raises(AnsibleActionFail) as excinfo:
@@ -80,8 +81,8 @@ def test_mkdir_behavior(
                 assert error_msg in str(excinfo.value)
         else:
             result = base._mkdir(path)
-            assert result['rc'] == 0
-            assert result['changed'] is changed
+            assert result["rc"] == 0
+            assert result["changed"] is changed
 
     finally:
         cleanup_path(path)
@@ -93,7 +94,7 @@ def test_mkdir_invalid_mode(base) -> None:
 
     try:
         with pytest.raises(AnsibleActionFail) as excinfo:
-            base._mkdir(path, mode='invalid')
-        assert 'Failed to create directory' in str(excinfo.value)
+            base._mkdir(path, mode="invalid")
+        assert "Failed to create directory" in str(excinfo.value)
     finally:
         cleanup_path(path)

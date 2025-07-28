@@ -189,4 +189,6 @@ jobs:
   #     - name: Install Ansible Core
   #       run: pip install ansible-core
   #     - name: Publish to Galaxy
-  #       run: ansible-galaxy collection publish ./*.tar.gz --token ${{ secrets.GALAXY_API_KEY }}
+  #       run: >
+  #         ansible-galaxy collection publish ./*.tar.gz
+  #         --token ${{ secrets.GALAXY_API_KEY }}

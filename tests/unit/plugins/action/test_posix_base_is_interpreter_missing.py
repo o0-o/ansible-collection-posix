@@ -15,36 +15,43 @@ import pytest
 
 
 @pytest.mark.parametrize(
-    'result, expected',
+    "result, expected",
     [
         # Positive: canary string appears in msg and rc is 127
-        ({
-            'rc': 127,
-            'msg': (
-                'The module failed to execute correctly, you probably need to '
-                'set the interpreter for this host'
-            )
-        }, True),
-
+        (
+            {
+                "rc": 127,
+                "msg": (
+                    "The module failed to execute correctly, you probably "
+                    "need to set the interpreter for this host"
+                ),
+            },
+            True,
+        ),
         # Negative: rc is wrong or msg doesn't match
-        ({
-            'rc': 0,
-            'msg': (
-                'The module failed to execute correctly, you probably need to '
-                'set the interpreter'
-            )
-        }, False),
-        ({
-            'rc': 127,
-            'msg': 'unexpected failure message'
-        }, False),
-        ({
-            'rc': 127,
-        }, False),
+        (
+            {
+                "rc": 0,
+                "msg": (
+                    "The module failed to execute correctly, you probably "
+                    "need to set the interpreter for this host"
+                ),
+            },
+            False,
+        ),
+        ({"rc": 127, "msg": "unexpected failure message"}, False),
+        (
+            {
+                "rc": 127,
+            },
+            False,
+        ),
         ({}, False),
-        ('not a dict', False),
-    ]
+        ("not a dict", False),
+    ],
 )
 def test_is_interpreter_missing_canary_only(base, result, expected) -> None:
-    """Test _is_interpreter_missing detects Python errors by msg content."""
+    """
+    Test _is_interpreter_missing detects Python errors by msg content.
+    """
     assert base._is_interpreter_missing(result) is expected

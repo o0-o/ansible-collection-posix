@@ -18,12 +18,12 @@ from ansible.errors import AnsibleActionFail
 
 def test_validate_file_noop_for_none(base) -> None:
     """Test _validate_file no-op when validate_cmd is None."""
-    base._validate_file('/tmp/somefile', None)
+    base._validate_file("/tmp/somefile", None)
 
 
 def test_validate_file_noop_for_empty_string(base) -> None:
     """Test _validate_file no-op when validate_cmd is empty."""
-    base._validate_file('/tmp/somefile', '')
+    base._validate_file("/tmp/somefile", "")
 
 
 def test_validate_file_success(monkeypatch, base) -> None:
@@ -31,8 +31,8 @@ def test_validate_file_success(monkeypatch, base) -> None:
     called = {}
 
     def mock_cmd(argv, task_vars=None):
-        called['cmd'] = argv
-        return {'rc': 0}
+        called["cmd"] = argv
+        return {"rc": 0}
 
     def mock_quote(s):
         return f"'{s}'"
@@ -40,18 +40,19 @@ def test_validate_file_success(monkeypatch, base) -> None:
     base._cmd = mock_cmd
     base._quote = mock_quote
 
-    base._validate_file('/tmp/foo.conf', 'validate %s')
+    base._validate_file("/tmp/foo.conf", "validate %s")
 
-    assert called['cmd'] == "validate '/tmp/foo.conf'"
+    assert called["cmd"] == "validate '/tmp/foo.conf'"
 
 
 def test_validate_file_failure_raises(monkeypatch, base) -> None:
     """Test _validate_file raises error on validation failure."""
+
     def mock_cmd(argv, task_vars=None):
-        return {'rc': 1, 'stderr': 'syntax error'}
+        return {"rc": 1, "stderr": "syntax error"}
 
     base._cmd = mock_cmd
     base._quote = lambda s: s  # No quoting for this test
 
-    with pytest.raises(AnsibleActionFail, match='Validation failed:'):
-        base._validate_file('/etc/foo', 'validate %s')
+    with pytest.raises(AnsibleActionFail, match="Validation failed:"):
+        base._validate_file("/etc/foo", "validate %s")

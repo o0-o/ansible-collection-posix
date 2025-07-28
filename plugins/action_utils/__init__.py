@@ -19,5 +19,5 @@ target-executed modules.
 from .posix_base import PosixBase
 
 __all__ = [
-    'PosixBase',
+    "PosixBase",
 ]

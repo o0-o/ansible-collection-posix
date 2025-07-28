@@ -9,15 +9,16 @@
 #
 # This file is part of the o0_o.posix Ansible Collection.
 
+
 class ModuleDocFragment:
-    DOCUMENTATION = r'''
+    DOCUMENTATION = r"""
     options:
       _force_raw:
         description:
-          - Force fallback to raw execution mode, bypassing native Python behavior
-            even if available.
+          - Force fallback to raw execution mode, bypassing native Python
+            behavior even if available.
           - Intended for testing and debugging fallback logic.
         type: bool
         default: false
         required: false
-    '''
+    """

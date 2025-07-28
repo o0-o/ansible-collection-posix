@@ -11,7 +11,10 @@
 
 from .command import real_cmd
 from .path import (
-    generate_temp_path, cleanup_path, check_path_mode, check_path_ownership
+    generate_temp_path,
+    cleanup_path,
+    check_path_mode,
+    check_path_ownership,
 )
 
 __all__ = [

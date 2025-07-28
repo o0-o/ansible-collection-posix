@@ -14,10 +14,11 @@
 # This file is part of the o0_o.posix Ansible Collection.
 
 from __future__ import absolute_import, division, print_function
+
 __metaclass__ = type
 
 
-DOCUMENTATION = r'''
+DOCUMENTATION = r"""
 ---
 module: command
 short_description: Execute commands on remote hosts with fallback support
@@ -132,9 +133,9 @@ notes:
     or non-standard quoting may differ from Python-based execution.
   - The raw fallback does not support parameter substitution or environment
     variables in the same way as the builtin module.
-'''
+"""
 
-EXAMPLES = r'''
+EXAMPLES = r"""
 - name: Run a simple command using argv
   o0_o.posix.command:
     argv: ['ls', '-l', '/etc']
@@ -154,9 +155,9 @@ EXAMPLES = r'''
   o0_o.posix.command:
     argv: ['uptime']
     _force_raw: true
-'''
+"""
 
-RETURN = r'''
+RETURN = r"""
 msg:
   description: Human-readable message about the task result.
   type: str
@@ -202,33 +203,32 @@ stderr_lines:
   description: The command standard error split in lines.
   returned: always
   type: list
-'''
-
+"""
 
 from ansible.module_utils.basic import AnsibleModule
 
 
 def main():
-    # This module is used only to support documentation and validation.
+    """Fail if this module is run directly without the action plugin."""
     module = AnsibleModule(
         argument_spec={
-            '_uses_shell': {'type': 'bool', 'default': False},
-            'cmd': {},
-            'argv': {'type': 'list', 'elements': 'str'},
-            'chdir': {'type': 'path'},
-            'executable': {},
-            'expand_argument_vars': {'type': 'bool'},
-            'creates': {'type': 'path'},
-            'removes': {'type': 'path'},
-            'stdin': {'required': False},
-            'stdin_add_newline': {'type': 'bool', 'default': True},
-            'strip_empty_ends': {'type': 'bool', 'default': True},
-            '_force_raw': {'type': 'bool', 'default': False},
+            "_uses_shell": {"type": "bool", "default": False},
+            "cmd": {},
+            "argv": {"type": "list", "elements": "str"},
+            "chdir": {"type": "path"},
+            "executable": {},
+            "expand_argument_vars": {"type": "bool"},
+            "creates": {"type": "path"},
+            "removes": {"type": "path"},
+            "stdin": {"required": False},
+            "stdin_add_newline": {"type": "bool", "default": True},
+            "strip_empty_ends": {"type": "bool", "default": True},
+            "_force_raw": {"type": "bool", "default": False},
         },
         supports_check_mode=True,
     )
-    module.fail_json(msg='This module must be run via its action plugin.')
+    module.fail_json(msg="This module must be run via its action plugin.")
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

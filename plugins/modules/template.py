@@ -10,9 +10,11 @@
 # This file is part of the o0_o.posix Ansible Collection.
 
 from __future__ import absolute_import, division, print_function
+
 __metaclass__ = type
 
-DOCUMENTATION = r'''
+
+DOCUMENTATION = r"""
 ---
 module: template
 short_description: Template a file out to a target host witih raw fallback
@@ -144,9 +146,9 @@ notes:
   - This implementation always follows symlinks (C(follow=true)).
   - Does not support C(unsafe_writes).
   - Template output is always written using UTF-8 encoding.
-'''
+"""
 
-EXAMPLES = r'''
+EXAMPLES = r"""
 - name: Render a config file from template
   o0_o.posix.template:
     src: nginx.conf.j2
@@ -161,9 +163,9 @@ EXAMPLES = r'''
     src: foo.j2
     dest: /tmp/foo.txt
     _force_raw: true
-'''
+"""
 
-RETURN = r'''
+RETURN = r"""
 changed:
   description: Whether the file was modified.
   type: bool
@@ -184,62 +186,61 @@ diff:
   description: Diff of before and after file content (if diff enabled).
   type: dict
   returned: when supported
-'''
+"""
 
 from ansible.module_utils.basic import AnsibleModule
 from ansible.module_utils.common.file import get_file_arg_spec
 
 
 def main():
+    """Fail if this module is run directly without the action plugin."""
     argument_spec = get_file_arg_spec()
-    argument_spec.pop('attributes')
-    argument_spec.update({
-        'block_end_string': {
-            'type': 'str',
-            'default': '%}',
-        },
-        'block_start_string': {
-            'type': 'str',
-            'default': '{%'
-        },
-        'comment_end_string': {
-            'type': 'str',
-            'default': '#}',
-        },
-        'comment_start_string': {
-            'type': 'str',
-            'default': '{#',
-        },
-        'dest': {'type': 'path', 'required': True},
-        'force': {'type': 'bool', 'default': True},
-        'lstrip_blocks': {'type': 'bool', 'default': False},
-        'newline_sequence': {
-            'type': 'str',
-            'choices': ['\n', '\r', '\r\n'],
-            'default': '\n',
-        },
-        'src': {'type': 'path', 'required': True},
-        'trim_blocks': {'type': 'bool', 'default': True},
-        'backup': {'type': 'bool', 'default': False},
-        'validate': {'type': 'str'},
-        'variable_end_string': {
-            'type': 'str',
-            'default': '}}',
-        },
-        'variable_start_string': {
-            'type': 'str',
-            'default': '{{',
-        },
-        '_force_raw': {'type': 'bool', 'default': False},
-    })
-
-    module = AnsibleModule(
-        argument_spec=argument_spec,
-        supports_check_mode=True
+    argument_spec.pop("attributes")
+    argument_spec.update(
+        {
+            "block_end_string": {
+                "type": "str",
+                "default": "%}",
+            },
+            "block_start_string": {"type": "str", "default": "{%"},
+            "comment_end_string": {
+                "type": "str",
+                "default": "#}",
+            },
+            "comment_start_string": {
+                "type": "str",
+                "default": "{#",
+            },
+            "dest": {"type": "path", "required": True},
+            "force": {"type": "bool", "default": True},
+            "lstrip_blocks": {"type": "bool", "default": False},
+            "newline_sequence": {
+                "type": "str",
+                "choices": ["\n", "\r", "\r\n"],
+                "default": "\n",
+            },
+            "src": {"type": "path", "required": True},
+            "trim_blocks": {"type": "bool", "default": True},
+            "backup": {"type": "bool", "default": False},
+            "validate": {"type": "str"},
+            "variable_end_string": {
+                "type": "str",
+                "default": "}}",
+            },
+            "variable_start_string": {
+                "type": "str",
+                "default": "{{",
+            },
+            "_force_raw": {"type": "bool", "default": False},
+        }
     )
 
-    module.fail_json(msg='This module must be run via its action plugin.')
+    module = AnsibleModule(
+        argument_spec=argument_spec, supports_check_mode=True
+    )
+
+    module.fail_json(msg="This module must be run via its action plugin.")
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

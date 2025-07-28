@@ -9,7 +9,8 @@ readme: README.md
 authors:
   - oØ.o (@o0-o)
 description: >
-  POSIX-compatible Ansible plugins with raw fallback support for minimal systems.
+  POSIX-compatible Ansible plugins with raw fallback support for minimal
+  systems.
 license: GPL-3.0-or-later
 tags:
   - collection
