@@ -48,8 +48,8 @@ jobs:
       - name: Run sanity tests in container
         run: |
           docker run --rm \
-            -v ${{ github.workspace }}:/workspace \
-            -w /workspace \
+            -v ${{ github.workspace }}:/root/ansible_collections/o0_o/posix \
+            -w /root/ansible_collections/o0_o/posix \
             ${{ matrix.os }} sh -c '
               # Minimal Python setup for containers that need it
               case "${{ matrix.os }}" in
@@ -114,8 +114,8 @@ jobs:
       - name: Run unit tests in container
         run: |
           docker run --rm \
-            -v ${{ github.workspace }}:/workspace \
-            -w /workspace \
+            -v ${{ github.workspace }}:/root/ansible_collections/o0_o/posix \
+            -w /root/ansible_collections/o0_o/posix \
             ${{ matrix.os }} sh -c '
               # Minimal Python setup for containers that need it
               case "${{ matrix.os }}" in
@@ -180,8 +180,8 @@ jobs:
       - name: Run integration tests in container
         run: |
           docker run --rm \
-            -v ${{ github.workspace }}:/workspace \
-            -w /workspace \
+            -v ${{ github.workspace }}:/root/ansible_collections/o0_o/posix \
+            -w /root/ansible_collections/o0_o/posix \
             ${{ matrix.os }} sh -c '
               # Minimal Python setup for containers that need it
               case "${{ matrix.os }}" in
