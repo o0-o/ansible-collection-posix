@@ -54,19 +54,19 @@ jobs:
               # Install build dependencies for pyenv
               case "${{ matrix.os }}" in
                 debian:*|ubuntu:*)
-                  apt-get update && apt-get install -y git curl build-essential libssl-dev zlib1g-dev libbz2-dev libreadline-dev libsqlite3-dev libncursesw5-dev xz-utils tk-dev libxml2-dev libxmlsec1-dev libffi-dev liblzma-dev
+                  apt-get update && apt-get install -y bash git curl build-essential libssl-dev zlib1g-dev libbz2-dev libreadline-dev libsqlite3-dev libncursesw5-dev xz-utils tk-dev libxml2-dev libxmlsec1-dev libffi-dev liblzma-dev
                   ;;
                 fedora:*|rockylinux:*|almalinux:*|*/centos*)
-                  dnf install -y git curl gcc make openssl-devel bzip2-devel libffi-devel zlib-devel readline-devel sqlite-devel xz-devel
+                  dnf install -y bash git curl gcc make openssl-devel bzip2-devel libffi-devel zlib-devel readline-devel sqlite-devel xz-devel
                   ;;
                 opensuse/*)
-                  zypper install -y git curl gcc make openssl-devel libbz2-devel libffi-devel zlib-devel readline-devel sqlite3-devel xz-devel
+                  zypper install -y bash git curl gcc make openssl-devel libbz2-devel libffi-devel zlib-devel readline-devel sqlite3-devel xz-devel
                   ;;
                 archlinux:*)
-                  pacman -Sy --noconfirm git curl base-devel openssl zlib bzip2 libffi readline sqlite xz
+                  pacman -Sy --noconfirm bash git curl base-devel openssl zlib bzip2 libffi readline sqlite xz
                   ;;
                 alpine:*)
-                  apk add --no-cache git curl build-base openssl-dev zlib-dev bzip2-dev libffi-dev readline-dev sqlite-dev xz-dev
+                  apk add --no-cache bash git curl build-base openssl-dev zlib-dev bzip2-dev libffi-dev readline-dev sqlite-dev xz-dev coreutils
                   ;;
               esac
               
@@ -88,8 +88,8 @@ jobs:
               pyenv global 3.13:latest
               
               # Make pyenv Python available system-wide for integration tests
-              echo "export PATH=\"/root/.pyenv/bin:\$PATH\"" >> /root/.bashrc
-              echo "eval \"\$(pyenv init -)\"" >> /root/.bashrc
+              echo "export PATH=\"/root/.pyenv/bin:\$PATH\"" >> /root/.profile
+              echo "eval \"\$(pyenv init -)\"" >> /root/.profile
               
               # Create symlinks in /usr/local/bin for broader compatibility
               mkdir -p /usr/local/bin
