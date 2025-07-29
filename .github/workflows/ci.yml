@@ -50,7 +50,9 @@ jobs:
           docker run --rm \
             -v ${{ github.workspace }}:/root/ansible_collections/o0_o/posix \
             -w /root/ansible_collections/o0_o/posix \
-            ${{ matrix.os }} sh -c '
+            ${{ matrix.os }} bash -c '
+              set -e
+              
               # Install build dependencies for pyenv
               case "${{ matrix.os }}" in
                 debian:*|ubuntu:*)
@@ -69,9 +71,6 @@ jobs:
                   apk add --no-cache bash git curl build-base openssl-dev zlib-dev bzip2-dev libffi-dev readline-dev sqlite-dev xz-dev coreutils
                   ;;
               esac
-              
-              # Ensure PATH includes standard directories
-              export PATH="/usr/local/bin:/usr/bin:/bin:\$PATH"
               
               # Install pyenv and latest patch versions of Python
               export PYENV_ROOT="/root/.pyenv"
