@@ -70,6 +70,9 @@ jobs:
                   ;;
               esac
               
+              # Ensure PATH includes standard directories
+              export PATH="/usr/local/bin:/usr/bin:/bin:\$PATH"
+              
               # Install pyenv and latest patch versions of Python
               export PYENV_ROOT="/root/.pyenv"
               curl -s https://pyenv.run | bash
