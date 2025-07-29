@@ -29,9 +29,7 @@ jobs:
           - fedora:39
           - fedora:latest
           # Enterprise Linux
-          - rockylinux:8
           - rockylinux:9
-          - almalinux:8
           - almalinux:9
           - quay.io/centos/centos:stream9
           # openSUSE
@@ -97,9 +95,7 @@ jobs:
   #        - fedora:39
   #        - fedora:latest
   #        # Enterprise Linux
-  #        - rockylinux:8
   #        - rockylinux:9
-  #        - almalinux:8
   #        - almalinux:9
   #        - quay.io/centos/centos:stream9
   #        # openSUSE
@@ -165,9 +161,7 @@ jobs:
   #        - fedora:39
   #        - fedora:latest
   #        # Enterprise Linux
-  #        - rockylinux:8
   #        - rockylinux:9
-  #        - almalinux:8
   #        - almalinux:9
   #        - quay.io/centos/centos:stream9
   #        # openSUSE
@@ -352,10 +346,8 @@ jobs:
   #         - fedora:38
   #         - fedora:39
   #         - fedora:latest
-  #         - rockylinux:8
   #         - rockylinux:9
   #         - rockylinux:latest
-  #         - almalinux:8
   #         - almalinux:9
   #         - almalinux:latest
   #         - quay.io/centos/centos:stream8
