@@ -22,13 +22,16 @@ jobs:
           - debian:11
           - debian:12
           # Ubuntu LTS versions
+          - ubuntu:20.04
           - ubuntu:22.04
           - ubuntu:24.04
           # Fedora
           - fedora:39
           - fedora:latest
           # Enterprise Linux
+          - rockylinux:8
           - rockylinux:9
+          - almalinux:8
           - almalinux:9
           - quay.io/centos/centos:stream9
           # openSUSE
@@ -48,31 +51,62 @@ jobs:
             -v ${{ github.workspace }}:/root/ansible_collections/o0_o/posix \
             -w /root/ansible_collections/o0_o/posix \
             ${{ matrix.os }} sh -c '
-              # Minimal Python setup for containers that need it
+              # Install build dependencies for pyenv
               case "${{ matrix.os }}" in
                 debian:*|ubuntu:*)
-                  apt-get update && apt-get install -y python3-venv git
+                  apt-get update && apt-get install -y git curl build-essential libssl-dev zlib1g-dev libbz2-dev libreadline-dev libsqlite3-dev libncursesw5-dev xz-utils tk-dev libxml2-dev libxmlsec1-dev libffi-dev liblzma-dev
                   ;;
                 fedora:*|rockylinux:*|almalinux:*|*/centos*)
-                  dnf install -y python3 git
+                  dnf install -y git curl gcc make openssl-devel bzip2-devel libffi-devel zlib-devel readline-devel sqlite-devel xz-devel
                   ;;
                 opensuse/*)
-                  zypper install -y python3 git
+                  zypper install -y git curl gcc make openssl-devel libbz2-devel libffi-devel zlib-devel readline-devel sqlite3-devel xz-devel
                   ;;
                 archlinux:*)
-                  pacman -Sy --noconfirm python git
+                  pacman -Sy --noconfirm git curl base-devel openssl zlib bzip2 libffi readline sqlite xz
                   ;;
                 alpine:*)
-                  apk add --no-cache python3 git
+                  apk add --no-cache git curl build-base openssl-dev zlib-dev bzip2-dev libffi-dev readline-dev sqlite-dev xz-dev
                   ;;
               esac
-
-              # Create venv and run sanity tests
+              
+              # Install pyenv and latest patch versions of Python
+              export PYENV_ROOT="/root/.pyenv"
+              curl -s https://pyenv.run | bash
+              export PATH="/root/.pyenv/bin:\$PATH"
+              eval "\$(pyenv init -)"
+              
+              # Install latest patch versions for each major.minor
+              pyenv install 3.8:latest
+              pyenv install 3.9:latest  
+              pyenv install 3.10:latest
+              pyenv install 3.11:latest
+              pyenv install 3.12:latest
+              pyenv install 3.13:latest
+              
+              # Set global to 3.13 for ansible-core installation
+              pyenv global 3.13:latest
+              
+              # Make pyenv Python available system-wide for integration tests
+              echo "export PATH=\"/root/.pyenv/bin:\$PATH\"" >> /root/.bashrc
+              echo "eval \"\$(pyenv init -)\"" >> /root/.bashrc
+              
+              # Create symlinks in /usr/local/bin for broader compatibility
+              mkdir -p /usr/local/bin
+              for version in 3.8 3.9 3.10 3.11 3.12 3.13; do
+                ln -sf /root/.pyenv/shims/python\$version /usr/local/bin/python\$version
+              done
+              ln -sf /root/.pyenv/shims/python3 /usr/local/bin/python3
+              ln -sf /root/.pyenv/shims/python /usr/local/bin/python
+              
+              # Create venv with latest Python and install ansible-core
               git config --global --add safe.directory /root/ansible_collections/o0_o/posix
-              python3 -m venv .venv
+              python -m venv .venv
               . .venv/bin/activate
               pip install --upgrade pip
               pip install ansible-core
+              
+              # Run sanity tests across all installed Python versions
               ansible-test sanity --venv 2>&1
             '
 
