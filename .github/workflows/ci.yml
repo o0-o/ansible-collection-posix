@@ -88,8 +88,8 @@ jobs:
                 pyenv install 3.12:latest
                 pyenv install 3.13:latest
                 
-                # Set global to 3.13 for ansible-core installation
-                pyenv global 3.13:latest
+                # Set global to 3.13 for ansible-core installation  
+                pyenv global \$(pyenv versions --bare | grep '^3\.13\.' | sort -V | tail -1)
                 
                 # Make pyenv Python available system-wide for integration tests
                 echo \"export PATH=\\\"/root/.pyenv/bin:\\\$PATH\\\"\" >> /root/.profile
