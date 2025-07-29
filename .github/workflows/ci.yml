@@ -71,6 +71,7 @@ jobs:
               esac
               
               # Create venv and run sanity tests
+              git config --global --add safe.directory /root/ansible_collections/o0_o/posix
               python3 -m venv .venv
               . .venv/bin/activate
               pip install --upgrade pip
@@ -138,6 +139,7 @@ jobs:
               esac
               
               # Create venv and run unit tests
+              git config --global --add safe.directory /root/ansible_collections/o0_o/posix
               python3 -m venv .venv
               . .venv/bin/activate
               pip install --upgrade pip
@@ -205,6 +207,7 @@ jobs:
               esac
               
               # Create venv and run integration tests
+              git config --global --add safe.directory /root/ansible_collections/o0_o/posix
               python3 -m venv .venv
               . .venv/bin/activate
               pip install --upgrade pip
