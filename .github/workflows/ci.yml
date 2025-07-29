@@ -56,19 +56,19 @@ jobs:
               # Install build dependencies for pyenv
               case "${{ matrix.os }}" in
                 debian:*|ubuntu:*)
-                  apt-get update && apt-get install -y bash git curl tar build-essential libssl-dev zlib1g-dev libbz2-dev libreadline-dev libsqlite3-dev libncursesw5-dev xz-utils tk-dev libxml2-dev libxmlsec1-dev libffi-dev liblzma-dev
+                  apt-get update && apt-get install -y bash git curl tar findutils build-essential libssl-dev zlib1g-dev libbz2-dev libreadline-dev libsqlite3-dev libncursesw5-dev xz-utils tk-dev libxml2-dev libxmlsec1-dev libffi-dev liblzma-dev
                   ;;
                 fedora:*|rockylinux:*|almalinux:*|*/centos*)
-                  dnf install -y --allowerasing bash git curl tar gcc make openssl-devel bzip2-devel libffi-devel zlib-devel readline-devel sqlite-devel xz-devel
+                  dnf install -y --allowerasing bash git curl tar findutils gcc make openssl-devel bzip2-devel libffi-devel zlib-devel readline-devel sqlite-devel xz-devel
                   ;;
                 opensuse/*)
-                  zypper install -y bash git curl tar gcc make openssl-devel libbz2-devel libffi-devel zlib-devel readline-devel sqlite3-devel xz-devel
+                  zypper install -y bash git curl tar findutils gcc make openssl-devel libbz2-devel libffi-devel zlib-devel readline-devel sqlite3-devel xz-devel
                   ;;
                 archlinux:*)
-                  pacman -Sy --noconfirm bash git curl tar base-devel openssl zlib bzip2 libffi readline sqlite xz
+                  pacman -Sy --noconfirm bash git curl tar findutils base-devel openssl zlib bzip2 libffi readline sqlite xz
                   ;;
                 alpine:*)
-                  apk add --no-cache bash git curl tar build-base openssl-dev zlib-dev bzip2-dev libffi-dev readline-dev sqlite-dev xz-dev coreutils
+                  apk add --no-cache bash git curl tar findutils build-base openssl-dev zlib-dev bzip2-dev libffi-dev readline-dev sqlite-dev xz-dev coreutils
                   ;;
               esac
               
