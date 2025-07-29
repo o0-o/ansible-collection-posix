@@ -52,6 +52,25 @@ jobs:
             -v ${{ github.workspace }}:/workspace \
             -w /workspace \
             ${{ matrix.os }} sh -c '
+              # Minimal Python setup for containers that need it
+              case "${{ matrix.os }}" in
+                debian:*|ubuntu:*)
+                  apt-get update && apt-get install -y python3-venv
+                  ;;
+                fedora:*|rockylinux:*|almalinux:*|*/centos*)
+                  dnf install -y python3
+                  ;;
+                opensuse/*)
+                  zypper install -y python3
+                  ;;
+                archlinux:*)
+                  pacman -Sy --noconfirm python
+                  ;;
+                alpine:*)
+                  apk add --no-cache python3
+                  ;;
+              esac
+              
               # Create venv and run tests
               python3 -m venv .venv
               . .venv/bin/activate
