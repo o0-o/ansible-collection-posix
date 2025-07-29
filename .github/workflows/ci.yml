@@ -229,6 +229,11 @@ jobs:
       
       - name: Run sanity tests
         run: |
+          # Create proper ansible collections structure
+          mkdir -p ../../../ansible_collections/o0_o
+          cp -R . ../../../ansible_collections/o0_o/posix
+          cd ../../../ansible_collections/o0_o/posix
+          
           python3 -m venv .venv
           source .venv/bin/activate
           pip install ansible-core
@@ -254,6 +259,11 @@ jobs:
       
       - name: Run unit tests
         run: |
+          # Create proper ansible collections structure
+          mkdir -p ../../../ansible_collections/o0_o
+          cp -R . ../../../ansible_collections/o0_o/posix
+          cd ../../../ansible_collections/o0_o/posix
+          
           python3 -m venv .venv
           source .venv/bin/activate
           pip install ansible-core
@@ -279,6 +289,11 @@ jobs:
       
       - name: Run integration tests
         run: |
+          # Create proper ansible collections structure
+          mkdir -p ../../../ansible_collections/o0_o
+          cp -R . ../../../ansible_collections/o0_o/posix
+          cd ../../../ansible_collections/o0_o/posix
+          
           python3 -m venv .venv
           source .venv/bin/activate
           pip install ansible-core
