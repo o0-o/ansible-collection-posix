@@ -11,9 +11,8 @@ on:
   pull_request:
 
 jobs:
-  # MVP: Simple test matrix
-  test:
-    name: Test (${{ matrix.os }})
+  linux-sanity:
+    name: Sanity (${{ matrix.os }})
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -46,7 +45,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       
-      - name: Test in container
+      - name: Run sanity tests in container
         run: |
           docker run --rm \
             -v ${{ github.workspace }}:/workspace \
@@ -71,22 +70,147 @@ jobs:
                   ;;
               esac
               
-              # Create venv and run tests
+              # Create venv and run sanity tests
               python3 -m venv .venv
               . .venv/bin/activate
               pip install ansible-core
-              
-              # Run tests
-              echo "=== Running Sanity Tests ==="
-              ansible-test sanity --venv || echo "Sanity failed"
-              echo "=== Running Unit Tests ==="
-              ansible-test units --venv || echo "Units failed"
-              echo "=== Running Integration Tests ==="
-              ansible-test integration --venv || echo "Integration failed"
+              ansible-test sanity --venv
             '
 
-  macos:
-    name: Test (${{ matrix.os }})
+  linux-units:
+    name: Units (${{ matrix.os }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          # Debian versions
+          - debian:11
+          - debian:12
+          # Ubuntu LTS versions
+          - ubuntu:20.04
+          - ubuntu:22.04
+          - ubuntu:24.04
+          # Fedora
+          - fedora:39
+          - fedora:latest
+          # Enterprise Linux
+          - rockylinux:8
+          - rockylinux:9
+          - almalinux:8
+          - almalinux:9
+          - quay.io/centos/centos:stream9
+          # openSUSE
+          - opensuse/leap:15.5
+          - opensuse/leap:latest
+          # Arch
+          - archlinux:latest
+          # Alpine
+          - alpine:3.19
+          - alpine:latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Run unit tests in container
+        run: |
+          docker run --rm \
+            -v ${{ github.workspace }}:/workspace \
+            -w /workspace \
+            ${{ matrix.os }} sh -c '
+              # Minimal Python setup for containers that need it
+              case "${{ matrix.os }}" in
+                debian:*|ubuntu:*)
+                  apt-get update && apt-get install -y python3-venv
+                  ;;
+                fedora:*|rockylinux:*|almalinux:*|*/centos*)
+                  dnf install -y python3
+                  ;;
+                opensuse/*)
+                  zypper install -y python3
+                  ;;
+                archlinux:*)
+                  pacman -Sy --noconfirm python
+                  ;;
+                alpine:*)
+                  apk add --no-cache python3
+                  ;;
+              esac
+              
+              # Create venv and run unit tests
+              python3 -m venv .venv
+              . .venv/bin/activate
+              pip install ansible-core
+              ansible-test units --venv
+            '
+
+  linux-integration:
+    name: Integration (${{ matrix.os }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          # Debian versions
+          - debian:11
+          - debian:12
+          # Ubuntu LTS versions
+          - ubuntu:20.04
+          - ubuntu:22.04
+          - ubuntu:24.04
+          # Fedora
+          - fedora:39
+          - fedora:latest
+          # Enterprise Linux
+          - rockylinux:8
+          - rockylinux:9
+          - almalinux:8
+          - almalinux:9
+          - quay.io/centos/centos:stream9
+          # openSUSE
+          - opensuse/leap:15.5
+          - opensuse/leap:latest
+          # Arch
+          - archlinux:latest
+          # Alpine
+          - alpine:3.19
+          - alpine:latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Run integration tests in container
+        run: |
+          docker run --rm \
+            -v ${{ github.workspace }}:/workspace \
+            -w /workspace \
+            ${{ matrix.os }} sh -c '
+              # Minimal Python setup for containers that need it
+              case "${{ matrix.os }}" in
+                debian:*|ubuntu:*)
+                  apt-get update && apt-get install -y python3-venv
+                  ;;
+                fedora:*|rockylinux:*|almalinux:*|*/centos*)
+                  dnf install -y python3
+                  ;;
+                opensuse/*)
+                  zypper install -y python3
+                  ;;
+                archlinux:*)
+                  pacman -Sy --noconfirm python
+                  ;;
+                alpine:*)
+                  apk add --no-cache python3
+                  ;;
+              esac
+              
+              # Create venv and run integration tests
+              python3 -m venv .venv
+              . .venv/bin/activate
+              pip install ansible-core
+              ansible-test integration --venv
+            '
+
+  macos-sanity:
+    name: Sanity (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -103,23 +227,67 @@ jobs:
         with:
           python-version: '3.x'
       
-      - name: Install and test
+      - name: Run sanity tests
         run: |
           python3 -m venv .venv
           source .venv/bin/activate
           pip install ansible-core
-          
-          echo "=== Running Sanity Tests ==="
-          ansible-test sanity --venv || echo "Sanity failed"
-          echo "=== Running Unit Tests ==="
-          ansible-test units --venv || echo "Units failed"
-          echo "=== Running Integration Tests ==="
-          ansible-test integration --venv || echo "Integration failed"
+          ansible-test sanity --venv
+
+  macos-units:
+    name: Units (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - macos-13
+          - macos-14
+          - macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+      
+      - name: Run unit tests
+        run: |
+          python3 -m venv .venv
+          source .venv/bin/activate
+          pip install ansible-core
+          ansible-test units --venv
+
+  macos-integration:
+    name: Integration (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - macos-13
+          - macos-14
+          - macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+      
+      - name: Run integration tests
+        run: |
+          python3 -m venv .venv
+          source .venv/bin/activate
+          pip install ansible-core
+          ansible-test integration --venv
 
   build:
     name: Build Collection
     runs-on: ubuntu-latest
-    needs: [test, macos]
+    needs: [linux-sanity, linux-units, linux-integration, macos-sanity, macos-units, macos-integration]
     steps:
       - uses: actions/checkout@v4
       
