@@ -54,19 +54,19 @@ jobs:
               # Minimal Python setup for containers that need it
               case "${{ matrix.os }}" in
                 debian:*|ubuntu:*)
-                  apt-get update && apt-get install -y python3-venv
+                  apt-get update && apt-get install -y python3-venv git
                   ;;
                 fedora:*|rockylinux:*|almalinux:*|*/centos*)
-                  dnf install -y python3
+                  dnf install -y python3 git
                   ;;
                 opensuse/*)
-                  zypper install -y python3
+                  zypper install -y python3 git
                   ;;
                 archlinux:*)
-                  pacman -Sy --noconfirm python
+                  pacman -Sy --noconfirm python git
                   ;;
                 alpine:*)
-                  apk add --no-cache python3
+                  apk add --no-cache python3 git
                   ;;
               esac
               
@@ -120,19 +120,19 @@ jobs:
               # Minimal Python setup for containers that need it
               case "${{ matrix.os }}" in
                 debian:*|ubuntu:*)
-                  apt-get update && apt-get install -y python3-venv
+                  apt-get update && apt-get install -y python3-venv git
                   ;;
                 fedora:*|rockylinux:*|almalinux:*|*/centos*)
-                  dnf install -y python3
+                  dnf install -y python3 git
                   ;;
                 opensuse/*)
-                  zypper install -y python3
+                  zypper install -y python3 git
                   ;;
                 archlinux:*)
-                  pacman -Sy --noconfirm python
+                  pacman -Sy --noconfirm python git
                   ;;
                 alpine:*)
-                  apk add --no-cache python3
+                  apk add --no-cache python3 git
                   ;;
               esac
               
@@ -186,19 +186,19 @@ jobs:
               # Minimal Python setup for containers that need it
               case "${{ matrix.os }}" in
                 debian:*|ubuntu:*)
-                  apt-get update && apt-get install -y python3-venv
+                  apt-get update && apt-get install -y python3-venv git
                   ;;
                 fedora:*|rockylinux:*|almalinux:*|*/centos*)
-                  dnf install -y python3
+                  dnf install -y python3 git
                   ;;
                 opensuse/*)
-                  zypper install -y python3
+                  zypper install -y python3 git
                   ;;
                 archlinux:*)
-                  pacman -Sy --noconfirm python
+                  pacman -Sy --noconfirm python git
                   ;;
                 alpine:*)
-                  apk add --no-cache python3
+                  apk add --no-cache python3 git
                   ;;
               esac
               
