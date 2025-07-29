@@ -19,9 +19,30 @@ jobs:
       fail-fast: false
       matrix:
         os:
+          # Debian versions
+          - debian:11
+          - debian:12
+          # Ubuntu LTS versions
+          - ubuntu:20.04
           - ubuntu:22.04
           - ubuntu:24.04
-          - debian:12
+          # Fedora
+          - fedora:39
+          - fedora:latest
+          # Enterprise Linux
+          - rockylinux:8
+          - rockylinux:9
+          - almalinux:8
+          - almalinux:9
+          - quay.io/centos/centos:stream9
+          # openSUSE
+          - opensuse/leap:15.5
+          - opensuse/leap:latest
+          # Arch
+          - archlinux:latest
+          # Alpine
+          - alpine:3.19
+          - alpine:latest
     steps:
       - uses: actions/checkout@v4
       
@@ -30,18 +51,31 @@ jobs:
           docker run --rm \
             -v ${{ github.workspace }}:/workspace \
             -w /workspace \
-            ${{ matrix.os }} bash -c '
-              apt-get update && apt-get install -y python3 python3-pip python3-venv
+            ${{ matrix.os }} sh -c '
+              # Create venv and run tests
               python3 -m venv .venv
-              source .venv/bin/activate
+              . .venv/bin/activate
               pip install ansible-core
+              
+              # Run tests
+              echo "=== Running Sanity Tests ==="
               ansible-test sanity --venv || echo "Sanity failed"
+              echo "=== Running Unit Tests ==="
               ansible-test units --venv || echo "Units failed"
+              echo "=== Running Integration Tests ==="
+              ansible-test integration --venv || echo "Integration failed"
             '
 
   macos:
-    name: Test (macOS)
-    runs-on: macos-latest
+    name: Test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - macos-13
+          - macos-14
+          - macos-latest
     steps:
       - uses: actions/checkout@v4
       
@@ -55,8 +89,13 @@ jobs:
           python3 -m venv .venv
           source .venv/bin/activate
           pip install ansible-core
+          
+          echo "=== Running Sanity Tests ==="
           ansible-test sanity --venv || echo "Sanity failed"
+          echo "=== Running Unit Tests ==="
           ansible-test units --venv || echo "Units failed"
+          echo "=== Running Integration Tests ==="
+          ansible-test integration --venv || echo "Integration failed"
 
   build:
     name: Build Collection
