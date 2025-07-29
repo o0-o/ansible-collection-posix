@@ -73,6 +73,7 @@ jobs:
               # Create venv and run sanity tests
               python3 -m venv .venv
               . .venv/bin/activate
+              pip install --upgrade pip
               pip install ansible-core
               ansible-test sanity --venv
             '
@@ -139,6 +140,7 @@ jobs:
               # Create venv and run unit tests
               python3 -m venv .venv
               . .venv/bin/activate
+              pip install --upgrade pip
               pip install ansible-core
               ansible-test units --venv
             '
@@ -205,6 +207,7 @@ jobs:
               # Create venv and run integration tests
               python3 -m venv .venv
               . .venv/bin/activate
+              pip install --upgrade pip
               pip install ansible-core
               ansible-test integration --venv
             '
@@ -236,6 +239,7 @@ jobs:
           
           python3 -m venv .venv
           source .venv/bin/activate
+          pip install --upgrade pip
           pip install ansible-core
           ansible-test sanity --venv
 
@@ -266,6 +270,7 @@ jobs:
           
           python3 -m venv .venv
           source .venv/bin/activate
+          pip install --upgrade pip
           pip install ansible-core
           ansible-test units --venv
 
@@ -296,6 +301,7 @@ jobs:
           
           python3 -m venv .venv
           source .venv/bin/activate
+          pip install --upgrade pip
           pip install ansible-core
           ansible-test integration --venv
 
