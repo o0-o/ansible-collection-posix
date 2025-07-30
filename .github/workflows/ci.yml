@@ -81,10 +81,10 @@ jobs:
                 eval \"\$(pyenv init -)\"
                 
                 # Install latest patch versions for each major.minor
-                pyenv install 3.9:latest  
-                pyenv install 3.10:latest
-                pyenv install 3.11:latest
-                pyenv install 3.12:latest
+                #pyenv install 3.9:latest  
+                #pyenv install 3.10:latest
+                #pyenv install 3.11:latest
+                #pyenv install 3.12:latest
                 pyenv install 3.13:latest
                 
                 # Set global to 3.13 for ansible-core installation  
