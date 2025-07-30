@@ -56,7 +56,9 @@ jobs:
               # Install build dependencies for pyenv
               case "${{ matrix.os }}" in
                 debian:*|ubuntu:*)
-                  apt-get update && apt-get install -y bash git curl tar findutils build-essential libssl-dev zlib1g-dev libbz2-dev libreadline-dev libsqlite3-dev libncursesw5-dev xz-utils tk-dev libxml2-dev libxmlsec1-dev libffi-dev liblzma-dev
+                  export DEBIAN_FRONTEND=noninteractive
+                  export TZ=UTC
+                  apt-get update && apt-get install -y -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" bash git curl tar findutils build-essential libssl-dev zlib1g-dev libbz2-dev libreadline-dev libsqlite3-dev libncursesw5-dev xz-utils tk-dev libxml2-dev libxmlsec1-dev libffi-dev liblzma-dev
                   ;;
                 fedora:*|rockylinux:*|almalinux:*|*/centos*)
                   dnf install -y --allowerasing bash git curl tar findutils gcc make openssl-devel bzip2-devel libffi-devel zlib-devel readline-devel sqlite-devel xz-devel
