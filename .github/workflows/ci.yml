@@ -259,6 +259,10 @@ jobs:
         with:
           python-version: '3.x'
 
+      - name: Install Python versions via Homebrew
+        run: |
+          brew install python@3.9 python@3.10 python@3.11 python@3.12 python@3.13
+
       - name: Run sanity tests
         run: |
           # Create proper ansible collections structure
@@ -266,10 +270,13 @@ jobs:
           cp -R . ../../../ansible_collections/o0_o/posix
           cd ../../../ansible_collections/o0_o/posix
 
-          python3 -m venv .venv
+          # Use Python 3.13 for ansible-core installation
+          python3.13 -m venv .venv
           source .venv/bin/activate
           pip install --upgrade pip
           pip install ansible-core
+          
+          # Run sanity tests across all Python versions
           ansible-test sanity --venv
 
   #macos-units:
