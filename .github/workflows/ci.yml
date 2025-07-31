@@ -78,7 +78,7 @@ jobs:
                 export PYENV_ROOT=\"/root/.pyenv\"
                 curl -s https://pyenv.run | bash
                 export PATH=\"/root/.pyenv/bin:\$PATH\"
-                eval \"\$(pyenv init -)\"
+                eval \"\$(pyenv init - bash)\"
 
                 # Install latest patch versions for each major.minor
                 for py in 3.12 3.13; do
