@@ -86,7 +86,7 @@ jobs:
                   pyenv install \$py
 
                   # Set all installed versions as global so they are available
-                  py_vers=\"\${py_vers} \$(py}\"
+                  py_vers=\"\${py_vers} \${py}\"
                 done
 
                 pyenv global \$py_vers
