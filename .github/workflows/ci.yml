@@ -91,7 +91,9 @@ jobs:
                 
                 # Set all installed versions as global so they're available
                 # List 3.13 first so python/python3 commands default to it
-                pyenv global \$(pyenv versions --bare | grep '^3\\.13\\.' | head -1) \$(pyenv versions --bare | grep '^3\\.12\\.' | head -1)
+                PYTHON_313=\$(pyenv versions --bare | grep '^3\\.13\\.' | head -1)
+                PYTHON_312=\$(pyenv versions --bare | grep '^3\\.12\\.' | head -1)
+                pyenv global \$PYTHON_313 \$PYTHON_312
                 
                 # Refresh pyenv shims
                 pyenv rehash
