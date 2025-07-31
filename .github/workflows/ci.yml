@@ -99,7 +99,7 @@ jobs:
 
               # Install latest patch versions for each major.minor
               py_vers=""
-              for py in 3.12 3.13; do
+              for py in 3.13 3.12 3.11 3.10 3.9; do
                 pyenv install $py
 
                 # Set all installed versions as global so they are available
