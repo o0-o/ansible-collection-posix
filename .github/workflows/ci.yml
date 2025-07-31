@@ -92,7 +92,7 @@ jobs:
                 pyenv global \$py_vers
 
                 # Refresh pyenv shims
-                mkdir -p "$(pyenv root)/plugins"
+                mkdir -p \"\$(pyenv root)/plugins\"
                 git clone https://github.com/pyenv/pyenv-which-ext.git \"\$(pyenv root)/plugins/pyenv-which-ext\"
                 pyenv rehash
 
