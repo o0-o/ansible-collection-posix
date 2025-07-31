@@ -19,8 +19,6 @@ jobs:
       matrix:
         os:
           # Debian versions
-          - debian:9
-          - debian:10
           - debian:11
           - debian:12
           - debian:latest
@@ -34,14 +32,14 @@ jobs:
           # Fedora
           - fedora:latest
           # Enterprise Linux
-          - rockylinux:8
-          - rockylinux:9
-          - rockylinux:latest
+          - quay.io/rockylinux/rockylinux:8
+          - quay.io/rockylinux/rockylinux:9
+          - quay.io/rockylinux/rockylinux:latest
           - almalinux:8
           - almalinux:9
           - almalinux:latest
-          - centos:stream9
-          - centos:stream
+          - quay.io/centos/centos:stream9
+          - quay.io/centos/centos:stream
           # openSUSE
           - opensuse/leap:15.5
           - opensuse/leap:latest
@@ -87,7 +85,7 @@ jobs:
                   zypper install -y \
                     bash git curl tar gzip findutils gcc make openssl-devel \
                     libbz2-devel libffi-devel zlib-devel readline-devel \
-                    sqlite3-devel xz-devel
+                    sqlite3-devel xz-devel gawk coreutils
                   ;;
                 archlinux:*)
                   pacman -Sy --noconfirm \
@@ -108,11 +106,13 @@ jobs:
               eval "$(pyenv init - sh)"
 
               # Install latest patch versions for each major.minor
+              py_vers=""
               for py in 3.13 3.12 3.11 3.10 3.9; do
                 pyenv install $py
+                py_vers="$py_vers $py"
               done
 
-              pyenv global 3.13
+              pyenv global $py_vers
 
               # Refresh pyenv shims
               mkdir -p "$(pyenv root)/plugins"
