@@ -83,15 +83,17 @@ jobs:
                 # Install latest patch versions for each major.minor
                 py_vers=\"\"
                 for py in 3.12 3.13; do
-                  pyenv install \${py}:latest
+                  pyenv install \$py
 
                   # Set all installed versions as global so they are available
-                  py_vers=\"\${py_vers} \$(pyenv versions --bare | fgrep \"${py}.\" | head -1)\"
+                  py_vers=\"\${py_vers} \$(py}\"
                 done
 
                 pyenv global \$py_vers
 
                 # Refresh pyenv shims
+                mkdir -p "$(pyenv root)/plugins"
+                git clone https://github.com/pyenv/pyenv-which-ext.git \"\$(pyenv root)/plugins/pyenv-which-ext\"
                 pyenv rehash
 
                 # Create venv with latest Python and install ansible-core
