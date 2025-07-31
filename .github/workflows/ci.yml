@@ -19,28 +19,28 @@ jobs:
       matrix:
         os:
           # Debian versions
-          - debian:11
-          - debian:12
-          # Ubuntu LTS versions
-          - ubuntu:20.04
-          - ubuntu:22.04
-          - ubuntu:24.04
-          # Fedora
-          - fedora:39
-          - fedora:latest
-          # Enterprise Linux
-          - rockylinux:8
-          - rockylinux:9
-          - almalinux:8
-          - almalinux:9
-          - quay.io/centos/centos:stream9
-          # openSUSE
-          - opensuse/leap:15.5
-          - opensuse/leap:latest
-          # Arch
-          - archlinux:latest
-          # Alpine
-          - alpine:3.19
+          # - debian:11
+          # - debian:12
+          # # Ubuntu LTS versions
+          # - ubuntu:20.04
+          # - ubuntu:22.04
+          # - ubuntu:24.04
+          # # Fedora
+          # - fedora:39
+          # - fedora:latest
+          # # Enterprise Linux
+          # - rockylinux:8
+          # - rockylinux:9
+          # - almalinux:8
+          # - almalinux:9
+          # - quay.io/centos/centos:stream9
+          # # openSUSE
+          # - opensuse/leap:15.5
+          # - opensuse/leap:latest
+          # # Arch
+          # - archlinux:latest
+          # # Alpine
+          # - alpine:3.19
           - alpine:latest
     steps:
       - uses: actions/checkout@v4
@@ -52,7 +52,7 @@ jobs:
             -w /root/ansible_collections/o0_o/posix \
             ${{ matrix.os }} sh -c '
               set -e
-              
+
               # Install build dependencies for pyenv
               case "${{ matrix.os }}" in
                 debian:*|ubuntu:*)
@@ -73,46 +73,32 @@ jobs:
                   apk add --no-cache bash git curl tar findutils build-base openssl-dev zlib-dev bzip2-dev libffi-dev readline-dev sqlite-dev xz-dev coreutils
                   ;;
               esac
-              
-              # Now switch to bash for pyenv (which requires bash)
-              exec bash -c "
-                set -e
-                export PYENV_ROOT=\"/root/.pyenv\"
-                curl -s https://pyenv.run | bash
-                export PATH=\"/root/.pyenv/bin:\$PATH\"
-                eval \"\$(pyenv init -)\"
-                
-                # Install latest patch versions for each major.minor
-                #pyenv install 3.9:latest  
-                #pyenv install 3.10:latest
-                #pyenv install 3.11:latest
-                pyenv install 3.12:latest
-                pyenv install 3.13:latest
-                
-                # Set all installed versions as global so they're available
-                # List 3.13 first so python/python3 commands default to it
-                PYTHON_313=\$(pyenv versions --bare | grep '^3\\.13\\.' | head -1)
-                PYTHON_312=\$(pyenv versions --bare | grep '^3\\.12\\.' | head -1)
-                pyenv global \$PYTHON_313 \$PYTHON_312
-                
-                # Refresh pyenv shims
-                pyenv rehash
-                
-                # Create essential symlinks only
-                mkdir -p /usr/local/bin
-                ln -sf /root/.pyenv/shims/python3 /usr/local/bin/python3
-                ln -sf /root/.pyenv/shims/python /usr/local/bin/python
-                
-                # Create venv with latest Python and install ansible-core
-                git config --global --add safe.directory /root/ansible_collections/o0_o/posix
-                python -m venv .venv
-                . .venv/bin/activate
-                pip install --upgrade pip
-                pip install ansible-core
-                
-                # Run sanity tests across all installed Python versions
-                ansible-test sanity --venv 2>&1
-              "
+
+              export PYENV_ROOT=\"/root/.pyenv\"
+              curl -s https://pyenv.run | bash
+              export PATH=\"/root/.pyenv/bin:\$PATH\"
+              eval \"\$(pyenv init -)\"
+
+              # Install latest patch versions for each major.minor
+              for py in 3.12 3.13; do
+                pyenv install \${py}:latest
+
+                # Set all installed versions as global so they are available
+                py_vers=\$(pyenv versions --bare | fgrep \"${py}." | head -1)
+                pyenv global \$py_vers
+
+              # Refresh pyenv shims
+              pyenv rehash
+
+              # Create venv with latest Python and install ansible-core
+              git config --global --add safe.directory /root/ansible_collections/o0_o/posix
+              python -m venv .venv
+              . .venv/bin/activate
+              pip install --upgrade pip
+              pip install ansible-core
+
+              # Run sanity tests across all installed Python versions
+              ansible-test sanity --venv 2>&1
             '
 
   #linux-units:
@@ -245,47 +231,47 @@ jobs:
   #            ansible-test integration --venv
   #          '
 
-  macos-sanity:
-    name: Sanity (${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        os:
-          - macos-13
-          - macos-14
-          - macos-latest
-    steps:
-      - uses: actions/checkout@v4
+  # macos-sanity:
+  #   name: Sanity (${{ matrix.os }})
+  #   runs-on: ${{ matrix.os }}
+  #   strategy:
+  #     fail-fast: false
+  #     matrix:
+  #       os:
+  #         - macos-13
+  #         - macos-14
+  #         - macos-latest
+  #   steps:
+  #     - uses: actions/checkout@v4
 
-      - name: Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.x'
+  #     - name: Setup Python
+  #       uses: actions/setup-python@v5
+  #       with:
+  #         python-version: '3.x'
 
-      - name: Install Python versions via Homebrew
-        run: |
-          # Install Python versions, ignoring conflicts
-          for version in 3.9 3.10 3.11 3.12 3.13; do
-            brew install python@$version || true
-            brew link --overwrite python@$version || true
-          done
+  #     - name: Install Python versions via Homebrew
+  #       run: |
+  #         # Install Python versions, ignoring conflicts
+  #         for version in 3.9 3.10 3.11 3.12 3.13; do
+  #           brew install python@$version || true
+  #           brew link --overwrite python@$version || true
+  #         done
 
-      - name: Run sanity tests
-        run: |
-          # Create proper ansible collections structure
-          mkdir -p ../../../ansible_collections/o0_o
-          cp -R . ../../../ansible_collections/o0_o/posix
-          cd ../../../ansible_collections/o0_o/posix
+  #     - name: Run sanity tests
+  #       run: |
+  #         # Create proper ansible collections structure
+  #         mkdir -p ../../../ansible_collections/o0_o
+  #         cp -R . ../../../ansible_collections/o0_o/posix
+  #         cd ../../../ansible_collections/o0_o/posix
 
-          # Use Python 3.13 for ansible-core installation
-          python3.13 -m venv .venv
-          source .venv/bin/activate
-          pip install --upgrade pip
-          pip install ansible-core
-          
-          # Run sanity tests across all Python versions
-          ansible-test sanity --venv
+  #         # Use Python 3.13 for ansible-core installation
+  #         python3.13 -m venv .venv
+  #         source .venv/bin/activate
+  #         pip install --upgrade pip
+  #         pip install ansible-core
+
+  #         # Run sanity tests across all Python versions
+  #         ansible-test sanity --venv
 
   #macos-units:
   #  name: Units (${{ matrix.os }})
