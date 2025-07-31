@@ -11,49 +11,24 @@ on:
   pull_request:
 
 jobs:
+  # Read the OS matrix from JSON file
+  setup-matrix:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.set-matrix.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: set-matrix
+        run: |
+          echo "matrix=$(cat .github/matrix/os.json | jq -c .)" >> $GITHUB_OUTPUT
+
   linux-sanity:
     name: Sanity (${{ matrix.os }})
     runs-on: ubuntu-latest
+    needs: setup-matrix
     strategy:
       fail-fast: false
-      matrix:
-        os:
-          # Debian versions
-          - debian:11
-          - debian:12
-          - debian:latest
-          - debian:testing
-          # Ubuntu LTS versions
-          - ubuntu:20.04
-          - ubuntu:22.04
-          - ubuntu:24.04
-          - ubuntu:latest
-          - ubuntu:rolling
-          # Fedora
-          - fedora:latest
-          - fedora:rawhide
-          # Enterprise Linux
-          - quay.io/rockylinux/rockylinux:8
-          - quay.io/rockylinux/rockylinux:9
-          - quay.io/rockylinux/rockylinux:10
-          - quay.io/rockylinux/rockylinux:latest
-          - almalinux:8
-          - almalinux:9
-          - almalinux:10
-          - almalinux:latest
-          - quay.io/centos/centos:stream9
-          - quay.io/centos/centos:stream10
-          - quay.io/centos/centos:latest
-          # openSUSE
-          - opensuse/leap:15.5
-          - opensuse/leap:latest
-          - opensuse/tumbleweed
-          # Arch
-          - archlinux
-          # Alpine
-          - alpine:3.19
-          - alpine:latest
-          - alpine:edge
+      matrix: ${{ fromJson(needs.setup-matrix.outputs.matrix) }}
     steps:
       - uses: actions/checkout@v4
 
@@ -77,46 +52,10 @@ jobs:
   linux-units:
     name: Units (${{ matrix.os }})
     runs-on: ubuntu-latest
+    needs: setup-matrix
     strategy:
       fail-fast: false
-      matrix:
-        os:
-          # Debian versions
-          - debian:11
-          - debian:12
-          - debian:latest
-          - debian:testing
-          # Ubuntu LTS versions
-          - ubuntu:20.04
-          - ubuntu:22.04
-          - ubuntu:24.04
-          - ubuntu:latest
-          - ubuntu:rolling
-          # Fedora
-          - fedora:latest
-          - fedora:rawhide
-          # Enterprise Linux
-          - quay.io/rockylinux/rockylinux:8
-          - quay.io/rockylinux/rockylinux:9
-          - quay.io/rockylinux/rockylinux:10
-          - quay.io/rockylinux/rockylinux:latest
-          - almalinux:8
-          - almalinux:9
-          - almalinux:10
-          - almalinux:latest
-          - quay.io/centos/centos:stream9
-          - quay.io/centos/centos:stream10
-          - quay.io/centos/centos:latest
-          # openSUSE
-          - opensuse/leap:15.5
-          - opensuse/leap:latest
-          - opensuse/tumbleweed
-          # Arch
-          - archlinux
-          # Alpine
-          - alpine:3.19
-          - alpine:latest
-          - alpine:edge
+      matrix: ${{ fromJson(needs.setup-matrix.outputs.matrix) }}
     steps:
       - uses: actions/checkout@v4
 
@@ -309,7 +248,7 @@ jobs:
   build:
     name: Build Collection
     runs-on: ubuntu-latest
-    needs: [linux-sanity, linux-units]
+    needs: [setup-matrix, linux-sanity, linux-units]
     steps:
       - uses: actions/checkout@v4
 
