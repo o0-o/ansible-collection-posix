@@ -106,7 +106,7 @@ jobs:
                 py_vers="${py_vers} ${py}"
               done
 
-              pyenv global $py_vers
+              pyenv global 3.13
 
               # Refresh pyenv shims
               mkdir -p "$(pyenv root)/plugins"
