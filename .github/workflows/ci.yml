@@ -58,19 +58,37 @@ jobs:
                 debian:*|ubuntu:*)
                   export DEBIAN_FRONTEND=noninteractive
                   export TZ=UTC
-                  apt-get update && apt-get install -y -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" bash git curl tar findutils build-essential libssl-dev zlib1g-dev libbz2-dev libreadline-dev libsqlite3-dev libncursesw5-dev xz-utils tk-dev libxml2-dev libxmlsec1-dev libffi-dev liblzma-dev
+                  apt-get update &&
+                  apt-get install -y \
+                    -o Dpkg::Options::="--force-confdef" \
+                    -o Dpkg::Options::="--force-confold" \
+                    bash git curl tar findutils build-essential libssl-dev \
+                    zlib1g-dev libbz2-dev libreadline-dev libsqlite3-dev \
+                    libncursesw5-dev xz-utils tk-dev libxml2-dev \
+                    libxmlsec1-dev libffi-dev liblzma-dev
                   ;;
                 fedora:*|rockylinux:*|almalinux:*|*/centos*)
-                  dnf install -y --allowerasing bash git curl tar findutils gcc make openssl-devel bzip2-devel libffi-devel zlib-devel readline-devel sqlite-devel xz-devel
+                  dnf install -y --allowerasing \
+                    bash git curl tar findutils gcc make openssl-devel \
+                    bzip2-devel libffi-devel zlib-devel readline-devel \
+                    sqlite-devel xz-devel
                   ;;
                 opensuse/*)
-                  zypper install -y bash git curl tar gzip findutils gcc make openssl-devel libbz2-devel libffi-devel zlib-devel readline-devel sqlite3-devel xz-devel
+                  zypper install -y \
+                    bash git curl tar gzip findutils gcc make openssl-devel \
+                    libbz2-devel libffi-devel zlib-devel readline-devel \
+                    sqlite3-devel xz-devel
                   ;;
                 archlinux:*)
-                  pacman -Sy --noconfirm bash git curl tar findutils base-devel openssl zlib bzip2 libffi readline sqlite xz
+                  pacman -Sy --noconfirm \
+                    bash git curl tar findutils base-devel openssl zlib bzip2 \
+                    libffi readline sqlite xz
                   ;;
                 alpine:*)
-                  apk add --no-cache bash git curl tar findutils build-base openssl-dev zlib-dev bzip2-dev libffi-dev readline-dev sqlite-dev xz-dev coreutils
+                  apk add --no-cache \
+                    bash git curl tar findutils build-base openssl-dev \
+                    zlib-dev bzip2-dev libffi-dev readline-dev sqlite-dev \
+                    xz-dev coreutils
                   ;;
               esac
 
@@ -92,11 +110,13 @@ jobs:
 
               # Refresh pyenv shims
               mkdir -p "$(pyenv root)/plugins"
-              git clone https://github.com/pyenv/pyenv-which-ext.git "$(pyenv root)/plugins/pyenv-which-ext"
+              git clone https://github.com/pyenv/pyenv-which-ext.git \
+                "$(pyenv root)/plugins/pyenv-which-ext"
               pyenv rehash
 
               # Create venv with latest Python and install ansible-core
-              git config --global --add safe.directory /root/ansible_collections/o0_o/posix
+              git config --global --add safe.directory \
+                /root/ansible_collections/o0_o/posix
               python -m venv .venv
               . .venv/bin/activate
               pip install --upgrade pip
