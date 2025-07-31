@@ -74,18 +74,18 @@ jobs:
                   ;;
               esac
 
-              export PYENV_ROOT=\"/root/.pyenv\"
+              export PYENV_ROOT="/root/.pyenv"
               curl -s https://pyenv.run | bash
-              export PATH=\"/root/.pyenv/bin:\$PATH\"
-              eval \"\$(pyenv init -)\"
+              export PATH="/root/.pyenv/bin:$PATH"
+              eval "$(pyenv init -)"
 
               # Install latest patch versions for each major.minor
               for py in 3.12 3.13; do
-                pyenv install \${py}:latest
+                pyenv install ${py}:latest
 
                 # Set all installed versions as global so they are available
-                py_vers=\$(pyenv versions --bare | fgrep \"${py}." | head -1)
-                pyenv global \$py_vers
+                py_vers=$(pyenv versions --bare | fgrep "${py}." | head -1)
+                pyenv global $py_vers
 
               # Refresh pyenv shims
               pyenv rehash
