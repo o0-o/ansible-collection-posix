@@ -9,10 +9,12 @@
 # Copyright (c) 2025 oØ.o (@o0-o)
 #
 # This file is part of the o0_o.posix Ansible Collection.
+#
+# Setup script for Linux containers in CI to install pyenv and Python versions
 
 set -e
 
-# Install build dependencies for pyenv based on OS
+# Install build dependencies for pyenv based on Linux distribution
 case "$1" in
   debian:*|ubuntu:*)
     export DEBIAN_FRONTEND=noninteractive
