@@ -19,29 +19,39 @@ jobs:
       matrix:
         os:
           # Debian versions
-          # - debian:11
-          # - debian:12
-          # # Ubuntu LTS versions
-          # - ubuntu:20.04
-          # - ubuntu:22.04
-          # - ubuntu:24.04
-          # # Fedora
-          # - fedora:39
-          # - fedora:latest
-          # # Enterprise Linux
-          # - rockylinux:8
-          # - rockylinux:9
-          # - almalinux:8
-          # - almalinux:9
-          # - quay.io/centos/centos:stream9
-          # # openSUSE
-          # - opensuse/leap:15.5
-          # - opensuse/leap:latest
-          # # Arch
-          # - archlinux:latest
-          # # Alpine
-          # - alpine:3.19
+          - debian:9
+          - debian:10
+          - debian:11
+          - debian:12
+          - debian:latest
+          - debian:testing
+          # Ubuntu LTS versions
+          - ubuntu:20.04
+          - ubuntu:22.04
+          - ubuntu:24.04
+          - ubuntu:latest
+          - ubuntu:rolling
+          # Fedora
+          - fedora:latest
+          # Enterprise Linux
+          - rockylinux:8
+          - rockylinux:9
+          - rockylinux:latest
+          - almalinux:8
+          - almalinux:9
+          - almalinux:latest
+          - centos:stream9
+          - centos:stream
+          # openSUSE
+          - opensuse/leap:15.5
+          - opensuse/leap:latest
+          - opensuse/tumbleweed
+          # Arch
+          - archlinux
+          # Alpine
+          - alpine:3.19
           - alpine:latest
+          - alpine:edge
     steps:
       - uses: actions/checkout@v4
 
@@ -98,12 +108,8 @@ jobs:
               eval "$(pyenv init - sh)"
 
               # Install latest patch versions for each major.minor
-              py_vers=""
               for py in 3.13 3.12 3.11 3.10 3.9; do
                 pyenv install $py
-
-                # Set all installed versions as global so they are available
-                py_vers="${py_vers} ${py}"
               done
 
               pyenv global 3.13
