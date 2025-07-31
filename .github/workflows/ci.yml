@@ -338,7 +338,7 @@ jobs:
   build:
     name: Build Collection
     runs-on: ubuntu-latest
-    needs: [linux-sanity, macos-sanity]
+    needs: [linux-sanity]
     steps:
       - uses: actions/checkout@v4
 
