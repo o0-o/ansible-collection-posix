@@ -90,7 +90,7 @@ jobs:
                 pyenv install 3.13:latest
                 
                 # Set all installed versions as global so they're available  
-                pyenv global \$(pyenv versions --bare | sort -V | xargs)
+                pyenv global \$(pyenv versions --bare | sort -V | tr '\\n' ' ')
                 
                 # Make pyenv Python available system-wide for integration tests
                 echo \"export PATH=\\\"/root/.pyenv/bin:\\\$PATH\\\"\" >> /root/.profile
