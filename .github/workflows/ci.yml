@@ -75,7 +75,7 @@ jobs:
                     libncursesw5-dev xz-utils tk-dev libxml2-dev \
                     libxmlsec1-dev libffi-dev liblzma-dev
                   ;;
-                fedora:*|rockylinux:*|almalinux:*|*/centos*)
+                fedora:*|*rockylinux:*|almalinux:*|*centos*)
                   dnf install -y --allowerasing \
                     bash git curl tar findutils gcc make openssl-devel \
                     bzip2-devel libffi-devel zlib-devel readline-devel \
