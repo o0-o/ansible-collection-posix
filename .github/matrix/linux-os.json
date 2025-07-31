@@ -1,5 +1,5 @@
 {
-  "_os_commented": [
+  "os": [
     "debian:11",
     "debian:12",
     "debian:latest",
@@ -27,9 +27,7 @@
     "opensuse/tumbleweed",
     "archlinux",
     "alpine:3.19",
+    "alpine:latest",
     "alpine:edge"
-  ],
-  "os": [
-    "alpine:latest"
   ]
 }
