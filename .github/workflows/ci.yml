@@ -31,15 +31,19 @@ jobs:
           - ubuntu:rolling
           # Fedora
           - fedora:latest
+          - fedora:rawhide
           # Enterprise Linux
           - quay.io/rockylinux/rockylinux:8
           - quay.io/rockylinux/rockylinux:9
+          - quay.io/rockylinux/rockylinux:10
           - quay.io/rockylinux/rockylinux:latest
           - almalinux:8
           - almalinux:9
+          - almalinux:10
           - almalinux:latest
           - quay.io/centos/centos:stream9
-          - quay.io/centos/centos:stream
+          - quay.io/centos/centos:stream10
+          - quay.io/centos/centos:latest
           # openSUSE
           - opensuse/leap:15.5
           - opensuse/leap:latest
@@ -87,7 +91,7 @@ jobs:
                     libbz2-devel libffi-devel zlib-devel readline-devel \
                     sqlite3-devel xz-devel gawk coreutils
                   ;;
-                archlinux:*)
+                archlinux)
                   pacman -Sy --noconfirm \
                     bash git curl tar findutils base-devel openssl zlib bzip2 \
                     libffi readline sqlite xz
