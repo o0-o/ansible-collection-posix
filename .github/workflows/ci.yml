@@ -74,31 +74,33 @@ jobs:
                   ;;
               esac
 
-              export PYENV_ROOT="/root/.pyenv"
-              curl -s https://pyenv.run | bash
-              export PATH="/root/.pyenv/bin:$PATH"
-              eval "$(pyenv init -)"
+              bash -c "
+                export PYENV_ROOT=\"/root/.pyenv\"
+                curl -s https://pyenv.run | bash
+                export PATH=\"/root/.pyenv/bin:\$PATH\"
+                eval \"\$(pyenv init -)\"
 
-              # Install latest patch versions for each major.minor
-              for py in 3.12 3.13; do
-                pyenv install ${py}:latest
+                # Install latest patch versions for each major.minor
+                for py in 3.12 3.13; do
+                  pyenv install \${py}:latest
 
-                # Set all installed versions as global so they are available
-                py_vers=$(pyenv versions --bare | fgrep "${py}." | head -1)
-                pyenv global $py_vers
+                  # Set all installed versions as global so they are available
+                  py_vers=\$(pyenv versions --bare | fgrep \"${py}.\" | head -1)
+                  pyenv global \$py_vers
 
-              # Refresh pyenv shims
-              pyenv rehash
+                # Refresh pyenv shims
+                pyenv rehash
 
-              # Create venv with latest Python and install ansible-core
-              git config --global --add safe.directory /root/ansible_collections/o0_o/posix
-              python -m venv .venv
-              . .venv/bin/activate
-              pip install --upgrade pip
-              pip install ansible-core
+                # Create venv with latest Python and install ansible-core
+                git config --global --add safe.directory /root/ansible_collections/o0_o/posix
+                python -m venv .venv
+                . .venv/bin/activate
+                pip install --upgrade pip
+                pip install ansible-core
 
-              # Run sanity tests across all installed Python versions
-              ansible-test sanity --venv 2>&1
+                # Run sanity tests across all installed Python versions
+                ansible-test sanity --venv 2>&1
+              "
             '
 
   #linux-units:
