@@ -1,4 +1,4 @@
-#!/usr/bin/env sh
+#!/bin/sh
 # vim: ts=8:sw=8:sts=8:noet:ft=sh
 # -*- mode: sh; tab-width: 2; indent-tabs-mode: nil; -*-
 #
