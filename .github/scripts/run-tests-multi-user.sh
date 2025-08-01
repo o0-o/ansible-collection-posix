@@ -47,12 +47,8 @@ fi
 echo "Setting up test environment for non-root user..."
 test_dir="/tmp/ansible-test-$(date +%s)"
 mkdir -p "$test_dir"
-cp -R . "$test_dir/"
+cp -a . "$test_dir/"
 chown -R testuser:testuser "$test_dir"
-
-# Also copy the venv and make it accessible
-cp -R .venv "$test_dir/"
-chown -R testuser:testuser "$test_dir/.venv"
 
 # Run tests as non-root user
 echo "Running $test_type tests as non-root user..."

@@ -61,6 +61,10 @@ def test_write_file_backup_and_validate(base) -> None:
 
     base._validate_file = lambda tmp, cmd, task_vars: None
     base._create_backup = lambda dest, task_vars: dest + ".bak"
+    
+    # Debug: ensure path is not None
+    assert tmp_path is not None, "tmp_path should not be None"
+    assert os.path.exists(tmp_path), f"tmp_path {tmp_path} should exist"
 
     result = base._write_file(
         content="new",
