@@ -50,6 +50,10 @@ def test_mkdir_behavior(
 
     try:
         if setup == "restrictive_subdir":
+            # Skip this test when running as root since root can bypass permissions
+            if os.geteuid() == 0:
+                pytest.skip("Permission restriction test skipped when running as root")
+            
             # Create a subdirectory with no permissions
             os.makedirs(path, exist_ok=True)
             restricted = os.path.join(path, "no_access")
