@@ -53,12 +53,14 @@ ansible-test "$test_type" --venv --python "$python_version"
 
 # Run tests as non-root user
 echo "Running $test_type tests as non-root user..."
+# Change to a neutral directory first to avoid pyenv trying to access /root
+cd /tmp
 echo "Setting up pyenv and venv for testuser..."
 su testuser -c "
 	export PYENV_ROOT=/opt/pyenv && 
 	export PATH=/opt/pyenv/bin:\$PATH && 
 	eval \"\$(pyenv init - sh)\" && 
-	cd '$test_dir' && 
+	cd ~/.ansible/collections/ansible_collections/o0_o/posix && 
 	pyenv local '$python_version' &&
 	python -m venv .venv &&
 	. .venv/bin/activate &&
@@ -70,7 +72,7 @@ su testuser -c "
 	export PYENV_ROOT=/opt/pyenv && 
 	export PATH=/opt/pyenv/bin:\$PATH && 
 	eval \"\$(pyenv init - sh)\" && 
-	cd '$test_dir' && 
+	cd ~/.ansible/collections/ansible_collections/o0_o/posix && 
 	. .venv/bin/activate && 
 	ansible-test '$test_type' --venv --python '$python_version'
 "
