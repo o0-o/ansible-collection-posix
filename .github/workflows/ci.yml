@@ -79,11 +79,8 @@ jobs:
               /bin/sh .github/scripts/setup-linux-pyenv.sh "${{ matrix.os }}" \
                 "${{ matrix.python }}"
 
-              # Source the venv that was created
-              . .venv/bin/activate
-
-              # Run unit tests for this specific Python version
-              ansible-test units --venv --python ${{ matrix.python }}
+              # Run unit tests as both root and non-root users
+              /bin/sh .github/scripts/run-tests-multi-user.sh units "${{ matrix.python }}"
             '
 
   #linux-integration:
