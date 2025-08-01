@@ -14,6 +14,10 @@
 
 set -eu
 
+# Set locale to avoid ansible-test warnings
+export LANG=en_US.UTF-8
+export LC_ALL=en_US.UTF-8
+
 # Install build dependencies for pyenv based on Linux distribution
 case "$1" in
 	debian:*|ubuntu:*)
@@ -26,30 +30,34 @@ case "$1" in
 			bash git curl tar findutils build-essential \
 			libssl-dev zlib1g-dev libbz2-dev libreadline-dev \
 			libsqlite3-dev libncursesw5-dev xz-utils tk-dev \
-			libxml2-dev libxmlsec1-dev libffi-dev liblzma-dev
+			libxml2-dev libxmlsec1-dev libffi-dev liblzma-dev \
+			locales shellcheck
+		# Generate en_US.UTF-8 locale
+		locale-gen en_US.UTF-8
 		;;
 	fedora:*|*rockylinux:*|almalinux:*|*centos*)
 		dnf install -y --allowerasing \
 			bash git curl tar findutils gcc make openssl-devel \
 			bzip2-devel libffi-devel zlib-devel readline-devel \
-			sqlite-devel xz-devel
+			sqlite-devel xz-devel glibc-langpack-en ShellCheck
 		;;
 	opensuse/*)
 		zypper install -y \
 			bash git curl tar gzip findutils gcc make \
 			openssl-devel libbz2-devel libffi-devel zlib-devel \
-			readline-devel sqlite3-devel xz-devel gawk coreutils
+			readline-devel sqlite3-devel xz-devel gawk coreutils \
+			glibc-locale ShellCheck
 		;;
 	archlinux)
 		pacman -Sy --noconfirm \
 			bash git curl tar findutils base-devel openssl zlib \
-			bzip2 libffi readline sqlite xz
+			bzip2 libffi readline sqlite xz shellcheck
 		;;
 	alpine:*)
 		apk add --no-cache \
 			bash git curl tar findutils build-base openssl-dev \
 			zlib-dev bzip2-dev libffi-dev readline-dev sqlite-dev \
-			xz-dev coreutils
+			xz-dev coreutils shellcheck
 		;;
 esac
 
@@ -73,6 +81,11 @@ pyenv rehash
 # Create venv with latest Python and install ansible-core
 git config --global --add safe.directory \
 	/root/ansible_collections/o0_o/posix
+
+# Persist locale settings for ansible-test
+echo "export LANG=en_US.UTF-8" >> /root/.profile
+echo "export LC_ALL=en_US.UTF-8" >> /root/.profile
+
 python -m venv .venv
 . .venv/bin/activate
 pip install --upgrade pip
