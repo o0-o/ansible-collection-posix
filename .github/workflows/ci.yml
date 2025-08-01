@@ -83,70 +83,31 @@ jobs:
               /bin/sh .github/scripts/run-tests-multi-user.sh units "${{ matrix.python }}"
             '
 
-  #linux-integration:
-  #  name: Integration (${{ matrix.os }})
-  #  runs-on: ubuntu-latest
-  #  strategy:
-  #    fail-fast: false
-  #    matrix:
-  #      os:
-  #        # Debian versions
-  #        - debian:11
-  #        - debian:12
-  #        # Ubuntu LTS versions
-  #        - ubuntu:22.04
-  #        - ubuntu:24.04
-  #        # Fedora
-  #        - fedora:39
-  #        - fedora:latest
-  #        # Enterprise Linux
-  #        - rockylinux:9
-  #        - almalinux:9
-  #        - quay.io/centos/centos:stream9
-  #        # openSUSE
-  #        - opensuse/leap:15.5
-  #        - opensuse/leap:latest
-  #        # Arch
-  #        - archlinux:latest
-  #        # Alpine
-  #        - alpine:3.19
-  #        - alpine:latest
-  #  steps:
-  #    - uses: actions/checkout@v4
-  #
-  #    - name: Run integration tests in container
-  #      run: |
-  #        docker run --rm \
-  #          -v ${{ github.workspace }}:/root/ansible_collections/o0_o/posix \
-  #          -w /root/ansible_collections/o0_o/posix \
-  #          ${{ matrix.os }} sh -c '
-  #            # Minimal Python setup for containers that need it
-  #            case "${{ matrix.os }}" in
-  #              debian:*|ubuntu:*)
-  #                apt-get update && apt-get install -y python3-venv git
-  #                ;;
-  #              fedora:*|rockylinux:*|almalinux:*|*/centos*)
-  #                dnf install -y python3 git
-  #                ;;
-  #              opensuse/*)
-  #                zypper install -y python3 git
-  #                ;;
-  #              archlinux:*)
-  #                pacman -Sy --noconfirm python git
-  #                ;;
-  #              alpine:*)
-  #                apk add --no-cache python3 git
-  #                ;;
-  #            esac
-  #
-  #            # Create venv and run integration tests
-  #            git config --global --add safe.directory /root/ansible_collections/o0_o/posix
-  #            python3 -m venv .venv
-  #            . .venv/bin/activate
-  #            pip install --upgrade pip
-  #            pip install ansible-core
-  #            ansible-test integration --venv
-  #          '
+  linux-integration:
+    name: Integration (${{ matrix.os }} - Python ${{ matrix.python }})
+    runs-on: ubuntu-latest
+    needs: setup-linux-matrix
+    strategy:
+      fail-fast: false
+      matrix:
+        os: ${{ fromJson(needs.setup-linux-matrix.outputs.os-matrix) }}
+        python: ${{ fromJson(needs.setup-linux-matrix.outputs.python-matrix) }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run integration tests in container
+        run: |
+          docker run --rm \
+            -v ${{ github.workspace }}:/root/ansible_collections/o0_o/posix \
+            -w /root/ansible_collections/o0_o/posix \
+            ${{ matrix.os }} sh -c '
+              set -e
+              /bin/sh .github/scripts/setup-linux-pyenv.sh "${{ matrix.os }}" \
+                "${{ matrix.python }}"
+
+              # Run integration tests as both root and non-root users
+              /bin/sh .github/scripts/run-tests-multi-user.sh integration "${{ matrix.python }}"
+            '
 
   # macos-sanity:
   #   name: Sanity (${{ matrix.os }})
@@ -255,7 +216,7 @@ jobs:
   build:
     name: Build Collection
     runs-on: ubuntu-latest
-    needs: [setup-linux-matrix, linux-sanity, linux-units]
+    needs: [setup-linux-matrix, linux-sanity, linux-units, linux-integration]
     steps:
       - uses: actions/checkout@v4
 
