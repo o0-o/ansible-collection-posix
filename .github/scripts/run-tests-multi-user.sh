@@ -53,7 +53,9 @@ chown -R testuser:testuser "$test_dir"
 
 # Run tests as non-root user
 echo "Running $test_type tests as non-root user..."
-cd "$test_dir"
+echo "Debugging ansible-test permissions..."
+su testuser -c "cd '$test_dir' && . .venv/bin/activate && which ansible-test && stat \$(which ansible-test)"
+echo "Running actual tests..."
 su testuser -c "cd '$test_dir' && . .venv/bin/activate && ansible-test $test_type --venv --python $python_version"
 
 # Cleanup

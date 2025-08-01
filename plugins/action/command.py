@@ -326,6 +326,9 @@ class ActionModule(PosixBase):
             if builtin_module_args.get("expand_argument_vars") is None:
                 builtin_module_args.pop("expand_argument_vars")
             builtin_module_args["_raw_params"] = builtin_module_args.pop("cmd")
+            # Remove argv if it's None to avoid mutual exclusivity issues
+            if builtin_module_args.get("argv") is None:
+                builtin_module_args.pop("argv", None)
 
             ansible_cmd_mod = self._execute_module(
                 module_name="ansible.builtin.command",
