@@ -43,9 +43,10 @@ if ! id testuser >/dev/null 2>&1; then
 	fi
 fi
 
-# Create a test directory with proper permissions
+# Create a test directory in the user's home directory
 echo "Setting up test environment for non-root user..."
-test_dir="/tmp/ansible-test-$(date +%s)"
+test_user_home=$(getent passwd testuser | cut -d: -f6)
+test_dir="$test_user_home/ansible-test"
 mkdir -p "$test_dir"
 cp -a . "$test_dir/"
 chown -R testuser:testuser "$test_dir"
@@ -53,7 +54,7 @@ chown -R testuser:testuser "$test_dir"
 # Run tests as non-root user
 echo "Running $test_type tests as non-root user..."
 cd "$test_dir"
-su - testuser -c "cd $test_dir && . .venv/bin/activate && ansible-test $test_type --venv --python $python_version"
+su testuser -c "cd '$test_dir' && . .venv/bin/activate && ansible-test $test_type --venv --python $python_version"
 
 # Cleanup
 cd /
