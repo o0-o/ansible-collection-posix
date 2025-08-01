@@ -27,12 +27,6 @@ case "$test_type" in
 		;;
 esac
 
-# Source the venv
-. .venv/bin/activate
-
-echo "Running $test_type tests as root user..."
-ansible-test "$test_type" --venv --python "$python_version"
-
 # Create a test user if it doesn't exist
 if ! id testuser >/dev/null 2>&1; then
 	echo "Creating test user..."
@@ -43,21 +37,41 @@ if ! id testuser >/dev/null 2>&1; then
 	fi
 fi
 
-# Create a test directory in the user's home directory
-echo "Setting up test environment for non-root user..."
+# Set up clean collection copy for testuser before running any tests
+echo "Setting up clean collection copy for testuser..."
 test_user_home=$(getent passwd testuser | cut -d: -f6)
-test_dir="$test_user_home/ansible-test"
+test_dir="$test_user_home/.ansible/collections/ansible_collections/o0_o/posix"
 mkdir -p "$test_dir"
 cp -a . "$test_dir/"
-chown -R testuser:testuser "$test_dir"
+chown -R testuser:testuser "$test_user_home/.ansible"
+
+# Source the venv
+. .venv/bin/activate
+
+echo "Running $test_type tests as root user..."
+ansible-test "$test_type" --venv --python "$python_version"
 
 # Run tests as non-root user
 echo "Running $test_type tests as non-root user..."
-echo "Setting up pyenv and git for testuser..."
-su testuser -c "git config --global --add safe.directory '*' && export PYENV_ROOT=/opt/pyenv && export PATH=/opt/pyenv/bin:\$PATH && eval \"\$(pyenv init - sh)\" && cd '$test_dir' && pyenv local '$python_version'"
+echo "Setting up pyenv and venv for testuser..."
+su testuser -c "
+	export PYENV_ROOT=/opt/pyenv && 
+	export PATH=/opt/pyenv/bin:\$PATH && 
+	eval \"\$(pyenv init - sh)\" && 
+	cd '$test_dir' && 
+	pyenv local '$python_version' &&
+	python -m venv .venv &&
+	. .venv/bin/activate &&
+	pip install --quiet --upgrade pip &&
+	pip install --quiet ansible-core
+"
 echo "Running actual tests..."
-su testuser -c "export PYENV_ROOT=/opt/pyenv && export PATH=/opt/pyenv/bin:\$PATH && eval \"\$(pyenv init - sh)\" && cd '$test_dir' && . .venv/bin/activate && ansible-test '$test_type' --venv --python '$python_version'"
+su testuser -c "
+	export PYENV_ROOT=/opt/pyenv && 
+	export PATH=/opt/pyenv/bin:\$PATH && 
+	eval \"\$(pyenv init - sh)\" && 
+	cd '$test_dir' && 
+	. .venv/bin/activate && 
+	ansible-test '$test_type' --venv --python '$python_version'
+"
 
-# Cleanup
-cd /
-rm -rf "$test_dir"

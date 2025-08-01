@@ -43,8 +43,8 @@ jobs:
       - name: Run sanity tests in container
         run: |
           docker run --rm \
-            -v ${{ github.workspace }}:/root/ansible_collections/o0_o/posix \
-            -w /root/ansible_collections/o0_o/posix \
+            -v ${{ github.workspace }}:/root/.ansible/collections/ansible_collections/o0_o/posix \
+            -w /root/.ansible/collections/ansible_collections/o0_o/posix \
             ${{ matrix.os }} sh -c '
               set -e
               /bin/sh .github/scripts/setup-linux-pyenv.sh "${{ matrix.os }}" \
@@ -72,8 +72,8 @@ jobs:
       - name: Run unit tests in container
         run: |
           docker run --rm \
-            -v ${{ github.workspace }}:/root/ansible_collections/o0_o/posix \
-            -w /root/ansible_collections/o0_o/posix \
+            -v ${{ github.workspace }}:/root/.ansible/collections/ansible_collections/o0_o/posix \
+            -w /root/.ansible/collections/ansible_collections/o0_o/posix \
             ${{ matrix.os }} sh -c '
               set -e
               /bin/sh .github/scripts/setup-linux-pyenv.sh "${{ matrix.os }}" \
@@ -98,8 +98,8 @@ jobs:
       - name: Run integration tests in container
         run: |
           docker run --rm \
-            -v ${{ github.workspace }}:/root/ansible_collections/o0_o/posix \
-            -w /root/ansible_collections/o0_o/posix \
+            -v ${{ github.workspace }}:/root/.ansible/collections/ansible_collections/o0_o/posix \
+            -w /root/.ansible/collections/ansible_collections/o0_o/posix \
             ${{ matrix.os }} sh -c '
               set -e
               /bin/sh .github/scripts/setup-linux-pyenv.sh "${{ matrix.os }}" \
