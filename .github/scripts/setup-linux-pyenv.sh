@@ -89,10 +89,10 @@ case "$1" in
 		;;
 esac
 
-# Install pyenv
-export PYENV_ROOT="/root/.pyenv"
+# Install pyenv system-wide
+export PYENV_ROOT="/opt/pyenv"
 curl -s https://pyenv.run | bash >/dev/null
-export PATH="/root/.pyenv/bin:$PATH"
+export PATH="/opt/pyenv/bin:$PATH"
 eval "$(pyenv init - sh)" >/dev/null
 
 # Install the specific Python version passed as argument

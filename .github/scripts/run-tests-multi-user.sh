@@ -53,14 +53,10 @@ chown -R testuser:testuser "$test_dir"
 
 # Run tests as non-root user
 echo "Running $test_type tests as non-root user..."
-echo "Debugging environment as testuser..."
-su testuser -c "cd '$test_dir' && pwd && whoami && ls -la .venv" || echo "Basic commands failed"
-echo "Debugging venv activation..."
-su testuser -c "cd '$test_dir' && . .venv/bin/activate && echo 'venv activated' && which python" || echo "venv activation failed"
-echo "Debugging ansible-test..."
-su testuser -c "cd '$test_dir' && . .venv/bin/activate && which ansible-test" || echo "which ansible-test failed"
+echo "Setting up pyenv for testuser..."
+su testuser -c "export PYENV_ROOT=/opt/pyenv && export PATH=/opt/pyenv/bin:\$PATH && eval \"\$(pyenv init - sh)\" && cd '$test_dir' && pyenv local '$python_version'"
 echo "Running actual tests..."
-su testuser -c "cd '$test_dir' && . .venv/bin/activate && ansible-test $test_type --venv --python $python_version"
+su testuser -c "export PYENV_ROOT=/opt/pyenv && export PATH=/opt/pyenv/bin:\$PATH && eval \"\$(pyenv init - sh)\" && cd '$test_dir' && . .venv/bin/activate && ansible-test '$test_type' --venv --python '$python_version'"
 
 # Cleanup
 cd /
