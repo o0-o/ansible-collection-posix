@@ -72,7 +72,7 @@
 - name: Create unreadable template file
   ansible.builtin.copy:
     dest: "{{ tmpl_dir }}/unreadable.j2"
-    content: "{{ '{{ broken' }}"
+    content: "This template should be unreadable"
     mode: '0000'
 
 - name: 'Fail: Template file with bad permissions'
@@ -91,6 +91,8 @@
         that:
           - "'Permission denied' in ansible_failed_result.msg
             or 'unreadable' in ansible_failed_result.msg"
+  
+  when: ansible_user_id != 'root'
 
 - name: Create template file with syntax error
   ansible.builtin.copy:
