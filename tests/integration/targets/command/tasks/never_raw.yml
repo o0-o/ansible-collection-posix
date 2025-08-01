@@ -66,6 +66,7 @@
     that:
       - var_exp_builtin_reg['raw'] == false
       - no_var_exp_builtin_reg['raw'] == false
+  when: (ansible_version.major, ansible_version.minor) >= (2, 16)
 
 - name: Assert command output (Ansible < 2.16)
   ansible.builtin.assert:
