@@ -107,8 +107,7 @@ git clone https://github.com/pyenv/pyenv-which-ext.git \
 pyenv rehash
 
 # Create venv with latest Python and install ansible-core
-git config --global --add safe.directory \
-	/root/ansible_collections/o0_o/posix
+git config --global --add safe.directory '*'
 
 # Persist locale settings for ansible-test
 case "$1" in

@@ -53,8 +53,8 @@ chown -R testuser:testuser "$test_dir"
 
 # Run tests as non-root user
 echo "Running $test_type tests as non-root user..."
-echo "Setting up pyenv for testuser..."
-su testuser -c "export PYENV_ROOT=/opt/pyenv && export PATH=/opt/pyenv/bin:\$PATH && eval \"\$(pyenv init - sh)\" && cd '$test_dir' && pyenv local '$python_version'"
+echo "Setting up pyenv and git for testuser..."
+su testuser -c "git config --global --add safe.directory '*' && export PYENV_ROOT=/opt/pyenv && export PATH=/opt/pyenv/bin:\$PATH && eval \"\$(pyenv init - sh)\" && cd '$test_dir' && pyenv local '$python_version'"
 echo "Running actual tests..."
 su testuser -c "export PYENV_ROOT=/opt/pyenv && export PATH=/opt/pyenv/bin:\$PATH && eval \"\$(pyenv init - sh)\" && cd '$test_dir' && . .venv/bin/activate && ansible-test '$test_type' --venv --python '$python_version'"
 
