@@ -28,7 +28,7 @@ case "$1" in
 			libssl-dev zlib1g-dev libbz2-dev libreadline-dev \
 			libsqlite3-dev libncursesw5-dev xz-utils tk-dev \
 			libxml2-dev libxmlsec1-dev libffi-dev liblzma-dev \
-			locales shellcheck openssh-client
+			libyaml-dev locales shellcheck openssh-client
 		# Generate en_US.UTF-8 locale
 		locale-gen en_US.UTF-8
 		update-locale LANG=en_US.UTF-8
@@ -48,7 +48,7 @@ case "$1" in
 		dnf install -y -q --allowerasing \
 			bash git curl tar findutils gcc make openssl-devel \
 			bzip2-devel libffi-devel zlib-devel readline-devel \
-			sqlite-devel xz-devel glibc-langpack-en openssh-clients
+			sqlite-devel xz-devel libyaml-devel glibc-langpack-en openssh-clients
 		# Try to install ShellCheck, ignore if not available
 		dnf install -y -q ShellCheck || echo "ShellCheck not available, skipping"
 		;;
@@ -57,14 +57,14 @@ case "$1" in
 		zypper install -y --quiet \
 			bash git curl tar gzip findutils gcc make \
 			openssl-devel libbz2-devel libffi-devel zlib-devel \
-			readline-devel sqlite3-devel xz-devel gawk coreutils \
+			readline-devel sqlite3-devel xz-devel libyaml-devel gawk coreutils \
 			glibc-locale ShellCheck openssh
 		;;
 	archlinux)
 		pacman -Syu --noconfirm --quiet &&
 		pacman -S --noconfirm --quiet \
 			bash git curl tar findutils base-devel openssl zlib \
-			bzip2 libffi readline sqlite xz shellcheck openssh
+			bzip2 libffi readline sqlite xz libyaml shellcheck openssh
 		;;
 	alpine:*)
 		apk update --quiet &&
@@ -72,7 +72,7 @@ case "$1" in
 		apk add --no-cache --quiet \
 			bash git curl tar findutils build-base openssl-dev \
 			zlib-dev bzip2-dev libffi-dev readline-dev sqlite-dev \
-			xz-dev coreutils shellcheck openssh-client
+			xz-dev yaml-dev coreutils shellcheck openssh-client
 		;;
 esac
 

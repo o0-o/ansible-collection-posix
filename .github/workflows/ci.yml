@@ -54,7 +54,7 @@ jobs:
               . .venv/bin/activate
 
               # Run sanity tests for this specific Python version
-              ansible-test sanity --venv --python ${{ matrix.python }}
+              ansible-test sanity --venv --python ${{ matrix.python }} -v
             '
 
   linux-units:
