@@ -59,14 +59,10 @@ curl -s https://pyenv.run | bash
 export PATH="/root/.pyenv/bin:$PATH"
 eval "$(pyenv init - sh)"
 
-# Install latest patch versions for each major.minor
-py_vers=""
-for py in 3.13 3.12 3.11 3.10 3.9; do
-	pyenv install $py
-	py_vers="$py_vers $py"
-done
-
-pyenv global $py_vers
+# Install the specific Python version passed as argument
+python_version="$2"
+pyenv install "$python_version"
+pyenv global "$python_version"
 
 # Refresh pyenv shims
 mkdir -p "$(pyenv root)/plugins"
