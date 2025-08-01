@@ -14,10 +14,6 @@
 
 set -eu
 
-# Set locale to avoid ansible-test warnings
-export LANG=en_US.UTF-8
-export LC_ALL=en_US.UTF-8
-
 # Install build dependencies for pyenv based on Linux distribution
 case "$1" in
 	debian:*|ubuntu:*)
@@ -73,6 +69,19 @@ case "$1" in
 		;;
 esac
 
+# Set locale to avoid ansible-test warnings (after locale packages are installed)
+# Alpine uses musl and doesn't have traditional locale support
+case "$1" in
+	alpine:*)
+		export LANG=C.UTF-8
+		export LC_ALL=C.UTF-8
+		;;
+	*)
+		export LANG=en_US.UTF-8
+		export LC_ALL=en_US.UTF-8
+		;;
+esac
+
 # Install pyenv
 export PYENV_ROOT="/root/.pyenv"
 curl -s https://pyenv.run | bash
@@ -95,8 +104,16 @@ git config --global --add safe.directory \
 	/root/ansible_collections/o0_o/posix
 
 # Persist locale settings for ansible-test
-echo "export LANG=en_US.UTF-8" >> /root/.profile
-echo "export LC_ALL=en_US.UTF-8" >> /root/.profile
+case "$1" in
+	alpine:*)
+		echo "export LANG=C.UTF-8" >> /root/.profile
+		echo "export LC_ALL=C.UTF-8" >> /root/.profile
+		;;
+	*)
+		echo "export LANG=en_US.UTF-8" >> /root/.profile
+		echo "export LC_ALL=en_US.UTF-8" >> /root/.profile
+		;;
+esac
 
 python -m venv .venv
 . .venv/bin/activate
