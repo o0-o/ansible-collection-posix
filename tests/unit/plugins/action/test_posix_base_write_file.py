@@ -90,7 +90,7 @@ def test_write_file_check_mode_and_diff(base) -> None:
         with open(tmp_path, "w") as f:
             f.write(original)
 
-        base._slurp = lambda tmp_path, task_vars=None: {
+        base._slurp = lambda src, task_vars=None: {
             "content": original,
             "content_lines": original.splitlines(),
         }

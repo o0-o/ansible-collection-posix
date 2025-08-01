@@ -91,19 +91,19 @@ esac
 
 # Install pyenv
 export PYENV_ROOT="/root/.pyenv"
-curl -s https://pyenv.run | bash
+curl -s https://pyenv.run | bash >/dev/null
 export PATH="/root/.pyenv/bin:$PATH"
-eval "$(pyenv init - sh)"
+eval "$(pyenv init - sh)" >/dev/null
 
 # Install the specific Python version passed as argument
 python_version="$2"
-pyenv install "$python_version"
+pyenv install "$python_version" >/dev/null
 pyenv global "$python_version"
 
 # Refresh pyenv shims
 mkdir -p "$(pyenv root)/plugins"
 git clone https://github.com/pyenv/pyenv-which-ext.git \
-	"$(pyenv root)/plugins/pyenv-which-ext"
+	"$(pyenv root)/plugins/pyenv-which-ext" >/dev/null
 pyenv rehash
 
 # Create venv with latest Python and install ansible-core
