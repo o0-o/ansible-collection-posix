@@ -11,20 +11,36 @@
 # This file is part of the o0_o.posix Ansible Collection.
 
 - name: Run builtin command with variable expansion
-  o0_o.posix.command:
-    cmd: 'echo "My home: ${HOME}"'
-    _uses_shell: true
-    expand_argument_vars: true
-  ignore_errors: true
-  register: var_exp_builtin_reg
+  block:
 
-- name: 'Run builtin command without variable expansion'
-  o0_o.posix.command:
-    cmd: 'echo "My home: ${HOME}"'
-    _uses_shell: false
-    expand_argument_vars: false
-  ignore_errors: true
-  register: no_var_exp_builtin_reg
+    - name: Execute command with variable expansion
+      o0_o.posix.command:
+        cmd: 'echo "My home: ${HOME}"'
+        _uses_shell: true
+        expand_argument_vars: true
+      register: var_exp_builtin_reg
+
+  rescue:
+
+    - name: Set failure result for variable expansion
+      ansible.builtin.set_fact:
+        var_exp_builtin_reg: "{{ ansible_failed_result }}"
+
+- name: Run builtin command without variable expansion
+  block:
+
+    - name: Execute command without variable expansion
+      o0_o.posix.command:
+        cmd: 'echo "My home: ${HOME}"'
+        _uses_shell: false
+        expand_argument_vars: false
+      register: no_var_exp_builtin_reg
+
+  rescue:
+
+    - name: Set failure result for no variable expansion
+      ansible.builtin.set_fact:
+        no_var_exp_builtin_reg: "{{ ansible_failed_result }}"
 
 - name: 'Ansible 2.16 or later'
   when: (ansible_version.major, ansible_version.minor) >= (2, 16)
