@@ -57,23 +57,24 @@ echo "Running $test_type tests as non-root user..."
 cd /tmp
 echo "Setting up pyenv and venv for testuser..."
 su testuser -c "
-	export PYENV_ROOT=/opt/pyenv && 
-	export PATH=/opt/pyenv/bin:\$PATH && 
-	eval \"\$(pyenv init - sh --no-rehash)\" && 
-	cd ~/.ansible/collections/ansible_collections/o0_o/posix && 
-	pyenv local '$python_version' &&
+	export PYENV_ROOT=/opt/pyenv &&
+	export PATH=/opt/pyenv/bin:\$PATH &&
+	eval \"\$(pyenv init - sh --no-rehash)\" &&
+	cd $test_user_home/.ansible/collections/ansible_collections/o0_o/posix &&
 	python -m venv .venv &&
 	. .venv/bin/activate &&
-	python -m pip install --quiet --upgrade pip &&
-	python -m pip install --quiet ansible-core
+	pip install --quiet --upgrade pip &&
+	pip install --quiet ansible-core
 "
 echo "Running actual tests..."
 su testuser -c "
-	export PYENV_ROOT=/opt/pyenv && 
-	export PATH=/opt/pyenv/bin:\$PATH && 
-	eval \"\$(pyenv init - sh --no-rehash)\" && 
-	cd ~/.ansible/collections/ansible_collections/o0_o/posix && 
-	. .venv/bin/activate && 
+	export PYENV_ROOT=/opt/pyenv &&
+	export PATH=/opt/pyenv/bin:\$PATH &&
+	eval \"\$(pyenv init - sh --no-rehash)\" &&
+	cd ~/.ansible/collections/ansible_collections/o0_o/posix &&
+	. .venv/bin/activate &&
+	which python &&
+	which pip &&
+	which ansible-test &&
 	ansible-test '$test_type' --venv --python '$python_version'
 "
-
