@@ -36,10 +36,22 @@ case "$1" in
 		locale-gen en_US.UTF-8
 		;;
 	fedora:*|*rockylinux:*|almalinux:*|*centos*)
+		# Enable EPEL for RHEL-based distros (not needed for Fedora)
+		case "$1" in
+			fedora:*)
+				# Fedora has ShellCheck in main repos
+				;;
+			*)
+				# All other RPM distros need EPEL
+				dnf install -y --allowerasing epel-release
+				;;
+		esac
 		dnf install -y --allowerasing \
 			bash git curl tar findutils gcc make openssl-devel \
 			bzip2-devel libffi-devel zlib-devel readline-devel \
-			sqlite-devel xz-devel glibc-langpack-en ShellCheck
+			sqlite-devel xz-devel glibc-langpack-en
+		# Try to install ShellCheck, ignore if not available
+		dnf install -y ShellCheck || echo "ShellCheck not available, skipping"
 		;;
 	opensuse/*)
 		zypper install -y \
