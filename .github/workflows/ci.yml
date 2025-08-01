@@ -21,8 +21,12 @@ jobs:
       - uses: actions/checkout@v4
       - id: set-matrix
         run: |
-          echo "os-matrix=$(cat .github/matrix/linux-os.json | jq -c .os)" >> $GITHUB_OUTPUT
-          echo "python-matrix=$(cat .github/matrix/python-versions.json | jq -c .python)" >> $GITHUB_OUTPUT
+          echo "os-matrix=$(
+              cat .github/matrix/linux-os-min.json | jq -c .os
+            )" >> $GITHUB_OUTPUT
+          echo "python-matrix=$(
+              cat .github/matrix/python-versions.json | jq -c .python
+            )" >> $GITHUB_OUTPUT
 
   linux-sanity:
     name: Sanity (${{ matrix.os }} - Python ${{ matrix.python }})
@@ -43,14 +47,14 @@ jobs:
             -w /root/ansible_collections/o0_o/posix \
             ${{ matrix.os }} sh -c '
               set -e
-              chmod +x .github/scripts/setup-linux-pyenv.sh
-              .github/scripts/setup-linux-pyenv.sh "${{ matrix.os }}" "${{ matrix.python }}"
+              /bin/sh .github/scripts/setup-linux-pyenv.sh "${{ matrix.os }}" \
+                "${{ matrix.python }}"
 
               # Source the venv that was created
               . .venv/bin/activate
 
               # Run sanity tests for this specific Python version
-              ansible-test sanity --venv --python ${{ matrix.python }} 2>&1
+              ansible-test sanity --venv --python ${{ matrix.python }}
             '
 
   linux-units:
@@ -72,14 +76,14 @@ jobs:
             -w /root/ansible_collections/o0_o/posix \
             ${{ matrix.os }} sh -c '
               set -e
-              chmod +x .github/scripts/setup-linux-pyenv.sh
-              .github/scripts/setup-linux-pyenv.sh "${{ matrix.os }}" "${{ matrix.python }}"
+              /bin/sh .github/scripts/setup-linux-pyenv.sh "${{ matrix.os }}" \
+                "${{ matrix.python }}"
 
               # Source the venv that was created
               . .venv/bin/activate
 
               # Run unit tests for this specific Python version
-              ansible-test units --venv --python ${{ matrix.python }} 2>&1
+              ansible-test units --venv --python ${{ matrix.python }}
             '
 
   #linux-integration:

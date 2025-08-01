@@ -19,8 +19,8 @@ case "$1" in
 	debian:*|ubuntu:*)
 		export DEBIAN_FRONTEND=noninteractive
 		export TZ=UTC
-		apt-get update &&
-		apt-get install -y \
+		apt-get update -qq &&
+		apt-get install -y -qq \
 			-o Dpkg::Options::="--force-confdef" \
 			-o Dpkg::Options::="--force-confold" \
 			bash git curl tar findutils build-essential \
@@ -30,6 +30,7 @@ case "$1" in
 			locales shellcheck
 		# Generate en_US.UTF-8 locale
 		locale-gen en_US.UTF-8
+		update-locale LANG=en_US.UTF-8
 		;;
 	fedora:*|*rockylinux:*|almalinux:*|*centos*)
 		# Enable EPEL for RHEL-based distros (not needed for Fedora)
@@ -39,30 +40,30 @@ case "$1" in
 				;;
 			*)
 				# All other RPM distros need EPEL
-				dnf install -y --allowerasing epel-release
+				dnf install -y -q --allowerasing epel-release
 				;;
 		esac
-		dnf install -y --allowerasing \
+		dnf install -y -q --allowerasing \
 			bash git curl tar findutils gcc make openssl-devel \
 			bzip2-devel libffi-devel zlib-devel readline-devel \
 			sqlite-devel xz-devel glibc-langpack-en
 		# Try to install ShellCheck, ignore if not available
-		dnf install -y ShellCheck || echo "ShellCheck not available, skipping"
+		dnf install -y -q ShellCheck || echo "ShellCheck not available, skipping"
 		;;
 	opensuse/*)
-		zypper install -y \
+		zypper install -y --quiet \
 			bash git curl tar gzip findutils gcc make \
 			openssl-devel libbz2-devel libffi-devel zlib-devel \
 			readline-devel sqlite3-devel xz-devel gawk coreutils \
 			glibc-locale ShellCheck
 		;;
 	archlinux)
-		pacman -Sy --noconfirm \
+		pacman -Sy --noconfirm --quiet \
 			bash git curl tar findutils base-devel openssl zlib \
 			bzip2 libffi readline sqlite xz shellcheck
 		;;
 	alpine:*)
-		apk add --no-cache \
+		apk add --no-cache --quiet \
 			bash git curl tar findutils build-base openssl-dev \
 			zlib-dev bzip2-dev libffi-dev readline-dev sqlite-dev \
 			xz-dev coreutils shellcheck
@@ -117,5 +118,5 @@ esac
 
 python -m venv .venv
 . .venv/bin/activate
-pip install --upgrade pip
-pip install ansible-core
+pip install --quiet --upgrade pip
+pip install --quiet ansible-core
