@@ -56,14 +56,14 @@ def test_write_file_basic_write(base) -> None:
 def test_write_file_backup_and_validate(base) -> None:
     """Test _write_file backup and validation features."""
     from ansible_collections.o0_o.posix.tests.utils import real_cmd
-    
+
     tmp_path = generate_temp_path()
     with open(tmp_path, "w") as f:
         f.write("existing")
 
     base._validate_file = lambda tmp, cmd, task_vars: None
     base._create_backup = lambda dest, task_vars: dest + ".bak"
-    
+
     # Mock _slurp to use real_cmd and cat to read the file
     def mock_slurp(src, task_vars=None):
         result = real_cmd(f"cat '{src}'")
@@ -74,7 +74,7 @@ def test_write_file_backup_and_validate(base) -> None:
             "content": content,
             "content_lines": content.splitlines(),
         }
-    
+
     base._slurp = mock_slurp
 
     result = base._write_file(
