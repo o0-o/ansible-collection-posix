@@ -20,6 +20,7 @@ case "$1" in
 		export DEBIAN_FRONTEND=noninteractive
 		export TZ=UTC
 		apt-get update -qq &&
+		apt-get dist-upgrade -y -qq &&
 		apt-get install -y -qq \
 			-o Dpkg::Options::="--force-confdef" \
 			-o Dpkg::Options::="--force-confold" \
@@ -43,6 +44,7 @@ case "$1" in
 				dnf install -y -q --allowerasing epel-release
 				;;
 		esac
+		dnf update -y -q &&
 		dnf install -y -q --allowerasing \
 			bash git curl tar findutils gcc make openssl-devel \
 			bzip2-devel libffi-devel zlib-devel readline-devel \
@@ -51,6 +53,7 @@ case "$1" in
 		dnf install -y -q ShellCheck || echo "ShellCheck not available, skipping"
 		;;
 	opensuse/*)
+		zypper update -y --quiet &&
 		zypper install -y --quiet \
 			bash git curl tar gzip findutils gcc make \
 			openssl-devel libbz2-devel libffi-devel zlib-devel \
@@ -58,11 +61,14 @@ case "$1" in
 			glibc-locale ShellCheck openssh
 		;;
 	archlinux)
-		pacman -Sy --noconfirm --quiet \
+		pacman -Syu --noconfirm --quiet &&
+		pacman -S --noconfirm --quiet \
 			bash git curl tar findutils base-devel openssl zlib \
 			bzip2 libffi readline sqlite xz shellcheck openssh
 		;;
 	alpine:*)
+		apk update --quiet &&
+		apk upgrade --quiet &&
 		apk add --no-cache --quiet \
 			bash git curl tar findutils build-base openssl-dev \
 			zlib-dev bzip2-dev libffi-dev readline-dev sqlite-dev \
