@@ -63,6 +63,8 @@ su testuser -c "
 	cd $test_user_home/.ansible/collections/ansible_collections/o0_o/posix &&
 	python -m venv .venv &&
 	. .venv/bin/activate &&
+	which pip &&
+	echo \$PATH &&
 	pip install --quiet --upgrade pip &&
 	pip install --quiet ansible-core
 "
