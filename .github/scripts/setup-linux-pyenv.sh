@@ -101,7 +101,8 @@ eval "$(pyenv init - sh)" >/dev/null
 
 # Install the specific Python version passed as argument
 python_version="$2"
-pyenv install "$python_version" >/dev/null
+PYTHON_CONFIGURE_OPTS="--without-ensurepip" \
+	pyenv install "$python_version" >/dev/null
 pyenv global "$python_version"
 
 # Refresh pyenv shims
@@ -109,8 +110,11 @@ mkdir -p "$(pyenv root)/plugins"
 git clone https://github.com/pyenv/pyenv-which-ext.git \
 	"$(pyenv root)/plugins/pyenv-which-ext" >/dev/null
 pyenv rehash
-pip install --quiet --upgrade pip
-pip install --quiet ansible-core
 
 # Create venv with latest Python and install ansible-core
 git config --global --add safe.directory '*'
+
+python -m venv .venv
+. .venv/bin/activate
+python -m ensurepip --upgrade
+pip install --quiet ansible-core

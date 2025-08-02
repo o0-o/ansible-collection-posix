@@ -46,7 +46,7 @@ jobs:
             -v ${{ github.workspace }}:/root/.ansible/collections/ansible_collections/o0_o/posix \
             -w /root/.ansible/collections/ansible_collections/o0_o/posix \
             ${{ matrix.os }} sh -c '
-              set -e
+              set -eux
               /bin/sh .github/scripts/setup-linux-pyenv.sh "${{ matrix.os }}" \
                 "${{ matrix.python }}"
 
@@ -75,7 +75,7 @@ jobs:
             -v ${{ github.workspace }}:/root/.ansible/collections/ansible_collections/o0_o/posix \
             -w /root/.ansible/collections/ansible_collections/o0_o/posix \
             ${{ matrix.os }} sh -c '
-              set -e
+              set -eux
               /bin/sh .github/scripts/setup-linux-pyenv.sh "${{ matrix.os }}" \
                 "${{ matrix.python }}"
 
@@ -101,7 +101,7 @@ jobs:
             -v ${{ github.workspace }}:/root/.ansible/collections/ansible_collections/o0_o/posix \
             -w /root/.ansible/collections/ansible_collections/o0_o/posix \
             ${{ matrix.os }} sh -c '
-              set -e
+              set -eux
               /bin/sh .github/scripts/setup-linux-pyenv.sh "${{ matrix.os }}" \
                 "${{ matrix.python }}"
 
