@@ -58,7 +58,7 @@ cd /tmp
 echo "Setting up pyenv and venv for testuser..."
 su testuser -c "
 	export PYENV_ROOT=/opt/pyenv &&
-	export PATH=/opt/pyenv/bin:\$PATH &&
+	export PATH=\$HOME/.local/bin:/opt/pyenv/bin:\$PATH &&
 	eval \"\$(pyenv init - sh --no-rehash)\" &&
 	cd $test_user_home/.ansible/collections/ansible_collections/o0_o/posix &&
 	python -m venv .venv &&
@@ -71,7 +71,7 @@ su testuser -c "
 echo "Running actual tests..."
 su testuser -c "
 	export PYENV_ROOT=/opt/pyenv &&
-	export PATH=/opt/pyenv/bin:\$PATH &&
+	export PATH=\$HOME/.local/bin:/opt/pyenv/bin:\$PATH &&
 	eval \"\$(pyenv init - sh --no-rehash)\" &&
 	cd ~/.ansible/collections/ansible_collections/o0_o/posix &&
 	. .venv/bin/activate &&
