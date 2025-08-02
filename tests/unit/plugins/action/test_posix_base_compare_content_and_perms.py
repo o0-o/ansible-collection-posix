@@ -121,7 +121,7 @@ def test_compare_content_and_perms(
     dest = "/tmp/testfile"
 
     base._pseudo_stat = lambda path, task_vars=None: old_stat
-    base._slurp = lambda path, task_vars=None: {
+    base._slurp = lambda src, task_vars=None: {
         "content": old_content,
         "content_lines": old_content.splitlines() if old_content else [],
     }

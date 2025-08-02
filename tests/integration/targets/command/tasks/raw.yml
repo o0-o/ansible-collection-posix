@@ -11,22 +11,38 @@
 # This file is part of the o0_o.posix Ansible Collection.
 
 - name: Run builtin command with variable expansion
-  o0_o.posix.command:
-    cmd: 'echo "My home: ${HOME}"'
-    _uses_shell: true
-    expand_argument_vars: true
-    _force_raw: true
-  ignore_errors: true
-  register: var_exp_raw_reg
+  block:
 
-- name: 'Run builtin command without variable expansion'
-  o0_o.posix.command:
-    cmd: 'echo "My home: ${HOME}"'
-    _uses_shell: false
-    expand_argument_vars: false
-    _force_raw: true
-  ignore_errors: true
-  register: no_var_exp_raw_reg
+    - name: Execute raw command with variable expansion
+      o0_o.posix.command:
+        cmd: 'echo "My home: ${HOME}"'
+        _uses_shell: true
+        expand_argument_vars: true
+        _force_raw: true
+      register: var_exp_raw_reg
+
+  rescue:
+
+    - name: Set failure result for raw variable expansion
+      ansible.builtin.set_fact:
+        var_exp_raw_reg: "{{ ansible_failed_result }}"
+
+- name: Run builtin command without variable expansion
+  block:
+
+    - name: Execute raw command without variable expansion
+      o0_o.posix.command:
+        cmd: 'echo "My home: ${HOME}"'
+        _uses_shell: false
+        expand_argument_vars: false
+        _force_raw: true
+      register: no_var_exp_raw_reg
+
+  rescue:
+
+    - name: Set failure result for raw no variable expansion
+      ansible.builtin.set_fact:
+        no_var_exp_raw_reg: "{{ ansible_failed_result }}"
 
 - name: 'Ansible 2.16 or later'
   when: (ansible_version.major, ansible_version.minor) >= (2, 16)
@@ -54,6 +70,7 @@
     that:
       - var_exp_raw_reg['raw'] == true
       - no_var_exp_raw_reg['raw'] == true
+  when: (ansible_version.major, ansible_version.minor) >= (2, 16)
 
 - name: Assert command output (Ansible < 2.16)
   ansible.builtin.assert:

@@ -1,0 +1,33 @@
+{
+  "os": [
+    "debian:11",
+    "debian:12",
+    "debian:latest",
+    "debian:testing",
+    "ubuntu:20.04",
+    "ubuntu:22.04",
+    "ubuntu:24.04",
+    "ubuntu:latest",
+    "ubuntu:rolling",
+    "fedora:latest",
+    "fedora:rawhide",
+    "quay.io/rockylinux/rockylinux:8",
+    "quay.io/rockylinux/rockylinux:9",
+    "quay.io/rockylinux/rockylinux:10",
+    "quay.io/rockylinux/rockylinux:latest",
+    "almalinux:8",
+    "almalinux:9",
+    "almalinux:10",
+    "almalinux:latest",
+    "quay.io/centos/centos:stream9",
+    "quay.io/centos/centos:stream10",
+    "quay.io/centos/centos:latest",
+    "opensuse/leap:15.5",
+    "opensuse/leap:latest",
+    "opensuse/tumbleweed",
+    "archlinux",
+    "alpine:3.19",
+    "alpine:latest",
+    "alpine:edge"
+  ]
+}

@@ -860,7 +860,7 @@ class PosixBase(ActionBase):
             self._display.vvv(f"File does not exist: {dest}")
             return True, None, []
 
-        old_slurp = self._slurp(dest, task_vars=task_vars)
+        old_slurp = self._slurp(src=dest, task_vars=task_vars)
         old_content = old_slurp["content"]
         old_lines = old_slurp["content_lines"]
         self._display.vvv(f"Old lines: {old_lines}")

@@ -7,12 +7,14 @@
 # This file is part of the o0_o.posix Ansible Collection.
 
 - name: Validation file exists
+  ansible.builtin.stat:
+    path: "{{ validation_file }}"
+  register: validation_file_stat
+
+- name: Assert validation file exists
   ansible.builtin.assert:
     that:
-      - lookup( 'ansible.builtin.pipe',
-        'test -e '
-        + validation_file | quote
-        + ' && echo true || echo false' )
+      - validation_file_stat.stat.exists
 
 - name: Inserting
   ansible.builtin.debug:

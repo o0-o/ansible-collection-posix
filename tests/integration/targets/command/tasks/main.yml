@@ -16,7 +16,9 @@
     - true
     - false
   loop_control:
-    loop_var: ansible_check_mode
+    loop_var: check_mode_var
+  vars:
+    ansible_check_mode: "{{ check_mode_var }}"
 
 - name: Run raw tests
   ansible.builtin.include_tasks: raw.yml
@@ -24,7 +26,9 @@
     - true
     - false
   loop_control:
-    loop_var: ansible_check_mode
+    loop_var: check_mode_var
+  vars:
+    ansible_check_mode: "{{ check_mode_var }}"
 
 - name: Check mode and _force_raw permutation loop
   vars:
