@@ -63,9 +63,8 @@ su testuser -c "
 	cd ~/.ansible/collections/ansible_collections/o0_o/posix
 	python -m venv .venv
 	. .venv/bin/activate
-	pip install --quiet --upgrade pip
 	pip install --quiet ansible-core
 	which ansible-test
 	which $python_version
-	ansible-test '$test_type' --venv --python '$python_version'
+	ansible-test '$test_type' --venv --python '$python_version' -v
 "
