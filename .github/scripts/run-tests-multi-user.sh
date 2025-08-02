@@ -57,15 +57,17 @@ echo "Running $test_type tests as non-root user..."
 cd /tmp
 echo "Setting up pyenv and venv for testuser..."
 su testuser -c "
-	export PYENV_ROOT=/opt/pyenv &&
-	export PATH=\$HOME/.local/bin:/opt/pyenv/bin:\$PATH &&
-	export PYENV_SKIP_REHASH=1 &&
-	eval \"\$(pyenv init - sh --no-rehash)\" &&
-	cd ~/.ansible/collections/ansible_collections/o0_o/posix &&
-	python -m venv .venv &&
-	. .venv/bin/activate &&
-	pip install --quiet --upgrade pip &&
+	set -eu
+	set -x
+	export PYENV_ROOT=/opt/pyenv
+	export PATH=\$HOME/.local/bin:/opt/pyenv/bin:\$PATH
+	export PYENV_SKIP_REHASH=1
+	eval \"\$(pyenv init - sh)\"
+	cd ~/.ansible/collections/ansible_collections/o0_o/posix
+	python -m venv .venv
+	. .venv/bin/activate
+	pip install --quiet --upgrade pip
 	pip install --quiet ansible-core
-	which ansible-test &&
+	which ansible-test
 	ansible-test '$test_type' --venv --python '$python_version'
 "
