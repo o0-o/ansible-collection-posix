@@ -82,10 +82,14 @@ case "$1" in
 	alpine:*)
 		export LANG=C.UTF-8
 		export LC_ALL=C.UTF-8
+		echo "export LANG=C.UTF-8" >> /root/.profile
+		echo "export LC_ALL=C.UTF-8" >> /root/.profile
 		;;
 	*)
 		export LANG=en_US.UTF-8
 		export LC_ALL=en_US.UTF-8
+		echo "export LANG=en_US.UTF-8" >> /root/.profile
+		echo "export LC_ALL=en_US.UTF-8" >> /root/.profile
 		;;
 esac
 
@@ -106,22 +110,7 @@ git clone https://github.com/pyenv/pyenv-which-ext.git \
 	"$(pyenv root)/plugins/pyenv-which-ext" >/dev/null
 pyenv rehash
 pip install --quiet --upgrade pip
+pip install --quiet ansible-core
 
 # Create venv with latest Python and install ansible-core
 git config --global --add safe.directory '*'
-
-# Persist locale settings for ansible-test
-case "$1" in
-	alpine:*)
-		echo "export LANG=C.UTF-8" >> /root/.profile
-		echo "export LC_ALL=C.UTF-8" >> /root/.profile
-		;;
-	*)
-		echo "export LANG=en_US.UTF-8" >> /root/.profile
-		echo "export LC_ALL=en_US.UTF-8" >> /root/.profile
-		;;
-esac
-
-python -m venv .venv
-. .venv/bin/activate
-pip install --quiet ansible-core
