@@ -105,6 +105,7 @@ mkdir -p "$(pyenv root)/plugins"
 git clone https://github.com/pyenv/pyenv-which-ext.git \
 	"$(pyenv root)/plugins/pyenv-which-ext" >/dev/null
 pyenv rehash
+pip install --quiet --upgrade pip
 
 # Create venv with latest Python and install ansible-core
 git config --global --add safe.directory '*'
@@ -123,5 +124,4 @@ esac
 
 python -m venv .venv
 . .venv/bin/activate
-pip install --quiet --upgrade pip
 pip install --quiet ansible-core

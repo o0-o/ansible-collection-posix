@@ -60,9 +60,11 @@ su testuser -c "
 	set -eu
 	set -x
 	export PATH=\$HOME/.local/bin:/opt/pyenv/shims:/opt/pyenv/bin:\$PATH
+	export PYENV_SKIP_REHASH=1
 	cd ~/.ansible/collections/ansible_collections/o0_o/posix
 	python -m venv .venv
 	. .venv/bin/activate
+	which pip
 	pip install --quiet ansible-core
 	which ansible-test
 	which $python_version
