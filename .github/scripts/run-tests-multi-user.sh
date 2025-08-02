@@ -59,6 +59,7 @@ echo "Setting up pyenv and venv for testuser..."
 su testuser -c "
 	set -eux
 	export PATH=\$HOME/.local/bin:/opt/pyenv/shims:/opt/pyenv/bin:\$PATH
+	export PYENV_SKIP_REHASH=1
 	cd ~/.ansible/collections/ansible_collections/o0_o/posix
 	python -m venv .venv
 	. .venv/bin/activate
