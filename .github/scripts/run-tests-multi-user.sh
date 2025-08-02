@@ -59,15 +59,13 @@ echo "Setting up pyenv and venv for testuser..."
 su testuser -c "
 	set -eu
 	set -x
-	export PYENV_ROOT=/opt/pyenv
-	export PATH=\$HOME/.local/bin:/opt/pyenv/bin:\$PATH
-	export PYENV_SKIP_REHASH=1
-	eval \"\$(pyenv init - sh)\"
+	export PATH=\$HOME/.local/bin:/opt/pyenv/shims:/opt/pyenv/bin:\$PATH
 	cd ~/.ansible/collections/ansible_collections/o0_o/posix
 	python -m venv .venv
 	. .venv/bin/activate
 	pip install --quiet --upgrade pip
 	pip install --quiet ansible-core
 	which ansible-test
+	which $python_version
 	ansible-test '$test_type' --venv --python '$python_version'
 "
