@@ -34,10 +34,11 @@ from ansible.template import generate_ansible_template_vars
 
 try:
     from ansible.template import trust_as_template
+    HAS_TRUST_AS_TEMPLATE = True
 except ImportError:
     # trust_as_template not available in older ansible-core versions
-    def trust_as_template(data):
-        return data
+    HAS_TRUST_AS_TEMPLATE = False
+    trust_as_template = None
 from ansible_collections.o0_o.posix.plugins.action_utils import PosixBase
 
 
@@ -210,8 +211,19 @@ class ActionModule(PosixBase):
         if mode == "preserve":
             mode = "0%03o" % stat.S_IMODE(os.stat(resolved_src).st_mode)
 
-        # Template content - use trust_as_template like builtin module
-        template_data = trust_as_template(self._loader.get_text_file_contents(resolved_src))
+        # Template content - handle version compatibility
+        if hasattr(self._loader, 'get_text_file_contents'):
+            # Newer ansible-core versions
+            file_content = self._loader.get_text_file_contents(resolved_src)
+        else:
+            # Older ansible-core versions
+            file_content = self._loader.get_file_contents(resolved_src)[0].decode('utf-8')
+        
+        if HAS_TRUST_AS_TEMPLATE:
+            template_data = trust_as_template(file_content)
+        else:
+            self._display.vvv("trust_as_template not available, using raw template content")
+            template_data = file_content
 
         searchpath = task_vars.get("ansible_search_path", [])
         searchpath.extend(
