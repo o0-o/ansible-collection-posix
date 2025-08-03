@@ -27,15 +27,24 @@ case "$test_type" in
 		;;
 esac
 
-# Create a test user if it doesn't exist
-if ! id testuser >/dev/null 2>&1; then
-	echo "Creating test user..."
-	if [ -f /etc/alpine-release ]; then
-		adduser -D -s /bin/sh testuser
-	else
-		useradd -m -s /bin/sh testuser
-	fi
+# Create pyenv group and test user
+echo "Setting up pyenv group and test user..."
+if [ -f /etc/alpine-release ]; then
+	addgroup pyenv
+	adduser root pyenv
+	adduser -D -s /bin/sh testuser
+	adduser testuser pyenv
+else
+	groupadd pyenv
+	usermod -a -G pyenv root
+	useradd -m -s /bin/sh testuser
+	usermod -a -G pyenv testuser
 fi
+
+# Set group permissions on pyenv directory
+chgrp -R pyenv /opt/pyenv
+chmod -R g+w /opt/pyenv
+find /opt/pyenv -type d -exec chmod g+s {} \;
 
 # Set up clean collection copy for testuser before running any tests
 echo "Setting up clean collection copy for testuser..."
@@ -58,13 +67,13 @@ cd /tmp
 echo "Setting up pyenv and venv for testuser..."
 su testuser -c "
 	set -eux
+	umask 002
 	export PATH=\$HOME/.local/bin:/opt/pyenv/shims:/opt/pyenv/bin:\$PATH
 	export PYENV_SKIP_REHASH=1
 	cd ~/.ansible/collections/ansible_collections/o0_o/posix
 	python -m venv .venv
 	. .venv/bin/activate
-	python -m ensurepip --upgrade
+	pip install --quiet --upgrade pip
 	pip install --quiet ansible-core
-	which $python_version
 	ansible-test '$test_type' --venv --python '$python_version' -v
 "

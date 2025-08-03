@@ -47,7 +47,7 @@ jobs:
             -w /root/.ansible/collections/ansible_collections/o0_o/posix \
             ${{ matrix.os }} sh -c '
               set -eux
-              /bin/sh .github/scripts/setup-linux-pyenv.sh "${{ matrix.os }}" \
+              . .github/scripts/setup-linux-pyenv.sh "${{ matrix.os }}" \
                 "${{ matrix.python }}"
 
               # Source the venv that was created
@@ -76,11 +76,11 @@ jobs:
             -w /root/.ansible/collections/ansible_collections/o0_o/posix \
             ${{ matrix.os }} sh -c '
               set -eux
-              /bin/sh .github/scripts/setup-linux-pyenv.sh "${{ matrix.os }}" \
+              . .github/scripts/setup-linux-pyenv.sh "${{ matrix.os }}" \
                 "${{ matrix.python }}"
 
               # Run unit tests as both root and non-root users
-              /bin/sh .github/scripts/run-tests-multi-user.sh units "${{ matrix.python }}"
+              . .github/scripts/run-tests-multi-user.sh units "${{ matrix.python }}"
             '
 
   linux-integration:
@@ -102,11 +102,11 @@ jobs:
             -w /root/.ansible/collections/ansible_collections/o0_o/posix \
             ${{ matrix.os }} sh -c '
               set -eux
-              /bin/sh .github/scripts/setup-linux-pyenv.sh "${{ matrix.os }}" \
+              . .github/scripts/setup-linux-pyenv.sh "${{ matrix.os }}" \
                 "${{ matrix.python }}"
 
               # Run integration tests as both root and non-root users
-              /bin/sh .github/scripts/run-tests-multi-user.sh integration "${{ matrix.python }}"
+              . .github/scripts/run-tests-multi-user.sh integration "${{ matrix.python }}"
             '
 
   # macos-sanity:

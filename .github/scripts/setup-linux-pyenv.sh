@@ -101,8 +101,7 @@ eval "$(pyenv init - sh)" >/dev/null
 
 # Install the specific Python version passed as argument
 python_version="$2"
-PYTHON_CONFIGURE_OPTS="--without-ensurepip" \
-	pyenv install "$python_version" >/dev/null
+pyenv install "$python_version" >/dev/null
 pyenv global "$python_version"
 
 # Refresh pyenv shims
@@ -116,5 +115,5 @@ git config --global --add safe.directory '*'
 
 python -m venv .venv
 . .venv/bin/activate
-python -m ensurepip --upgrade
+pip install --quiet --upgrade pip
 pip install --quiet ansible-core
