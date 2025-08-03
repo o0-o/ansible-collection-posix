@@ -221,7 +221,6 @@ class ActionModule(PosixBase):
                 path=src,
                 fullpath=resolved_src,
                 dest_path=dest,
-                include_ansible_managed='ansible_managed' not in temp_vars,
             )
         )
 
