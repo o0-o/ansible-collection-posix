@@ -30,7 +30,14 @@ from ansible import constants as C
 from ansible.errors import AnsibleActionFail, AnsibleError
 from ansible.module_utils.common.file import get_file_arg_spec
 from ansible.module_utils.common.text.converters import to_bytes, to_text
-from ansible.template import generate_ansible_template_vars, trust_as_template
+from ansible.template import generate_ansible_template_vars
+
+try:
+    from ansible.template import trust_as_template
+except ImportError:
+    # trust_as_template not available in older ansible-core versions
+    def trust_as_template(data):
+        return data
 from ansible_collections.o0_o.posix.plugins.action_utils import PosixBase
 
 
