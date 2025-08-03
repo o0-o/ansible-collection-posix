@@ -30,7 +30,7 @@ from ansible import constants as C
 from ansible.errors import AnsibleActionFail, AnsibleError
 from ansible.module_utils.common.file import get_file_arg_spec
 from ansible.module_utils.common.text.converters import to_bytes, to_text
-from ansible.template import generate_ansible_template_vars
+from ansible.template import generate_ansible_template_vars, trust_as_template
 from ansible_collections.o0_o.posix.plugins.action_utils import PosixBase
 
 
@@ -203,9 +203,8 @@ class ActionModule(PosixBase):
         if mode == "preserve":
             mode = "0%03o" % stat.S_IMODE(os.stat(resolved_src).st_mode)
 
-        # Template content
-        with open(resolved_src, encoding="utf-8") as f:
-            template_data = f.read()
+        # Template content - use trust_as_template like builtin module
+        template_data = trust_as_template(self._loader.get_text_file_contents(resolved_src))
 
         searchpath = task_vars.get("ansible_search_path", [])
         searchpath.extend(
@@ -215,14 +214,14 @@ class ActionModule(PosixBase):
             os.path.join(p, "templates") for p in searchpath
         ] + searchpath
 
-        vars_copy = task_vars.copy()
-        vars_copy.update(
+        # add ansible 'template' vars - match builtin module approach
+        temp_vars = task_vars.copy()
+        temp_vars.update(
             generate_ansible_template_vars(
                 path=src,
                 fullpath=resolved_src,
                 dest_path=dest,
-                # include_ansible_managed='ansible_managed' not in
-                # task_vars,
+                include_ansible_managed='ansible_managed' not in temp_vars,
             )
         )
 
@@ -238,22 +237,27 @@ class ActionModule(PosixBase):
             "newline_sequence": newline_sequence,
         }
 
-        # Debug: Check vars_copy content
-        self._display.warning(f"DEBUG: vars_copy keys: {list(vars_copy.keys())}")
-        self._display.warning(f"DEBUG: greeting_var in vars_copy: {vars_copy.get('greeting_var', 'NOT_FOUND')}")
+        # Debug: Check temp_vars content
+        self._display.warning(f"DEBUG: temp_vars keys: {list(temp_vars.keys())}")
+        self._display.warning(f"DEBUG: greeting_var in temp_vars: {temp_vars.get('greeting_var', 'NOT_FOUND')}")
         
-        templar = self._templar.copy_with_new_env(
-            searchpath=searchpath, available_variables=vars_copy
+        # Create templar exactly like builtin module
+        data_templar = self._templar.copy_with_new_env(
+            searchpath=searchpath, available_variables=temp_vars
         )
         
         # Debug: Check templar available_variables
-        self._display.warning(f"DEBUG: templar.available_variables keys: {list(templar.available_variables.keys())}")
-        self._display.warning(f"DEBUG: greeting_var in templar: {templar.available_variables.get('greeting_var', 'NOT_FOUND')}")
+        self._display.warning(f"DEBUG: templar.available_variables keys: {list(data_templar.available_variables.keys())}")
+        self._display.warning(f"DEBUG: greeting_var in templar: {data_templar.available_variables.get('greeting_var', 'NOT_FOUND')}")
 
-        result_text = templar.template(
+        resultant = data_templar.template(
             template_data, escape_backslashes=False, overrides=overrides
         )
-        result_text = result_text or ""
+        
+        if resultant is None:
+            resultant = ''
+        
+        result_text = resultant
         
         # Debug: Check result after templating
         self._display.warning(f"DEBUG: template_data: '{template_data.strip()}'")
