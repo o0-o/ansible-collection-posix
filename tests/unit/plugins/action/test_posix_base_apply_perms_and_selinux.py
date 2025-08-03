@@ -62,7 +62,7 @@ def test_apply_perms_and_selinux_confirmation(
     # Skip ownership change tests when not running as root
     if (perms.get("owner") or perms.get("group")) and os.geteuid() != 0:
         pytest.skip("Ownership change tests require root privileges")
-    
+
     path = generate_temp_path()
     try:
         with open(path, "w", encoding="utf-8") as f:
