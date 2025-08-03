@@ -28,7 +28,7 @@ from ansible_collections.o0_o.posix.tests.utils import (
         # No change
         ({}, False, False, None, {}),
         # Owner change (only works as root)
-        ({"owner": "root"}, False, False, None, {}),
+        ({"owner": "nobody"}, False, False, None, {}),
         # Group change
         ({"group": "wheel"}, False, False, None, {}),
         # Mode change
