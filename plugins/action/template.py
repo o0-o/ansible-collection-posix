@@ -6,6 +6,10 @@
 # (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
 #
 # Copyright (c) 2025 oØ.o (@o0-o)
+# Adapted from:
+#   - The template action plugin in Ansible core (GPL-3.0-or-later)
+#     https://github.com/ansible/ansible/blob/4a0d2b06663b4cc4a6c0ce4f103f0559fdffb155/lib/ansible/plugins/action/template.py
+#     https://github.com/ansible/ansible/blob/a5cc030818eb7b5ad7e86adc8fa09b18540f50c5/lib/ansible/plugins/action/template.py
 #
 # This file is part of the o0_o.posix Ansible Collection.
 
@@ -27,11 +31,43 @@ from jinja2.defaults import (
 )
 
 from ansible import constants as C
+from ansible import __version__ as ansible_version
 from ansible.errors import AnsibleActionFail, AnsibleError
 from ansible.module_utils.common.file import get_file_arg_spec
 from ansible.module_utils.common.text.converters import to_bytes, to_text
-from ansible.template import generate_ansible_template_vars, AnsibleEnvironment
 from ansible_collections.o0_o.posix.plugins.action_utils import PosixBase
+
+
+def _is_ansible_2_19_plus():
+    """Check if running on Ansible 2.19 or later.
+
+    :returns bool: True if Ansible version is 2.19 or higher
+    """
+    try:
+        version_parts = ansible_version.split('.')
+        major = int(version_parts[0])
+        minor = int(version_parts[1]) if len(version_parts) > 1 else 0
+        return (major > 2) or (major == 2 and minor >= 19)
+    except (ValueError, IndexError):
+        # If we can't parse the version, assume older version
+        return False
+
+
+# Version detection for conditional imports
+IS_ANSIBLE_2_19_PLUS = _is_ansible_2_19_plus()
+
+# Conditional imports based on Ansible version
+if IS_ANSIBLE_2_19_PLUS:
+    # Ansible 2.19+ imports
+    from ansible.template import trust_as_template
+    from ansible._internal._templating import _template_vars
+    generate_ansible_template_vars = None
+    AnsibleEnvironment = None
+else:
+    # Ansible 2.15-2.18 imports
+    from ansible.template import generate_ansible_template_vars, AnsibleEnvironment
+    trust_as_template = None
+    _template_vars = None
 
 
 class ActionModule(PosixBase):
@@ -235,39 +271,75 @@ class ActionModule(PosixBase):
             os.path.join(p, "templates") for p in searchpath
         ] + searchpath
 
-        # add ansible 'template' vars (Ansible 2.15 compatible)
-        temp_vars = task_vars.copy()
-        temp_vars.update(
-            generate_ansible_template_vars(src, resolved_src, dest)
-        )
+        # Process template using version-specific approach
+        if IS_ANSIBLE_2_19_PLUS:
+            # Ansible 2.19+ approach
+            vars_copy = task_vars.copy()
+            vars_copy.update(_template_vars(src, resolved_src, dest))
 
-        overrides = {
-            "block_start_string": block_start_string,
-            "block_end_string": block_end_string,
-            "variable_start_string": variable_start_string,
-            "variable_end_string": variable_end_string,
-            "comment_start_string": comment_start_string,
-            "comment_end_string": comment_end_string,
-            "trim_blocks": trim_blocks,
-            "lstrip_blocks": lstrip_blocks,
-            "newline_sequence": newline_sequence,
-        }
+            b_template_data = to_bytes(template_data, errors='surrogate_or_strict')
 
-        # Force templar to use AnsibleEnvironment (Ansible 2.15 compatible)
-        templar = self._templar.copy_with_new_env(
-            environment_class=AnsibleEnvironment,
-            searchpath=searchpath,
-            newline_sequence=newline_sequence,
-            available_variables=temp_vars
-        )
+            # Create templar with searchpath
+            temp_templar = self._templar.copy_with_new_env(
+                searchpath=searchpath,
+                available_variables=vars_copy
+            )
 
-        # Use do_template for Ansible 2.15 compatibility
-        resultant = templar.do_template(
-            template_data,
-            preserve_trailing_newlines=True,
-            escape_backslashes=False,
-            overrides=overrides
-        )
+            # Set Jinja2 options on the environment
+            temp_templar.environment.block_start_string = block_start_string
+            temp_templar.environment.block_end_string = block_end_string
+            temp_templar.environment.variable_start_string = variable_start_string
+            temp_templar.environment.variable_end_string = variable_end_string
+            temp_templar.environment.comment_start_string = comment_start_string
+            temp_templar.environment.comment_end_string = comment_end_string
+            temp_templar.environment.trim_blocks = trim_blocks
+            temp_templar.environment.lstrip_blocks = lstrip_blocks
+            temp_templar.environment.newline_sequence = newline_sequence
+            temp_templar.environment.keep_trailing_newline = True
+
+            # Process template
+            with trust_as_template(resolved_src):
+                resultant = temp_templar.template(
+                    b_template_data,
+                    preserve_trailing_newlines=True,
+                    escape_backslashes=False,
+                    convert_data=True,
+                    cache=False
+                )
+        else:
+            # Ansible 2.15-2.18 approach
+            temp_vars = task_vars.copy()
+            temp_vars.update(
+                generate_ansible_template_vars(src, resolved_src, dest)
+            )
+
+            overrides = {
+                "block_start_string": block_start_string,
+                "block_end_string": block_end_string,
+                "variable_start_string": variable_start_string,
+                "variable_end_string": variable_end_string,
+                "comment_start_string": comment_start_string,
+                "comment_end_string": comment_end_string,
+                "trim_blocks": trim_blocks,
+                "lstrip_blocks": lstrip_blocks,
+                "newline_sequence": newline_sequence,
+            }
+
+            # Force templar to use AnsibleEnvironment
+            templar = self._templar.copy_with_new_env(
+                environment_class=AnsibleEnvironment,
+                searchpath=searchpath,
+                newline_sequence=newline_sequence,
+                available_variables=temp_vars
+            )
+
+            # Use do_template for Ansible 2.15 compatibility
+            resultant = templar.do_template(
+                template_data,
+                preserve_trailing_newlines=True,
+                escape_backslashes=False,
+                overrides=overrides
+            )
 
         if resultant is None:
             resultant = ''
