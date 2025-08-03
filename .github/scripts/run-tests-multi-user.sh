@@ -16,6 +16,7 @@ set -eu
 
 test_type="$1"  # units or integration
 python_version="$2"
+target="${3:-}"  # optional integration target
 
 # Validate test type
 case "$test_type" in
@@ -57,11 +58,26 @@ chown -R testuser:testuser "$test_user_home/.ansible"
 # Source the venv
 . .venv/bin/activate
 
-echo "Running $test_type tests as root user..."
-ansible-test "$test_type" --venv --python "$python_version"
+# Build the test command
+if [ -n "$target" ]; then
+	test_cmd="ansible-test $test_type --venv --python $python_version $target"
+	echo "Running $test_type tests for target '$target' as root user..."
+else
+	test_cmd="ansible-test $test_type --venv --python $python_version"
+	echo "Running $test_type tests as root user..."
+fi
+
+$test_cmd
 
 # Run tests as non-root user
-echo "Running $test_type tests as non-root user..."
+if [ -n "$target" ]; then
+	echo "Running $test_type tests for target '$target' as non-root user..."
+	testuser_cmd="ansible-test $test_type --venv --python $python_version $target -v"
+else
+	echo "Running $test_type tests as non-root user..."
+	testuser_cmd="ansible-test $test_type --venv --python $python_version -v"
+fi
+
 # Change to a neutral directory first to avoid pyenv trying to access /root
 cd /tmp
 echo "Setting up pyenv and venv for testuser..."
@@ -75,5 +91,5 @@ su testuser -c "
 	. .venv/bin/activate
 	pip install --quiet --upgrade pip
 	pip install --quiet ansible-core
-	ansible-test '$test_type' --venv --python '$python_version' -v
+	$testuser_cmd
 "
