@@ -240,12 +240,12 @@ class ActionModule(PosixBase):
         # Debug: Check temp_vars content
         self._display.warning(f"DEBUG: temp_vars keys: {list(temp_vars.keys())}")
         self._display.warning(f"DEBUG: greeting_var in temp_vars: {temp_vars.get('greeting_var', 'NOT_FOUND')}")
-        
+
         # Create templar exactly like builtin module
         data_templar = self._templar.copy_with_new_env(
             searchpath=searchpath, available_variables=temp_vars
         )
-        
+
         # Debug: Check templar available_variables
         self._display.warning(f"DEBUG: templar.available_variables keys: {list(data_templar.available_variables.keys())}")
         self._display.warning(f"DEBUG: greeting_var in templar: {data_templar.available_variables.get('greeting_var', 'NOT_FOUND')}")
@@ -253,12 +253,11 @@ class ActionModule(PosixBase):
         resultant = data_templar.template(
             template_data, escape_backslashes=False, overrides=overrides
         )
-        
+
         if resultant is None:
             resultant = ''
-        
+
         result_text = resultant
-        
         # Debug: Check result after templating
         self._display.warning(f"DEBUG: template_data: '{template_data.strip()}'")
         self._display.warning(f"DEBUG: result_text: '{result_text.strip()}'")
