@@ -238,14 +238,27 @@ class ActionModule(PosixBase):
             "newline_sequence": newline_sequence,
         }
 
+        # Debug: Check vars_copy content
+        self._display.warning(f"DEBUG: vars_copy keys: {list(vars_copy.keys())}")
+        self._display.warning(f"DEBUG: greeting_var in vars_copy: {vars_copy.get('greeting_var', 'NOT_FOUND')}")
+        
         templar = self._templar.copy_with_new_env(
             searchpath=searchpath, available_variables=vars_copy
         )
+        
+        # Debug: Check templar available_variables
+        self._display.warning(f"DEBUG: templar.available_variables keys: {list(templar.available_variables.keys())}")
+        self._display.warning(f"DEBUG: greeting_var in templar: {templar.available_variables.get('greeting_var', 'NOT_FOUND')}")
 
         result_text = templar.template(
             template_data, escape_backslashes=False, overrides=overrides
         )
         result_text = result_text or ""
+        
+        # Debug: Check result after templating
+        self._display.warning(f"DEBUG: template_data: '{template_data.strip()}'")
+        self._display.warning(f"DEBUG: result_text: '{result_text.strip()}'")
+        self._display.warning(f"DEBUG: force_raw: {self.force_raw}")
 
         # Create temp file
         local_tempdir = tempfile.mkdtemp(dir=C.DEFAULT_LOCAL_TMP)
