@@ -272,8 +272,16 @@ class ActionModule(PosixBase):
         ] + searchpath
 
         # Process template using version-specific approach
+        self._display.vvv(f"Ansible version: {ansible_version}")
+        self._display.vvv(f"IS_ANSIBLE_2_19_PLUS: {IS_ANSIBLE_2_19_PLUS}")
+        self._display.vvv(f"_template_vars: {_template_vars}")
+        self._display.vvv(f"trust_as_template: {trust_as_template}")
+        self._display.vvv(f"generate_ansible_template_vars: {generate_ansible_template_vars}")
+        self._display.vvv(f"AnsibleEnvironment: {AnsibleEnvironment}")
+        
         if IS_ANSIBLE_2_19_PLUS:
             # Ansible 2.19+ approach
+            self._display.vvv("Using Ansible 2.19+ template processing path")
             vars_copy = task_vars.copy()
             vars_copy.update(_template_vars(src, resolved_src, dest))
 
@@ -308,6 +316,7 @@ class ActionModule(PosixBase):
                 )
         else:
             # Ansible 2.15-2.18 approach
+            self._display.vvv("Using Ansible 2.15-2.18 template processing path")
             temp_vars = task_vars.copy()
             temp_vars.update(
                 generate_ansible_template_vars(src, resolved_src, dest)

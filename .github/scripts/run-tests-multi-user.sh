@@ -60,10 +60,10 @@ chown -R testuser:testuser "$test_user_home/.ansible"
 
 # Build the test command
 if [ -n "$target" ]; then
-	test_cmd="ansible-test $test_type --venv --python $python_version $target"
+	test_cmd="ansible-test $test_type --venv --python $python_version $target -vvv"
 	echo "Running $test_type tests for target '$target' as root user..."
 else
-	test_cmd="ansible-test $test_type --venv --python $python_version"
+	test_cmd="ansible-test $test_type --venv --python $python_version -vvv"
 	echo "Running $test_type tests as root user..."
 fi
 
@@ -72,10 +72,10 @@ $test_cmd
 # Run tests as non-root user
 if [ -n "$target" ]; then
 	echo "Running $test_type tests for target '$target' as non-root user..."
-	testuser_cmd="ansible-test $test_type --venv --python $python_version $target -v"
+	testuser_cmd="ansible-test $test_type --venv --python $python_version $target -vvv"
 else
 	echo "Running $test_type tests as non-root user..."
-	testuser_cmd="ansible-test $test_type --venv --python $python_version -v"
+	testuser_cmd="ansible-test $test_type --venv --python $python_version -vvv"
 fi
 
 # Change to a neutral directory first to avoid pyenv trying to access /root
