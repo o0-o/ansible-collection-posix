@@ -44,7 +44,7 @@ def _is_ansible_2_19_plus():
     :returns bool: True if Ansible version is 2.19 or higher
     """
     try:
-        version_parts = ansible_version.split('.')
+        version_parts = ansible_version.split(".")
         major = int(version_parts[0])
         minor = int(version_parts[1]) if len(version_parts) > 1 else 0
         return (major > 2) or (major == 2 and minor >= 19)
@@ -61,11 +61,16 @@ if IS_ANSIBLE_2_19_PLUS:
     # Ansible 2.19+ imports
     from ansible.template import trust_as_template
     from ansible._internal._templating import _template_vars
+
     generate_ansible_template_vars = None
     AnsibleEnvironment = None
 else:
     # Ansible 2.15-2.18 imports
-    from ansible.template import generate_ansible_template_vars, AnsibleEnvironment
+    from ansible.template import (
+        generate_ansible_template_vars,
+        AnsibleEnvironment,
+    )
+
     trust_as_template = None
     _template_vars = None
 
@@ -239,107 +244,88 @@ class ActionModule(PosixBase):
         if mode == "preserve":
             mode = "0%03o" % stat.S_IMODE(os.stat(resolved_src).st_mode)
 
-        # Get vault decrypted tmp file (Ansible 2.15 compatible)
-        try:
-            tmp_source = self._loader.get_real_file(resolved_src)
-        except Exception as e:
-            # Fallback if get_real_file doesn't exist
-            tmp_source = resolved_src
+        # Template the source data locally - version-specific loading
+        if IS_ANSIBLE_2_19_PLUS:
+            # Ansible 2.19+ approach: use get_text_file_contents with
+            # trust_as_template
+            template_data = trust_as_template(
+                self._loader.get_text_file_contents(resolved_src)
+            )
+        else:
+            # Ansible 2.15-2.18 approach: manual file loading
+            try:
+                tmp_source = self._loader.get_real_file(resolved_src)
+            except Exception:
+                # Fallback if get_real_file doesn't exist
+                tmp_source = resolved_src
 
-        b_tmp_source = to_bytes(tmp_source, errors='surrogate_or_strict')
+            b_tmp_source = to_bytes(tmp_source, errors="surrogate_or_strict")
 
-        # Template the source data locally
-        try:
-            with open(b_tmp_source, 'rb') as f:
-                try:
-                    template_data = to_text(f.read(), errors='surrogate_or_strict')
-                except UnicodeError:
-                    raise AnsibleActionFail("Template source files must be utf-8 encoded")
-        finally:
-            # Clean up tmp file if it was created
-            if tmp_source != resolved_src:
-                try:
-                    self._loader.cleanup_tmp_file(b_tmp_source)
-                except Exception:
-                    pass  # Ignore cleanup errors
+            try:
+                with open(b_tmp_source, "rb") as f:
+                    try:
+                        template_data = to_text(f.read(), errors="surrogate_or_strict")
+                    except UnicodeError:
+                        raise AnsibleActionFail(
+                            "Template source files must be utf-8 encoded"
+                        )
+            finally:
+                # Clean up tmp file if it was created
+                if tmp_source != resolved_src:
+                    try:
+                        self._loader.cleanup_tmp_file(b_tmp_source)
+                    except Exception:
+                        pass  # Ignore cleanup errors
 
+        # Set up searchpath for both versions
         searchpath = task_vars.get("ansible_search_path", [])
-        searchpath.extend(
-            [self._loader._basedir, os.path.dirname(resolved_src)]
-        )
-        searchpath = [
-            os.path.join(p, "templates") for p in searchpath
-        ] + searchpath
+        searchpath.extend([self._loader._basedir, os.path.dirname(resolved_src)])
+        searchpath = [os.path.join(p, "templates") for p in searchpath] + searchpath
+
+        # Create common overrides for both versions
+        overrides = {
+            "block_start_string": block_start_string,
+            "block_end_string": block_end_string,
+            "variable_start_string": variable_start_string,
+            "variable_end_string": variable_end_string,
+            "comment_start_string": comment_start_string,
+            "comment_end_string": comment_end_string,
+            "trim_blocks": trim_blocks,
+            "lstrip_blocks": lstrip_blocks,
+            "newline_sequence": newline_sequence,
+        }
 
         # Process template using version-specific approach
-        self._display.vvv(f"Ansible version: {ansible_version}")
-        self._display.vvv(f"IS_ANSIBLE_2_19_PLUS: {IS_ANSIBLE_2_19_PLUS}")
-        self._display.vvv(f"_template_vars: {_template_vars}")
-        self._display.vvv(f"trust_as_template: {trust_as_template}")
-        self._display.vvv(f"generate_ansible_template_vars: {generate_ansible_template_vars}")
-        self._display.vvv(f"AnsibleEnvironment: {AnsibleEnvironment}")
-        
+        temp_vars = task_vars.copy()
+
         if IS_ANSIBLE_2_19_PLUS:
             # Ansible 2.19+ approach
-            self._display.vvv("Using Ansible 2.19+ template processing path")
-            vars_copy = task_vars.copy()
-            vars_copy.update(_template_vars(src, resolved_src, dest))
-
-            b_template_data = to_bytes(template_data, errors='surrogate_or_strict')
-
-            # Create templar with searchpath
-            temp_templar = self._templar.copy_with_new_env(
-                searchpath=searchpath,
-                available_variables=vars_copy
+            temp_vars.update(
+                _template_vars.generate_ansible_template_vars(
+                    path=src,
+                    fullpath=resolved_src,
+                    dest_path=dest,
+                    include_ansible_managed="ansible_managed" not in temp_vars,
+                )
             )
 
-            # Set Jinja2 options on the environment
-            temp_templar.environment.block_start_string = block_start_string
-            temp_templar.environment.block_end_string = block_end_string
-            temp_templar.environment.variable_start_string = variable_start_string
-            temp_templar.environment.variable_end_string = variable_end_string
-            temp_templar.environment.comment_start_string = comment_start_string
-            temp_templar.environment.comment_end_string = comment_end_string
-            temp_templar.environment.trim_blocks = trim_blocks
-            temp_templar.environment.lstrip_blocks = lstrip_blocks
-            temp_templar.environment.newline_sequence = newline_sequence
-            temp_templar.environment.keep_trailing_newline = True
-
-            # Process template
-            with trust_as_template(resolved_src):
-                resultant = temp_templar.template(
-                    b_template_data,
-                    preserve_trailing_newlines=True,
-                    escape_backslashes=False,
-                    convert_data=True,
-                    cache=False
-                )
+            # Create templar and process template
+            data_templar = self._templar.copy_with_new_env(
+                searchpath=searchpath, available_variables=temp_vars
+            )
+            resultant = data_templar.template(
+                template_data, escape_backslashes=False, overrides=overrides
+            )
         else:
             # Ansible 2.15-2.18 approach
-            self._display.vvv("Using Ansible 2.15-2.18 template processing path")
-            temp_vars = task_vars.copy()
-            temp_vars.update(
-                generate_ansible_template_vars(src, resolved_src, dest)
-            )
+            temp_vars.update(generate_ansible_template_vars(src, resolved_src, dest))
 
-            overrides = {
-                "block_start_string": block_start_string,
-                "block_end_string": block_end_string,
-                "variable_start_string": variable_start_string,
-                "variable_end_string": variable_end_string,
-                "comment_start_string": comment_start_string,
-                "comment_end_string": comment_end_string,
-                "trim_blocks": trim_blocks,
-                "lstrip_blocks": lstrip_blocks,
-                "newline_sequence": newline_sequence,
-            }
-
-            # Force templar to use AnsibleEnvironment
+            # Create templar with AnsibleEnvironment
             templar = self._templar.copy_with_new_env(
                 environment_class=AnsibleEnvironment,
                 searchpath=searchpath,
                 newline_sequence=newline_sequence,
-                available_variables=temp_vars
+                available_variables=temp_vars,
             )
 
             # Use do_template for Ansible 2.15 compatibility
@@ -347,19 +333,17 @@ class ActionModule(PosixBase):
                 template_data,
                 preserve_trailing_newlines=True,
                 escape_backslashes=False,
-                overrides=overrides
+                overrides=overrides,
             )
 
         if resultant is None:
-            resultant = ''
+            resultant = ""
 
         result_text = resultant
 
         # Create temp file
         local_tempdir = tempfile.mkdtemp(dir=C.DEFAULT_LOCAL_TMP)
-        result_file = os.path.join(
-            local_tempdir, os.path.basename(resolved_src)
-        )
+        result_file = os.path.join(local_tempdir, os.path.basename(resolved_src))
         with open(to_bytes(result_file), "wb") as f:
             f.write(to_bytes(result_text, encoding="utf-8"))
 
@@ -404,16 +388,12 @@ class ActionModule(PosixBase):
                     self.result.update(copy_result)
                     return self.result
                 else:
-                    self._display.vvv(
-                        "Python missing — falling back to raw mode"
-                    )
+                    self._display.vvv("Python missing — falling back to raw mode")
                     self.force_raw = True
 
             if self.force_raw:
                 try:
-                    self._display.vvv(
-                        "Creating parent directories (if needed)"
-                    )
+                    self._display.vvv("Creating parent directories (if needed)")
                     self._mk_dest_dir(dest, task_vars=task_vars)
 
                     self._display.vvv(f"Writing rendered template to {dest}")
@@ -431,9 +411,7 @@ class ActionModule(PosixBase):
                     }
 
                     if not force:
-                        dest_stat = self._pseudo_stat(
-                            dest, task_vars=task_vars
-                        )
+                        dest_stat = self._pseudo_stat(dest, task_vars=task_vars)
 
                     if force or not dest_stat["exists"]:
                         write_result = self._write_file(
@@ -449,8 +427,7 @@ class ActionModule(PosixBase):
 
                     elif not force:
                         self.result["msg"] = (
-                            "File exists and force is disabled, taking no "
-                            "action"
+                            "File exists and force is disabled, taking no " "action"
                         )
 
                     else:
@@ -462,16 +439,12 @@ class ActionModule(PosixBase):
                     self.result.update(
                         {
                             "failed": True,
-                            "msg": (
-                                f"Template rendering or writing failed: {e}"
-                            ),
+                            "msg": (f"Template rendering or writing failed: {e}"),
                         }
                     )
         finally:
             # Clean up temporary files
-            shutil.rmtree(
-                to_bytes(local_tempdir, errors="surrogate_or_strict")
-            )
+            shutil.rmtree(to_bytes(local_tempdir, errors="surrogate_or_strict"))
             self._remove_tmp_path(self._connection._shell.tmpdir)
 
         return self.result
