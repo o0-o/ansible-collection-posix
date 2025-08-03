@@ -30,15 +30,7 @@ from ansible import constants as C
 from ansible.errors import AnsibleActionFail, AnsibleError
 from ansible.module_utils.common.file import get_file_arg_spec
 from ansible.module_utils.common.text.converters import to_bytes, to_text
-from ansible.template import generate_ansible_template_vars
-
-try:
-    from ansible.template import trust_as_template
-    HAS_TRUST_AS_TEMPLATE = True
-except ImportError:
-    # trust_as_template not available in older ansible-core versions
-    HAS_TRUST_AS_TEMPLATE = False
-    trust_as_template = None
+from ansible.template import generate_ansible_template_vars, AnsibleEnvironment
 from ansible_collections.o0_o.posix.plugins.action_utils import PosixBase
 
 
@@ -211,19 +203,29 @@ class ActionModule(PosixBase):
         if mode == "preserve":
             mode = "0%03o" % stat.S_IMODE(os.stat(resolved_src).st_mode)
 
-        # Template content - handle version compatibility
-        if hasattr(self._loader, 'get_text_file_contents'):
-            # Newer ansible-core versions
-            file_content = self._loader.get_text_file_contents(resolved_src)
-        else:
-            # Older ansible-core versions
-            file_content = self._loader.get_file_contents(resolved_src)[0].decode('utf-8')
-        
-        if HAS_TRUST_AS_TEMPLATE:
-            template_data = trust_as_template(file_content)
-        else:
-            self._display.vvv("trust_as_template not available, using raw template content")
-            template_data = file_content
+        # Get vault decrypted tmp file (Ansible 2.15 compatible)
+        try:
+            tmp_source = self._loader.get_real_file(resolved_src)
+        except Exception as e:
+            # Fallback if get_real_file doesn't exist
+            tmp_source = resolved_src
+
+        b_tmp_source = to_bytes(tmp_source, errors='surrogate_or_strict')
+
+        # Template the source data locally
+        try:
+            with open(b_tmp_source, 'rb') as f:
+                try:
+                    template_data = to_text(f.read(), errors='surrogate_or_strict')
+                except UnicodeError:
+                    raise AnsibleActionFail("Template source files must be utf-8 encoded")
+        finally:
+            # Clean up tmp file if it was created
+            if tmp_source != resolved_src:
+                try:
+                    self._loader.cleanup_tmp_file(b_tmp_source)
+                except Exception:
+                    pass  # Ignore cleanup errors
 
         searchpath = task_vars.get("ansible_search_path", [])
         searchpath.extend(
@@ -233,14 +235,10 @@ class ActionModule(PosixBase):
             os.path.join(p, "templates") for p in searchpath
         ] + searchpath
 
-        # add ansible 'template' vars - match builtin module approach
+        # add ansible 'template' vars (Ansible 2.15 compatible)
         temp_vars = task_vars.copy()
         temp_vars.update(
-            generate_ansible_template_vars(
-                path=src,
-                fullpath=resolved_src,
-                dest_path=dest,
-            )
+            generate_ansible_template_vars(src, resolved_src, dest)
         )
 
         overrides = {
@@ -255,31 +253,26 @@ class ActionModule(PosixBase):
             "newline_sequence": newline_sequence,
         }
 
-        # Debug: Check temp_vars content
-        self._display.warning(f"DEBUG: temp_vars keys: {list(temp_vars.keys())}")
-        self._display.warning(f"DEBUG: greeting_var in temp_vars: {temp_vars.get('greeting_var', 'NOT_FOUND')}")
-
-        # Create templar exactly like builtin module
-        data_templar = self._templar.copy_with_new_env(
-            searchpath=searchpath, available_variables=temp_vars
+        # Force templar to use AnsibleEnvironment (Ansible 2.15 compatible)
+        templar = self._templar.copy_with_new_env(
+            environment_class=AnsibleEnvironment,
+            searchpath=searchpath,
+            newline_sequence=newline_sequence,
+            available_variables=temp_vars
         )
 
-        # Debug: Check templar available_variables
-        self._display.warning(f"DEBUG: templar.available_variables keys: {list(data_templar.available_variables.keys())}")
-        self._display.warning(f"DEBUG: greeting_var in templar: {data_templar.available_variables.get('greeting_var', 'NOT_FOUND')}")
-
-        resultant = data_templar.template(
-            template_data, escape_backslashes=False, overrides=overrides
+        # Use do_template for Ansible 2.15 compatibility
+        resultant = templar.do_template(
+            template_data,
+            preserve_trailing_newlines=True,
+            escape_backslashes=False,
+            overrides=overrides
         )
 
         if resultant is None:
             resultant = ''
 
         result_text = resultant
-        # Debug: Check result after templating
-        self._display.warning(f"DEBUG: template_data: '{template_data.strip()}'")
-        self._display.warning(f"DEBUG: result_text: '{result_text.strip()}'")
-        self._display.warning(f"DEBUG: force_raw: {self.force_raw}")
 
         # Create temp file
         local_tempdir = tempfile.mkdtemp(dir=C.DEFAULT_LOCAL_TMP)
