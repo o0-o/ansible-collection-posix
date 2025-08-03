@@ -11,6 +11,8 @@
 
 from __future__ import annotations
 
+import os
+
 import pytest
 
 from ansible.errors import AnsibleActionFail
@@ -25,8 +27,8 @@ from ansible_collections.o0_o.posix.tests.utils import (
     [
         # No change
         ({}, False, False, None, {}),
-        # Owner change (only identity check)
-        # ({"owner": "root"}, False, False, None, {}),  # Can't chown
+        # Owner change (only works as root)
+        ({"owner": "root"}, False, False, None, {}),
         # Group change
         ({"group": "wheel"}, False, False, None, {}),
         # Mode change
@@ -57,6 +59,10 @@ def test_apply_perms_and_selinux_confirmation(
     base, perms, selinux, should_fail, expected_mode, mock_selinux_keys
 ) -> None:
     """Test _apply_perms_and_selinux against real files."""
+    # Skip ownership change tests when not running as root
+    if (perms.get("owner") or perms.get("group")) and os.geteuid() != 0:
+        pytest.skip("Ownership change tests require root privileges")
+    
     path = generate_temp_path()
     try:
         with open(path, "w", encoding="utf-8") as f:
