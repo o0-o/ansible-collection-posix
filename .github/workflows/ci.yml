@@ -115,47 +115,47 @@ jobs:
               . .github/scripts/run-tests-multi-user.sh integration "${{ matrix.test.python }}" "${{ matrix.target }}"
             '
 
-  # macos-sanity:
-  #   name: Sanity (${{ matrix.os }})
-  #   runs-on: ${{ matrix.os }}
-  #   strategy:
-  #     fail-fast: false
-  #     matrix:
-  #       os:
-  #         - macos-13
-  #         - macos-14
-  #         - macos-latest
-  #   steps:
-  #     - uses: actions/checkout@v4
+  macos-sanity:
+    name: Sanity (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - macos-13
+          - macos-14
+          - macos-latest
+    steps:
+      - uses: actions/checkout@v4
 
-  #     - name: Setup Python
-  #       uses: actions/setup-python@v5
-  #       with:
-  #         python-version: '3.x'
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
 
-  #     - name: Install Python versions via Homebrew
-  #       run: |
-  #         # Install Python versions, ignoring conflicts
-  #         for version in 3.9 3.10 3.11 3.12 3.13; do
-  #           brew install python@$version || true
-  #           brew link --overwrite python@$version || true
-  #         done
+      - name: Install Python versions via Homebrew
+        run: |
+          # Install Python versions, ignoring conflicts
+          for version in 3.9 3.10 3.11 3.12 3.13; do
+            brew install python@$version || true
+            brew link --overwrite python@$version || true
+          done
 
-  #     - name: Run sanity tests
-  #       run: |
-  #         # Create proper ansible collections structure
-  #         mkdir -p ../../../ansible_collections/o0_o
-  #         cp -R . ../../../ansible_collections/o0_o/posix
-  #         cd ../../../ansible_collections/o0_o/posix
+      - name: Run sanity tests
+        run: |
+          # Create proper ansible collections structure
+          mkdir -p ../../../ansible_collections/o0_o
+          cp -R . ../../../ansible_collections/o0_o/posix
+          cd ../../../ansible_collections/o0_o/posix
 
-  #         # Use Python 3.13 for ansible-core installation
-  #         python3.13 -m venv .venv
-  #         source .venv/bin/activate
-  #         pip install --upgrade pip
-  #         pip install ansible-core
+          # Use Python 3.13 for ansible-core installation
+          python3.13 -m venv .venv
+          source .venv/bin/activate
+          pip install --upgrade pip
+          pip install ansible-core
 
-  #         # Run sanity tests across all Python versions
-  #         ansible-test sanity --venv
+          # Run sanity tests across all Python versions
+          ansible-test sanity --venv
 
   #macos-units:
   #  name: Units (${{ matrix.os }})
@@ -222,7 +222,7 @@ jobs:
   build:
     name: Build Collection
     runs-on: ubuntu-latest
-    needs: [setup-linux-matrix, linux-sanity, linux-units, linux-integration]
+    needs: [setup-linux-matrix, linux-sanity, linux-units, linux-integration, macos-sanity]
     steps:
       - uses: actions/checkout@v4
 
