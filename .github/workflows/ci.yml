@@ -15,32 +15,27 @@ jobs:
   setup-linux-matrix:
     runs-on: ubuntu-latest
     outputs:
-      os-matrix: ${{ steps.set-matrix.outputs.os-matrix }}
-      python-matrix: ${{ steps.set-matrix.outputs.python-matrix }}
+      test-matrix: ${{ steps.set-matrix.outputs.test-matrix }}
       integration-targets-matrix: ${{ steps.set-matrix.outputs.integration-targets-matrix }}
     steps:
       - uses: actions/checkout@v4
       - id: set-matrix
         run: |
-          echo "os-matrix=$(
-              cat .github/matrix/linux-os-min.json | jq -c .os
-            )" >> $GITHUB_OUTPUT
-          echo "python-matrix=$(
-              cat .github/matrix/python-versions.json | jq -c .python
+          echo "test-matrix=$(
+              python3 .github/scripts/generate-test-matrix.py
             )" >> $GITHUB_OUTPUT
           echo "integration-targets-matrix=$(
               cat .github/matrix/integration-targets.json | jq -c .targets
             )" >> $GITHUB_OUTPUT
 
   linux-sanity:
-    name: Sanity (${{ matrix.os }} - Python ${{ matrix.python }})
+    name: Sanity (${{ matrix.os }} - Py${{ matrix.python }}/Ansible${{ matrix.ansible_version }})
     runs-on: ubuntu-latest
     needs: setup-linux-matrix
     strategy:
       fail-fast: false
       matrix:
-        os: ${{ fromJson(needs.setup-linux-matrix.outputs.os-matrix) }}
-        python: ${{ fromJson(needs.setup-linux-matrix.outputs.python-matrix) }}
+        include: ${{ fromJson(needs.setup-linux-matrix.outputs.test-matrix) }}
     steps:
       - uses: actions/checkout@v4
 
@@ -57,19 +52,24 @@ jobs:
               # Source the venv that was created
               . .venv/bin/activate
 
+              # Install specific Ansible version
+              pip install --upgrade "${{ matrix.ansible_package }}"
+              
+              # Show which Ansible version we got
+              ansible --version
+
               # Run sanity tests for this specific Python version
               ansible-test sanity --venv --python ${{ matrix.python }} -v
             '
 
   linux-units:
-    name: Units (${{ matrix.os }} - Python ${{ matrix.python }})
+    name: Units (${{ matrix.os }} - Py${{ matrix.python }}/Ansible${{ matrix.ansible_version }})
     runs-on: ubuntu-latest
     needs: setup-linux-matrix
     strategy:
       fail-fast: false
       matrix:
-        os: ${{ fromJson(needs.setup-linux-matrix.outputs.os-matrix) }}
-        python: ${{ fromJson(needs.setup-linux-matrix.outputs.python-matrix) }}
+        include: ${{ fromJson(needs.setup-linux-matrix.outputs.test-matrix) }}
     steps:
       - uses: actions/checkout@v4
 
@@ -78,6 +78,7 @@ jobs:
           docker run --rm \
             -v ${{ github.workspace }}:/root/.ansible/collections/ansible_collections/o0_o/posix \
             -w /root/.ansible/collections/ansible_collections/o0_o/posix \
+            -e ANSIBLE_PACKAGE="${{ matrix.ansible_package }}" \
             ${{ matrix.os }} sh -c '
               set -eux
               . .github/scripts/setup-linux-pyenv.sh "${{ matrix.os }}" \
@@ -88,14 +89,13 @@ jobs:
             '
 
   linux-integration:
-    name: Integration (${{ matrix.target }} - ${{ matrix.os }} - Python ${{ matrix.python }})
+    name: Integration (${{ matrix.target }} - ${{ matrix.test.os }} - Py${{ matrix.test.python }}/Ansible${{ matrix.test.ansible_version }})
     runs-on: ubuntu-latest
     needs: setup-linux-matrix
     strategy:
       fail-fast: false
       matrix:
-        os: ${{ fromJson(needs.setup-linux-matrix.outputs.os-matrix) }}
-        python: ${{ fromJson(needs.setup-linux-matrix.outputs.python-matrix) }}
+        test: ${{ fromJson(needs.setup-linux-matrix.outputs.test-matrix) }}
         target: ${{ fromJson(needs.setup-linux-matrix.outputs.integration-targets-matrix) }}
     steps:
       - uses: actions/checkout@v4
@@ -105,13 +105,14 @@ jobs:
           docker run --rm \
             -v ${{ github.workspace }}:/root/.ansible/collections/ansible_collections/o0_o/posix \
             -w /root/.ansible/collections/ansible_collections/o0_o/posix \
-            ${{ matrix.os }} sh -c '
+            -e ANSIBLE_PACKAGE="${{ matrix.test.ansible_package }}" \
+            ${{ matrix.test.os }} sh -c '
               set -eux
-              . .github/scripts/setup-linux-pyenv.sh "${{ matrix.os }}" \
-                "${{ matrix.python }}"
+              . .github/scripts/setup-linux-pyenv.sh "${{ matrix.test.os }}" \
+                "${{ matrix.test.python }}"
 
               # Run specific integration test target as both root and non-root users
-              . .github/scripts/run-tests-multi-user.sh integration "${{ matrix.python }}" "${{ matrix.target }}"
+              . .github/scripts/run-tests-multi-user.sh integration "${{ matrix.test.python }}" "${{ matrix.target }}"
             '
 
   # macos-sanity:

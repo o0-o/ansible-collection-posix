@@ -1,0 +1,48 @@
+{
+  "compatibility": [
+    {
+      "python": "3.9",
+      "ansible_versions": [
+        {"version": "2.15", "package": "ansible-core>=2.15,<2.16"}
+      ]
+    },
+    {
+      "python": "3.10",
+      "ansible_versions": [
+        {"version": "2.15", "package": "ansible-core>=2.15,<2.16"},
+        {"version": "2.16", "package": "ansible-core>=2.16,<2.17"},
+        {"version": "2.17", "package": "ansible-core>=2.17,<2.18"}
+      ]
+    },
+    {
+      "python": "3.11",
+      "ansible_versions": [
+        {"version": "2.15", "package": "ansible-core>=2.15,<2.16"},
+        {"version": "2.16", "package": "ansible-core>=2.16,<2.17"},
+        {"version": "2.17", "package": "ansible-core>=2.17,<2.18"},
+        {"version": "2.18", "package": "ansible-core>=2.18,<2.19"},
+        {"version": "2.19", "package": "ansible-core>=2.19,<2.20"}
+      ]
+    },
+    {
+      "python": "3.12",
+      "ansible_versions": [
+        {"version": "2.15", "package": "ansible-core>=2.15,<2.16"},
+        {"version": "2.16", "package": "ansible-core>=2.16,<2.17"},
+        {"version": "2.17", "package": "ansible-core>=2.17,<2.18"},
+        {"version": "2.18", "package": "ansible-core>=2.18,<2.19"},
+        {"version": "2.19", "package": "ansible-core>=2.19,<2.20"}
+      ]
+    },
+    {
+      "python": "3.13",
+      "ansible_versions": [
+        {"version": "2.15", "package": "ansible-core>=2.15,<2.16"},
+        {"version": "2.16", "package": "ansible-core>=2.16,<2.17"},
+        {"version": "2.17", "package": "ansible-core>=2.17,<2.18"},
+        {"version": "2.18", "package": "ansible-core>=2.18,<2.19"},
+        {"version": "2.19", "package": "ansible-core>=2.19,<2.20"}
+      ]
+    }
+  ]
+}

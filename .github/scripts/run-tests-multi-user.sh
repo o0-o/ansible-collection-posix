@@ -58,6 +58,13 @@ chown -R testuser:testuser "$test_user_home/.ansible"
 # Source the venv
 . .venv/bin/activate
 
+# Install specific Ansible version if provided
+if [ -n "${ANSIBLE_PACKAGE:-}" ]; then
+	pip install --upgrade "${ANSIBLE_PACKAGE}"
+	echo "Installed Ansible version:"
+	ansible --version
+fi
+
 # Build the test command
 if [ -n "$target" ]; then
 	test_cmd="ansible-test $test_type --venv --python $python_version $target -vvv"
@@ -90,6 +97,12 @@ su testuser -c "
 	python -m venv .venv
 	. .venv/bin/activate
 	pip install --quiet --upgrade pip
-	pip install --quiet ansible-core
+	if [ -n '${ANSIBLE_PACKAGE:-}' ]; then
+		pip install --quiet '${ANSIBLE_PACKAGE}'
+	else
+		pip install --quiet ansible-core
+	fi
+	echo 'Installed Ansible version:'
+	ansible --version
 	$testuser_cmd
 "
