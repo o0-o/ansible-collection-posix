@@ -78,7 +78,7 @@ esac
 
 # Set locale to avoid ansible-test warnings (after locale packages are installed)
 # Alpine uses musl and doesn't have traditional locale support
-case "$1" in
+case "$LINUX_OS" in
 	alpine:*)
 		export LANG=C.UTF-8
 		export LC_ALL=C.UTF-8
