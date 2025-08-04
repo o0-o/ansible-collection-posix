@@ -46,11 +46,21 @@ case "$LINUX_OS" in
 				;;
 		esac
 		dnf update -y -q &&
+		# Install shared packages
 		dnf install -y -q --allowerasing \
 			bash git curl tar findutils gcc make openssl-devel \
 			bzip2-devel libffi-devel zlib-devel readline-devel \
-			sqlite-devel xz-devel yaml-devel glibc-langpack-en openssh-clients \
+			sqlite-devel xz-devel glibc-langpack-en openssh-clients \
 			ShellCheck
+		# Install distro-specific YAML package
+		case "$LINUX_OS" in
+			fedora:*)
+				dnf install -y -q --allowerasing libyaml-devel
+				;;
+			*)
+				dnf install -y -q --allowerasing yaml-devel
+				;;
+		esac
 		;;
 	opensuse/*)
 		zypper update -y --quiet &&
