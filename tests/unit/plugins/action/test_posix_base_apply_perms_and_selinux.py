@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import grp
 import os
+import pwd
 
 import pytest
 
@@ -25,6 +26,15 @@ from ansible_collections.o0_o.posix.tests.utils import (
 
 def get_test_group():
     """Get a group that exists on the system for testing, avoiding root/wheel."""
+    try:
+        # Try to use 'nobody' first as it's a common test group
+        grp.getgrnam("nobody")
+        return "nobody"
+    except KeyError:
+        pass
+    except Exception:
+        # If grp module doesn't work on this system, return default
+        return "nobody"
 
     current_gid = os.getgid()
     avoid_groups = {"root", "wheel"}
@@ -45,11 +55,46 @@ def get_test_group():
             return group.gr_name
 
     # Ultimate fallback
-    return "root"
+    return "nobody"
 
 
-# Get a test group dynamically
+def get_test_user():
+    """Get a user that exists on the system for testing, avoiding root."""
+    try:
+        # Try to use 'nobody' first as it's the most common test user
+        pwd.getpwnam("nobody")
+        return "nobody"
+    except KeyError:
+        pass
+    except Exception:
+        # If pwd module doesn't work on this system, return default
+        return "nobody"
+
+    current_uid = os.getuid()
+    avoid_users = {"root"}
+
+    # Get all available users
+    for user in pwd.getpwall():
+        # Skip root, and current user to ensure we actually test a change
+        if (
+            user.pw_name not in avoid_users
+            and user.pw_uid != 0
+            and user.pw_uid != current_uid
+        ):
+            return user.pw_name
+
+    # Fallback - just use the first non-root user
+    for user in pwd.getpwall():
+        if user.pw_uid != 0:
+            return user.pw_name
+
+    # Ultimate fallback
+    return "nobody"
+
+
+# Get test group/user dynamically
 TEST_GROUP = get_test_group()
+TEST_USER = get_test_user()
 
 
 @pytest.mark.parametrize(
@@ -58,7 +103,7 @@ TEST_GROUP = get_test_group()
         # No change
         ({}, False, False, None, {}),
         # Owner change (only works as root)
-        ({"owner": "nobody"}, False, False, None, {}),
+        ({"owner": TEST_USER}, False, False, None, {}),
         # Group change
         ({"group": TEST_GROUP}, False, False, None, {}),
         # Mode change
