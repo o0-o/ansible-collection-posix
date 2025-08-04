@@ -11,6 +11,7 @@
 
 from __future__ import annotations
 
+import grp
 import os
 
 import pytest
@@ -22,6 +23,35 @@ from ansible_collections.o0_o.posix.tests.utils import (
 )
 
 
+def get_test_group():
+    """Get a group that exists on the system for testing, avoiding root/wheel."""
+    import grp
+    import os
+    
+    current_gid = os.getgid()
+    avoid_groups = {"root", "wheel"}
+    
+    # Get all available groups
+    for group in grp.getgrall():
+        # Skip root, wheel, and current group to ensure we actually test a change
+        if (group.gr_name not in avoid_groups and 
+            group.gr_gid != 0 and 
+            group.gr_gid != current_gid):
+            return group.gr_name
+    
+    # Fallback - just use the first non-root group
+    for group in grp.getgrall():
+        if group.gr_gid != 0:
+            return group.gr_name
+    
+    # Ultimate fallback
+    return "root"
+
+
+# Get a test group dynamically
+TEST_GROUP = get_test_group()
+
+
 @pytest.mark.parametrize(
     "perms, selinux, should_fail, expected_mode, mock_selinux_keys",
     [
@@ -30,7 +60,7 @@ from ansible_collections.o0_o.posix.tests.utils import (
         # Owner change (only works as root)
         ({"owner": "nobody"}, False, False, None, {}),
         # Group change
-        ({"group": "wheel"}, False, False, None, {}),
+        ({"group": TEST_GROUP}, False, False, None, {}),
         # Mode change
         ({"mode": "0700"}, False, False, "rwx------", {}),
         # Invalid mode
