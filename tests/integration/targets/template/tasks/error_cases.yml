@@ -91,7 +91,7 @@
         that:
           - "'Permission denied' in ansible_failed_result.msg
             or 'unreadable' in ansible_failed_result.msg"
-  
+
   when: ansible_user_id != 'root'
 
 - name: Create template file with syntax error
