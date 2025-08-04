@@ -30,7 +30,8 @@ case "$LINUX_OS" in
 			libxml2-dev libxmlsec1-dev libffi-dev liblzma-dev \
 			libyaml-dev locales shellcheck openssh-client
 		# Generate en_US.UTF-8 locale
-		locale-gen en_US.UTF-8
+		echo "en_US.UTF-8 UTF-8" >> /etc/locale.gen
+		locale-gen
 		update-locale LANG=en_US.UTF-8
 		;;
 	fedora:*|*rockylinux:*|almalinux:*|*centos*)
