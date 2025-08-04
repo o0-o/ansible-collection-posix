@@ -427,7 +427,7 @@ class ActionModule(PosixBase):
 
                     elif not force:
                         self.result["msg"] = (
-                            "File exists and force is disabled, taking no " "action"
+                            "File exists and force is disabled, taking no action"
                         )
 
                     else:
