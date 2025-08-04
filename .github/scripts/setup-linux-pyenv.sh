@@ -52,9 +52,17 @@ case "$LINUX_OS" in
 			bzip2-devel libffi-devel zlib-devel readline-devel \
 			sqlite-devel xz-devel glibc-langpack-en openssh-clients \
 			ShellCheck
-		# Try both YAML package names (different distros use different names)
-		dnf install -y -q --allowerasing libyaml-devel || \
-		dnf install -y -q --allowerasing yaml-devel
+		# Install distro-specific YAML package
+		case "$LINUX_OS" in
+			fedora:*)
+				dnf install -y -q --allowerasing libyaml-devel
+				;;
+			*)
+				# Rocky/CentOS/AlmaLinux don't have libyaml-devel or yaml-devel
+				# PyYAML will be installed via pip, so this is optional
+				echo "Skipping YAML devel package (not available on this distro)"
+				;;
+		esac
 		;;
 	opensuse/*)
 		zypper update -y &&
