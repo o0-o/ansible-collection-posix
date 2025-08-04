@@ -28,7 +28,7 @@ case "$LINUX_OS" in
 			libssl-dev zlib1g-dev libbz2-dev libreadline-dev \
 			libsqlite3-dev libncursesw5-dev xz-utils tk-dev \
 			libxml2-dev libxmlsec1-dev libffi-dev liblzma-dev \
-			libyaml-dev locales shellcheck openssh-client
+			libyaml-dev locales shellcheck openssh-client rsync
 		# Generate en_US.UTF-8 locale
 		echo "en_US.UTF-8 UTF-8" >> /etc/locale.gen
 		locale-gen
@@ -51,7 +51,7 @@ case "$LINUX_OS" in
 			bash git curl tar findutils gcc make openssl-devel \
 			bzip2-devel libffi-devel zlib-devel readline-devel \
 			sqlite-devel xz-devel glibc-langpack-en openssh-clients \
-			ShellCheck
+			ShellCheck rsync
 		# Install distro-specific YAML package
 		case "$LINUX_OS" in
 			fedora:*)
@@ -70,13 +70,13 @@ case "$LINUX_OS" in
 			bash git curl tar gzip findutils gcc make \
 			openssl-devel libbz2-devel libffi-devel zlib-devel \
 			readline-devel sqlite3-devel xz-devel libyaml-devel gawk coreutils \
-			glibc-locale ShellCheck openssh
+			glibc-locale ShellCheck openssh rsync
 		;;
 	archlinux)
 		pacman -Syu --noconfirm --quiet &&
 		pacman -S --noconfirm --quiet \
 			bash git curl tar findutils base-devel openssl zlib \
-			bzip2 libffi readline sqlite xz libyaml shellcheck openssh
+			bzip2 libffi readline sqlite xz libyaml shellcheck openssh rsync
 		;;
 	alpine:*)
 		apk update --quiet &&
@@ -84,7 +84,7 @@ case "$LINUX_OS" in
 		apk add --no-cache --quiet \
 			bash git curl tar findutils build-base openssl-dev \
 			zlib-dev bzip2-dev libffi-dev readline-dev sqlite-dev \
-			xz-dev yaml-dev coreutils shellcheck openssh-client
+			xz-dev yaml-dev coreutils shellcheck openssh-client rsync
 		;;
 esac
 

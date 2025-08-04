@@ -50,7 +50,8 @@ echo "Setting up clean collection copy for testuser..."
 test_user_home=$(getent passwd testuser | cut -d: -f6)
 test_dir="$test_user_home/.ansible/collections/ansible_collections/o0_o/posix"
 mkdir -p "$test_dir"
-cp -a . "$test_dir/"
+# Copy everything except .venv (which has hardcoded paths to /root)
+rsync -a --exclude='.venv' . "$test_dir/"
 chown -R testuser:testuser "$test_user_home/.ansible"
 
 # Source the venv
