@@ -41,9 +41,7 @@ def test_mk_dest_dir_behavior(
     )
 
     if should_create:
-        monkeypatch.setattr(
-            base, "_mkdir", lambda p, task_vars=None: {"changed": True}
-        )
+        monkeypatch.setattr(base, "_mkdir", lambda p, task_vars=None: {"changed": True})
 
     base._mk_dest_dir(file_path, task_vars={})
 

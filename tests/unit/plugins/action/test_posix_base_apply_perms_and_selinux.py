@@ -25,25 +25,25 @@ from ansible_collections.o0_o.posix.tests.utils import (
 
 def get_test_group():
     """Get a group that exists on the system for testing, avoiding root/wheel."""
-    import grp
-    import os
-    
+
     current_gid = os.getgid()
     avoid_groups = {"root", "wheel"}
-    
+
     # Get all available groups
     for group in grp.getgrall():
         # Skip root, wheel, and current group to ensure we actually test a change
-        if (group.gr_name not in avoid_groups and 
-            group.gr_gid != 0 and 
-            group.gr_gid != current_gid):
+        if (
+            group.gr_name not in avoid_groups
+            and group.gr_gid != 0
+            and group.gr_gid != current_gid
+        ):
             return group.gr_name
-    
+
     # Fallback - just use the first non-root group
     for group in grp.getgrall():
         if group.gr_gid != 0:
             return group.gr_name
-    
+
     # Ultimate fallback
     return "root"
 
@@ -101,8 +101,8 @@ def test_apply_perms_and_selinux_confirmation(
         # Stub _handle_selinux_context to confirm it's called when
         # selinux=True
         called_selinux = {}
-        base._handle_selinux_context = (
-            lambda *a, **kw: called_selinux.setdefault("called", True)
+        base._handle_selinux_context = lambda *a, **kw: called_selinux.setdefault(
+            "called", True
         )
 
         # Mock _get_perms when selinux is True
@@ -122,9 +122,7 @@ def test_apply_perms_and_selinux_confirmation(
                     path, perms, selinux=selinux, task_vars={}
                 )
         else:
-            base._apply_perms_and_selinux(
-                path, perms, selinux=selinux, task_vars={}
-            )
+            base._apply_perms_and_selinux(path, perms, selinux=selinux, task_vars={})
             confirmed = base._get_perms(path, selinux=False, task_vars={})
 
             if perms.get("mode"):

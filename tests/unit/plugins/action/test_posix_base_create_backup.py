@@ -25,9 +25,7 @@ from ansible.errors import AnsibleActionFail
         (True, False, True),  # File exists, cp fails, error
     ],
 )
-def test_create_backup_behavior(
-    base, file_exists, cp_success, expect_error
-) -> None:
+def test_create_backup_behavior(base, file_exists, cp_success, expect_error) -> None:
     """
     Test _create_backup handles existence, success, and error cases.
     """

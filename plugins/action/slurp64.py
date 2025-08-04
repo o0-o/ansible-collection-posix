@@ -85,9 +85,7 @@ class ActionModule(PosixBase):
         src = new_module_args.get("src")
         self.force_raw = new_module_args.pop("_force_raw")
 
-        self._display.vvv(
-            f"slurp64: parsed src={src}, _force_raw={self.force_raw}"
-        )
+        self._display.vvv(f"slurp64: parsed src={src}, _force_raw={self.force_raw}")
 
         # Initialize the result structure from the base Action class
         result = super().run(tmp, task_vars)
@@ -110,15 +108,11 @@ class ActionModule(PosixBase):
                     module_args={"src": src},
                     task_vars=task_vars,
                 )
-                self._display.vvv(
-                    f"slurp64: builtin slurp: {ansible_slurp_mod}"
-                )
+                self._display.vvv(f"slurp64: builtin slurp: {ansible_slurp_mod}")
                 ansible_slurp_mod.pop("invocation")
                 result["raw"] = False
             except Exception as e:
-                self._display.warning(
-                    f"Error calling ansible.builtin.slurp: {str(e)}"
-                )
+                self._display.warning(f"Error calling ansible.builtin.slurp: {str(e)}")
                 ansible_slurp_mod = {
                     "failed": True,
                     "rc": 127,
@@ -135,9 +129,7 @@ class ActionModule(PosixBase):
                     "slurp64: falling back to _cat() due to interpreter error"
                 )
                 cat_result = self._cat(src, task_vars=task_vars)
-                self._display.vvv(
-                    f"slurp64: _cat() fallback returned {cat_result}"
-                )
+                self._display.vvv(f"slurp64: _cat() fallback returned {cat_result}")
                 result.update(cat_result)
                 result["raw"] = True
             else:
@@ -151,8 +143,7 @@ class ActionModule(PosixBase):
                         self._display.vvv("slurp64: decode succeeded")
                     except Exception as decode_error:
                         raise AnsibleActionFail(
-                            "Failed to base64 decode slurp content: "
-                            f"{decode_error}"
+                            "Failed to base64 decode slurp content: " f"{decode_error}"
                         )
 
                 else:
@@ -165,8 +156,7 @@ class ActionModule(PosixBase):
         if "content" in result:
             result["content_lines"] = result["content"].splitlines()
             self._display.vvv(
-                f"slurp64: split content into {len(result['content_lines'])} "
-                "lines"
+                f"slurp64: split content into {len(result['content_lines'])} " "lines"
             )
 
         result["changed"] = False

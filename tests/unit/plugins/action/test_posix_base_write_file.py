@@ -42,9 +42,7 @@ def test_write_file_basic_write(base) -> None:
     """Test basic _write_file functionality."""
     tmp_path = generate_temp_path()
     try:
-        result = base._write_file(
-            content="hello\nworld\n", dest=tmp_path, task_vars={}
-        )
+        result = base._write_file(content="hello\nworld\n", dest=tmp_path, task_vars={})
         assert result["changed"] is True
         assert result["rc"] == 0
         with open(tmp_path, encoding="utf-8") as f:
