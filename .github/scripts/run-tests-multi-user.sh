@@ -14,22 +14,20 @@
 
 set -eu
 
-test_type="$1"  # units or integration
-python_version="$2"
-target="${3:-}"  # optional integration target
+INTEGRATION_TARGET="${INTEGRATION_TARGET:-}"  # optional integration target
 
 # Validate test type
-case "$test_type" in
+case "$TEST_TYPE" in
 	units|integration)
 		;;
 	*)
-		echo "Error: Invalid test type '$test_type'. Must be 'units' or 'integration'."
+		echo "Error: Invalid test type '$TEST_TYPE'. Must be 'units' or 'integration'."
 		exit 1
 		;;
 esac
 
 # Create pyenv group and test user
-echo "Setting up pyenv group and test user..."
+echo "Setting up pyenv group and test user for $TEST_TYPE tests..."
 if [ -f /etc/alpine-release ]; then
 	addgroup pyenv
 	adduser root pyenv
@@ -66,23 +64,23 @@ if [ -n "${ANSIBLE_PACKAGE:-}" ]; then
 fi
 
 # Build the test command
-if [ -n "$target" ]; then
-	test_cmd="ansible-test $test_type --venv --python $python_version $target -vvv"
-	echo "Running $test_type tests for target '$target' as root user..."
+if [ -n "$INTEGRATION_TARGET" ]; then
+	test_cmd="ansible-test $TEST_TYPE --venv --python $PYTHON_VERSION $INTEGRATION_TARGET -vvv"
+	echo "Running $TEST_TYPE tests for target '$INTEGRATION_TARGET' as root user..."
 else
-	test_cmd="ansible-test $test_type --venv --python $python_version -vvv"
-	echo "Running $test_type tests as root user..."
+	test_cmd="ansible-test $TEST_TYPE --venv --python $PYTHON_VERSION -vvv"
+	echo "Running $TEST_TYPE tests as root user..."
 fi
 
 $test_cmd
 
 # Run tests as non-root user
-if [ -n "$target" ]; then
-	echo "Running $test_type tests for target '$target' as non-root user..."
-	testuser_cmd="ansible-test $test_type --venv --python $python_version $target -vvv"
+if [ -n "$INTEGRATION_TARGET" ]; then
+	echo "Running $TEST_TYPE tests for target '$INTEGRATION_TARGET' as non-root user..."
+	testuser_cmd="ansible-test $TEST_TYPE --venv --python $PYTHON_VERSION $INTEGRATION_TARGET -vvv"
 else
-	echo "Running $test_type tests as non-root user..."
-	testuser_cmd="ansible-test $test_type --venv --python $python_version -vvv"
+	echo "Running $TEST_TYPE tests as non-root user..."
+	testuser_cmd="ansible-test $TEST_TYPE --venv --python $PYTHON_VERSION -vvv"
 fi
 
 # Change to a neutral directory first to avoid pyenv trying to access /root

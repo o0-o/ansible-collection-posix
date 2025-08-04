@@ -15,7 +15,7 @@
 set -eu
 
 # Install build dependencies for pyenv based on Linux distribution
-case "$1" in
+case "$LINUX_OS" in
 	debian:*|ubuntu:*)
 		export DEBIAN_FRONTEND=noninteractive
 		export TZ=UTC
@@ -35,7 +35,7 @@ case "$1" in
 		;;
 	fedora:*|*rockylinux:*|almalinux:*|*centos*)
 		# Enable EPEL for RHEL-based distros (not needed for Fedora)
-		case "$1" in
+		case "$LINUX_OS" in
 			fedora:*)
 				# Fedora has ShellCheck in main repos
 				;;
@@ -99,10 +99,10 @@ curl -s https://pyenv.run | bash >/dev/null
 export PATH="/opt/pyenv/bin:$PATH"
 eval "$(pyenv init - sh)" >/dev/null
 
-# Install the specific Python version passed as argument
-python_version="$2"
-pyenv install "$python_version" >/dev/null
-pyenv global "$python_version"
+# Install the specific Python version from environment variable
+PYTHON_VERSION="$PYTHON_VERSION"
+pyenv install "$PYTHON_VERSION" >/dev/null
+pyenv global "$PYTHON_VERSION"
 
 # Refresh pyenv shims
 mkdir -p "$(pyenv root)/plugins"

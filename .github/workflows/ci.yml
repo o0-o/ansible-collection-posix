@@ -46,8 +46,9 @@ jobs:
             -w /root/.ansible/collections/ansible_collections/o0_o/posix \
             ${{ matrix.os }} sh -c '
               set -eux
-              . .github/scripts/setup-linux-pyenv.sh "${{ matrix.os }}" \
-                "${{ matrix.python }}"
+              export LINUX_OS="${{ matrix.os }}"
+              export PYTHON_VERSION="${{ matrix.python }}"
+              . .github/scripts/setup-linux-pyenv.sh
 
               # Source the venv that was created
               . .venv/bin/activate
@@ -81,11 +82,13 @@ jobs:
             -e ANSIBLE_PACKAGE="${{ matrix.ansible_package }}" \
             ${{ matrix.os }} sh -c '
               set -eux
-              . .github/scripts/setup-linux-pyenv.sh "${{ matrix.os }}" \
-                "${{ matrix.python }}"
+              export LINUX_OS="${{ matrix.os }}"
+              export PYTHON_VERSION="${{ matrix.python }}"
+              export TEST_TYPE="units"
+              . .github/scripts/setup-linux-pyenv.sh
 
               # Run unit tests as both root and non-root users
-              . .github/scripts/run-tests-multi-user.sh units "${{ matrix.python }}"
+              . .github/scripts/run-tests-multi-user.sh
             '
 
   linux-integration:
@@ -108,11 +111,14 @@ jobs:
             -e ANSIBLE_PACKAGE="${{ matrix.test.ansible_package }}" \
             ${{ matrix.test.os }} sh -c '
               set -eux
-              . .github/scripts/setup-linux-pyenv.sh "${{ matrix.test.os }}" \
-                "${{ matrix.test.python }}"
+              export LINUX_OS="${{ matrix.test.os }}"
+              export PYTHON_VERSION="${{ matrix.test.python }}"
+              export TEST_TYPE="integration"
+              export INTEGRATION_TARGET="${{ matrix.target }}"
+              . .github/scripts/setup-linux-pyenv.sh
 
               # Run specific integration test target as both root and non-root users
-              . .github/scripts/run-tests-multi-user.sh integration "${{ matrix.test.python }}" "${{ matrix.target }}"
+              . .github/scripts/run-tests-multi-user.sh
             '
 
   macos-sanity:
