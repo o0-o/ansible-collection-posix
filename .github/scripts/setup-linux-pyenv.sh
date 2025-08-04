@@ -52,19 +52,13 @@ case "$LINUX_OS" in
 			bzip2-devel libffi-devel zlib-devel readline-devel \
 			sqlite-devel xz-devel glibc-langpack-en openssh-clients \
 			ShellCheck
-		# Install distro-specific YAML package
-		case "$LINUX_OS" in
-			fedora:*)
-				dnf install -y -q --allowerasing libyaml-devel
-				;;
-			*)
-				dnf install -y -q --allowerasing yaml-devel
-				;;
-		esac
+		# Try both YAML package names (different distros use different names)
+		dnf install -y -q --allowerasing libyaml-devel || \
+		dnf install -y -q --allowerasing yaml-devel
 		;;
 	opensuse/*)
-		zypper update -y --quiet &&
-		zypper install -y --quiet \
+		zypper update -y &&
+		zypper install -y \
 			bash git curl tar gzip findutils gcc make \
 			openssl-devel libbz2-devel libffi-devel zlib-devel \
 			readline-devel sqlite3-devel xz-devel libyaml-devel gawk coreutils \
