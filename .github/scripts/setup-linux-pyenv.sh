@@ -101,7 +101,6 @@ export PATH="/opt/pyenv/bin:$PATH"
 eval "$(pyenv init - sh)" >/dev/null
 
 # Install the specific Python version from environment variable
-PYTHON_VERSION="$PYTHON_VERSION"
 pyenv install "$PYTHON_VERSION" >/dev/null
 pyenv global "$PYTHON_VERSION"
 
