@@ -90,7 +90,6 @@ su testuser -c "
 	set -eux
 	umask 002
 	export PATH=\$HOME/.local/bin:/opt/pyenv/shims:/opt/pyenv/bin:\$PATH
-	export PYENV_SKIP_REHASH=1
 	cd ~/.ansible/collections/ansible_collections/o0_o/posix
 	python -m venv .venv
 	. .venv/bin/activate
