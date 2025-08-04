@@ -18,7 +18,7 @@ with open(".github/matrix/python-ansible-compatibility.json", "r") as f:
     compat = json.load(f)
 
 # Read the OS matrix
-with open(".github/matrix/linux-os-min.json", "r") as f:
+with open(".github/matrix/linux-os.json", "r") as f:
     os_data = json.load(f)
 
 # Generate flat matrix entries
