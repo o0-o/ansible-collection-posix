@@ -22,8 +22,12 @@ jobs:
       - uses: actions/checkout@v4
       - id: set-matrix
         run: |
-          echo "test-matrix=$(python3 .github/scripts/generate-test-matrix.py)" >> $GITHUB_OUTPUT
-          echo "integration-targets-matrix=$(cat .github/matrix/integration-targets.json | jq -c .targets)" >> $GITHUB_OUTPUT
+          echo "test-matrix=$(
+              python3 .github/scripts/generate-test-matrix.py
+            )" >> $GITHUB_OUTPUT
+          echo "integration-targets-matrix=$(
+              cat .github/matrix/integration-targets.json | jq -c .targets
+            )" >> $GITHUB_OUTPUT
 
   linux-sanity:
     name: >
@@ -34,9 +38,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include: >
-          ${{ fromJson(needs['setup-linux-matrix']['outputs']
-          ['test-matrix']) }}
+        include: ${{ fromJson(needs['setup-linux-matrix']['outputs']['test-matrix']) }}
     steps:
       - uses: actions/checkout@v4
 
@@ -74,9 +76,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include: >
-          ${{ fromJson(needs['setup-linux-matrix']['outputs']
-          ['test-matrix']) }}
+        include: ${{ fromJson(needs['setup-linux-matrix']['outputs']['test-matrix']) }}
     steps:
       - uses: actions/checkout@v4
 
@@ -108,12 +108,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        test: >
-          ${{ fromJson(needs['setup-linux-matrix']['outputs']
-          ['test-matrix']) }}
-        target: >
-          ${{ fromJson(needs['setup-linux-matrix']['outputs']
-          ['integration-targets-matrix']) }}
+        test: ${{ fromJson(needs['setup-linux-matrix']['outputs']['test-matrix']) }}
+        target: ${{ fromJson(needs['setup-linux-matrix']['outputs']['integration-targets-matrix']) }}
     steps:
       - uses: actions/checkout@v4
 
