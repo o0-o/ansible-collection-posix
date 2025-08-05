@@ -1,9 +1,0 @@
-{
-  "targets": [
-    "command",
-    "facts", 
-    "lineinfile_dedupe",
-    "slurp64",
-    "template"
-  ]
-}
