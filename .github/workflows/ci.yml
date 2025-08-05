@@ -273,16 +273,43 @@ jobs:
           ansible-test integration --venv --python \
             ${{ matrix['test']['python'] }} ${{ matrix['target'] }} -v
 
+  sanity-complete:
+    name: All Sanity Tests Complete
+    runs-on: ubuntu-latest
+    needs:
+      - linux-sanity
+      - macos-sanity
+    steps:
+      - name: Sanity tests completed
+        run: echo "All sanity tests have completed successfully"
+
+  units-complete:
+    name: All Unit Tests Complete
+    runs-on: ubuntu-latest
+    needs:
+      - linux-units
+      - macos-units
+    steps:
+      - name: Unit tests completed
+        run: echo "All unit tests have completed successfully"
+
+  integration-complete:
+    name: All Integration Tests Complete
+    runs-on: ubuntu-latest
+    needs:
+      - linux-integration
+      - macos-integration
+    steps:
+      - name: Integration tests completed
+        run: echo "All integration tests have completed successfully"
+
   build:
     name: Build Collection
     runs-on: ubuntu-latest
     needs:
-      - linux-sanity
-      - linux-units
-      - linux-integration
-      - macos-sanity
-      - macos-units
-      - macos-integration
+      - sanity-complete
+      - units-complete
+      - integration-complete
     steps:
       - uses: actions/checkout@v4
 
