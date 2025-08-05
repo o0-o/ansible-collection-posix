@@ -94,8 +94,6 @@ else
 	testuser_cmd="${testuser_cmd} ${PYTHON_VERSION} -vvv"
 fi
 
-# Change to a neutral directory first to avoid pyenv trying to access /root
-cd /tmp
 echo "Setting up pyenv and venv for testuser..."
 su testuser -c "
 	set -eux
@@ -112,5 +110,5 @@ su testuser -c "
 	fi
 	echo 'Installed Ansible version:'
 	ansible --version
-	${testuser_cmd}  # shellcheck disable=SC2154
+	${testuser_cmd}
 "
