@@ -51,8 +51,7 @@ echo "Setting up clean collection copy for testuser..."
 test_user_home=$(getent passwd testuser | cut -d: -f6)
 test_user_gid=$(getent passwd testuser | cut -d: -f4)
 test_user_group=$(getent group "${test_user_gid}" | cut -d: -f1)
-test_dir="${test_user_home}/.ansible/collections/" \
-	"ansible_collections/o0_o/posix"
+test_dir="${test_user_home}/.ansible/collections/ansible_collections/o0_o/posix"
 mkdir -p "${test_dir}"
 # Copy everything except .venv (which has hardcoded paths to /root)
 rsync -a --exclude='.venv' . "${test_dir}/"
@@ -82,6 +81,7 @@ fi
 ${test_cmd}
 
 # Run tests as non-root user
+testuser_cmd=""
 if [ -n "$INTEGRATION_TARGET" ]; then
 	echo "Running ${TEST_TYPE} tests for target '${INTEGRATION_TARGET}' " \
 		"as non-root user..."
@@ -111,5 +111,5 @@ su testuser -c "
 	fi
 	echo 'Installed Ansible version:'
 	ansible --version
-	${testuser_cmd}
+	${testuser_cmd}  # shellcheck disable=SC2154
 "

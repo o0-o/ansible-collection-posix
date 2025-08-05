@@ -199,7 +199,9 @@ class PosixBase(ActionBase):
         elif isinstance(cmd, str):
             args["cmd"] = cmd
         else:
-            raise TypeError(f"Expected cmd to be str or list, got {type(cmd).__name__}")
+            raise TypeError(
+                f"Expected cmd to be str or list, got {type(cmd).__name__}"
+            )
 
         return self._run_action(
             "o0_o.posix.command",
@@ -238,7 +240,9 @@ class PosixBase(ActionBase):
             from the calling task
         :returns dict: Dictionary with read result or error
         """
-        cmd_result = self._cmd(["cat", src], task_vars=task_vars, check_mode=False)
+        cmd_result = self._cmd(
+            ["cat", src], task_vars=task_vars, check_mode=False
+        )
         result = {"changed": False, "raw": cmd_result.get("raw", False)}
         result["source"] = src
 
@@ -322,7 +326,9 @@ class PosixBase(ActionBase):
                 result["type"] = type_name
                 return result
 
-        raise AnsibleActionFail(f"All POSIX 'test' commands failed on '{target_path}'")
+        raise AnsibleActionFail(
+            f"All POSIX 'test' commands failed on '{target_path}'"
+        )
 
     def _mkdir(
         self,

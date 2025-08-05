@@ -62,9 +62,15 @@ class ActionModule(PosixBase):
         :raises Exception: When uname commands fail or return unexpected
             output
         """
-        un_s = self._cmd(["uname", "-s"], task_vars=task_vars, check_mode=False)
-        un_r = self._cmd(["uname", "-r"], task_vars=task_vars, check_mode=False)
-        un_m = self._cmd(["uname", "-m"], task_vars=task_vars, check_mode=False)
+        un_s = self._cmd(
+            ["uname", "-s"], task_vars=task_vars, check_mode=False
+        )
+        un_r = self._cmd(
+            ["uname", "-r"], task_vars=task_vars, check_mode=False
+        )
+        un_m = self._cmd(
+            ["uname", "-m"], task_vars=task_vars, check_mode=False
+        )
 
         kernel_name = un_s["stdout_lines"][0]
         kernel_version = un_r["stdout_lines"][0]
@@ -146,12 +152,15 @@ class ActionModule(PosixBase):
             raise
         except Exception as e:
             self._display.vvv(
-                f"On error, assume the system isn't POSIX: " f"{type(e).__name__}: {e}"
+                f"On error, assume the system isn't POSIX: "
+                f"{type(e).__name__}: {e}"
             )
             result.update(
                 {
                     "skipped": True,
-                    "skip_reason": ("This does not appear to be a POSIX system."),
+                    "skip_reason": (
+                        "This does not appear to be a POSIX system."
+                    ),
                     "ansible_facts": {},
                 }
             )
