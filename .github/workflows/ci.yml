@@ -23,7 +23,7 @@ jobs:
       - id: set-matrix
         run: |
           echo "test-matrix=$(
-              python3 .github/scripts/generate-test-matrix.py
+              python3 .github/scripts/generate-linux-test-matrix.py
             )" >> $GITHUB_OUTPUT
           echo "targets-matrix=$(
               cat .github/matrix/targets.json | jq -c .targets
