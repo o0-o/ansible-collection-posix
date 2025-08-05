@@ -184,7 +184,7 @@ jobs:
 
           # Use specific Python version for ansible-core installation
           python${{ matrix['python'] }} -m venv .venv
-          source .venv/bin/activate
+          . .venv/bin/activate
           pip install --upgrade pip
           pip install --upgrade "${{ matrix['ansible_package'] }}"
 
@@ -222,7 +222,7 @@ jobs:
 
           # Use specific Python version for ansible-core installation
           python${{ matrix['python'] }} -m venv .venv
-          source .venv/bin/activate
+          . .venv/bin/activate
           pip install --upgrade pip
           pip install --upgrade "${{ matrix['ansible_package'] }}"
 
@@ -262,7 +262,7 @@ jobs:
 
           # Use specific Python version for ansible-core installation
           python${{ matrix['test']['python'] }} -m venv .venv
-          source .venv/bin/activate
+          . .venv/bin/activate
           pip install --upgrade pip
           pip install --upgrade "${{ matrix['test']['ansible_package'] }}"
 
