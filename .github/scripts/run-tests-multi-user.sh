@@ -51,7 +51,8 @@ echo "Setting up clean collection copy for testuser..."
 test_user_home=$(getent passwd testuser | cut -d: -f6)
 test_user_gid=$(getent passwd testuser | cut -d: -f4)
 test_user_group=$(getent group "${test_user_gid}" | cut -d: -f1)
-test_dir="${test_user_home}/.ansible/collections/ansible_collections/o0_o/posix"
+test_dir="${test_user_home}/.ansible/collections/" \
+	"ansible_collections/o0_o/posix"
 mkdir -p "${test_dir}"
 # Copy everything except .venv (which has hardcoded paths to /root)
 rsync -a --exclude='.venv' . "${test_dir}/"
@@ -88,7 +89,8 @@ if [ -n "$INTEGRATION_TARGET" ]; then
 		"${INTEGRATION_TARGET} -vvv"
 else
 	echo "Running ${TEST_TYPE} tests as non-root user..."
-	testuser_cmd="ansible-test ${TEST_TYPE} --venv --python ${PYTHON_VERSION} -vvv"
+	testuser_cmd="ansible-test ${TEST_TYPE} --venv " \
+		"--python ${PYTHON_VERSION} -vvv"
 fi
 
 # Change to a neutral directory first to avoid pyenv trying to access /root
