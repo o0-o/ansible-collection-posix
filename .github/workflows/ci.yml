@@ -22,12 +22,8 @@ jobs:
       - uses: actions/checkout@v4
       - id: set-matrix
         run: |
-          echo "test-matrix=$(
-              python3 .github/scripts/generate-test-matrix.py
-            )" >> $GITHUB_OUTPUT
-          echo "integration-targets-matrix=$(
-              cat .github/matrix/integration-targets.json | jq -c .targets
-            )" >> $GITHUB_OUTPUT
+          echo "test-matrix=$(python3 .github/scripts/generate-test-matrix.py)" >> $GITHUB_OUTPUT
+          echo "integration-targets-matrix=$(cat .github/matrix/integration-targets.json | jq -c .targets)" >> $GITHUB_OUTPUT
 
   linux-sanity:
     name: >
