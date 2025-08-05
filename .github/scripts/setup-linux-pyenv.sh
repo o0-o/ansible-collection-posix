@@ -12,8 +12,6 @@
 #
 # Setup script for Linux containers in CI to install pyenv and Python versions
 
-set -eu
-
 # Install build dependencies for pyenv based on Linux distribution
 case "$LINUX_OS" in
 	debian:*|ubuntu:*)
@@ -50,17 +48,19 @@ case "$LINUX_OS" in
 		dnf install -y -q --allowerasing \
 			bash git curl tar findutils gcc make openssl-devel \
 			bzip2-devel libffi-devel zlib-devel readline-devel \
-			sqlite-devel xz-devel glibc-langpack-en openssh-clients \
-			ShellCheck rsync
+			sqlite-devel xz-devel glibc-langpack-en \
+			openssh-clients ShellCheck rsync
 		# Install distro-specific YAML package
 		case "$LINUX_OS" in
 			fedora:*)
 				dnf install -y -q --allowerasing libyaml-devel
 				;;
 			*)
-				# Rocky/CentOS/AlmaLinux don't have libyaml-devel or yaml-devel
-				# PyYAML will be installed via pip, so this is optional
-				echo "Skipping YAML devel package (not available on this distro)"
+				# Rocky/CentOS/AlmaLinux don't have
+				# libyaml-devel or yaml-devel PyYAML will be
+				# installed via pip, so this is optional
+				echo "Skipping YAML devel package (not " \
+					"available on this distro)"
 				;;
 		esac
 		;;
@@ -69,14 +69,15 @@ case "$LINUX_OS" in
 		zypper install -y \
 			bash git curl tar gzip findutils gcc make \
 			openssl-devel libbz2-devel libffi-devel zlib-devel \
-			readline-devel sqlite3-devel xz-devel libyaml-devel gawk coreutils \
-			glibc-locale ShellCheck openssh rsync
+			readline-devel sqlite3-devel xz-devel libyaml-devel \
+			gawk coreutils glibc-locale ShellCheck openssh rsync
 		;;
 	archlinux)
 		pacman -Syu --noconfirm --quiet &&
 		pacman -S --noconfirm --quiet \
 			bash git curl tar findutils base-devel openssl zlib \
-			bzip2 libffi readline sqlite xz libyaml shellcheck openssh rsync
+			bzip2 libffi readline sqlite xz libyaml shellcheck \
+			openssh rsync
 		;;
 	alpine:*)
 		apk update --quiet &&
@@ -84,7 +85,8 @@ case "$LINUX_OS" in
 		apk add --no-cache --quiet \
 			bash git curl tar findutils build-base openssl-dev \
 			zlib-dev bzip2-dev libffi-dev readline-dev sqlite-dev \
-			xz-dev yaml-dev coreutils shellcheck openssh-client rsync
+			xz-dev yaml-dev coreutils shellcheck openssh-client \
+			rsync
 		;;
 esac
 

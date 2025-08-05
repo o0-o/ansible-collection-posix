@@ -12,8 +12,6 @@
 #
 # Script to run tests as both root and non-root users
 
-set -eu
-
 INTEGRATION_TARGET="${INTEGRATION_TARGET:-}"  # optional integration target
 
 # Validate test type
@@ -51,7 +49,8 @@ echo "Setting up clean collection copy for testuser..."
 test_user_home=$(getent passwd testuser | cut -d: -f6)
 test_user_gid=$(getent passwd testuser | cut -d: -f4)
 test_user_group=$(getent group "${test_user_gid}" | cut -d: -f1)
-test_dir="${test_user_home}/.ansible/collections/ansible_collections/o0_o/posix"
+test_dir="${test_user_home}/.ansible/collections/ansible_collections/o0_o"
+test_dir="${test_dir}/posix"
 mkdir -p "${test_dir}"
 # Copy everything except .venv (which has hardcoded paths to /root)
 rsync -a --exclude='.venv' . "${test_dir}/"
@@ -69,12 +68,13 @@ fi
 
 # Build the test command
 if [ -n "$INTEGRATION_TARGET" ]; then
-	test_cmd="ansible-test ${TEST_TYPE} --venv --python ${PYTHON_VERSION} " \
-		"${INTEGRATION_TARGET} -vvv"
+	test_cmd="ansible-test ${TEST_TYPE} --venv --python ${PYTHON_VERSION}"
+	test_cmd="${test_cmd} ${INTEGRATION_TARGET} -vvv"
 	echo "Running ${TEST_TYPE} tests for target '${INTEGRATION_TARGET}' " \
 		"as root user..."
 else
-	test_cmd="ansible-test ${TEST_TYPE} --venv --python ${PYTHON_VERSION} -vvv"
+	test_cmd="ansible-test ${TEST_TYPE} --venv --python ${PYTHON_VERSION}"
+	test_cmd="${test_cmd} -vvv"
 	echo "Running ${TEST_TYPE} tests as root user..."
 fi
 
@@ -85,12 +85,13 @@ testuser_cmd=""
 if [ -n "$INTEGRATION_TARGET" ]; then
 	echo "Running ${TEST_TYPE} tests for target '${INTEGRATION_TARGET}' " \
 		"as non-root user..."
-	testuser_cmd="ansible-test ${TEST_TYPE} --venv --python ${PYTHON_VERSION} " \
-		"${INTEGRATION_TARGET} -vvv"
+	testuser_cmd="ansible-test ${TEST_TYPE} --venv --python"
+	testuser_cmd="${testuser_cmd} ${PYTHON_VERSION} ${INTEGRATION_TARGET}"
+	testuser_cmd="${testuser_cmd} -vvv"
 else
 	echo "Running ${TEST_TYPE} tests as non-root user..."
-	testuser_cmd="ansible-test ${TEST_TYPE} --venv " \
-		"--python ${PYTHON_VERSION} -vvv"
+	testuser_cmd="ansible-test ${TEST_TYPE} --venv --python"
+	testuser_cmd="${testuser_cmd} ${PYTHON_VERSION} -vvv"
 fi
 
 # Change to a neutral directory first to avoid pyenv trying to access /root
