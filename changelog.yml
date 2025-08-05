@@ -3,6 +3,12 @@
 ---
 releases:
 
+  "1.3.2":
+    changes:
+      changed:
+        - Implemented comprehensive CI testing across Linux and macOS platforms.
+        - Various bug fixes and improvements identified through CI testing.
+
   "1.3.1":
     changes:
       changed:
