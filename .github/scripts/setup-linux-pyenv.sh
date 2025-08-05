@@ -65,6 +65,7 @@ case "$LINUX_OS" in
 		esac
 		;;
 	opensuse/*)
+		zypper ref &&
 		zypper update -y &&
 		zypper install -y \
 			bash git curl tar gzip findutils gcc make \
