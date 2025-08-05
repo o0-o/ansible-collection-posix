@@ -111,7 +111,7 @@ esac
 
 # Install pyenv system-wide
 export PYENV_ROOT="/opt/pyenv"
-curl -s https://pyenv.run | bash >/dev/null
+git clone https://github.com/pyenv/pyenv.git "${PYENV_ROOT}"
 export PATH="/opt/pyenv/bin:${PATH}"
 eval "$(pyenv init - sh)" >/dev/null
 
