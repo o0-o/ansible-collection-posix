@@ -49,7 +49,7 @@ case "$LINUX_OS" in
 			bash git curl tar findutils gcc make openssl-devel \
 			bzip2-devel libffi-devel zlib-devel readline-devel \
 			sqlite-devel xz-devel glibc-langpack-en \
-			openssh-clients ShellCheck rsync
+			openssh-clients ShellCheck rsync diffutils
 		# Install distro-specific YAML package
 		case "$LINUX_OS" in
 			fedora:*)
@@ -65,13 +65,14 @@ case "$LINUX_OS" in
 		esac
 		;;
 	opensuse/*)
-		zypper ref &&
-		zypper update -y &&
-		zypper install -y \
+		zypper --non-interactive ref &&
+		zypper --non-interactive update -y &&
+		zypper --non-interactive install -y \
 			bash git curl tar gzip findutils gcc make \
 			openssl-devel libbz2-devel libffi-devel zlib-devel \
 			readline-devel sqlite3-devel xz-devel libyaml-devel \
-			gawk coreutils glibc-locale ShellCheck openssh rsync
+			gawk coreutils glibc-locale ShellCheck openssh rsync \
+			diffutils
 		;;
 	archlinux)
 		pacman -Syu --noconfirm --quiet &&
