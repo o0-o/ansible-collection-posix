@@ -3,19 +3,22 @@
 ---
 releases:
 
-  "1.3.3":
+  v1.3.3:
     changes:
       fixed:
-        - Fixed package installation failures due to transient repository issues.
-        - Added retry logic with exponential backoff for package manager operations.
+        - Fixed package installation failures due to transient repository
+          issues.
+        - Added retry logic with exponential backoff for package manager
+          operations.
 
-  "1.3.2":
+  v1.3.2:
     changes:
       changed:
-        - Implemented comprehensive CI testing across Linux and macOS platforms.
+        - Implemented comprehensive CI testing across Linux and macOS
+          platforms.
         - Various bug fixes and improvements identified through CI testing.
 
-  "1.3.1":
+  v1.3.1:
     changes:
       changed:
         - Standardized code formatting and PEP 8 compliance across
@@ -25,12 +28,12 @@ releases:
         - Improved code quality with consistent string quoting and
           formatting.
 
-  "1.3.0":
+  v1.3.0:
     changes:
       - added:
           - '`facts` module, action plugin and tests'
 
-  "1.2.2":
+  v1.2.2:
     changes:
       - fixed:
           - Fallback logic and error handling improvements to the command
@@ -38,12 +41,12 @@ releases:
       - fixed:
           - Missing failures integration tests for the command module
 
-  "1.2.1":
+  v1.2.1:
     changes:
       - fixed:
           - Fix missing interpreter detection
 
-  "1.2.0":
+  v1.2.0:
     changes:
       - added:
           - '`template` plugin with full feature parity and fallback logic.'
@@ -53,13 +56,13 @@ releases:
       - fixed:
           - Check mode propagation and return code handling in `_cmd`.
 
-  "1.1.1":
+  v1.1.1:
     changes:
       - added:
           - Add missing `lineinfile_dedupe` entry in the module stub
             section of the README.
 
-  "1.1.0":
+  v1.1.0:
     changes:
       - added:
           - New `lineinfile_dedupe` module with deduplication and raw
@@ -81,7 +84,7 @@ releases:
           - Argument validation for raw-mode execution and fallback
             consistency.
 
-  "1.0.0":
+  v1.0.0:
     changes:
       - added:
           - New `command` module with fallback to raw execution when
