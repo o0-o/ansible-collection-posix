@@ -13,84 +13,117 @@
 # Setup script for Linux containers in CI to install pyenv and Python versions
 
 # Install build dependencies for pyenv based on Linux distribution
-case "$LINUX_OS" in
-	debian:*|ubuntu:*)
-		export DEBIAN_FRONTEND=noninteractive
-		export TZ=UTC
-		apt-get update -qq &&
-		apt-get dist-upgrade -y -qq &&
-		apt-get install -y -qq \
-			-o Dpkg::Options::="--force-confdef" \
-			-o Dpkg::Options::="--force-confold" \
-			bash git curl tar findutils build-essential \
-			libssl-dev zlib1g-dev libbz2-dev libreadline-dev \
-			libsqlite3-dev libncursesw5-dev xz-utils tk-dev \
-			libxml2-dev libxmlsec1-dev libffi-dev liblzma-dev \
-			libyaml-dev locales shellcheck openssh-client rsync
-		# Generate en_US.UTF-8 locale
-		echo "en_US.UTF-8 UTF-8" >> /etc/locale.gen
-		locale-gen
-		update-locale LANG=en_US.UTF-8
-		;;
-	fedora:*|*rockylinux:*|almalinux:*|*centos*)
-		# Enable EPEL for RHEL-based distros (not needed for Fedora)
-		case "$LINUX_OS" in
-			fedora:*)
-				# Fedora has ShellCheck in main repos
-				;;
-			*)
-				# All other RPM distros need EPEL
-				dnf install -y -q --allowerasing epel-release
-				;;
-		esac
-		dnf update -y -q &&
-		# Install shared packages
-		dnf install -y -q --allowerasing \
-			bash git curl tar findutils gcc make openssl-devel \
-			bzip2-devel libffi-devel zlib-devel readline-devel \
-			sqlite-devel xz-devel glibc-langpack-en \
-			openssh-clients ShellCheck rsync diffutils
-		# Install distro-specific YAML package
-		case "$LINUX_OS" in
-			fedora:*)
-				dnf install -y -q --allowerasing libyaml-devel
-				;;
-			*)
-				# Rocky/CentOS/AlmaLinux don't have
-				# libyaml-devel or yaml-devel PyYAML will be
-				# installed via pip, so this is optional
-				echo "Skipping YAML devel package (not " \
-					"available on this distro)"
-				;;
-		esac
-		;;
-	opensuse/*)
-		zypper --non-interactive ref &&
-		zypper --non-interactive update -y &&
-		zypper --non-interactive install -y --allow-downgrade \
-			bash git curl tar gzip findutils gcc make \
-			libopenssl-devel libbz2-devel libffi-devel zlib-devel \
-			readline-devel sqlite3-devel xz-devel libyaml-devel \
-			gawk coreutils glibc-locale ShellCheck openssh rsync \
-			diffutils
-		;;
-	archlinux)
-		pacman -Syu --noconfirm --quiet &&
-		pacman -S --noconfirm --quiet \
-			bash git curl tar findutils base-devel openssl zlib \
-			bzip2 libffi readline sqlite xz libyaml shellcheck \
-			openssh rsync
-		;;
-	alpine:*)
-		apk update --quiet &&
-		apk upgrade --quiet &&
-		apk add --no-cache --quiet \
-			bash git curl tar findutils build-base openssl-dev \
-			zlib-dev bzip2-dev libffi-dev readline-dev sqlite-dev \
-			xz-dev yaml-dev coreutils shellcheck openssh-client \
-			rsync
-		;;
-esac
+# Retry package installation up to 3 times with delays for transient issues
+n=0
+pkg_success=0
+until [ "$n" -ge 3 ] || [ "$pkg_success" = "1" ]; do
+	# Sleep between retries (not on first attempt)
+	if [ "$n" != "0" ]; then
+		echo "Package installation failed, attempt $((n+1))/3 in 60 seconds..."
+		sleep 60
+	fi
+
+	case "$LINUX_OS" in
+		debian:*|ubuntu:*)
+			export DEBIAN_FRONTEND=noninteractive
+			export TZ=UTC
+			apt-get update -qq &&
+			apt-get dist-upgrade -y -qq &&
+			apt-get install -y -qq \
+				-o Dpkg::Options::="--force-confdef" \
+				-o Dpkg::Options::="--force-confold" \
+				bash git curl tar findutils build-essential \
+				libssl-dev zlib1g-dev libbz2-dev \
+				libreadline-dev libsqlite3-dev \
+				libncursesw5-dev xz-utils tk-dev libxml2-dev \
+				libxmlsec1-dev libffi-dev liblzma-dev \
+				libyaml-dev locales shellcheck openssh-client \
+				rsync &&
+			# Generate en_US.UTF-8 locale
+			echo "en_US.UTF-8 UTF-8" >> /etc/locale.gen &&
+			locale-gen &&
+			update-locale LANG=en_US.UTF-8 &&
+			pkg_success=1
+			;;
+		fedora:*|*rockylinux:*|almalinux:*|*centos*)
+			# Enable EPEL for RHEL-based distros (not needed for
+			# Fedora)
+			case "$LINUX_OS" in
+				fedora:*)
+					# Fedora has ShellCheck in main repos
+					;;
+				*)
+					# All other RPM distros need EPEL
+					dnf install -y -q --allowerasing \
+						epel-release
+					;;
+			esac &&
+			dnf update -y -q &&
+			# Install shared packages
+			dnf install -y -q --allowerasing \
+				bash git curl tar findutils gcc make \
+				openssl-devel bzip2-devel libffi-devel \
+				zlib-devel readline-devel sqlite-devel \
+				xz-devel glibc-langpack-en openssh-clients \
+				ShellCheck rsync diffutils &&
+			# Install distro-specific YAML package
+			case "$LINUX_OS" in
+				fedora:*)
+					dnf install -y -q --allowerasing \
+						libyaml-devel
+					;;
+				*)
+					# Rocky/CentOS/AlmaLinux don't have
+					# libyaml-devel or yaml-devel PyYAML
+					# will be installed via pip, so this
+					# is optional
+					echo "Skipping YAML devel package " \
+						"(not available on this " \
+						"distro)"
+					;;
+			esac &&
+			pkg_success=1
+			;;
+		opensuse/*)
+			zypper --non-interactive ref &&
+			zypper --non-interactive update -y &&
+			zypper --non-interactive install -y --allow-downgrade \
+				bash git curl tar gzip findutils gcc make \
+				libopenssl-devel libbz2-devel libffi-devel \
+				zlib-devel readline-devel sqlite3-devel \
+				xz-devel libyaml-devel gawk coreutils \
+				glibc-locale ShellCheck openssh rsync \
+				diffutils &&
+			pkg_success=1
+			;;
+		archlinux)
+			pacman -Syu --noconfirm --quiet &&
+			pacman -S --noconfirm --quiet \
+				bash git curl tar findutils base-devel \
+				openssl zlib bzip2 libffi readline sqlite xz \
+				libyaml shellcheck openssh rsync &&
+			pkg_success=1
+			;;
+		alpine:*)
+			apk update --quiet &&
+			apk upgrade --quiet &&
+			apk add --no-cache --quiet \
+				bash git curl tar findutils build-base \
+				openssl-dev zlib-dev bzip2-dev libffi-dev \
+				readline-dev sqlite-dev xz-dev yaml-dev \
+				coreutils shellcheck openssh-client rsync &&
+			pkg_success=1
+			;;
+	esac
+
+	n=$((n+1))
+done
+
+# Fail if we exhausted all retries without success
+if [ "$pkg_success" != "1" ]; then
+	echo "Package installation failed after 3 attempts"
+	exit 1
+fi
 
 # Set locale to avoid ansible-test warnings (after locale packages are
 # installed)
