@@ -67,9 +67,9 @@ case "$LINUX_OS" in
 	opensuse/*)
 		zypper --non-interactive ref &&
 		zypper --non-interactive update -y &&
-		zypper --non-interactive install -y \
+		zypper --non-interactive install -y --allow-downgrade \
 			bash git curl tar gzip findutils gcc make \
-			openssl-devel libbz2-devel libffi-devel zlib-devel \
+			libopenssl-devel libbz2-devel libffi-devel zlib-devel \
 			readline-devel sqlite3-devel xz-devel libyaml-devel \
 			gawk coreutils glibc-locale ShellCheck openssh rsync \
 			diffutils
