@@ -220,7 +220,8 @@ class ActionModule(PosixBase):
             keep_index = replace_index
             self.result["msg"] = "line replaced"
             self._display.vvv(
-                f"Replaced line at index {replace_index} with: {expanded_line}"
+                f"Replaced line at index {replace_index} with: "
+                f"{expanded_line}"
             )
 
         else:
@@ -401,7 +402,7 @@ class ActionModule(PosixBase):
                 return {
                     "failed": True,
                     "msg": (
-                        "Invalid insertbefore pattern: "
+                        f"Invalid insertbefore pattern: "
                         f"{self.insertbefore}: {e}"
                     ),
                 }

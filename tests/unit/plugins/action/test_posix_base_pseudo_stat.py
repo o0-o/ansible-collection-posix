@@ -71,7 +71,5 @@ def test_pseudo_stat_unsupported_type(base, tmp_path) -> None:
 
     base._cmd = fake_cmd
 
-    with pytest.raises(
-        AnsibleActionFail, match="All POSIX 'test' commands failed"
-    ):
+    with pytest.raises(AnsibleActionFail, match="All POSIX 'test' commands failed"):
         base._pseudo_stat(str(fifo_path))

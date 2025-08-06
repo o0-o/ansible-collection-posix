@@ -42,9 +42,7 @@ def test_write_file_basic_write(base) -> None:
     """Test basic _write_file functionality."""
     tmp_path = generate_temp_path()
     try:
-        result = base._write_file(
-            content="hello\nworld\n", dest=tmp_path, task_vars={}
-        )
+        result = base._write_file(content="hello\nworld\n", dest=tmp_path, task_vars={})
         assert result["changed"] is True
         assert result["rc"] == 0
         with open(tmp_path, encoding="utf-8") as f:
@@ -55,12 +53,27 @@ def test_write_file_basic_write(base) -> None:
 
 def test_write_file_backup_and_validate(base) -> None:
     """Test _write_file backup and validation features."""
+    from ansible_collections.o0_o.posix.tests.utils import real_cmd
+
     tmp_path = generate_temp_path()
     with open(tmp_path, "w") as f:
         f.write("existing")
 
     base._validate_file = lambda tmp, cmd, task_vars: None
     base._create_backup = lambda dest, task_vars: dest + ".bak"
+
+    # Mock _slurp to use real_cmd and cat to read the file
+    def mock_slurp(src, task_vars=None):
+        result = real_cmd(f"cat '{src}'")
+        if result["rc"] != 0:
+            return {"content": "", "content_lines": []}
+        content = result["stdout"]
+        return {
+            "content": content,
+            "content_lines": content.splitlines(),
+        }
+
+    base._slurp = mock_slurp
 
     result = base._write_file(
         content="new",
@@ -86,7 +99,7 @@ def test_write_file_check_mode_and_diff(base) -> None:
         with open(tmp_path, "w") as f:
             f.write(original)
 
-        base._slurp = lambda tmp_path, task_vars=None: {
+        base._slurp = lambda src, task_vars=None: {
             "content": original,
             "content_lines": original.splitlines(),
         }

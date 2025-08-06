@@ -151,7 +151,7 @@ class ActionModule(PosixBase):
                         self._display.vvv("slurp64: decode succeeded")
                     except Exception as decode_error:
                         raise AnsibleActionFail(
-                            "Failed to base64 decode slurp content: "
+                            f"Failed to base64 decode slurp content: "
                             f"{decode_error}"
                         )
 

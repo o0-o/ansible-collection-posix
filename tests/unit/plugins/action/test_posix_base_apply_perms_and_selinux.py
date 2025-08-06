@@ -11,6 +11,10 @@
 
 from __future__ import annotations
 
+import grp
+import os
+import pwd
+
 import pytest
 
 from ansible.errors import AnsibleActionFail
@@ -20,15 +24,88 @@ from ansible_collections.o0_o.posix.tests.utils import (
 )
 
 
+def get_test_group():
+    """Get a group that exists on the system for testing, avoiding root/wheel."""
+    try:
+        # Try to use 'nobody' first as it's a common test group
+        grp.getgrnam("nobody")
+        return "nobody"
+    except KeyError:
+        pass
+    except Exception:
+        # If grp module doesn't work on this system, return default
+        return "nobody"
+
+    current_gid = os.getgid()
+    avoid_groups = {"root", "wheel"}
+
+    # Get all available groups
+    for group in grp.getgrall():
+        # Skip root, wheel, and current group to ensure we actually test a change
+        if (
+            group.gr_name not in avoid_groups
+            and group.gr_gid != 0
+            and group.gr_gid != current_gid
+        ):
+            return group.gr_name
+
+    # Fallback - just use the first non-root group
+    for group in grp.getgrall():
+        if group.gr_gid != 0:
+            return group.gr_name
+
+    # Ultimate fallback
+    return "nobody"
+
+
+def get_test_user():
+    """Get a user that exists on the system for testing, avoiding root."""
+    try:
+        # Try to use 'nobody' first as it's the most common test user
+        pwd.getpwnam("nobody")
+        return "nobody"
+    except KeyError:
+        pass
+    except Exception:
+        # If pwd module doesn't work on this system, return default
+        return "nobody"
+
+    current_uid = os.getuid()
+    avoid_users = {"root"}
+
+    # Get all available users
+    for user in pwd.getpwall():
+        # Skip root, and current user to ensure we actually test a change
+        if (
+            user.pw_name not in avoid_users
+            and user.pw_uid != 0
+            and user.pw_uid != current_uid
+        ):
+            return user.pw_name
+
+    # Fallback - just use the first non-root user
+    for user in pwd.getpwall():
+        if user.pw_uid != 0:
+            return user.pw_name
+
+    # Ultimate fallback
+    return "nobody"
+
+
+# Get test group/user dynamically
+TEST_GROUP = get_test_group()
+TEST_USER = get_test_user()
+
+
 @pytest.mark.parametrize(
     "perms, selinux, should_fail, expected_mode, mock_selinux_keys",
     [
         # No change
         ({}, False, False, None, {}),
-        # Owner change (only identity check)
-        # ({"owner": "root"}, False, False, None, {}),  # Can't chown
+        # Owner change (only works as root)
+        ({"owner": TEST_USER}, False, False, None, {}),
         # Group change
-        ({"group": "wheel"}, False, False, None, {}),
+        ({"group": TEST_GROUP}, False, False, None, {}),
         # Mode change
         ({"mode": "0700"}, False, False, "rwx------", {}),
         # Invalid mode
@@ -57,6 +134,10 @@ def test_apply_perms_and_selinux_confirmation(
     base, perms, selinux, should_fail, expected_mode, mock_selinux_keys
 ) -> None:
     """Test _apply_perms_and_selinux against real files."""
+    # Skip ownership change tests when not running as root
+    if (perms.get("owner") or perms.get("group")) and os.geteuid() != 0:
+        pytest.skip("Ownership change tests require root privileges")
+
     path = generate_temp_path()
     try:
         with open(path, "w", encoding="utf-8") as f:
@@ -65,8 +146,8 @@ def test_apply_perms_and_selinux_confirmation(
         # Stub _handle_selinux_context to confirm it's called when
         # selinux=True
         called_selinux = {}
-        base._handle_selinux_context = (
-            lambda *a, **kw: called_selinux.setdefault("called", True)
+        base._handle_selinux_context = lambda *a, **kw: called_selinux.setdefault(
+            "called", True
         )
 
         # Mock _get_perms when selinux is True
@@ -86,9 +167,7 @@ def test_apply_perms_and_selinux_confirmation(
                     path, perms, selinux=selinux, task_vars={}
                 )
         else:
-            base._apply_perms_and_selinux(
-                path, perms, selinux=selinux, task_vars={}
-            )
+            base._apply_perms_and_selinux(path, perms, selinux=selinux, task_vars={})
             confirmed = base._get_perms(path, selinux=False, task_vars={})
 
             if perms.get("mode"):

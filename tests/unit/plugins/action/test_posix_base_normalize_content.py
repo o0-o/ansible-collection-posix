@@ -61,9 +61,7 @@ def test_normalize_content_list(
         [{"dict": "nope"}],
     ],
 )
-def test_normalize_content_rejects_invalid_input(
-    base, invalid_content
-) -> None:
+def test_normalize_content_rejects_invalid_input(base, invalid_content) -> None:
     """Test _normalize_content rejects invalid input types."""
     with pytest.raises(AnsibleActionFail, match="_write_file.*"):
         base._normalize_content(invalid_content)

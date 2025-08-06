@@ -30,10 +30,21 @@
     that:
       - "template_render_reg['raw'] == _force_raw"
 
+- name: Debug slurp content
+  ansible.builtin.debug:
+    msg: >
+      Content: '{{ slurp_content_reg['content'] }}'
+      (length: {{ slurp_content_reg['content'] | length }})
+      force_raw={{ _force_raw }} check_mode={{ ansible_check_mode }}
+      user={{ lookup('pipe', 'id -un') }} greeting_var={{ greeting_var }}
+    verbosity: 0
+
 - name: Check file content
   ansible.builtin.assert:
     that:
       - slurp_content_reg['content'] | trim == 'Hello world'
+    fail_msg: >
+      Expected 'Hello world', got '{{ slurp_content_reg['content'] | trim }}'
 
 - name: Run again to check idempotency
   o0_o.posix.template:

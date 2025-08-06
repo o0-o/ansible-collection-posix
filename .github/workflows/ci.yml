@@ -11,184 +11,627 @@ on:
   pull_request:
 
 jobs:
-  docker-sanity:
-    name: Sanity tests on Linux
-    runs-on: ubuntu-24.04
-    strategy:
-      fail-fast: false
-      matrix:
-        os: &containers
-          - debian:9
-          - debian:10
-          - debian:11
-          - debian:12
-          - debian:latest
-          - ubuntu:20.04
-          - ubuntu:22.04
-          - ubuntu:latest  # LTS
-          - ubuntu:rolling
-          - fedora:38
-          - fedora:39
-          - fedora:latest
-          - rockylinux:8
-          - rockylinux:9
-          - rockylinux:latest
-          - almalinux:8
-          - almalinux:9
-          - almalinux:latest
-          - quay.io/centos/centos:stream8
-          - quay.io/centos/centos:stream9
-          - quay.io/centos/centos:stream
-          - opensuse/leap:15.4
-          - opensuse/leap:15.5
-          - opensuse/leap:latest
-          - opensuse/tumbleweed
-          - archlinux:latest
-          - alpine:3.18
-          - alpine:3.19
-          - alpine:latest
+  # Read the Linux OS and Python version matrices from JSON files
+  linux-matrix:
+    runs-on: ubuntu-latest
+    outputs:
+      test-matrix: ${{ steps['set-matrix']['outputs']['test-matrix'] }}
     steps:
       - uses: actions/checkout@v4
-      - name: Run in container
+      - id: set-matrix
         run: |
-          docker pull ${{ matrix.os }} || true
-          docker run --rm \
-            -v $PWD:/workspace \
-            -w /workspace \
-            ${{ matrix.os }} /bin/sh -c "\
-              python3 -m venv .venv && \
-              . ./.venv/bin/activate && \
-              pip install ansible-core && \
-              ansible-test sanity --venv"
+          echo "test-matrix=$(
+              python3 .github/scripts/generate-linux-test-matrix.py
+            )" >> $GITHUB_OUTPUT
 
-  docker-units:
-    name: Unit tests on Linux
-    runs-on: ubuntu-24.04
-    strategy:
-      fail-fast: false
-      matrix:
-        os: *containers
+  macos-matrix:
+    runs-on: ubuntu-latest
+    outputs:
+      test-matrix: ${{ steps['set-matrix']['outputs']['test-matrix'] }}
     steps:
       - uses: actions/checkout@v4
-      - name: Run in container
+      - id: set-matrix
         run: |
-          docker pull ${{ matrix.os }} || true
-          docker run --rm \
-            -v $PWD:/workspace \
-            -w /workspace \
-            ${{ matrix.os }} /bin/sh -c "\
-              python3 -m venv .venv && \
-              . ./.venv/bin/activate && \
-              pip install ansible-core && \
-              ansible-test units --venv"
+          echo "test-matrix=$(
+              python3 .github/scripts/generate-macos-test-matrix.py
+            )" >> $GITHUB_OUTPUT
 
-  docker-integration:
-    name: Integration tests on Linux
-    runs-on: ubuntu-24.04
+  linux-sanity:
+    name: >
+      Sanity (${{ matrix['os'] }} - Py${{ matrix['python'] }}/
+      Ansible${{ matrix['ansible_version'] }})
+    runs-on: ubuntu-latest
+    needs: linux-matrix
     strategy:
       fail-fast: false
       matrix:
-        os: *containers
+        include: >-
+          ${{ fromJson(needs['linux-matrix']['outputs']['test-matrix']) }}
     steps:
       - uses: actions/checkout@v4
-      - name: Run in container
-        run: |
-          docker pull ${{ matrix.os }} || true
-          docker run --rm \
-            -v $PWD:/workspace \
-            -w /workspace \
-            ${{ matrix.os }} /bin/sh -c "\
-              python3 -m venv .venv && \
-              . ./.venv/bin/activate && \
-              pip install ansible-core && \
-              ansible-test integration --venv"
 
-  runner-sanity:
-    name: Sanity tests on macOS and BSDs
+      - name: Run sanity tests in container
+        run: |
+          collection_path=":/root/.ansible/collections/ansible_collections"
+          collection_path="${collection_path}/o0_o/posix"
+          docker run --rm \
+            -v "${{ github['workspace'] }}${collection_path}" \
+            -w /root/.ansible/collections/ansible_collections/o0_o/posix \
+            ${{ matrix['os'] }} sh -c '
+              set -eux
+              export LINUX_OS="${{ matrix['os'] }}"
+              export PYTHON_VERSION="${{ matrix['python'] }}"
+              . .github/scripts/setup-linux-pyenv.sh
+
+              # Source the venv that was created
+              . .venv/bin/activate
+
+              # Install specific Ansible version
+              pip install --upgrade "${{ matrix['ansible_package'] }}"
+
+              # Show which Ansible version we got
+              ansible --version
+
+              # Run sanity tests for this specific Python version
+              ansible-test sanity --venv --python ${{ matrix['python'] }} -v
+            '
+
+  linux-units:
+    name: >
+      Units (${{ matrix['os'] }} - Py${{ matrix['python'] }}/
+      Ansible${{ matrix['ansible_version'] }})
+    runs-on: ubuntu-latest
+    needs: linux-matrix
     strategy:
       fail-fast: false
       matrix:
-        os: &runners
-          - macos-13
-          - macos-14
-          - macos-latest
-          # - freebsd-13
-          # - freebsd-14
-          # - openbsd-7.6
-          # - openbsd-7.7
-    runs-on: ${{ matrix.os }}
+        include: >-
+          ${{ fromJson(needs['linux-matrix']['outputs']['test-matrix']) }}
     steps:
       - uses: actions/checkout@v4
-      - name: Install Ansible Core
+
+      - name: Run unit tests in container
         run: |
-          python3 -m venv .venv
-          . ./.venv/bin/activate
-          pip install ansible-core
+          collection_path=":/root/.ansible/collections/ansible_collections"
+          collection_path="${collection_path}/o0_o/posix"
+          docker run --rm \
+            -v "${{ github['workspace'] }}${collection_path}" \
+            -w /root/.ansible/collections/ansible_collections/o0_o/posix \
+            -e ANSIBLE_PACKAGE="${{ matrix['ansible_package'] }}" \
+            ${{ matrix['os'] }} sh -c '
+              set -eux
+              export LINUX_OS="${{ matrix['os'] }}"
+              export PYTHON_VERSION="${{ matrix['python'] }}"
+              export TEST_TYPE="units"
+              . .github/scripts/setup-linux-pyenv.sh
+
+              # Run unit tests as both root and non-root users
+              . .github/scripts/run-tests-multi-user.sh
+            '
+
+  linux-integration-command:
+    name: >
+      Integration (command - ${{ matrix['os'] }} -
+      Py${{ matrix['python'] }}/Ansible${{ matrix['ansible_version'] }})
+    runs-on: ubuntu-latest
+    needs: linux-matrix
+    strategy:
+      fail-fast: false
+      matrix:
+        include: >-
+          ${{ fromJson(needs['linux-matrix']['outputs']['test-matrix']) }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run integration tests in container
+        run: |
+          collection_path=":/root/.ansible/collections/ansible_collections"
+          collection_path="${collection_path}/o0_o/posix"
+          docker run --rm \
+            -v "${{ github['workspace'] }}${collection_path}" \
+            -w /root/.ansible/collections/ansible_collections/o0_o/posix \
+            -e ANSIBLE_PACKAGE="${{ matrix['ansible_package'] }}" \
+            ${{ matrix['os'] }} sh -c '
+              set -eux
+              export LINUX_OS="${{ matrix['os'] }}"
+              export PYTHON_VERSION="${{ matrix['python'] }}"
+              export TEST_TYPE="integration"
+              export INTEGRATION_TARGET="command"
+              . .github/scripts/setup-linux-pyenv.sh
+
+              # Run specific integration test target as both root and
+              # non-root users
+              . .github/scripts/run-tests-multi-user.sh
+            '
+
+  linux-integration-facts:
+    name: >
+      Integration (facts - ${{ matrix['os'] }} -
+      Py${{ matrix['python'] }}/Ansible${{ matrix['ansible_version'] }})
+    runs-on: ubuntu-latest
+    needs: linux-matrix
+    strategy:
+      fail-fast: false
+      matrix:
+        include: >-
+          ${{ fromJson(needs['linux-matrix']['outputs']['test-matrix']) }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run integration tests in container
+        run: |
+          collection_path=":/root/.ansible/collections/ansible_collections"
+          collection_path="${collection_path}/o0_o/posix"
+          docker run --rm \
+            -v "${{ github['workspace'] }}${collection_path}" \
+            -w /root/.ansible/collections/ansible_collections/o0_o/posix \
+            -e ANSIBLE_PACKAGE="${{ matrix['ansible_package'] }}" \
+            ${{ matrix['os'] }} sh -c '
+              set -eux
+              export LINUX_OS="${{ matrix['os'] }}"
+              export PYTHON_VERSION="${{ matrix['python'] }}"
+              export TEST_TYPE="integration"
+              export INTEGRATION_TARGET="facts"
+              . .github/scripts/setup-linux-pyenv.sh
+
+              # Run specific integration test target as both root and
+              # non-root users
+              . .github/scripts/run-tests-multi-user.sh
+            '
+
+  linux-integration-lineinfile_dedupe:
+    name: >
+      Integration (lineinfile_dedupe - ${{ matrix['os'] }} -
+      Py${{ matrix['python'] }}/Ansible${{ matrix['ansible_version'] }})
+    runs-on: ubuntu-latest
+    needs: linux-matrix
+    strategy:
+      fail-fast: false
+      matrix:
+        include: >-
+          ${{ fromJson(needs['linux-matrix']['outputs']['test-matrix']) }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run integration tests in container
+        run: |
+          collection_path=":/root/.ansible/collections/ansible_collections"
+          collection_path="${collection_path}/o0_o/posix"
+          docker run --rm \
+            -v "${{ github['workspace'] }}${collection_path}" \
+            -w /root/.ansible/collections/ansible_collections/o0_o/posix \
+            -e ANSIBLE_PACKAGE="${{ matrix['ansible_package'] }}" \
+            ${{ matrix['os'] }} sh -c '
+              set -eux
+              export LINUX_OS="${{ matrix['os'] }}"
+              export PYTHON_VERSION="${{ matrix['python'] }}"
+              export TEST_TYPE="integration"
+              export INTEGRATION_TARGET="lineinfile_dedupe"
+              . .github/scripts/setup-linux-pyenv.sh
+
+              # Run specific integration test target as both root and
+              # non-root users
+              . .github/scripts/run-tests-multi-user.sh
+            '
+
+  linux-integration-slurp64:
+    name: >
+      Integration (slurp64 - ${{ matrix['os'] }} -
+      Py${{ matrix['python'] }}/Ansible${{ matrix['ansible_version'] }})
+    runs-on: ubuntu-latest
+    needs: linux-matrix
+    strategy:
+      fail-fast: false
+      matrix:
+        include: >-
+          ${{ fromJson(needs['linux-matrix']['outputs']['test-matrix']) }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run integration tests in container
+        run: |
+          collection_path=":/root/.ansible/collections/ansible_collections"
+          collection_path="${collection_path}/o0_o/posix"
+          docker run --rm \
+            -v "${{ github['workspace'] }}${collection_path}" \
+            -w /root/.ansible/collections/ansible_collections/o0_o/posix \
+            -e ANSIBLE_PACKAGE="${{ matrix['ansible_package'] }}" \
+            ${{ matrix['os'] }} sh -c '
+              set -eux
+              export LINUX_OS="${{ matrix['os'] }}"
+              export PYTHON_VERSION="${{ matrix['python'] }}"
+              export TEST_TYPE="integration"
+              export INTEGRATION_TARGET="slurp64"
+              . .github/scripts/setup-linux-pyenv.sh
+
+              # Run specific integration test target as both root and
+              # non-root users
+              . .github/scripts/run-tests-multi-user.sh
+            '
+
+  linux-integration-template:
+    name: >
+      Integration (template - ${{ matrix['os'] }} -
+      Py${{ matrix['python'] }}/Ansible${{ matrix['ansible_version'] }})
+    runs-on: ubuntu-latest
+    needs: linux-matrix
+    strategy:
+      fail-fast: false
+      matrix:
+        include: >-
+          ${{ fromJson(needs['linux-matrix']['outputs']['test-matrix']) }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run integration tests in container
+        run: |
+          collection_path=":/root/.ansible/collections/ansible_collections"
+          collection_path="${collection_path}/o0_o/posix"
+          docker run --rm \
+            -v "${{ github['workspace'] }}${collection_path}" \
+            -w /root/.ansible/collections/ansible_collections/o0_o/posix \
+            -e ANSIBLE_PACKAGE="${{ matrix['ansible_package'] }}" \
+            ${{ matrix['os'] }} sh -c '
+              set -eux
+              export LINUX_OS="${{ matrix['os'] }}"
+              export PYTHON_VERSION="${{ matrix['python'] }}"
+              export TEST_TYPE="integration"
+              export INTEGRATION_TARGET="template"
+              . .github/scripts/setup-linux-pyenv.sh
+
+              # Run specific integration test target as both root and
+              # non-root users
+              . .github/scripts/run-tests-multi-user.sh
+            '
+
+  macos-sanity:
+    name: >
+      Sanity (${{ matrix['os'] }} - Py${{ matrix['python'] }}/
+      Ansible${{ matrix['ansible_version'] }})
+    runs-on: ${{ matrix['os'] }}
+    needs: macos-matrix
+    strategy:
+      fail-fast: false
+      matrix:
+        include: >-
+          ${{ fromJson(needs['macos-matrix']['outputs']['test-matrix']) }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix['python'] }}
+
       - name: Run sanity tests
-        run: ansible-test sanity --venv
+        run: |
+          # Create proper ansible collections structure
+          mkdir -p ../../../ansible_collections/o0_o
+          cp -R . ../../../ansible_collections/o0_o/posix
+          cd ../../../ansible_collections/o0_o/posix
 
-  runner-units:
-    name: Unit tests on macOS and BSDs
+          # Use specific Python version for ansible-core installation
+          python${{ matrix['python'] }} -m venv .venv
+          . .venv/bin/activate
+          pip install --upgrade pip
+          pip install --upgrade "${{ matrix['ansible_package'] }}"
+
+          # Show which Ansible version we got
+          ansible --version
+
+          # Run sanity tests for this specific Python version
+          ansible-test sanity --venv --python ${{ matrix['python'] }} -v
+
+  macos-units:
+    name: >
+      Units (${{ matrix['os'] }} - Py${{ matrix['python'] }}/
+      Ansible${{ matrix['ansible_version'] }})
+    runs-on: ${{ matrix['os'] }}
+    needs: macos-matrix
     strategy:
       fail-fast: false
       matrix:
-        os: *runners
-    runs-on: ${{ matrix.os }}
+        include: >-
+          ${{ fromJson(needs['macos-matrix']['outputs']['test-matrix']) }}
     steps:
       - uses: actions/checkout@v4
-      - name: Install Ansible Core
-        run: |
-          python3 -m venv .venv
-          . ./.venv/bin/activate
-          pip install ansible-core
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix['python'] }}
+
       - name: Run unit tests
-        run: ansible-test units --venv
+        run: |
+          # Create proper ansible collections structure
+          mkdir -p ../../../ansible_collections/o0_o
+          cp -R . ../../../ansible_collections/o0_o/posix
+          cd ../../../ansible_collections/o0_o/posix
 
-  runner-integration:
-    name: Integration tests on macOS and BSDs
+          # Use specific Python version for ansible-core installation
+          python${{ matrix['python'] }} -m venv .venv
+          . .venv/bin/activate
+          pip install --upgrade pip
+          pip install --upgrade "${{ matrix['ansible_package'] }}"
+
+          # Show which Ansible version we got
+          ansible --version
+
+          # Run unit tests for this specific Python version
+          ansible-test units --venv --python ${{ matrix['python'] }} -v
+
+  macos-integration-command:
+    name: >
+      Integration (command - ${{ matrix['os'] }} -
+      Py${{ matrix['python'] }}/Ansible${{ matrix['ansible_version'] }})
+    runs-on: ${{ matrix['os'] }}
+    needs: macos-matrix
     strategy:
       fail-fast: false
       matrix:
-        os: *runners
-    runs-on: ${{ matrix.os }}
+        include: >-
+          ${{ fromJson(needs['macos-matrix']['outputs']['test-matrix']) }}
     steps:
       - uses: actions/checkout@v4
-      - name: Install Ansible Core
-        run: |
-          python3 -m venv .venv
-          . ./.venv/bin/activate
-          pip install ansible-core
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix['python'] }}
+
       - name: Run integration tests
-        run: ansible-test integration --venv
+        run: |
+          # Create proper ansible collections structure
+          mkdir -p ../../../ansible_collections/o0_o
+          cp -R . ../../../ansible_collections/o0_o/posix
+          cd ../../../ansible_collections/o0_o/posix
 
-  # build:
-  #   name: Build Collection
-  #   runs-on: ubuntu-latest
-  #   needs: [sanity, units, integration, macos]
-  #   steps:
-  #     - uses: actions/checkout@v4
-  #     - name: Install Ansible Core
-  #       run: pip install ansible-core
-  #     - name: Build Collection
-  #       run: ansible-galaxy collection build
-  #     - name: Upload Artifact
-  #       uses: actions/upload-artifact@v4
-  #       with:
-  #         name: ansible-collection-tarball
-  #         path: ./*.tar.gz
+          # Use specific Python version for ansible-core installation
+          python${{ matrix['python'] }} -m venv .venv
+          . .venv/bin/activate
+          pip install --upgrade pip
+          pip install --upgrade "${{ matrix['ansible_package'] }}"
 
-  # publish:
-  #   name: Publish to Ansible Galaxy
-  #   runs-on: ubuntu-latest
-  #   needs: build
-  #   if: startsWith(github.ref, 'refs/tags/v')
-  #   steps:
-  #     - uses: actions/download-artifact@v4
-  #       with:
-  #         name: ansible-collection-tarball
-  #     - name: Install Ansible Core
-  #       run: pip install ansible-core
-  #     - name: Publish to Galaxy
-  #       run: >
-  #         ansible-galaxy collection publish ./*.tar.gz
-  #         --token ${{ secrets.GALAXY_API_KEY }}
+          # Show which Ansible version we got
+          ansible --version
+
+          # Run specific integration test target
+          ansible-test integration --venv --python \
+            ${{ matrix['python'] }} command -v
+
+  macos-integration-facts:
+    name: >
+      Integration (facts - ${{ matrix['os'] }} -
+      Py${{ matrix['python'] }}/Ansible${{ matrix['ansible_version'] }})
+    runs-on: ${{ matrix['os'] }}
+    needs: macos-matrix
+    strategy:
+      fail-fast: false
+      matrix:
+        include: >-
+          ${{ fromJson(needs['macos-matrix']['outputs']['test-matrix']) }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix['python'] }}
+
+      - name: Run integration tests
+        run: |
+          # Create proper ansible collections structure
+          mkdir -p ../../../ansible_collections/o0_o
+          cp -R . ../../../ansible_collections/o0_o/posix
+          cd ../../../ansible_collections/o0_o/posix
+
+          # Use specific Python version for ansible-core installation
+          python${{ matrix['python'] }} -m venv .venv
+          . .venv/bin/activate
+          pip install --upgrade pip
+          pip install --upgrade "${{ matrix['ansible_package'] }}"
+
+          # Show which Ansible version we got
+          ansible --version
+
+          # Run specific integration test target
+          ansible-test integration --venv --python \
+            ${{ matrix['python'] }} facts -v
+
+  macos-integration-lineinfile_dedupe:
+    name: >
+      Integration (lineinfile_dedupe - ${{ matrix['os'] }} -
+      Py${{ matrix['python'] }}/Ansible${{ matrix['ansible_version'] }})
+    runs-on: ${{ matrix['os'] }}
+    needs: macos-matrix
+    strategy:
+      fail-fast: false
+      matrix:
+        include: >-
+          ${{ fromJson(needs['macos-matrix']['outputs']['test-matrix']) }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix['python'] }}
+
+      - name: Run integration tests
+        run: |
+          # Create proper ansible collections structure
+          mkdir -p ../../../ansible_collections/o0_o
+          cp -R . ../../../ansible_collections/o0_o/posix
+          cd ../../../ansible_collections/o0_o/posix
+
+          # Use specific Python version for ansible-core installation
+          python${{ matrix['python'] }} -m venv .venv
+          . .venv/bin/activate
+          pip install --upgrade pip
+          pip install --upgrade "${{ matrix['ansible_package'] }}"
+
+          # Show which Ansible version we got
+          ansible --version
+
+          # Run specific integration test target
+          ansible-test integration --venv --python \
+            ${{ matrix['python'] }} lineinfile_dedupe -v
+
+  macos-integration-slurp64:
+    name: >
+      Integration (slurp64 - ${{ matrix['os'] }} -
+      Py${{ matrix['python'] }}/Ansible${{ matrix['ansible_version'] }})
+    runs-on: ${{ matrix['os'] }}
+    needs: macos-matrix
+    strategy:
+      fail-fast: false
+      matrix:
+        include: >-
+          ${{ fromJson(needs['macos-matrix']['outputs']['test-matrix']) }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix['python'] }}
+
+      - name: Run integration tests
+        run: |
+          # Create proper ansible collections structure
+          mkdir -p ../../../ansible_collections/o0_o
+          cp -R . ../../../ansible_collections/o0_o/posix
+          cd ../../../ansible_collections/o0_o/posix
+
+          # Use specific Python version for ansible-core installation
+          python${{ matrix['python'] }} -m venv .venv
+          . .venv/bin/activate
+          pip install --upgrade pip
+          pip install --upgrade "${{ matrix['ansible_package'] }}"
+
+          # Show which Ansible version we got
+          ansible --version
+
+          # Run specific integration test target
+          ansible-test integration --venv --python \
+            ${{ matrix['python'] }} slurp64 -v
+
+  macos-integration-template:
+    name: >
+      Integration (template - ${{ matrix['os'] }} -
+      Py${{ matrix['python'] }}/Ansible${{ matrix['ansible_version'] }})
+    runs-on: ${{ matrix['os'] }}
+    needs: macos-matrix
+    strategy:
+      fail-fast: false
+      matrix:
+        include: >-
+          ${{ fromJson(needs['macos-matrix']['outputs']['test-matrix']) }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix['python'] }}
+
+      - name: Run integration tests
+        run: |
+          # Create proper ansible collections structure
+          mkdir -p ../../../ansible_collections/o0_o
+          cp -R . ../../../ansible_collections/o0_o/posix
+          cd ../../../ansible_collections/o0_o/posix
+
+          # Use specific Python version for ansible-core installation
+          python${{ matrix['python'] }} -m venv .venv
+          . .venv/bin/activate
+          pip install --upgrade pip
+          pip install --upgrade "${{ matrix['ansible_package'] }}"
+
+          # Show which Ansible version we got
+          ansible --version
+
+          # Run specific integration test target
+          ansible-test integration --venv --python \
+            ${{ matrix['python'] }} template -v
+
+  sanity-complete:
+    name: All Sanity Tests Complete
+    runs-on: ubuntu-latest
+    needs:
+      - linux-sanity
+      - macos-sanity
+    steps:
+      - name: Sanity tests completed
+        run: echo "All sanity tests have completed successfully"
+
+  units-complete:
+    name: All Unit Tests Complete
+    runs-on: ubuntu-latest
+    needs:
+      - linux-units
+      - macos-units
+    steps:
+      - name: Unit tests completed
+        run: echo "All unit tests have completed successfully"
+
+  integration-complete:
+    name: All Integration Tests Complete
+    runs-on: ubuntu-latest
+    needs:
+      - linux-integration-command
+      - linux-integration-facts
+      - linux-integration-lineinfile_dedupe
+      - linux-integration-slurp64
+      - linux-integration-template
+      - macos-integration-command
+      - macos-integration-facts
+      - macos-integration-lineinfile_dedupe
+      - macos-integration-slurp64
+      - macos-integration-template
+    steps:
+      - name: Integration tests completed
+        run: echo "All integration tests have completed successfully"
+
+  build:
+    name: Build Collection
+    runs-on: ubuntu-latest
+    needs:
+      - sanity-complete
+      - units-complete
+      - integration-complete
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: Install Ansible Core
+        run: pip install ansible-core
+
+      - name: Build Collection
+        run: ansible-galaxy collection build
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ansible-collection-tarball
+          path: ./*.tar.gz
+
+  publish:
+    name: Publish to Ansible Galaxy
+    runs-on: ubuntu-latest
+    needs: build
+    if: startsWith(github['ref'], 'refs/tags/v')
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: ansible-collection-tarball
+      - name: Install Ansible Core
+        run: pip install ansible-core
+      - name: Publish to Galaxy
+        run: >
+          ansible-galaxy collection publish ./*.tar.gz
+          --token ${{ secrets['GALAXY_API_KEY'] }}

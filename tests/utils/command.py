@@ -23,9 +23,7 @@ def real_cmd(cmd, stdin=None, task_vars=None, check_mode=None, **kwargs):
     elif isinstance(cmd, str):
         shell = True
     else:
-        raise TypeError(
-            f"Expected cmd to be str or list, got {type(cmd).__name__}"
-        )
+        raise TypeError(f"Expected cmd to be str or list, got {type(cmd).__name__}")
 
     try:
         result = subprocess.run(

@@ -6,6 +6,10 @@
 # (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
 #
 # Copyright (c) 2025 oØ.o (@o0-o)
+# Adapted from:
+#   - The template action plugin in Ansible core (GPL-3.0-or-later)
+#     https://github.com/ansible/ansible/blob/4a0d2b06663b4cc4a6c0ce4f103f0559fdffb155/lib/ansible/plugins/action/template.py
+#     https://github.com/ansible/ansible/blob/a5cc030818eb7b5ad7e86adc8fa09b18540f50c5/lib/ansible/plugins/action/template.py
 #
 # This file is part of the o0_o.posix Ansible Collection.
 
@@ -27,11 +31,48 @@ from jinja2.defaults import (
 )
 
 from ansible import constants as C
+from ansible import __version__ as ansible_version
 from ansible.errors import AnsibleActionFail, AnsibleError
 from ansible.module_utils.common.file import get_file_arg_spec
 from ansible.module_utils.common.text.converters import to_bytes, to_text
-from ansible.template import generate_ansible_template_vars
 from ansible_collections.o0_o.posix.plugins.action_utils import PosixBase
+
+
+def _is_ansible_2_19_plus():
+    """Check if running on Ansible 2.19 or later.
+
+    :returns bool: True if Ansible version is 2.19 or higher
+    """
+    try:
+        version_parts = ansible_version.split(".")
+        major = int(version_parts[0])
+        minor = int(version_parts[1]) if len(version_parts) > 1 else 0
+        return (major > 2) or (major == 2 and minor >= 19)
+    except (ValueError, IndexError):
+        # If we can't parse the version, assume older version
+        return False
+
+
+# Version detection for conditional imports
+IS_ANSIBLE_2_19_PLUS = _is_ansible_2_19_plus()
+
+# Conditional imports based on Ansible version
+if IS_ANSIBLE_2_19_PLUS:
+    # Ansible 2.19+ imports
+    from ansible.template import trust_as_template
+    from ansible._internal._templating import _template_vars
+
+    generate_ansible_template_vars = None
+    AnsibleEnvironment = None
+else:
+    # Ansible 2.15-2.18 imports
+    from ansible.template import (
+        generate_ansible_template_vars,
+        AnsibleEnvironment,
+    )
+
+    trust_as_template = None
+    _template_vars = None
 
 
 class ActionModule(PosixBase):
@@ -203,29 +244,51 @@ class ActionModule(PosixBase):
         if mode == "preserve":
             mode = "0%03o" % stat.S_IMODE(os.stat(resolved_src).st_mode)
 
-        # Template content
-        with open(resolved_src, encoding="utf-8") as f:
-            template_data = f.read()
+        # Template the source data locally - version-specific loading
+        if IS_ANSIBLE_2_19_PLUS:
+            # Ansible 2.19+ approach: use get_text_file_contents with
+            # trust_as_template
+            template_data = trust_as_template(
+                self._loader.get_text_file_contents(resolved_src)
+            )
+        else:
+            # Ansible 2.15-2.18 approach: manual file loading
+            try:
+                tmp_source = self._loader.get_real_file(resolved_src)
+            except Exception:
+                # Fallback if get_real_file doesn't exist
+                tmp_source = resolved_src
 
+            b_tmp_source = to_bytes(tmp_source, errors="surrogate_or_strict")
+
+            try:
+                with open(b_tmp_source, "rb") as f:
+                    try:
+                        template_data = to_text(
+                            f.read(), errors="surrogate_or_strict"
+                        )
+                    except UnicodeError:
+                        raise AnsibleActionFail(
+                            "Template source files must be utf-8 encoded"
+                        )
+            finally:
+                # Clean up tmp file if it was created
+                if tmp_source != resolved_src:
+                    try:
+                        self._loader.cleanup_tmp_file(b_tmp_source)
+                    except Exception:
+                        pass  # Ignore cleanup errors
+
+        # Set up searchpath for both versions
         searchpath = task_vars.get("ansible_search_path", [])
         searchpath.extend(
             [self._loader._basedir, os.path.dirname(resolved_src)]
         )
-        searchpath = [
-            os.path.join(p, "templates") for p in searchpath
-        ] + searchpath
-
-        vars_copy = task_vars.copy()
-        vars_copy.update(
-            generate_ansible_template_vars(
-                path=src,
-                fullpath=resolved_src,
-                dest_path=dest,
-                # include_ansible_managed='ansible_managed' not in
-                # task_vars,
-            )
+        searchpath = (
+            [os.path.join(p, "templates") for p in searchpath] + searchpath
         )
 
+        # Create common overrides for both versions
         overrides = {
             "block_start_string": block_start_string,
             "block_end_string": block_end_string,
@@ -238,14 +301,53 @@ class ActionModule(PosixBase):
             "newline_sequence": newline_sequence,
         }
 
-        templar = self._templar.copy_with_new_env(
-            searchpath=searchpath, available_variables=vars_copy
-        )
+        # Process template using version-specific approach
+        temp_vars = task_vars.copy()
 
-        result_text = templar.template(
-            template_data, escape_backslashes=False, overrides=overrides
-        )
-        result_text = result_text or ""
+        if IS_ANSIBLE_2_19_PLUS:
+            # Ansible 2.19+ approach
+            temp_vars.update(
+                _template_vars.generate_ansible_template_vars(
+                    path=src,
+                    fullpath=resolved_src,
+                    dest_path=dest,
+                    include_ansible_managed="ansible_managed" not in temp_vars,
+                )
+            )
+
+            # Create templar and process template
+            data_templar = self._templar.copy_with_new_env(
+                searchpath=searchpath, available_variables=temp_vars
+            )
+            resultant = data_templar.template(
+                template_data, escape_backslashes=False, overrides=overrides
+            )
+        else:
+            # Ansible 2.15-2.18 approach
+            temp_vars.update(
+                generate_ansible_template_vars(src, resolved_src, dest)
+            )
+
+            # Create templar with AnsibleEnvironment
+            templar = self._templar.copy_with_new_env(
+                environment_class=AnsibleEnvironment,
+                searchpath=searchpath,
+                newline_sequence=newline_sequence,
+                available_variables=temp_vars,
+            )
+
+            # Use do_template for Ansible 2.15 compatibility
+            resultant = templar.do_template(
+                template_data,
+                preserve_trailing_newlines=True,
+                escape_backslashes=False,
+                overrides=overrides,
+            )
+
+        if resultant is None:
+            resultant = ""
+
+        result_text = resultant
 
         # Create temp file
         local_tempdir = tempfile.mkdtemp(dir=C.DEFAULT_LOCAL_TMP)
