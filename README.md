@@ -1,5 +1,6 @@
 # o0_o.posix
 
+[![CI](https://github.com/o0-o/ansible-collection-posix/actions/workflows/ci.yml/badge.svg)](https://github.com/o0-o/ansible-collection-posix/actions/workflows/ci.yml)
 [![Ansible Galaxy](https://img.shields.io/ansible/collection/v/o0_o/posix.svg?color=brightgreen&label=ansible%20galaxy)](https://galaxy.ansible.com/o0_o/posix)
 
 Ansible Collection for POSIX-compatible modules and action plugins with raw fallback support.
