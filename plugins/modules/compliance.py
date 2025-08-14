@@ -18,7 +18,7 @@ DOCUMENTATION = r"""
 ---
 module: compliance
 short_description: Check POSIX and UNIX standards compliance
-version_added: "1.1.0"
+version_added: "1.4.0"
 description:
   - Tests whether the target system is POSIX-compliant by checking for
     POSIX and X/Open compliance using getconf commands.
