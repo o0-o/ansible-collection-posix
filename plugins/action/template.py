@@ -284,9 +284,9 @@ class ActionModule(PosixBase):
         searchpath.extend(
             [self._loader._basedir, os.path.dirname(resolved_src)]
         )
-        searchpath = (
-            [os.path.join(p, "templates") for p in searchpath] + searchpath
-        )
+        searchpath = [
+            os.path.join(p, "templates") for p in searchpath
+        ] + searchpath
 
         # Create common overrides for both versions
         overrides = {
@@ -443,8 +443,8 @@ class ActionModule(PosixBase):
 
                     elif not force:
                         self.result["msg"] = (
-                            "File exists and force is disabled, taking no "
-                            "action"
+                            "File exists and force is disabled, taking "
+                            "no action"
                         )
 
                     else:

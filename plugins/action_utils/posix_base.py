@@ -198,6 +198,8 @@ class PosixBase(ActionBase):
             args["argv"] = cmd
         elif isinstance(cmd, str):
             args["cmd"] = cmd
+            args["_uses_shell"] = True
+            args["executable"] = "/bin/sh"
         else:
             raise TypeError(
                 f"Expected cmd to be str or list, got {type(cmd).__name__}"
@@ -434,7 +436,8 @@ class PosixBase(ActionBase):
 
         if result["rc"] != 0:
             raise AnsibleActionFail(
-                f"Validation failed: {validate_cmd} => " f"{result.get('stderr', '')}"
+                f"Validation failed: {validate_cmd} => "
+                f"{result.get('stderr', '')}"
             )
 
     def _create_backup(
@@ -461,7 +464,9 @@ class PosixBase(ActionBase):
         )
 
         if result["rc"] != 0:
-            raise AnsibleActionFail(f"Backup failed: {result.get('stderr', '')}")
+            raise AnsibleActionFail(
+                f"Backup failed: {result.get('stderr', '')}"
+            )
 
         return backup_path
 
@@ -490,7 +495,9 @@ class PosixBase(ActionBase):
             return
 
         selinux_keys = [
-            k for k in ("selevel", "serole", "setype", "seuser") if perms.get(k)
+            k
+            for k in ("selevel", "serole", "setype", "seuser")
+            if perms.get(k)
         ]
         if not selinux_keys:
             return
@@ -633,7 +640,9 @@ class PosixBase(ActionBase):
 
         cmd_result = self._cmd(ls_args, task_vars=task_vars)
         if cmd_result["rc"] != 0:
-            raise AnsibleActionFail(f"Could not stat {target}: {cmd_result['stderr']}")
+            raise AnsibleActionFail(
+                f"Could not stat {target}: {cmd_result['stderr']}"
+            )
 
         parts = cmd_result["stdout_lines"][0].split()
 
@@ -647,7 +656,8 @@ class PosixBase(ActionBase):
                 seuser, serole, setype, selevel = context.split(":")
             except Exception:
                 raise AnsibleActionFail(
-                    "Unexpected SELinux output from ls -Zd: " f"{cmd_result['stdout']}"
+                    "Unexpected SELinux output from ls -Zd: "
+                    f"{cmd_result['stdout']}"
                 )
 
             return {
@@ -691,8 +701,12 @@ class PosixBase(ActionBase):
             lines = content.splitlines()
             normalized = content if content.endswith("\n") else content + "\n"
         elif isinstance(content, list):
-            if not all(isinstance(line, (str, int, float)) for line in content):
-                raise AnsibleActionFail("_write_file() requires strings or numbers")
+            if not all(
+                isinstance(line, (str, int, float)) for line in content
+            ):
+                raise AnsibleActionFail(
+                    "_write_file() requires strings or numbers"
+                )
             lines = [str(line) for line in content]
             normalized = "\n".join(lines) + "\n"
         else:
@@ -734,7 +748,9 @@ class PosixBase(ActionBase):
             )
 
         self._display.vvv(f"Setting temp file permissions: {tmpfile}")
-        chmod_result = self._cmd(["chmod", "0600", tmpfile], task_vars=task_vars)
+        chmod_result = self._cmd(
+            ["chmod", "0600", tmpfile], task_vars=task_vars
+        )
         if chmod_result.get("rc", 1) != 0:
             raise AnsibleActionFail(
                 f"Failed to chmod temp file: {chmod_result.get('stderr', '')}"
@@ -755,7 +771,8 @@ class PosixBase(ActionBase):
         """
         self._display.vvv("Checking for SELinux tools")
         selinux = any(
-            perms and perms.get(k) for k in ("selevel", "serole", "setype", "seuser")
+            perms and perms.get(k)
+            for k in ("selevel", "serole", "setype", "seuser")
         )
 
         if not selinux:
@@ -788,7 +805,9 @@ class PosixBase(ActionBase):
 
         return True
 
-    def _convert_octal_mode_to_symbolic(self, octal_mode: Union[str, int]) -> str:
+    def _convert_octal_mode_to_symbolic(
+        self, octal_mode: Union[str, int]
+    ) -> str:
         """
         Convert octal mode permissions to symbolic representation.
 
@@ -806,7 +825,9 @@ class PosixBase(ActionBase):
             # Strip type and ACL symbols
             symbolic_mode = stat.filemode(int_mode)[1:10]
         except Exception:
-            raise AnsibleActionFail(f"Error converting mode {octal_mode} to symbols")
+            raise AnsibleActionFail(
+                f"Error converting mode {octal_mode} to symbols"
+            )
         return symbolic_mode
 
     def _compare_content_and_perms(
@@ -864,20 +885,26 @@ class PosixBase(ActionBase):
             ]:
                 if perms.get(key) and perms[key] != old_perms.get(key):
                     self._display.vvv(
-                        f"Perm {key} changed: {perms[key]} != " f"{old_perms.get(key)}"
+                        f"Perm {key} changed: {perms[key]} != "
+                        f"{old_perms.get(key)}"
                     )
                     changed = True
 
             if perms.get("mode"):
                 try:
-                    symbol_perms = self._convert_octal_mode_to_symbolic(perms["mode"])
+                    symbol_perms = self._convert_octal_mode_to_symbolic(
+                        perms["mode"]
+                    )
                     if symbol_perms != old_perms["mode"]:
                         self._display.vvv(
-                            f"Mode changed: {symbol_perms} != " f"{old_perms['mode']}"
+                            f"Mode changed: {symbol_perms} != "
+                            f"{old_perms['mode']}"
                         )
                         changed = True
                 except Exception as e:
-                    raise AnsibleActionFail(f"Invalid mode: {perms['mode']}: {e}")
+                    raise AnsibleActionFail(
+                        f"Invalid mode: {perms['mode']}: {e}"
+                    )
 
         self._display.vvv(f"Comparison result: changed is {changed}")
 
@@ -912,24 +939,33 @@ class PosixBase(ActionBase):
 
         if perms:
             if perms.get("owner"):
-                chown_result = cmd(["chown", perms["owner"], dest], task_vars=task_vars)
+                chown_result = cmd(
+                    ["chown", perms["owner"], dest], task_vars=task_vars
+                )
                 if chown_result["rc"] != 0:
                     raise AnsibleActionFail(
-                        f"Failed to chown {dest}: " f"{chown_result.get('stderr', '')}"
+                        f"Failed to chown {dest}: "
+                        f"{chown_result.get('stderr', '')}"
                     )
 
             if perms.get("group"):
-                chgrp_result = cmd(["chgrp", perms["group"], dest], task_vars=task_vars)
+                chgrp_result = cmd(
+                    ["chgrp", perms["group"], dest], task_vars=task_vars
+                )
                 if chgrp_result["rc"] != 0:
                     raise AnsibleActionFail(
-                        f"Failed to chgrp {dest}: " f"{chgrp_result.get('stderr', '')}"
+                        f"Failed to chgrp {dest}: "
+                        f"{chgrp_result.get('stderr', '')}"
                     )
 
             if perms.get("mode"):
-                chmod_result = cmd(["chmod", perms["mode"], dest], task_vars=task_vars)
+                chmod_result = cmd(
+                    ["chmod", perms["mode"], dest], task_vars=task_vars
+                )
                 if chmod_result["rc"] != 0:
                     raise AnsibleActionFail(
-                        f"Failed to chmod {dest}: " f"{chmod_result.get('stderr', '')}"
+                        f"Failed to chmod {dest}: "
+                        f"{chmod_result.get('stderr', '')}"
                     )
 
         if selinux:
@@ -937,7 +973,9 @@ class PosixBase(ActionBase):
 
         # Confirm permissions were applied
         if perms:
-            final_perms = self._get_perms(dest, selinux=selinux, task_vars=task_vars)
+            final_perms = self._get_perms(
+                dest, selinux=selinux, task_vars=task_vars
+            )
 
             for key in [
                 "owner",
@@ -955,7 +993,9 @@ class PosixBase(ActionBase):
 
             if perms.get("mode"):
                 try:
-                    expected_mode = self._convert_octal_mode_to_symbolic(perms["mode"])
+                    expected_mode = self._convert_octal_mode_to_symbolic(
+                        perms["mode"]
+                    )
                     actual_mode = final_perms.get("mode")
                     if actual_mode != expected_mode:
                         raise AnsibleActionFail(
@@ -967,7 +1007,9 @@ class PosixBase(ActionBase):
                         f"Invalid mode format: {perms['mode']}: {e}"
                     )
 
-    def _make_raw_tmp_path(self, task_vars: Optional[Dict[str, Any]] = None) -> str:
+    def _make_raw_tmp_path(
+        self, task_vars: Optional[Dict[str, Any]] = None
+    ) -> str:
         """
         Create a temporary directory using raw shell fallback.
 
@@ -1096,7 +1138,9 @@ class PosixBase(ActionBase):
         if check_mode:
             self._display.vvv("Check mode is enabled")
             if result["changed"]:
-                result.update({"msg": "Check mode: changes would have been made."})
+                result.update(
+                    {"msg": "Check mode: changes would have been made."}
+                )
             else:
                 result.update({"msg": "Check mode: no changes needed."})
 
@@ -1112,7 +1156,9 @@ class PosixBase(ActionBase):
                     )
 
                 # Apply final permissions and ownership
-                self._apply_perms_and_selinux(dest, perms, selinux, task_vars=task_vars)
+                self._apply_perms_and_selinux(
+                    dest, perms, selinux, task_vars=task_vars
+                )
 
                 result["msg"] = "File written successfully"
             else:
@@ -1159,7 +1205,9 @@ class PosixBase(ActionBase):
                     self.result.update(
                         {
                             "rc": 256,
-                            "msg": (f"Error creating {dir_path} " f"({to_text(e)})"),
+                            "msg": (
+                                f"Error creating {dir_path} " f"({to_text(e)})"
+                            ),
                             "failed": True,
                         }
                     )
