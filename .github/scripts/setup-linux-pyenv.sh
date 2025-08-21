@@ -34,11 +34,10 @@ until [ "$n" -ge 3 ] || [ "$pkg_success" = "1" ]; do
 				-o Dpkg::Options::="--force-confold" \
 				bash git curl tar findutils build-essential \
 				libssl-dev zlib1g-dev libbz2-dev \
-				libreadline-dev libsqlite3-dev \
-				libncursesw5-dev xz-utils tk-dev libxml2-dev \
-				libxmlsec1-dev libffi-dev liblzma-dev \
-				libyaml-dev locales shellcheck openssh-client \
-				rsync &&
+				libsqlite3-dev libncursesw5-dev xz-utils \
+				tk-dev libxml2-dev libxmlsec1-dev libffi-dev \
+				liblzma-dev libyaml-dev locales shellcheck \
+				openssh-client rsync &&
 			# Generate en_US.UTF-8 locale
 			echo "en_US.UTF-8 UTF-8" >> /etc/locale.gen &&
 			locale-gen &&
@@ -63,9 +62,9 @@ until [ "$n" -ge 3 ] || [ "$pkg_success" = "1" ]; do
 			dnf install -y -q --allowerasing \
 				bash git curl tar findutils gcc make \
 				openssl-devel bzip2-devel libffi-devel \
-				zlib-devel readline-devel sqlite-devel \
-				xz-devel glibc-langpack-en openssh-clients \
-				ShellCheck rsync diffutils &&
+				zlib-devel sqlite-devel xz-devel \
+				glibc-langpack-en openssh-clients ShellCheck \
+				rsync diffutils &&
 			# Install distro-specific YAML package
 			case "$LINUX_OS" in
 				fedora:*)
@@ -90,18 +89,17 @@ until [ "$n" -ge 3 ] || [ "$pkg_success" = "1" ]; do
 			zypper --non-interactive install -y --allow-downgrade \
 				bash git curl tar gzip findutils gcc make \
 				libopenssl-devel libbz2-devel libffi-devel \
-				zlib-devel readline-devel sqlite3-devel \
-				xz-devel libyaml-devel gawk coreutils \
-				glibc-locale ShellCheck openssh rsync \
-				diffutils &&
+				zlib-devel sqlite3-devel xz-devel \
+				libyaml-devel gawk coreutils glibc-locale \
+				ShellCheck openssh rsync diffutils &&
 			pkg_success=1
 			;;
 		archlinux)
 			pacman -Syu --noconfirm --quiet &&
 			pacman -S --noconfirm --quiet \
 				bash git curl tar findutils base-devel \
-				openssl zlib bzip2 libffi readline sqlite xz \
-				libyaml shellcheck openssh rsync &&
+				openssl zlib bzip2 libffi sqlite xz libyaml \
+				shellcheck openssh rsync &&
 			pkg_success=1
 			;;
 		alpine:*)
@@ -110,8 +108,8 @@ until [ "$n" -ge 3 ] || [ "$pkg_success" = "1" ]; do
 			apk add --no-cache --quiet \
 				bash git curl tar findutils build-base \
 				openssl-dev zlib-dev bzip2-dev libffi-dev \
-				readline-dev sqlite-dev xz-dev yaml-dev \
-				coreutils shellcheck openssh-client rsync &&
+				sqlite-dev xz-dev yaml-dev coreutils \
+				shellcheck openssh-client rsync &&
 			pkg_success=1
 			;;
 	esac
