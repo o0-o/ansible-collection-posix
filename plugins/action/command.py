@@ -281,7 +281,7 @@ class ActionModule(PosixBase):
             "cmd": {},
             "argv": {"type": "list", "elements": "str"},
             "chdir": {"type": "path"},
-            "executable": {},
+            "executable": {"type": "str"},
             "expand_argument_vars": {"type": "bool"},
             "creates": {"type": "path"},
             "removes": {"type": "path"},
