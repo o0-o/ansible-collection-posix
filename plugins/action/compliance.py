@@ -220,9 +220,9 @@ class ActionModule(PosixBase):
                 compliance["posix"]["components"] = {}
             elif "components" not in compliance["posix"]:
                 compliance["posix"]["components"] = {}
-            compliance["posix"]["components"]["xcu"] = (
-                self.POSIX_UTILITIES.copy()
-            )
+            compliance["posix"]["components"][
+                "xcu"
+            ] = self.POSIX_UTILITIES.copy()
             compliance["posix"]["components"]["xcu"].update(
                 deepcopy(self.POSIX_VERSIONS[posix2_version])
             )
@@ -300,9 +300,7 @@ class ActionModule(PosixBase):
                 compliance["sus"]["version"]["getconf"] = {
                     "_XOPEN_VERSION": xopen_version
                 }
-                compliance["sus"]["getconf"] = {
-                    "_XOPEN_UNIX": xopen_support
-                }
+                compliance["sus"]["getconf"] = {"_XOPEN_UNIX": xopen_support}
                 result["is_posix"] = True
             elif xopen_version not in ["undefined", "", "-1"]:
                 self._display.warning(
