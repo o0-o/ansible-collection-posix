@@ -239,6 +239,7 @@ class ActionModule(PosixBase):
                     f"Assuming _POSIX_VERSION ({posix1_version}) applies "
                     f"because _XOPEN_XCU_VERSION is defined "
                     f"({xopen_xcu_version}) but appears to be invalid"
+                    f"({posix2_version})"
                 )
             else:
                 # POSIX2 was defined
