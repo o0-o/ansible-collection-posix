@@ -9,7 +9,7 @@
 #
 # This file is part of the o0_o.posix Ansible Collection.
 
-"""Generate test matrix for macOS CI based on Python-Ansible compatibility."""
+"""Generate macOS CI test matrix from Python-Ansible compatibility."""
 
 import json
 
