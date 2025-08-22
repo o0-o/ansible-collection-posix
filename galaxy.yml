@@ -24,6 +24,8 @@ tags:
   - facts
 repository: https://github.com/o0-o/ansible-collection-posix
 issues: https://github.com/o0-o/ansible-collection-posix/issues
+dependencies:
+  o0_o.utils: ">=1.0.0"
 build_ignore:
   - .git
   - .github

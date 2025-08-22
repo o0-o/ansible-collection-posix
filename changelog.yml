@@ -16,6 +16,16 @@ releases:
           (POSIX.1-2024, SUSv5).
         - Full transparency with actual getconf values in output.
 
+  v1.3.4:
+    changes:
+      fixed:
+        - Line length issues in command.py, template.py, and posix_base.py
+          to comply with 79 character limit.
+        - Formatting consistency across action plugins and modules.
+      changed:
+        - Removed unnecessary readline dependencies from CI scripts.
+        - Improved code formatting for better readability.
+
   v1.3.3:
     changes:
       fixed:
