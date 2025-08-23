@@ -1,2 +1,6 @@
 # Unit test requirements for o0_o.posix collection
 jc>=1.25.0
+# Dependencies for o0_o.utils.hostname filter (used by uname filter tests)
+dnspython
+idna
+tldextract
