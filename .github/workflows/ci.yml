@@ -3,9 +3,9 @@
 ---
 name: Ansible Collection CI
 
-on:
+'on':
   push:
-    branches: [ main ]
+    branches: [main]
     tags:
       - "v*.*.*"
   pull_request:
