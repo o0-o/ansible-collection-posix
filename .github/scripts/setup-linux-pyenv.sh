@@ -142,21 +142,42 @@ case "$LINUX_OS" in
 		;;
 esac
 
-# Install pyenv system-wide
+# Install pyenv system-wide with retry logic
+# Retry up to 3 times with 60-second delays for transient network issues
 export PYENV_ROOT="/opt/pyenv"
-git clone https://github.com/pyenv/pyenv.git "${PYENV_ROOT}"
-export PATH="/opt/pyenv/bin:${PATH}"
-eval "$(pyenv init - sh)" >/dev/null
+pyenv_success=0
+n=0
+while [ $n -lt 3 ] && [ $pyenv_success -eq 0 ]; do
+	if [ $n -gt 0 ]; then
+		echo "Retrying pyenv installation (attempt $((n+1)) of 3)..."
+		sleep 60
+	fi
+	
+	# Attempt to clone pyenv and install Python
+	if git clone https://github.com/pyenv/pyenv.git "${PYENV_ROOT}" && \
+	   export PATH="/opt/pyenv/bin:${PATH}" && \
+	   eval "$(pyenv init - sh)" >/dev/null && \
+	   pyenv install "${PYTHON_VERSION}" >/dev/null && \
+	   pyenv global "${PYTHON_VERSION}" && \
+	   mkdir -p "$(pyenv root)/plugins" && \
+	   git clone https://github.com/pyenv/pyenv-which-ext.git \
+	       "$(pyenv root)/plugins/pyenv-which-ext" >/dev/null && \
+	   pyenv rehash; then
+		pyenv_success=1
+		echo "pyenv installation successful"
+	else
+		echo "pyenv installation failed"
+		# Clean up partial installation for retry
+		rm -rf "${PYENV_ROOT}"
+	fi
+	n=$((n+1))
+done
 
-# Install the specific Python version from environment variable
-pyenv install "${PYTHON_VERSION}" >/dev/null
-pyenv global "${PYTHON_VERSION}"
-
-# Refresh pyenv shims
-mkdir -p "$(pyenv root)/plugins"
-git clone https://github.com/pyenv/pyenv-which-ext.git \
-	"$(pyenv root)/plugins/pyenv-which-ext" >/dev/null
-pyenv rehash
+# Fail if pyenv installation failed after all retries
+if [ $pyenv_success -eq 0 ]; then
+	echo "ERROR: Failed to install pyenv after 3 attempts"
+	exit 1
+fi
 
 # Create venv with latest Python and install ansible-core
 git config --global --add safe.directory '*'
