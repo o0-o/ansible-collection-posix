@@ -11,6 +11,9 @@
 
 from __future__ import annotations
 
+from unittest.mock import patch
+
+import humanfriendly
 import pytest
 
 from ansible_collections.o0_o.posix.plugins.filter.df import FilterModule
@@ -25,12 +28,12 @@ def filter_module() -> FilterModule:
 @pytest.mark.parametrize(
     "parsed_data,expected",
     [
-        # Standard df output with multiple filesystems
+        # Standard df output with 1024_blocks
         (
             [
                 {
                     "filesystem": "/dev/sda1",
-                    "size": 20971520,
+                    "1024_blocks": 20971520,
                     "used": 5242880,
                     "available": 15728640,
                     "use_percent": 25,
@@ -38,7 +41,7 @@ def filter_module() -> FilterModule:
                 },
                 {
                     "filesystem": "/dev/sda2",
-                    "size": 104857600,
+                    "1024_blocks": 104857600,
                     "used": 52428800,
                     "available": 52428800,
                     "use_percent": 50,
@@ -46,7 +49,7 @@ def filter_module() -> FilterModule:
                 },
                 {
                     "filesystem": "tmpfs",
-                    "size": 2097152,
+                    "1024_blocks": 2097152,
                     "used": 0,
                     "available": 2097152,
                     "use_percent": 0,
@@ -54,51 +57,75 @@ def filter_module() -> FilterModule:
                 },
             ],
             {
-                "filesystems": {
+                "mounts": {
                     "/": {
-                        "filesystem": "/dev/sda1",
-                        "size": 20971520,
-                        "used": 5242880,
-                        "available": 15728640,
-                        "use_percent": 25,
+                        "device": "/dev/sda1",
+                        "capacity": {
+                            "total": {
+                                "bytes": 20971520 * 1024,
+                                "pretty": humanfriendly.format_size(20971520 * 1024, binary=True),
+                            },
+                            "used": {
+                                "bytes": 5242880 * 1024,
+                                "pretty": humanfriendly.format_size(5242880 * 1024, binary=True),
+                            },
+                        },
                     },
                     "/home": {
-                        "filesystem": "/dev/sda2",
-                        "size": 104857600,
-                        "used": 52428800,
-                        "available": 52428800,
-                        "use_percent": 50,
+                        "device": "/dev/sda2",
+                        "capacity": {
+                            "total": {
+                                "bytes": 104857600 * 1024,
+                                "pretty": humanfriendly.format_size(104857600 * 1024, binary=True),
+                            },
+                            "used": {
+                                "bytes": 52428800 * 1024,
+                                "pretty": humanfriendly.format_size(52428800 * 1024, binary=True),
+                            },
+                        },
                     },
                     "/dev/shm": {
-                        "filesystem": "tmpfs",
-                        "size": 2097152,
-                        "used": 0,
-                        "available": 2097152,
-                        "use_percent": 0,
+                        "device": "tmpfs",
+                        "capacity": {
+                            "total": {
+                                "bytes": 2097152 * 1024,
+                                "pretty": humanfriendly.format_size(2097152 * 1024, binary=True),
+                            },
+                            "used": {
+                                "bytes": 0,
+                                "pretty": humanfriendly.format_size(0, binary=True),
+                            },
+                        },
                     },
                 }
             },
         ),
-        # Single filesystem
+        # Single filesystem with 512_blocks
         (
             [
                 {
                     "filesystem": "/dev/vda1",
-                    "size": 10485760,
-                    "used": 2097152,
-                    "available": 8388608,
+                    "512_blocks": 20971520,
+                    "used": 4194304,
+                    "available": 16777216,
                     "use_percent": 20,
                     "mounted_on": "/",
                 }
             ],
             {
-                "filesystems": {
+                "mounts": {
                     "/": {
-                        "filesystem": "/dev/vda1",
-                        "size": 10485760,
-                        "used": 2097152,
-                        "available": 8388608,
-                        "use_percent": 20,
+                        "device": "/dev/vda1",
+                        "capacity": {
+                            "total": {
+                                "bytes": 20971520 * 512,
+                                "pretty": humanfriendly.format_size(20971520 * 512, binary=True),
+                            },
+                            "used": {
+                                "bytes": 4194304 * 512,
+                                "pretty": humanfriendly.format_size(4194304 * 512, binary=True),
+                            },
+                        },
                     }
                 }
             },
@@ -108,7 +135,7 @@ def filter_module() -> FilterModule:
             [
                 {
                     "filesystem": "/dev/sda1",
-                    "size": 20971520,
+                    "1024_blocks": 20971520,
                     "used": 5242880,
                     "available": 15728640,
                     "use_percent": 25,
@@ -116,7 +143,7 @@ def filter_module() -> FilterModule:
                 },
                 {
                     "filesystem": "/dev/sda2",
-                    "size": 104857600,
+                    "1024_blocks": 104857600,
                     "used": 52428800,
                     "available": 52428800,
                     "use_percent": 50,
@@ -124,54 +151,72 @@ def filter_module() -> FilterModule:
                 },
             ],
             {
-                "filesystems": {
+                "mounts": {
                     "/": {
-                        "filesystem": "/dev/sda1",
-                        "size": 20971520,
-                        "used": 5242880,
-                        "available": 15728640,
-                        "use_percent": 25,
+                        "device": "/dev/sda1",
+                        "capacity": {
+                            "total": {
+                                "bytes": 20971520 * 1024,
+                                "pretty": humanfriendly.format_size(20971520 * 1024, binary=True),
+                            },
+                            "used": {
+                                "bytes": 5242880 * 1024,
+                                "pretty": humanfriendly.format_size(5242880 * 1024, binary=True),
+                            },
+                        },
                     }
                 }
             },
         ),
         # Empty list
-        ([], {"filesystems": {}}),
+        ([], {"mounts": {}}),
         # Network filesystems
         (
             [
                 {
                     "filesystem": "nfs-server:/export",
-                    "size": 1073741824,
-                    "used": 536870912,
-                    "available": 536870912,
+                    "1024_blocks": 1048576,
+                    "used": 524288,
+                    "available": 524288,
                     "use_percent": 50,
                     "mounted_on": "/mnt/nfs",
                 },
                 {
                     "filesystem": "//smb-server/share",
-                    "size": 2147483648,
-                    "used": 1073741824,
-                    "available": 1073741824,
+                    "1024_blocks": 2097152,
+                    "used": 1048576,
+                    "available": 1048576,
                     "use_percent": 50,
                     "mounted_on": "/mnt/smb",
                 },
             ],
             {
-                "filesystems": {
+                "mounts": {
                     "/mnt/nfs": {
-                        "filesystem": "nfs-server:/export",
-                        "size": 1073741824,
-                        "used": 536870912,
-                        "available": 536870912,
-                        "use_percent": 50,
+                        "device": "nfs-server:/export",
+                        "capacity": {
+                            "total": {
+                                "bytes": 1048576 * 1024,
+                                "pretty": humanfriendly.format_size(1048576 * 1024, binary=True),
+                            },
+                            "used": {
+                                "bytes": 524288 * 1024,
+                                "pretty": humanfriendly.format_size(524288 * 1024, binary=True),
+                            },
+                        },
                     },
                     "/mnt/smb": {
-                        "filesystem": "//smb-server/share",
-                        "size": 2147483648,
-                        "used": 1073741824,
-                        "available": 1073741824,
-                        "use_percent": 50,
+                        "device": "//smb-server/share",
+                        "capacity": {
+                            "total": {
+                                "bytes": 2097152 * 1024,
+                                "pretty": humanfriendly.format_size(2097152 * 1024, binary=True),
+                            },
+                            "used": {
+                                "bytes": 1048576 * 1024,
+                                "pretty": humanfriendly.format_size(1048576 * 1024, binary=True),
+                            },
+                        },
                     },
                 }
             },
@@ -181,21 +226,57 @@ def filter_module() -> FilterModule:
             [
                 {
                     "filesystem": "/dev/sda1",
-                    "size": 10485760,
-                    "used": 2097152,
-                    "available": 8388608,
+                    "1024_blocks": 10240,
+                    "used": 2048,
+                    "available": 8192,
                     "use_percent": 20,
                     "mounted_on": "/mnt/my mount",
                 }
             ],
             {
-                "filesystems": {
+                "mounts": {
                     "/mnt/my mount": {
-                        "filesystem": "/dev/sda1",
-                        "size": 10485760,
-                        "used": 2097152,
-                        "available": 8388608,
-                        "use_percent": 20,
+                        "device": "/dev/sda1",
+                        "capacity": {
+                            "total": {
+                                "bytes": 10240 * 1024,
+                                "pretty": humanfriendly.format_size(10240 * 1024, binary=True),
+                            },
+                            "used": {
+                                "bytes": 2048 * 1024,
+                                "pretty": humanfriendly.format_size(2048 * 1024, binary=True),
+                            },
+                        },
+                    }
+                }
+            },
+        ),
+        # Test with df -h style output (size as string)
+        (
+            [
+                {
+                    "filesystem": "/dev/sda1",
+                    "size": "20G",
+                    "used": "5G",
+                    "available": "15G",
+                    "use_percent": 25,
+                    "mounted_on": "/",
+                }
+            ],
+            {
+                "mounts": {
+                    "/": {
+                        "device": "/dev/sda1",
+                        "capacity": {
+                            "total": {
+                                "bytes": humanfriendly.parse_size("20G"),
+                                "pretty": humanfriendly.format_size(humanfriendly.parse_size("20G"), binary=True),
+                            },
+                            "used": {
+                                "bytes": humanfriendly.parse_size("5G"),
+                                "pretty": humanfriendly.format_size(humanfriendly.parse_size("5G"), binary=True),
+                            },
+                        },
                     }
                 }
             },
@@ -208,8 +289,28 @@ def test_format_as_facts(
     expected: dict,
 ) -> None:
     """Test _format_as_facts method with various df outputs."""
-    result = filter_module._format_as_facts(parsed_data)
-    assert result == expected
+    with patch("ansible_collections.o0_o.posix.plugins.filter.df.humanfriendly", humanfriendly):
+        with patch("ansible_collections.o0_o.posix.plugins.filter.df.HAS_HUMANFRIENDLY", True):
+            result = filter_module._format_as_facts(parsed_data)
+            assert result == expected
+
+
+def test_format_as_facts_without_humanfriendly(filter_module: FilterModule) -> None:
+    """Test that _format_as_facts raises error without humanfriendly."""
+    parsed_data = [
+        {
+            "filesystem": "/dev/sda1",
+            "1024_blocks": 20971520,
+            "used": 5242880,
+            "available": 15728640,
+            "use_percent": 25,
+            "mounted_on": "/",
+        }
+    ]
+
+    with patch("ansible_collections.o0_o.posix.plugins.filter.df.HAS_HUMANFRIENDLY", False):
+        with pytest.raises(ImportError, match="humanfriendly"):
+            filter_module._format_as_facts(parsed_data)
 
 
 def test_format_as_facts_preserves_original(filter_module: FilterModule) -> None:
@@ -217,7 +318,7 @@ def test_format_as_facts_preserves_original(filter_module: FilterModule) -> None
     original = [
         {
             "filesystem": "/dev/sda1",
-            "size": 20971520,
+            "1024_blocks": 20971520,
             "used": 5242880,
             "available": 15728640,
             "use_percent": 25,
@@ -230,7 +331,9 @@ def test_format_as_facts_preserves_original(filter_module: FilterModule) -> None
     original_copy = copy.deepcopy(original)
 
     # Call the method
-    filter_module._format_as_facts(original)
+    with patch("ansible_collections.o0_o.posix.plugins.filter.df.humanfriendly", humanfriendly):
+        with patch("ansible_collections.o0_o.posix.plugins.filter.df.HAS_HUMANFRIENDLY", True):
+            filter_module._format_as_facts(original)
 
     # Ensure original wasn't modified
     assert original == original_copy

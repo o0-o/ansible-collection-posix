@@ -34,7 +34,7 @@
           - parsed_default[0]['mounted_on'] is defined
           - >-
             parsed_default[0]['1024_blocks'] is defined or
-            parsed_default[0]['1k_blocks'] is defined or  
+            parsed_default[0]['1k_blocks'] is defined or
             parsed_default[0]['512_blocks'] is defined
           - parsed_default[0]['used'] is defined
           - parsed_default[0]['available'] is defined
@@ -69,23 +69,41 @@
         that:
           - parsed_facts is defined
           - parsed_facts is mapping
-          - parsed_facts['filesystems'] is defined
-          - parsed_facts['filesystems'] is mapping
+          - parsed_facts['mounts'] is defined
+          - parsed_facts['mounts'] is mapping
         fail_msg: >-
-          Facts mode should return structured dict with filesystems key
+          Facts mode should return structured dict with mounts key
 
     - name: Verify root filesystem is present
       ansible.builtin.assert:
         that:
-          - "'/' in parsed_facts['filesystems']"
-          - parsed_facts['filesystems']['/']['filesystem'] is defined
+          - "'/' in parsed_facts['mounts']"
+          - parsed_facts['mounts']['/']['device'] is defined
+          - parsed_facts['mounts']['/']['capacity'] is defined
+          - parsed_facts['mounts']['/']['capacity']['total'] is defined
           - >-
-            parsed_facts['filesystems']['/']['1024_blocks'] is defined or
-            parsed_facts['filesystems']['/']['1k_blocks'] is defined or
-            parsed_facts['filesystems']['/']['512_blocks'] is defined
-          - parsed_facts['filesystems']['/']['used'] is defined
-          - parsed_facts['filesystems']['/']['available'] is defined
-        fail_msg: "Root filesystem should be present in facts output"
+            parsed_facts['mounts']['/']['capacity']['total']['bytes']
+            is number
+          - >-
+            parsed_facts['mounts']['/']['capacity']['total']['pretty']
+            is string
+          - parsed_facts['mounts']['/']['capacity']['used'] is defined
+          - >-
+            parsed_facts['mounts']['/']['capacity']['used']['bytes']
+            is number
+          - >-
+            parsed_facts['mounts']['/']['capacity']['used']['pretty']
+            is string
+          # Available is optional but if present should have correct structure
+          - >-
+            (parsed_facts['mounts']['/']['capacity']['available']
+            is not defined) or
+            (parsed_facts['mounts']['/']['capacity']['available']['bytes']
+            is number and
+             parsed_facts['mounts']['/']['capacity']['available']['pretty']
+             is string)
+        fail_msg: >-
+          Root filesystem should be present in facts output with capacity data
 
 - name: Test filesystem data consistency
   block:
@@ -98,18 +116,25 @@
 
     - name: Get specific filesystem from facts mode
       ansible.builtin.set_fact:
-        root_fs_facts: "{{ parsed_facts['filesystems']['/'] }}"
+        root_fs_facts: "{{ parsed_facts['mounts']['/'] }}"
 
     - name: Assert data consistency between modes
       ansible.builtin.assert:
         that:
-          - root_fs_default['filesystem'] == root_fs_facts['filesystem']
+          - root_fs_default['filesystem'] == root_fs_facts['device']
+          # Verify capacity values match when converted
           - >-
-            (root_fs_default.get('1024_blocks') == root_fs_facts.get('1024_blocks')) or
-            (root_fs_default.get('1k_blocks') == root_fs_facts.get('1k_blocks')) or
-            (root_fs_default.get('512_blocks') == root_fs_facts.get('512_blocks'))
-          - root_fs_default['used'] == root_fs_facts['used']
-          - root_fs_default['available'] == root_fs_facts['available']
+            (root_fs_default.get('1024_blocks', 0) * 1024 ==
+            root_fs_facts['capacity']['total']['bytes']) or
+            (root_fs_default.get('1k_blocks', 0) * 1024 ==
+            root_fs_facts['capacity']['total']['bytes']) or
+            (root_fs_default.get('512_blocks', 0) * 512 ==
+            root_fs_facts['capacity']['total']['bytes'])
+          - >-
+            (root_fs_default.get('used', 0) * 1024 ==
+            root_fs_facts['capacity']['used']['bytes']) or
+            (root_fs_default.get('used', 0) * 512 ==
+            root_fs_facts['capacity']['used']['bytes'])
         fail_msg: >-
           Data should be consistent between default and facts modes
 
@@ -121,7 +146,7 @@
 
     - name: Count filesystems in facts mode
       ansible.builtin.set_fact:
-        fs_count_facts: "{{ parsed_facts['filesystems'] | length }}"
+        fs_count_facts: "{{ parsed_facts['mounts'] | length }}"
 
     - name: Assert filesystem counts match
       ansible.builtin.assert:
@@ -150,7 +175,7 @@
           - empty_default_reg is failed or empty_default == []
           - >-
             empty_facts_reg is failed or
-            empty_facts == {'filesystems': {}}
+            empty_facts == {'mounts': {}}
         fail_msg: "Empty input should either fail or return empty structure"
 
 - name: Test special filesystems handling
@@ -234,10 +259,16 @@
     - name: Assert mock facts structure
       ansible.builtin.assert:
         that:
-          - mock_facts['filesystems'] | length == 3
-          - mock_facts['filesystems']['/']['filesystem'] == '/dev/sda1'
-          - mock_facts['filesystems']['/home']['filesystem'] == '/dev/sda2'
-          - mock_facts['filesystems']['/dev/shm']['filesystem'] == 'tmpfs'
+          - mock_facts['mounts'] | length == 3
+          - mock_facts['mounts']['/']['device'] == '/dev/sda1'
+          - mock_facts['mounts']['/home']['device'] == '/dev/sda2'
+          - mock_facts['mounts']['/dev/shm']['device'] == 'tmpfs'
+          - >-
+            mock_facts['mounts']['/']['capacity']['total']['bytes']
+            is number
+          - >-
+            mock_facts['mounts']['/']['capacity']['total']['pretty']
+            is string
         fail_msg: "Facts mode should correctly organize mock df output"
 
 - name: 'Fail: Test invalid df output'
