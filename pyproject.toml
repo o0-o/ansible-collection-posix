@@ -1,0 +1,9 @@
+[tool.black]
+line-length = 79
+
+[tool.flake8]
+max-line-length = 79
+max-doc-length = 72
+per-file-ignores = [
+    "plugins/modules/*.py:E402",
+]
