@@ -77,7 +77,9 @@ class TestJCBase:
         with pytest.raises(AnsibleFilterError) as exc_info:
             jc_base.jc("test data", "invalid_parser_name_xyz")
 
-        assert "jc parser 'invalid_parser_name_xyz' not found" in str(exc_info.value)
+        assert "jc parser 'invalid_parser_name_xyz' not found" in str(
+            exc_info.value
+        )
 
     def test_parse_command_calls_jc(self, jc_base):
         """Test that parse_command is a working alias for jc."""
@@ -135,7 +137,13 @@ class TestFilterModule:
             # Test different input formats are handled
             ("Linux hostname 5.10.0 #1 SMP PREEMPT x86_64 GNU/Linux"),
             (["Linux hostname 5.10.0 #1 SMP PREEMPT x86_64 GNU/Linux"]),
-            ({"stdout": ("Linux hostname 5.10.0 #1 SMP PREEMPT x86_64 GNU/Linux")}),
+            (
+                {
+                    "stdout": (
+                        "Linux hostname 5.10.0 #1 SMP PREEMPT x86_64 GNU/Linux"
+                    )
+                }
+            ),
         ],
     )
     def test_jc_filter_processes_input_types(self, filter_module, input_data):

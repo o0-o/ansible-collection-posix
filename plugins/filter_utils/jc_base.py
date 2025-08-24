@@ -78,7 +78,9 @@ class JCBase:
             # jc raises various exceptions, catch them all
             raise AnsibleFilterError(f"Error parsing {parser}: {e}")
 
-    def _extract_output(self, data: Union[str, List[str], Dict[str, Any]]) -> str:
+    def _extract_output(
+        self, data: Union[str, List[str], Dict[str, Any]]
+    ) -> str:
         """Extract raw string output from various input formats.
 
         :param data: Input data in various formats

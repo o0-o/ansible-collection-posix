@@ -20,7 +20,7 @@ name: jc
 version_added: "1.4.0"
 short_description: Parse command output using jc library
 description:
-  - Parse various command outputs into structured JSON data using the jc library
+  - Parse various command outputs into structured JSON data using jc library
   - Supports parsing output from common Unix commands like ps, df, mount, etc.
   - See U(https://github.com/kellyjonbrazil/jc) for list of supported parsers
 options:
