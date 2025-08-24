@@ -11,9 +11,36 @@
 
 from __future__ import annotations
 
+import sys
 from typing import Any, Dict
+from unittest.mock import MagicMock
 
 import pytest
+
+
+# Create a mock HostnameFilter class
+class MockHostnameFilter:
+    """Mock HostnameFilter for testing."""
+
+    def hostname(self, value: str) -> Dict[str, str]:
+        """Mock hostname parsing."""
+        hostname_map = {
+            "webserver.example.com": {
+                "short": "webserver",
+                "long": "webserver.example.com",
+            },
+            "macbook.local": {"short": "macbook", "long": "macbook.local"},
+            "localhost": {"short": "localhost"},
+        }
+        return hostname_map.get(value, {"short": value.split(".")[0]})
+
+
+# Mock the o0_o.utils module before importing uname
+mock_filter_module = MagicMock()
+mock_filter_module.HostnameFilter = MockHostnameFilter
+sys.modules["ansible_collections.o0_o.utils.plugins.filter"] = (
+    mock_filter_module
+)
 
 from ansible_collections.o0_o.posix.plugins.filter.uname import FilterModule
 

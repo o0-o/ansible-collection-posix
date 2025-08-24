@@ -14,7 +14,13 @@ from __future__ import annotations
 from typing import Any, Dict, List, Union
 
 from ansible_collections.o0_o.posix.plugins.filter_utils import JCBase
-from ansible_collections.o0_o.utils.plugins.filter import HostnameFilter
+
+try:
+    from ansible_collections.o0_o.utils.plugins.filter import HostnameFilter
+
+    HAS_HOSTNAME_FILTER = True
+except ImportError:
+    HAS_HOSTNAME_FILTER = False
 
 DOCUMENTATION = r"""
 ---
@@ -158,9 +164,9 @@ class FilterModule(JCBase):
     def _format_as_facts(self, parsed: Dict[str, Any]) -> Dict[str, Any]:
         """Format parsed uname data for Ansible facts structure.
 
-        Converts jc's raw uname parsing into a simplified facts structure
-        suitable for direct merge into Ansible facts, with kernel,
-        architecture, and hostname information.
+        Converts jc's raw uname parsing into a simplified facts
+        structure suitable for direct merge into Ansible facts, with
+        kernel, architecture, and hostname information.
 
         :param parsed: Parsed uname data from jc
         :returns: Facts structure with kernel, arch, hostname
@@ -216,7 +222,8 @@ class FilterModule(JCBase):
             jc will raise an error if output is incomplete.
 
         :param data: Command output from 'uname -a'
-        :param facts: If True, format for direct merge into Ansible facts
+        :param facts: If True, format for direct merge into Ansible
+            facts
         :returns: Parsed uname data, or facts structure with kernel,
             arch, hostname
         """
@@ -226,6 +233,14 @@ class FilterModule(JCBase):
         if not facts:
             # Return jc's parsed format directly
             return parsed
+
+        # Check for hostname filter dependency when facts=True
+        if not HAS_HOSTNAME_FILTER:
+            raise ImportError(
+                "The 'facts' mode requires the o0_o.utils collection. "
+                "Please install it with: "
+                "ansible-galaxy collection install o0_o.utils"
+            )
 
         # Format for facts module using separate method
         return self._format_as_facts(parsed)
