@@ -14,6 +14,7 @@ from __future__ import annotations
 import re
 from typing import Any, Dict, List, Union
 
+from ansible.errors import AnsibleFilterError
 from ansible_collections.o0_o.posix.plugins.filter_utils import JCBase
 
 try:
@@ -144,7 +145,7 @@ class FilterModule(JCBase):
         :returns: Facts structure with mounts keyed by mount point
         """
         if not HAS_HUMANFRIENDLY:
-            raise ImportError(
+            raise AnsibleFilterError(
                 "The 'facts' mode requires the humanfriendly library. "
                 "Please install it with: pip install humanfriendly"
             )
@@ -152,8 +153,10 @@ class FilterModule(JCBase):
         for entry in parsed:
             mount_point = entry.get("mounted_on")
             if not mount_point:
-                # TODO: We should warn on this case
-                continue  # Skip entries without mount points
+                raise AnsibleFilterError(
+                    "df output missing 'mounted_on' field for entry: "
+                    f"{entry}"
+                )
 
             mount_data = {}
 
@@ -187,7 +190,7 @@ class FilterModule(JCBase):
                             blocks_multiplier = int(match.group(1))
                             unit = f"{match.group(2).upper()}iB"
                         else:
-                            raise ValueError(
+                            raise AnsibleFilterError(
                                 f"Unable to parse block size format: {blocks}"
                             )
                     break
