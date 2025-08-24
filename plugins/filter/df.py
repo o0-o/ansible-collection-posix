@@ -15,6 +15,100 @@ from typing import Any, Dict, List, Union
 
 from ansible_collections.o0_o.posix.plugins.filter_utils import JCBase
 
+DOCUMENTATION = r"""
+---
+name: df
+short_description: Parse df command output
+version_added: "1.4.0"
+description:
+  - Parse output from the df command into structured data using jc
+  - Can return either raw jc format or simplified facts structure
+  - When used with facts=True, returns filesystems keyed by mount point
+options:
+  _input:
+    description:
+      - Command output from 'df' as string, list of lines, or
+        command result dict
+    type: raw
+    required: true
+  facts:
+    description:
+      - If True, format output for direct merge into Ansible facts
+      - Returns structure with filesystems keyed by mount point
+    type: bool
+    default: false
+requirements:
+  - jc (Python library)
+notes:
+  - The jc library handles various df output formats (df, df -h, df -k, etc.)
+  - Field names vary based on block size (1024_blocks, 512_blocks, size)
+  - When facts=True, mount point is used as key and removed from entry data
+author:
+  - oØ.o (@o0-o)
+"""
+
+EXAMPLES = r"""
+# Parse df output
+- name: Get filesystem usage
+  ansible.builtin.command:
+    cmd: df -h
+  register: df_result
+
+- name: Parse df output
+  ansible.builtin.debug:
+    msg: "{{ df_result.stdout | o0_o.posix.df }}"
+
+# Use facts format for structured data
+- name: Parse for facts
+  ansible.builtin.set_fact:
+    fs_info: "{{ df_result.stdout | o0_o.posix.df(facts=true) }}"
+
+- name: Display root filesystem usage
+  ansible.builtin.debug:
+    msg: "Root filesystem is {{ fs_info.filesystems['/'].use_percent }}% full"
+"""
+
+RETURN = r"""
+# When facts=False (default)
+_output:
+  description: List of filesystem entries from jc parser
+  type: list
+  elements: dict
+  returned: always
+  sample:
+    - filesystem: /dev/disk1s1
+      1024_blocks: 488245288
+      used: 305659284
+      available: 180530392
+      use_percent: 63
+      mounted_on: /
+    - filesystem: /dev/disk1s4
+      1024_blocks: 488245288
+      used: 5369176
+      available: 180530392
+      use_percent: 3
+      mounted_on: /System/Volumes/VM
+
+# When facts=True
+filesystems:
+  description: Filesystems keyed by mount point
+  type: dict
+  returned: always
+  sample:
+    /:
+      filesystem: /dev/disk1s1
+      1024_blocks: 488245288
+      used: 305659284
+      available: 180530392
+      use_percent: 63
+    /System/Volumes/VM:
+      filesystem: /dev/disk1s4
+      1024_blocks: 488245288
+      used: 5369176
+      available: 180530392
+      use_percent: 3
+"""
+
 
 class FilterModule(JCBase):
     """Filter for parsing df command output using jc."""
@@ -25,9 +119,7 @@ class FilterModule(JCBase):
             "df": self.df,
         }
 
-    def _format_as_facts(
-        self, parsed: List[Dict[str, Any]]
-    ) -> Dict[str, Any]:
+    def _format_as_facts(self, parsed: List[Dict[str, Any]]) -> Dict[str, Any]:
         """Format parsed df data for Ansible facts structure.
 
         :param parsed: List of filesystem dictionaries from jc
@@ -50,10 +142,12 @@ class FilterModule(JCBase):
     ) -> Union[List[Dict[str, Any]], Dict[str, Any]]:
         """Parse df output into structured data using jc.
 
-        :param data: Output from df command - string, list of lines,
-            or command result
-        :param facts: If True, format for direct merge into Ansible facts
-        :returns: List of filesystem dictionaries from jc, or facts structure
+        :param data: Output from df command - string, list of lines, or
+            command result
+        :param facts: If True, format for direct merge into Ansible
+            facts
+        :returns: List of filesystem dictionaries from jc, or facts
+            structure
         """
         # Get parsed data from jc
         parsed = self.parse_command(data, "df")
