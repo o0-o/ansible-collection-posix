@@ -251,7 +251,6 @@ class ActionModule(PosixBase):
             {
                 "changed": False,
                 "mounts": sorted_mounts,
-                "mount_count": len(sorted_mounts),
             }
         )
 

@@ -19,15 +19,13 @@
       - mount_result_reg is defined
       - mount_result_reg['mounts'] is defined
       - mount_result_reg['mounts'] is mapping
-      - mount_result_reg['mount_count'] is defined
-      - mount_result_reg['mount_count'] is number
       - mount_result_reg['changed'] == false
     fail_msg: 'Mounts module did not return expected structure'
 
 - name: Display mount information
   ansible.builtin.debug:
     msg: |
-      Found {{ mount_result_reg['mount_count'] }} mount(s)
+      Found {{ mount_result_reg['mounts'] | length }} mount(s)
       Mount points: {{ mount_result_reg['mounts'].keys() | list }}
 
 - name: Check root filesystem if present
@@ -63,8 +61,8 @@
 - name: Compare mount counts
   ansible.builtin.debug:
     msg: |
-      Without virtual: {{ mount_result_reg['mount_count'] }} mount(s)
-      With virtual: {{ all_mounts_reg['mount_count'] }} mount(s)
+      Without virtual: {{ mount_result_reg['mounts'] | length }} mount(s)
+      With virtual: {{ all_mounts_reg['mounts'] | length }} mount(s)
 
 - name: Test in check mode
   o0_o.posix.mounts:
@@ -82,7 +80,7 @@
 - name: Verify consistency between normal and check mode
   ansible.builtin.assert:
     that:
-      - mount_result_reg['mount_count'] == check_mode_reg['mount_count']
+      - mount_result_reg['mounts'] | length == check_mode_reg['mounts'] | length
       - mount_result_reg['mounts'].keys() | list ==
         check_mode_reg['mounts'].keys() | list
     fail_msg: 'Mounts module returned different results in check mode'
@@ -139,8 +137,8 @@
 - name: Verify consistent results
   ansible.builtin.assert:
     that:
-      - mount_result_reg['mount_count'] == second_mount_reg['mount_count']
+      - mount_result_reg['mounts'] | length == second_mount_reg['mounts'] | length
       - mount_result_reg['mounts'].keys() | list ==
         second_mount_reg['mounts'].keys() | list
     fail_msg: |
-      Filesystems module returned inconsistent results on multiple invocations
+      Mounts module returned inconsistent results on multiple invocations
