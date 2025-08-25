@@ -13,6 +13,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Union
 
+from ansible.errors import AnsibleFilterError
 from ansible_collections.o0_o.posix.plugins.filter_utils import JCBase
 
 try:
@@ -236,7 +237,7 @@ class FilterModule(JCBase):
 
         # Check for hostname filter dependency when facts=True
         if not HAS_HOSTNAME_FILTER:
-            raise ImportError(
+            raise AnsibleFilterError(
                 "The 'facts' mode requires the o0_o.utils collection. "
                 "Please install it with: "
                 "ansible-galaxy collection install o0_o.utils"

@@ -16,6 +16,7 @@ from typing import Any, Dict
 from unittest.mock import MagicMock, patch
 
 import pytest
+from ansible.errors import AnsibleFilterError
 
 
 # Create a mock HostnameFilter class
@@ -137,7 +138,7 @@ def test_uname_facts_mode_without_utils(
         "uname.HAS_HOSTNAME_FILTER",
         False,
     ):
-        with pytest.raises(ImportError, match="o0_o.utils collection"):
+        with pytest.raises(AnsibleFilterError, match="o0_o.utils collection"):
             filter_module.uname("dummy", facts=True)
 
 
