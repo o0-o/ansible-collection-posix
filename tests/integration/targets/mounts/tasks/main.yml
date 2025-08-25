@@ -1,0 +1,149 @@
+# vim: ts=2:sw=2:sts=2:et:ft=yaml.ansible
+# -*- mode: yaml; yaml-indent-offset: 2; indent-tabs-mode: nil; -*-
+---
+# GNU General Public License v3.0+
+# SPDX-License-Identifier: GPL-3.0-or-later
+# (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
+#
+# Copyright (c) 2025 oØ.o (@o0-o)
+#
+# This file is part of the o0_o.posix Ansible Collection.
+
+- name: Gather filesystem information
+  o0_o.posix.mounts:
+  register: mount_result_reg
+
+- name: Assert basic structure
+  ansible.builtin.assert:
+    that:
+      - mount_result_reg is defined
+      - mount_result_reg['mounts'] is defined
+      - mount_result_reg['mounts'] is mapping
+      - mount_result_reg['mount_count'] is defined
+      - mount_result_reg['mount_count'] is number
+      - mount_result_reg['msg'] is defined
+      - mount_result_reg['msg'] is string
+      - mount_result_reg['changed'] == false
+    fail_msg: 'Mounts module did not return expected structure'
+
+- name: Display mount information
+  ansible.builtin.debug:
+    msg: |
+      Found {{ mount_result_reg['mount_count'] }} mount(s)
+      Message: {{ mount_result_reg['msg'] }}
+      Mount points: {{ mount_result_reg['mounts'].keys() | list }}
+
+- name: Check root filesystem if present
+  when: "'/' in mount_result_reg['mounts']"
+  block:
+
+    - name: Assert root filesystem has required fields
+      ansible.builtin.assert:
+        that:
+          - mount_result_reg['mounts']['/']['device'] is defined
+          - mount_result_reg['mounts']['/']['device'] is string
+          - mount_result_reg['mounts']['/']['filesystem'] is defined
+          - mount_result_reg['mounts']['/']['filesystem'] is string
+        fail_msg: 'Root filesystem missing required fields'
+
+    - name: Check if capacity information is available
+      ansible.builtin.debug:
+        msg: |
+          Root filesystem: {{ mount_result_reg['mounts']['/']['filesystem'] }}
+          Device: {{ mount_result_reg['mounts']['/']['device'] }}
+          {% if mount_result_reg['mounts']['/']['capacity'] is defined %}
+          Total: {{ mount_result_reg['mounts']['/']['capacity']['total']['pretty'] }} ({{ mount_result_reg['mounts']['/']['capacity']['total']['bytes'] }} bytes)
+          Used: {{ mount_result_reg['mounts']['/']['capacity']['used']['pretty'] }} ({{ mount_result_reg['mounts']['/']['capacity']['used']['bytes'] }} bytes)
+          {% else %}
+          Capacity information not available
+          {% endif %}
+
+- name: Test with virtual option
+  o0_o.posix.mounts:
+    virtual: true
+  register: all_mounts_reg
+
+- name: Compare mount counts
+  ansible.builtin.debug:
+    msg: |
+      Without virtual: {{ mount_result_reg['mount_count'] }} mount(s)
+      With virtual: {{ all_mounts_reg['mount_count'] }} mount(s)
+
+- name: Test in check mode
+  o0_o.posix.mounts:
+  check_mode: true
+  register: check_mode_reg
+
+- name: Assert check mode works
+  ansible.builtin.assert:
+    that:
+      - check_mode_reg is defined
+      - check_mode_reg['mounts'] is defined
+      - check_mode_reg['changed'] == false
+    fail_msg: 'Mounts module did not work correctly in check mode'
+
+- name: Verify consistency between normal and check mode
+  ansible.builtin.assert:
+    that:
+      - mount_result_reg['mount_count'] == check_mode_reg['mount_count']
+      - mount_result_reg['mounts'].keys() | list ==
+        check_mode_reg['mounts'].keys() | list
+    fail_msg: 'Mounts module returned different results in check mode'
+
+- name: Check mount point structure for all mounts
+  ansible.builtin.assert:
+    that:
+      - item.value['device'] is defined
+      - item.value['device'] is string
+      - item.value['filesystem'] is defined
+      - item.value['filesystem'] is string
+      - item.value['capacity'] is not defined or
+        item.value['capacity'] is mapping
+    fail_msg: |
+      Mount point {{ item.key }} has invalid structure
+  loop: "{{ mount_result_reg['mounts'] | dict2items }}"
+  loop_control:
+    label: "{{ item.key }}"
+
+- name: Find mounts with capacity information
+  ansible.builtin.set_fact:
+    mounts_with_capacity: |
+      {{ mount_result_reg['mounts'] | dict2items |
+         selectattr('value.capacity', 'defined') |
+         map(attribute='key') | list }}
+
+- name: Display mounts with capacity information
+  ansible.builtin.debug:
+    msg: |
+      Mounts with capacity info: {{ mounts_with_capacity | default([]) }}
+
+- name: Validate capacity structure if present
+  ansible.builtin.assert:
+    that:
+      - item.value['capacity']['total'] is defined
+      - item.value['capacity']['total']['bytes'] is number
+      - item.value['capacity']['total']['pretty'] is string
+      - item.value['capacity']['used'] is defined
+      - item.value['capacity']['used']['bytes'] is number
+      - item.value['capacity']['used']['pretty'] is string
+    fail_msg: |
+      Mount {{ item.key }} has invalid capacity structure
+  loop: "{{ mount_result_reg['mounts'] | dict2items }}"
+  when:
+    - mounts_with_capacity | default([]) | length > 0
+    - item.value['capacity'] is defined
+  loop_control:
+    label: "{{ item.key }}"
+
+- name: Test multiple invocations for consistency
+  o0_o.posix.mounts:
+  register: second_mount_reg
+
+- name: Verify consistent results
+  ansible.builtin.assert:
+    that:
+      - mount_result_reg['mount_count'] == second_mount_reg['mount_count']
+      - mount_result_reg['mounts'].keys() | list ==
+        second_mount_reg['mounts'].keys() | list
+    fail_msg: |
+      Filesystems module returned inconsistent results on multiple invocations
