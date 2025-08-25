@@ -208,9 +208,7 @@ def main():
         }
     )
 
-    module = AnsibleModule(
-        argument_spec=argument_spec, supports_check_mode=True
-    )
+    module = AnsibleModule(argument_spec=argument_spec, supports_check_mode=True)
 
     module.fail_json(msg="This module must be run via its action plugin.")
 
