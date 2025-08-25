@@ -21,8 +21,6 @@
       - mount_result_reg['mounts'] is mapping
       - mount_result_reg['mount_count'] is defined
       - mount_result_reg['mount_count'] is number
-      - mount_result_reg['msg'] is defined
-      - mount_result_reg['msg'] is string
       - mount_result_reg['changed'] == false
     fail_msg: 'Mounts module did not return expected structure'
 
@@ -30,7 +28,6 @@
   ansible.builtin.debug:
     msg: |
       Found {{ mount_result_reg['mount_count'] }} mount(s)
-      Message: {{ mount_result_reg['msg'] }}
       Mount points: {{ mount_result_reg['mounts'].keys() | list }}
 
 - name: Check root filesystem if present

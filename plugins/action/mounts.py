@@ -255,12 +255,6 @@ class ActionModule(PosixBase):
             }
         )
 
-        # Add a message summarizing what was found
-        if sorted_mounts:
-            result["msg"] = f"Found {len(sorted_mounts)} mounted filesystem(s)"
-        else:
-            result["msg"] = "No mounted filesystems found"
-
         return result
 
     def _is_virtual_filesystem(self, fs_type: str) -> bool:
