@@ -160,7 +160,7 @@ class TestFormatAsFacts:
                     }
                 },
             ),
-            # Network filesystem (no device)
+            # Network filesystem (NFS with source field)
             (
                 [
                     {
@@ -173,8 +173,29 @@ class TestFormatAsFacts:
                 {
                     "mounts": {
                         "/mnt/nfs": {
+                            "source": "nfs-server:/export/home",
                             "filesystem": "nfs",
                             "options": ["rw", "vers=4.2", "rsize=1048576"],
+                        }
+                    }
+                },
+            ),
+            # Network filesystem (CIFS/SMB with source field)
+            (
+                [
+                    {
+                        "filesystem": "//smb-server/share",
+                        "mount_point": "/mnt/smb",
+                        "type": "cifs",
+                        "options": ["rw", "uid=1000", "gid=1000"],
+                    }
+                ],
+                {
+                    "mounts": {
+                        "/mnt/smb": {
+                            "source": "//smb-server/share",
+                            "filesystem": "cifs",
+                            "options": ["rw", "uid=1000", "gid=1000"],
                         }
                     }
                 },

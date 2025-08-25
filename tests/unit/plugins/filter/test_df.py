@@ -85,7 +85,6 @@ def filter_module() -> FilterModule:
                         },
                     },
                     "/dev/shm": {
-                        "device": "tmpfs",
                         "capacity": {
                             "total": {
                                 "bytes": 2097152 * 1024,
@@ -193,7 +192,7 @@ def filter_module() -> FilterModule:
             {
                 "mounts": {
                     "/mnt/nfs": {
-                        "device": "nfs-server:/export",
+                        "source": "nfs-server:/export",
                         "capacity": {
                             "total": {
                                 "bytes": 1048576 * 1024,
@@ -206,7 +205,7 @@ def filter_module() -> FilterModule:
                         },
                     },
                     "/mnt/smb": {
-                        "device": "//smb-server/share",
+                        "source": "//smb-server/share",
                         "capacity": {
                             "total": {
                                 "bytes": 2097152 * 1024,

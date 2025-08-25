@@ -157,9 +157,14 @@ class FilterModule(JCBase):
 
             mount_data = {}
 
-            # Add device (what jc calls "filesystem")
+            # Handle source field (device for /dev paths, source for network)
             if "filesystem" in entry:
-                mount_data["device"] = entry["filesystem"]
+                source = entry["filesystem"]
+                if source.startswith("/dev/"):
+                    mount_data["device"] = source
+                elif ":" in source or source.startswith("//"):
+                    # Network filesystem (NFS, CIFS/SMB)
+                    mount_data["source"] = source
 
             # Add capacity information if available
             capacity = {}

@@ -121,7 +121,17 @@
     - name: Assert data consistency between modes
       ansible.builtin.assert:
         that:
-          - root_fs_default['filesystem'] == root_fs_facts['device']
+          - >-
+            (root_fs_default['filesystem'].startswith('/dev/') and
+             root_fs_default['filesystem'] == root_fs_facts['device']) or
+            (':' in root_fs_default['filesystem'] and
+             root_fs_default['filesystem'] == root_fs_facts['source']) or
+            (root_fs_default['filesystem'].startswith('//') and
+             root_fs_default['filesystem'] == root_fs_facts['source']) or
+            (not root_fs_default['filesystem'].startswith('/dev/') and
+             ':' not in root_fs_default['filesystem'] and
+             not root_fs_default['filesystem'].startswith('//') and
+             'device' not in root_fs_facts and 'source' not in root_fs_facts)
           # Verify capacity values match when converted
           - >-
             (root_fs_default.get('1024_blocks', 0) * 1024 ==
@@ -262,7 +272,7 @@
           - mock_facts['mounts'] | length == 3
           - mock_facts['mounts']['/']['device'] == '/dev/sda1'
           - mock_facts['mounts']['/home']['device'] == '/dev/sda2'
-          - mock_facts['mounts']['/dev/shm']['device'] == 'tmpfs'
+          - "'device' not in mock_facts['mounts']['/dev/shm']"
           - >-
             mock_facts['mounts']['/']['capacity']['total']['bytes']
             is number

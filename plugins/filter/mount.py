@@ -106,9 +106,13 @@ mounts:
       type: dict
       contains:
         device:
-          description: Source device path
+          description: Source device path (only for /dev/ paths)
           type: str
           sample: /dev/sda1
+        source:
+          description: Network filesystem source (NFS, CIFS, etc.)
+          type: str
+          sample: nfs-server:/export/home
         filesystem:
           description: Type of filesystem
           type: str
@@ -150,11 +154,14 @@ class FilterModule(JCBase):
             # Create a clean copy without mount_point (it's the key)
             mount_info = {}
 
-            # Include device only if it's a /dev/ path
+            # Handle source field (device for /dev paths, source for network)
             if "filesystem" in entry:
                 source = entry["filesystem"]
                 if source.startswith("/dev/"):
                     mount_info["device"] = source
+                elif ":" in source or source.startswith("//"):
+                    # Network filesystem (NFS, CIFS/SMB)
+                    mount_info["source"] = source
 
             # Determine filesystem type
             if "type" in entry:
