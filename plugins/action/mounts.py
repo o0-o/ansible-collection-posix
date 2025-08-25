@@ -183,7 +183,7 @@ class ActionModule(PosixBase):
                 f"capacity info): {e}"
             )
 
-        # Parse mount data first using facts mode
+        # Parse mount data using facts mode
         mount_filter = MountFilter().filters()["mount"]
         include_virtual = self._task.args.get("virtual", False)
         include_network = self._task.args.get("network", True)
@@ -193,27 +193,14 @@ class ActionModule(PosixBase):
         if include_pseudo is None:
             include_pseudo = include_virtual
 
-        # Parse all mounts using facts mode
+        # Get mounts from mount command with facts mode
         mount_facts = mount_filter(mount_result, facts=True)
-        all_mounts = []
-        # Convert facts format back to list for filtering
-        for mount_point, mount_info in mount_facts.get("mounts", {}).items():
-            mount_entry = mount_info.copy()
-            mount_entry["mount_point"] = mount_point
-            # Map filesystem type to 'type' for compatibility
-            if "filesystem" in mount_entry:
-                mount_entry["type"] = mount_entry["filesystem"]
-            # Map device to 'filesystem' for compatibility
-            if "device" in mount_entry:
-                mount_entry["filesystem"] = mount_entry["device"]
-            all_mounts.append(mount_entry)
+        mounts = mount_facts.get("mounts", {})
 
-        # Filter mounts based on filesystem type
-        mounts = {}
-        for mount_entry in all_mounts:
-            fs_type = mount_entry.get("type", "")
-            mount_point = mount_entry.get("mount_point", "")
-            filesystem = mount_entry.get("filesystem", "")
+        # Filter out unwanted filesystem types
+        filtered_mounts = {}
+        for mount_point, mount_info in mounts.items():
+            fs_type = mount_info.get("filesystem", "")
 
             # Skip filesystems based on type filters
             if not include_virtual and self._is_virtual_filesystem(fs_type):
@@ -223,12 +210,8 @@ class ActionModule(PosixBase):
             if not include_pseudo and self._is_pseudo_filesystem(fs_type):
                 continue
 
-            # Store mount info
-            if mount_point:
-                mounts[mount_point] = {
-                    "device": filesystem,
-                    "filesystem": fs_type,
-                }
+            # Keep this mount
+            filtered_mounts[mount_point] = mount_info
 
         # Parse df data if available using facts mode
         if df_result and df_result.get("rc") == 0:
@@ -238,14 +221,18 @@ class ActionModule(PosixBase):
 
             # Merge capacity info from df into mount data
             df_mounts = df_facts.get("mounts", {})
-            for mount_point in mounts:
+            for mount_point in filtered_mounts:
                 if mount_point in df_mounts:
                     df_info = df_mounts[mount_point]
                     if "capacity" in df_info:
-                        mounts[mount_point]["capacity"] = df_info["capacity"]
+                        filtered_mounts[mount_point]["capacity"] = df_info[
+                            "capacity"
+                        ]
 
         # Sort by mount point for consistent output
-        sorted_mounts = {k: mounts[k] for k in sorted(mounts.keys())}
+        sorted_mounts = {
+            k: filtered_mounts[k] for k in sorted(filtered_mounts.keys())
+        }
 
         result.update(
             {
