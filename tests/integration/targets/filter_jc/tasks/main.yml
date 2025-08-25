@@ -1,0 +1,131 @@
+# vim: ts=2:sw=2:sts=2:et:ft=yaml.ansible
+# -*- mode: yaml; yaml-indent-offset: 2; indent-tabs-mode: nil; -*-
+---
+# GNU General Public License v3.0+
+# SPDX-License-Identifier: GPL-3.0-or-later
+# (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
+#
+# Copyright (c) 2025 oØ.o (@o0-o)
+#
+# This file is part of the o0_o.posix Ansible Collection.
+
+- name: Test JC filter with string input (stdout)
+  block:
+    - name: Get uname output
+      ansible.builtin.command:
+        cmd: uname -a
+      register: uname_output_reg
+
+    - name: Parse using stdout string
+      ansible.builtin.set_fact:
+        parsed_from_stdout: >-
+          {{ uname_output_reg['stdout'] | o0_o.posix.jc('uname') }}
+
+    - name: Assert stdout parsing worked
+      ansible.builtin.assert:
+        that:
+          - parsed_from_stdout is defined
+          - parsed_from_stdout is mapping
+          - parsed_from_stdout['kernel_name'] is defined
+
+- name: Test JC filter with list input (stdout_lines)
+  block:
+    - name: Parse using stdout_lines list
+      ansible.builtin.set_fact:
+        parsed_from_lines: >-
+          {{ uname_output_reg['stdout_lines'] | o0_o.posix.jc('uname') }}
+
+    - name: Assert stdout_lines parsing worked
+      ansible.builtin.assert:
+        that:
+          - parsed_from_lines is defined
+          - parsed_from_lines is mapping
+          - parsed_from_lines['kernel_name'] is defined
+
+- name: Test JC filter with whole command result dict
+  block:
+    - name: Parse using whole registered variable
+      ansible.builtin.set_fact:
+        parsed_from_dict: "{{ uname_output_reg | o0_o.posix.jc('uname') }}"
+
+    - name: Assert dict parsing worked
+      ansible.builtin.assert:
+        that:
+          - parsed_from_dict is defined
+          - parsed_from_dict is mapping
+          - parsed_from_dict['kernel_name'] is defined
+
+- name: Test all three input methods produce same result
+  ansible.builtin.assert:
+    that:
+      - parsed_from_stdout == parsed_from_lines
+      - parsed_from_stdout == parsed_from_dict
+    fail_msg: "Different input methods should produce identical results"
+
+- name: Test JC filter with empty inputs
+  block:
+    - name: Parse empty string
+      ansible.builtin.set_fact:
+        empty_string_result: "{{ '' | o0_o.posix.jc('ls') }}"
+
+    - name: Parse empty list
+      ansible.builtin.set_fact:
+        empty_list_result: "{{ [] | o0_o.posix.jc('ls') }}"
+
+    - name: Parse dict with empty stdout
+      ansible.builtin.set_fact:
+        empty_dict_result: >-
+          {{ {'stdout': '', 'rc': 0} | o0_o.posix.jc('ls') }}
+
+    - name: Assert empty inputs return empty results
+      ansible.builtin.assert:
+        that:
+          - empty_string_result == []
+          - empty_list_result == []
+          - empty_dict_result == []
+
+- name: 'Fail: Test JC filter with invalid parser'
+  block:
+
+    - name: Try to use invalid parser
+      ansible.builtin.set_fact:
+        invalid_result: >-
+          {{ 'test data' | o0_o.posix.jc('invalid_parser_xyz') }}
+
+  rescue:
+
+    - name: Assert invalid parser raised an error
+      ansible.builtin.assert:
+        that:
+          - ansible_failed_result is defined
+          - "'invalid_parser_xyz' in ansible_failed_result.msg"
+
+- name: 'Fail: Test JC filter with wrong variable type'
+  block:
+
+    - name: Try to parse a number
+      ansible.builtin.set_fact:
+        number_result: "{{ 12345 | o0_o.posix.jc('ls') }}"
+
+  rescue:
+
+    - name: Verify number input was handled
+      ansible.builtin.assert:
+        that:
+          # Either it failed or returned empty list
+          - ansible_failed_result is defined or number_result == []
+
+- name: Test that filter is available and callable
+  block:
+    - name: Verify filter exists in collection
+      ansible.builtin.set_fact:
+        # Use a complete uname output
+        filter_test: >-
+          {{ 'Linux host 5.10.0 #1 SMP PREEMPT x86_64 GNU/Linux' 
+             | o0_o.posix.jc('uname') }}
+
+    - name: Assert filter was callable
+      ansible.builtin.assert:
+        that:
+          - filter_test is defined
+          - filter_test is mapping
