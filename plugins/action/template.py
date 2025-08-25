@@ -264,9 +264,7 @@ class ActionModule(PosixBase):
             try:
                 with open(b_tmp_source, "rb") as f:
                     try:
-                        template_data = to_text(
-                            f.read(), errors="surrogate_or_strict"
-                        )
+                        template_data = to_text(f.read(), errors="surrogate_or_strict")
                     except UnicodeError:
                         raise AnsibleActionFail(
                             "Template source files must be utf-8 encoded"
@@ -281,12 +279,8 @@ class ActionModule(PosixBase):
 
         # Set up searchpath for both versions
         searchpath = task_vars.get("ansible_search_path", [])
-        searchpath.extend(
-            [self._loader._basedir, os.path.dirname(resolved_src)]
-        )
-        searchpath = [
-            os.path.join(p, "templates") for p in searchpath
-        ] + searchpath
+        searchpath.extend([self._loader._basedir, os.path.dirname(resolved_src)])
+        searchpath = [os.path.join(p, "templates") for p in searchpath] + searchpath
 
         # Create common overrides for both versions
         overrides = {
@@ -324,9 +318,7 @@ class ActionModule(PosixBase):
             )
         else:
             # Ansible 2.15-2.18 approach
-            temp_vars.update(
-                generate_ansible_template_vars(src, resolved_src, dest)
-            )
+            temp_vars.update(generate_ansible_template_vars(src, resolved_src, dest))
 
             # Create templar with AnsibleEnvironment
             templar = self._templar.copy_with_new_env(
@@ -351,9 +343,7 @@ class ActionModule(PosixBase):
 
         # Create temp file
         local_tempdir = tempfile.mkdtemp(dir=C.DEFAULT_LOCAL_TMP)
-        result_file = os.path.join(
-            local_tempdir, os.path.basename(resolved_src)
-        )
+        result_file = os.path.join(local_tempdir, os.path.basename(resolved_src))
         with open(to_bytes(result_file), "wb") as f:
             f.write(to_bytes(result_text, encoding="utf-8"))
 
@@ -398,16 +388,12 @@ class ActionModule(PosixBase):
                     self.result.update(copy_result)
                     return self.result
                 else:
-                    self._display.vvv(
-                        "Python missing — falling back to raw mode"
-                    )
+                    self._display.vvv("Python missing — falling back to raw mode")
                     self.force_raw = True
 
             if self.force_raw:
                 try:
-                    self._display.vvv(
-                        "Creating parent directories (if needed)"
-                    )
+                    self._display.vvv("Creating parent directories (if needed)")
                     self._mk_dest_dir(dest, task_vars=task_vars)
 
                     self._display.vvv(f"Writing rendered template to {dest}")
@@ -425,9 +411,7 @@ class ActionModule(PosixBase):
                     }
 
                     if not force:
-                        dest_stat = self._pseudo_stat(
-                            dest, task_vars=task_vars
-                        )
+                        dest_stat = self._pseudo_stat(dest, task_vars=task_vars)
 
                     if force or not dest_stat["exists"]:
                         write_result = self._write_file(
@@ -443,8 +427,7 @@ class ActionModule(PosixBase):
 
                     elif not force:
                         self.result["msg"] = (
-                            "File exists and force is disabled, taking "
-                            "no action"
+                            "File exists and force is disabled, taking no action"
                         )
 
                     else:
@@ -456,16 +439,12 @@ class ActionModule(PosixBase):
                     self.result.update(
                         {
                             "failed": True,
-                            "msg": (
-                                f"Template rendering or writing failed: {e}"
-                            ),
+                            "msg": (f"Template rendering or writing failed: {e}"),
                         }
                     )
         finally:
             # Clean up temporary files
-            shutil.rmtree(
-                to_bytes(local_tempdir, errors="surrogate_or_strict")
-            )
+            shutil.rmtree(to_bytes(local_tempdir, errors="surrogate_or_strict"))
             self._remove_tmp_path(self._connection._shell.tmpdir)
 
         return self.result
