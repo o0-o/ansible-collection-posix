@@ -75,6 +75,9 @@ jobs:
               # Show which Ansible version we got
               ansible --version
 
+              # Install collection dependencies
+              . .github/scripts/install-collection-deps.sh
+
               # Run sanity tests for this specific Python version
               ansible-test sanity --venv --python ${{ matrix['python'] }} -v
             '
@@ -328,6 +331,9 @@ jobs:
           # Show which Ansible version we got
           ansible --version
 
+          # Install collection dependencies
+          . .github/scripts/install-collection-deps.sh
+
           # Run sanity tests for this specific Python version
           ansible-test sanity --venv --python ${{ matrix['python'] }} -v
 
@@ -366,6 +372,9 @@ jobs:
           # Show which Ansible version we got
           ansible --version
 
+          # Install collection dependencies
+          . .github/scripts/install-collection-deps.sh
+
           # Run unit tests for this specific Python version
           ansible-test units --venv --python ${{ matrix['python'] }} -v
 
@@ -403,6 +412,9 @@ jobs:
 
           # Show which Ansible version we got
           ansible --version
+
+          # Install collection dependencies
+          . .github/scripts/install-collection-deps.sh
 
           # Run specific integration test target
           ansible-test integration --venv --python \
@@ -443,6 +455,9 @@ jobs:
           # Show which Ansible version we got
           ansible --version
 
+          # Install collection dependencies
+          . .github/scripts/install-collection-deps.sh
+
           # Run specific integration test target
           ansible-test integration --venv --python \
             ${{ matrix['python'] }} facts -v
@@ -481,6 +496,9 @@ jobs:
 
           # Show which Ansible version we got
           ansible --version
+
+          # Install collection dependencies
+          . .github/scripts/install-collection-deps.sh
 
           # Run specific integration test target
           ansible-test integration --venv --python \
@@ -521,6 +539,9 @@ jobs:
           # Show which Ansible version we got
           ansible --version
 
+          # Install collection dependencies
+          . .github/scripts/install-collection-deps.sh
+
           # Run specific integration test target
           ansible-test integration --venv --python \
             ${{ matrix['python'] }} slurp64 -v
@@ -559,6 +580,9 @@ jobs:
 
           # Show which Ansible version we got
           ansible --version
+
+          # Install collection dependencies
+          . .github/scripts/install-collection-deps.sh
 
           # Run specific integration test target
           ansible-test integration --venv --python \
