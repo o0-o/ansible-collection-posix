@@ -66,6 +66,9 @@ if [ -n "${ANSIBLE_PACKAGE:-}" ]; then
 	ansible --version
 fi
 
+# Install collection dependencies
+. .github/scripts/install-collection-deps.sh
+
 # Build the test command
 if [ -n "$INTEGRATION_TARGET" ]; then
 	test_cmd="ansible-test ${TEST_TYPE} --venv --python ${PYTHON_VERSION}"
@@ -110,5 +113,7 @@ su testuser -c "
 	fi
 	echo 'Installed Ansible version:'
 	ansible --version
+	# Install collection dependencies
+	. .github/scripts/install-collection-deps.sh
 	${testuser_cmd}
 "

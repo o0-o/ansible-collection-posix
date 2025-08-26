@@ -3,6 +3,26 @@
 ---
 releases:
 
+  v1.4.0:
+    changes:
+      added:
+        - New `compliance` module for detecting POSIX and UNIX standards
+          compliance on target systems.
+        - Detects POSIX.1 (XSH), POSIX.2 (XCU), XSI, and SUS compliance
+          using getconf commands.
+        - Intelligent fallback when _POSIX2_VERSION is undefined but
+          _XOPEN_XCU_VERSION indicates POSIX.2 exists.
+        - Support for both current and anticipated future standards
+          (POSIX.1-2024, SUSv5).
+        - Full transparency with actual getconf values in output.
+        - JC filter plugin for parsing command outputs into structured data.
+        - Centralized linter configuration with 79-character line limits.
+      fixed:
+        - Applied consistent formatting across all action plugins and modules.
+        - Fixed line length issues to comply with 79-character limit.
+      changed:
+        - Consolidated linter configuration into pyproject.toml and .yamllint.
+
   v1.3.4:
     changes:
       fixed:
