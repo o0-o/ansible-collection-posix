@@ -19,8 +19,9 @@ pkg_success=0
 until [ "$n" -ge 3 ] || [ "$pkg_success" = "1" ]; do
 	# Sleep between retries (not on first attempt)
 	if [ "$n" != "0" ]; then
-		echo "Package installation failed, attempt $((n+1))/3 in 60 seconds..."
-		sleep 60
+		sleep_time=$((n * 15 * 60))
+		echo "Package installation failed, attempt $((n+1))/3 in $((sleep_time / 60)) minutes..."
+		sleep "$sleep_time"
 	fi
 
 	case "$LINUX_OS" in
@@ -143,14 +144,15 @@ case "$LINUX_OS" in
 esac
 
 # Install pyenv system-wide with retry logic
-# Retry up to 3 times with 60-second delays for transient network issues
+# Retry up to 3 times with progressive delays (15 minutes * retry count)
 export PYENV_ROOT="/opt/pyenv"
 pyenv_success=0
 n=0
 while [ $n -lt 3 ] && [ $pyenv_success -eq 0 ]; do
 	if [ $n -gt 0 ]; then
-		echo "Retrying pyenv installation (attempt $((n+1)) of 3)..."
-		sleep 60
+		sleep_time=$((n * 15 * 60))
+		echo "Retrying pyenv installation (attempt $((n+1)) of 3) in $((sleep_time / 60)) minutes..."
+		sleep "$sleep_time"
 	fi
 	
 	# Attempt to clone pyenv and install Python
