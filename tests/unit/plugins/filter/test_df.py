@@ -17,9 +17,7 @@ import pytest
 from ansible.errors import AnsibleFilterError
 
 from ansible_collections.o0_o.posix.plugins.filter.df import FilterModule
-from ansible_collections.o0_o.utils.plugins.filter.si import (
-    FilterModule as SiFilter,
-)
+from ansible_collections.o0_o.utils.plugins.filter import SiFilter
 
 
 # Helper to format sizes like the si filter does

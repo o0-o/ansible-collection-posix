@@ -18,9 +18,7 @@ from ansible.errors import AnsibleFilterError
 from ansible_collections.o0_o.posix.plugins.filter_utils import JCBase
 
 try:
-    from ansible_collections.o0_o.utils.plugins.filter.si import (
-        FilterModule as SiFilter,
-    )
+    from ansible_collections.o0_o.utils.plugins.filter import SiFilter
 
     HAS_SI_FILTER = True
     _si_filter = SiFilter()
