@@ -17,6 +17,7 @@ releases:
         - Full transparency with actual getconf values in output.
         - JC filter plugin for parsing command outputs into structured data.
         - Centralized linter configuration with 79-character line limits.
+        - New `uname` filter for parsing uname output with hostname support.
       fixed:
         - Applied consistent formatting across all action plugins and modules.
         - Fixed line length issues to comply with 79-character limit.
