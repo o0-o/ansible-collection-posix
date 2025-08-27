@@ -205,7 +205,7 @@ class FilterModule(JCBase):
                     "Please install it with: "
                     "ansible-galaxy collection install o0_o.utils"
                 )
-            
+
             hostname_filter = HostnameFilter()
             hostname_data = hostname_filter.hostname(parsed["node_name"])
 
