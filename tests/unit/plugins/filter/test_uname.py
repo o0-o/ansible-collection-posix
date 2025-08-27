@@ -11,37 +11,11 @@
 
 from __future__ import annotations
 
-import sys
 from typing import Any, Dict
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 from ansible.errors import AnsibleFilterError
-
-
-# Create a mock HostnameFilter class
-class MockHostnameFilter:
-    """Mock HostnameFilter for testing."""
-
-    def hostname(self, value: str) -> Dict[str, str]:
-        """Mock hostname parsing."""
-        hostname_map = {
-            "webserver.example.com": {
-                "short": "webserver",
-                "long": "webserver.example.com",
-            },
-            "macbook.local": {"short": "macbook", "long": "macbook.local"},
-            "localhost": {"short": "localhost"},
-        }
-        return hostname_map.get(value, {"short": value.split(".")[0]})
-
-
-# Mock the o0_o.utils module before importing uname
-mock_filter_module = MagicMock()
-mock_filter_module.HostnameFilter = MockHostnameFilter
-sys.modules["ansible_collections.o0_o.utils.plugins.filter"] = (
-    mock_filter_module
-)
 
 from ansible_collections.o0_o.posix.plugins.filter.uname import FilterModule
 
@@ -52,65 +26,36 @@ def filter_module() -> FilterModule:
     return FilterModule()
 
 
-@pytest.fixture
-def mock_parse_command(monkeypatch) -> MagicMock:
-    """Mock the parse_command method."""
-    mock = MagicMock()
-    monkeypatch.setattr(FilterModule, "parse_command", mock)
-    return mock
-
-
-def test_uname_default_mode(
-    filter_module: FilterModule, mock_parse_command: MagicMock
-) -> None:
-    """Test uname filter in default mode (facts=False)."""
-    # Setup mock to return parsed data
-    parsed_data = {
-        "kernel_name": "Linux",
-        "node_name": "testhost",
-        "kernel_release": "5.15.0-91-generic",
-        "machine": "x86_64",
-    }
-    mock_parse_command.return_value = parsed_data
-
-    # Test with string input
-    result = filter_module.uname("Linux testhost 5.15.0-91-generic x86_64")
-
-    # Verify parse_command was called
-    mock_parse_command.assert_called_once_with(
-        "Linux testhost 5.15.0-91-generic x86_64", "uname"
+def test_uname_default_mode(filter_module: FilterModule) -> None:
+    """Test uname filter in default mode with real jc parsing."""
+    # Test with actual uname -a output
+    uname_output = (
+        "Linux testhost 5.15.0-91-generic #101-Ubuntu SMP "
+        "Tue Nov 14 13:30:08 UTC 2023 x86_64 x86_64 x86_64 GNU/Linux"
     )
 
-    # Verify raw parsed data is returned
-    assert result == parsed_data
+    result = filter_module.uname(uname_output)
+
+    # Verify the parsed data structure from real jc
+    assert result["kernel_name"] == "Linux"
+    assert result["node_name"] == "testhost"
+    assert result["kernel_release"] == "5.15.0-91-generic"
+    assert result["machine"] == "x86_64"
+    assert result["processor"] == "x86_64"
+    assert result["hardware_platform"] == "x86_64"
+    assert result["operating_system"] == "GNU/Linux"
 
 
-def test_uname_facts_mode(
-    filter_module: FilterModule, mock_parse_command: MagicMock
-) -> None:
-    """Test uname filter in facts mode."""
-    # Setup mock to return parsed data
-    parsed_data = {
-        "kernel_name": "Linux",
-        "node_name": "webserver.example.com",
-        "kernel_release": "5.15.0-91-generic",
-        "machine": "x86_64",
-    }
-    mock_parse_command.return_value = parsed_data
+def test_uname_facts_mode(filter_module: FilterModule) -> None:
+    """Test uname filter in facts mode with real jc parsing."""
+    # Test with actual uname -a output with FQDN
+    uname_output = (
+        "Linux webserver.example.com 5.15.0-91-generic #101-Ubuntu SMP "
+        "Tue Nov 14 13:30:08 UTC 2023 x86_64 x86_64 x86_64 GNU/Linux"
+    )
 
     # Test with facts=True
-    # Patch HostnameFilter in the uname module
-    with patch(
-        "ansible_collections.o0_o.posix.plugins.filter.uname.HostnameFilter",
-        MockHostnameFilter,
-        create=True,
-    ):
-        with patch(
-            "ansible_collections.o0_o.posix.plugins.filter."
-            "uname.HAS_HOSTNAME_FILTER",
-            True,
-        ):
-            result = filter_module.uname("dummy", facts=True)
+    result = filter_module.uname(uname_output, facts=True)
 
     # Verify the structure
     assert "kernel" in result
@@ -126,11 +71,9 @@ def test_uname_facts_mode(
     assert result["hostname"]["long"] == "webserver.example.com"
 
 
-def test_uname_facts_mode_without_utils(
-    filter_module: FilterModule, mock_parse_command: MagicMock
-) -> None:
+def test_uname_facts_mode_without_utils(filter_module: FilterModule) -> None:
     """Test that facts mode raises error without o0_o.utils."""
-    mock_parse_command.return_value = {"kernel_name": "Linux"}
+    uname_output = "Linux testhost 5.15.0-91-generic #101 x86_64 GNU/Linux"
 
     # Test with HAS_HOSTNAME_FILTER = False
     with patch(
@@ -139,7 +82,7 @@ def test_uname_facts_mode_without_utils(
         False,
     ):
         with pytest.raises(AnsibleFilterError, match="o0_o.utils collection"):
-            filter_module.uname("dummy", facts=True)
+            filter_module.uname(uname_output, facts=True)
 
 
 class TestFormatAsFacts:
@@ -225,15 +168,8 @@ class TestFormatAsFacts:
         expected: Dict[str, Any],
     ) -> None:
         """Test _format_as_facts with various input scenarios."""
-        # Patch HostnameFilter in the uname module
-        with patch(
-            "ansible_collections.o0_o.posix.plugins.filter."
-            "uname.HostnameFilter",
-            MockHostnameFilter,
-            create=True,
-        ):
-            result = filter_module._format_as_facts(parsed_data)
-            assert result == expected
+        result = filter_module._format_as_facts(parsed_data)
+        assert result == expected
 
     def test_architecture_fallback_processor(
         self, filter_module: FilterModule
