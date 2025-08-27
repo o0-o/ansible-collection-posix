@@ -13,10 +13,31 @@ from __future__ import annotations
 
 from unittest.mock import patch
 
-import humanfriendly
 import pytest
+from ansible.errors import AnsibleFilterError
 
 from ansible_collections.o0_o.posix.plugins.filter.df import FilterModule
+from ansible_collections.o0_o.utils.plugins.filter.si import (
+    FilterModule as SiFilter,
+)
+
+
+# Helper to format sizes like the si filter does
+def format_size(size_bytes: int) -> str:
+    """Format bytes as binary size using si filter."""
+    si = SiFilter()
+    result = si.si(f"{size_bytes}B", binary=True)
+    return result.get("pretty", f"{size_bytes} B")
+
+
+def parse_size(size_str: str) -> int:
+    """Parse size string to bytes using si filter."""
+    si = SiFilter()
+    # Add B suffix if the string ends with just a size prefix (K, M, G, etc.)
+    if size_str and size_str[-1] in "KMGTPEZY":
+        size_str = size_str + "B"
+    result = si.si(size_str, binary=True)
+    return result.get("bytes", 0)
 
 
 @pytest.fixture
@@ -63,11 +84,11 @@ def filter_module() -> FilterModule:
                         "capacity": {
                             "total": {
                                 "bytes": 20971520 * 1024,
-                                "pretty": humanfriendly.format_size(20971520 * 1024, binary=True),
+                                "pretty": format_size(20971520 * 1024),
                             },
                             "used": {
                                 "bytes": 5242880 * 1024,
-                                "pretty": humanfriendly.format_size(5242880 * 1024, binary=True),
+                                "pretty": format_size(5242880 * 1024),
                             },
                         },
                     },
@@ -76,11 +97,11 @@ def filter_module() -> FilterModule:
                         "capacity": {
                             "total": {
                                 "bytes": 104857600 * 1024,
-                                "pretty": humanfriendly.format_size(104857600 * 1024, binary=True),
+                                "pretty": format_size(104857600 * 1024),
                             },
                             "used": {
                                 "bytes": 52428800 * 1024,
-                                "pretty": humanfriendly.format_size(52428800 * 1024, binary=True),
+                                "pretty": format_size(52428800 * 1024),
                             },
                         },
                     },
@@ -89,11 +110,11 @@ def filter_module() -> FilterModule:
                         "capacity": {
                             "total": {
                                 "bytes": 2097152 * 1024,
-                                "pretty": humanfriendly.format_size(2097152 * 1024, binary=True),
+                                "pretty": format_size(2097152 * 1024),
                             },
                             "used": {
                                 "bytes": 0,
-                                "pretty": humanfriendly.format_size(0, binary=True),
+                                "pretty": format_size(0),
                             },
                         },
                     },
@@ -119,49 +140,11 @@ def filter_module() -> FilterModule:
                         "capacity": {
                             "total": {
                                 "bytes": 20971520 * 512,
-                                "pretty": humanfriendly.format_size(20971520 * 512, binary=True),
+                                "pretty": format_size(20971520 * 512),
                             },
                             "used": {
                                 "bytes": 4194304 * 512,
-                                "pretty": humanfriendly.format_size(4194304 * 512, binary=True),
-                            },
-                        },
-                    }
-                }
-            },
-        ),
-        # Entry without mounted_on field (should be skipped)
-        (
-            [
-                {
-                    "filesystem": "/dev/sda1",
-                    "1024_blocks": 20971520,
-                    "used": 5242880,
-                    "available": 15728640,
-                    "use_percent": 25,
-                    "mounted_on": "/",
-                },
-                {
-                    "filesystem": "/dev/sda2",
-                    "1024_blocks": 104857600,
-                    "used": 52428800,
-                    "available": 52428800,
-                    "use_percent": 50,
-                    # No mounted_on field
-                },
-            ],
-            {
-                "mounts": {
-                    "/": {
-                        "device": "/dev/sda1",
-                        "capacity": {
-                            "total": {
-                                "bytes": 20971520 * 1024,
-                                "pretty": humanfriendly.format_size(20971520 * 1024, binary=True),
-                            },
-                            "used": {
-                                "bytes": 5242880 * 1024,
-                                "pretty": humanfriendly.format_size(5242880 * 1024, binary=True),
+                                "pretty": format_size(4194304 * 512),
                             },
                         },
                     }
@@ -197,11 +180,11 @@ def filter_module() -> FilterModule:
                         "capacity": {
                             "total": {
                                 "bytes": 1048576 * 1024,
-                                "pretty": humanfriendly.format_size(1048576 * 1024, binary=True),
+                                "pretty": format_size(1048576 * 1024),
                             },
                             "used": {
                                 "bytes": 524288 * 1024,
-                                "pretty": humanfriendly.format_size(524288 * 1024, binary=True),
+                                "pretty": format_size(524288 * 1024),
                             },
                         },
                     },
@@ -210,11 +193,11 @@ def filter_module() -> FilterModule:
                         "capacity": {
                             "total": {
                                 "bytes": 2097152 * 1024,
-                                "pretty": humanfriendly.format_size(2097152 * 1024, binary=True),
+                                "pretty": format_size(2097152 * 1024),
                             },
                             "used": {
                                 "bytes": 1048576 * 1024,
-                                "pretty": humanfriendly.format_size(1048576 * 1024, binary=True),
+                                "pretty": format_size(1048576 * 1024),
                             },
                         },
                     },
@@ -240,11 +223,11 @@ def filter_module() -> FilterModule:
                         "capacity": {
                             "total": {
                                 "bytes": 10240 * 1024,
-                                "pretty": humanfriendly.format_size(10240 * 1024, binary=True),
+                                "pretty": format_size(10240 * 1024),
                             },
                             "used": {
                                 "bytes": 2048 * 1024,
-                                "pretty": humanfriendly.format_size(2048 * 1024, binary=True),
+                                "pretty": format_size(2048 * 1024),
                             },
                         },
                     }
@@ -269,12 +252,12 @@ def filter_module() -> FilterModule:
                         "device": "/dev/sda1",
                         "capacity": {
                             "total": {
-                                "bytes": humanfriendly.parse_size("20G"),
-                                "pretty": humanfriendly.format_size(humanfriendly.parse_size("20G"), binary=True),
+                                "bytes": parse_size("20G"),
+                                "pretty": format_size(parse_size("20G")),
                             },
                             "used": {
-                                "bytes": humanfriendly.parse_size("5G"),
-                                "pretty": humanfriendly.format_size(humanfriendly.parse_size("5G"), binary=True),
+                                "bytes": parse_size("5G"),
+                                "pretty": format_size(parse_size("5G")),
                             },
                         },
                     }
@@ -289,14 +272,13 @@ def test_format_as_facts(
     expected: dict,
 ) -> None:
     """Test _format_as_facts method with various df outputs."""
-    with patch("ansible_collections.o0_o.posix.plugins.filter.df.humanfriendly", humanfriendly):
-        with patch("ansible_collections.o0_o.posix.plugins.filter.df.HAS_HUMANFRIENDLY", True):
-            result = filter_module._format_as_facts(parsed_data)
-            assert result == expected
+    # No need to patch since we're using real o0_o.utils.si filter
+    result = filter_module._format_as_facts(parsed_data)
+    assert result == expected
 
 
-def test_format_as_facts_without_humanfriendly(filter_module: FilterModule) -> None:
-    """Test that _format_as_facts raises error without humanfriendly."""
+def test_format_as_facts_without_si_filter(filter_module: FilterModule) -> None:
+    """Test that _format_as_facts raises error without o0_o.utils.si filter."""
     parsed_data = [
         {
             "filesystem": "/dev/sda1",
@@ -308,9 +290,34 @@ def test_format_as_facts_without_humanfriendly(filter_module: FilterModule) -> N
         }
     ]
 
-    with patch("ansible_collections.o0_o.posix.plugins.filter.df.HAS_HUMANFRIENDLY", False):
-        with pytest.raises(ImportError, match="humanfriendly"):
+    with patch("ansible_collections.o0_o.posix.plugins.filter.df.HAS_SI_FILTER", False):
+        with pytest.raises(AnsibleFilterError, match="o0_o.utils collection"):
             filter_module._format_as_facts(parsed_data)
+
+
+def test_format_as_facts_missing_mounted_on(filter_module: FilterModule) -> None:
+    """Test that _format_as_facts raises error when mounted_on field is missing."""
+    parsed_data = [
+        {
+            "filesystem": "/dev/sda1",
+            "1024_blocks": 20971520,
+            "used": 5242880,
+            "available": 15728640,
+            "use_percent": 25,
+            "mounted_on": "/",
+        },
+        {
+            "filesystem": "/dev/sda2",
+            "1024_blocks": 104857600,
+            "used": 52428800,
+            "available": 52428800,
+            "use_percent": 50,
+            # No mounted_on field - this should cause an error
+        },
+    ]
+
+    with pytest.raises(AnsibleFilterError, match="df output missing 'mounted_on' field"):
+        filter_module._format_as_facts(parsed_data)
 
 
 def test_format_as_facts_preserves_original(filter_module: FilterModule) -> None:
@@ -330,10 +337,8 @@ def test_format_as_facts_preserves_original(filter_module: FilterModule) -> None
 
     original_copy = copy.deepcopy(original)
 
-    # Call the method
-    with patch("ansible_collections.o0_o.posix.plugins.filter.df.humanfriendly", humanfriendly):
-        with patch("ansible_collections.o0_o.posix.plugins.filter.df.HAS_HUMANFRIENDLY", True):
-            filter_module._format_as_facts(original)
+    # Call the method - no need to patch since we're using real o0_o.utils.si filter
+    filter_module._format_as_facts(original)
 
     # Ensure original wasn't modified
     assert original == original_copy

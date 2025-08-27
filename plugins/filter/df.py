@@ -18,11 +18,15 @@ from ansible.errors import AnsibleFilterError
 from ansible_collections.o0_o.posix.plugins.filter_utils import JCBase
 
 try:
-    import humanfriendly
+    from ansible_collections.o0_o.utils.plugins.filter.si import (
+        FilterModule as SiFilter,
+    )
 
-    HAS_HUMANFRIENDLY = True
+    HAS_SI_FILTER = True
+    _si_filter = SiFilter()
 except ImportError:
-    HAS_HUMANFRIENDLY = False
+    HAS_SI_FILTER = False
+    _si_filter = None
 
 DOCUMENTATION = r"""
 ---
@@ -49,7 +53,7 @@ options:
     default: false
 requirements:
   - jc (Python library)
-  - humanfriendly (Python library, required for facts=True)
+  - o0_o.utils collection (required for facts=True)
 notes:
   - The jc library handles various df output formats (df, df -h, df -k, etc.)
   - Field names vary based on block size (1024_blocks, 512_blocks, size)
@@ -144,10 +148,11 @@ class FilterModule(JCBase):
         :param parsed: List of filesystem dictionaries from jc
         :returns: Facts structure with mounts keyed by mount point
         """
-        if not HAS_HUMANFRIENDLY:
+        if not HAS_SI_FILTER:
             raise AnsibleFilterError(
-                "The 'facts' mode requires the humanfriendly library. "
-                "Please install it with: pip install humanfriendly"
+                "The 'facts' mode requires the o0_o.utils collection. "
+                "Please install it with: "
+                "ansible-galaxy collection install o0_o.utils"
             )
         mounts = {}
         for entry in parsed:
@@ -221,10 +226,12 @@ class FilterModule(JCBase):
 
             # Calculate total capacity
             if capacity_total:
-                capacity_bytes = humanfriendly.parse_size(capacity_total)
-                capacity_pretty = humanfriendly.format_size(
-                    capacity_bytes, binary=True
-                )
+                # Add B suffix if not present (for plain numbers)
+                if isinstance(capacity_total, str) and capacity_total.isdigit():
+                    capacity_total = capacity_total + "B"
+                parsed = _si_filter.si(capacity_total, binary=True)
+                capacity_bytes = parsed.get("bytes", 0)
+                capacity_pretty = parsed.get("pretty", capacity_total)
                 capacity["total"] = {
                     "bytes": capacity_bytes,
                     "pretty": capacity_pretty,
@@ -232,11 +239,13 @@ class FilterModule(JCBase):
 
             # Calculate used capacity
             if used_total:
+                # Add B suffix if not present (for plain numbers)
+                if isinstance(used_total, str) and used_total.isdigit():
+                    used_total = used_total + "B"
                 # Used field uses same multiplier as blocks field
-                used_bytes = humanfriendly.parse_size(used_total)
-                used_pretty = humanfriendly.format_size(
-                    used_bytes, binary=True
-                )
+                parsed = _si_filter.si(used_total, binary=True)
+                used_bytes = parsed.get("bytes", 0)
+                used_pretty = parsed.get("pretty", used_total)
                 capacity["used"] = {
                     "bytes": used_bytes,
                     "pretty": used_pretty,
