@@ -197,6 +197,15 @@ class FilterModule(JCBase):
 
         # Hostname - use short and long (if present)
         if "node_name" in parsed:
+            if not HAS_HOSTNAME_FILTER:
+                # If hostname filter is not available, raise error
+                # This should have been caught in uname() but check here too
+                raise AnsibleFilterError(
+                    "The 'facts' mode requires the o0_o.utils collection. "
+                    "Please install it with: "
+                    "ansible-galaxy collection install o0_o.utils"
+                )
+            
             hostname_filter = HostnameFilter()
             hostname_data = hostname_filter.hostname(parsed["node_name"])
 
