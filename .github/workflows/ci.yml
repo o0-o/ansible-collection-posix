@@ -317,10 +317,10 @@ jobs:
 
       - name: Run sanity tests
         run: |
-          # Create proper ansible collections structure
-          mkdir -p ../../../ansible_collections/o0_o
-          cp -R . ../../../ansible_collections/o0_o/posix
-          cd ../../../ansible_collections/o0_o/posix
+          # Create proper ansible collections structure in standard location
+          mkdir -p ~/.ansible/collections/ansible_collections/o0_o
+          cp -R . ~/.ansible/collections/ansible_collections/o0_o/posix
+          cd ~/.ansible/collections/ansible_collections/o0_o/posix
 
           # Use specific Python version for ansible-core installation
           python${{ matrix['python'] }} -m venv .venv
@@ -358,10 +358,10 @@ jobs:
 
       - name: Run unit tests
         run: |
-          # Create proper ansible collections structure
-          mkdir -p ../../../ansible_collections/o0_o
-          cp -R . ../../../ansible_collections/o0_o/posix
-          cd ../../../ansible_collections/o0_o/posix
+          # Create proper ansible collections structure in standard location
+          mkdir -p ~/.ansible/collections/ansible_collections/o0_o
+          cp -R . ~/.ansible/collections/ansible_collections/o0_o/posix
+          cd ~/.ansible/collections/ansible_collections/o0_o/posix
 
           # Use specific Python version for ansible-core installation
           python${{ matrix['python'] }} -m venv .venv
@@ -399,10 +399,10 @@ jobs:
 
       - name: Run integration tests
         run: |
-          # Create proper ansible collections structure
-          mkdir -p ../../../ansible_collections/o0_o
-          cp -R . ../../../ansible_collections/o0_o/posix
-          cd ../../../ansible_collections/o0_o/posix
+          # Create proper ansible collections structure in standard location
+          mkdir -p ~/.ansible/collections/ansible_collections/o0_o
+          cp -R . ~/.ansible/collections/ansible_collections/o0_o/posix
+          cd ~/.ansible/collections/ansible_collections/o0_o/posix
 
           # Use specific Python version for ansible-core installation
           python${{ matrix['python'] }} -m venv .venv
@@ -441,10 +441,10 @@ jobs:
 
       - name: Run integration tests
         run: |
-          # Create proper ansible collections structure
-          mkdir -p ../../../ansible_collections/o0_o
-          cp -R . ../../../ansible_collections/o0_o/posix
-          cd ../../../ansible_collections/o0_o/posix
+          # Create proper ansible collections structure in standard location
+          mkdir -p ~/.ansible/collections/ansible_collections/o0_o
+          cp -R . ~/.ansible/collections/ansible_collections/o0_o/posix
+          cd ~/.ansible/collections/ansible_collections/o0_o/posix
 
           # Use specific Python version for ansible-core installation
           python${{ matrix['python'] }} -m venv .venv
@@ -483,10 +483,10 @@ jobs:
 
       - name: Run integration tests
         run: |
-          # Create proper ansible collections structure
-          mkdir -p ../../../ansible_collections/o0_o
-          cp -R . ../../../ansible_collections/o0_o/posix
-          cd ../../../ansible_collections/o0_o/posix
+          # Create proper ansible collections structure in standard location
+          mkdir -p ~/.ansible/collections/ansible_collections/o0_o
+          cp -R . ~/.ansible/collections/ansible_collections/o0_o/posix
+          cd ~/.ansible/collections/ansible_collections/o0_o/posix
 
           # Use specific Python version for ansible-core installation
           python${{ matrix['python'] }} -m venv .venv
@@ -525,10 +525,10 @@ jobs:
 
       - name: Run integration tests
         run: |
-          # Create proper ansible collections structure
-          mkdir -p ../../../ansible_collections/o0_o
-          cp -R . ../../../ansible_collections/o0_o/posix
-          cd ../../../ansible_collections/o0_o/posix
+          # Create proper ansible collections structure in standard location
+          mkdir -p ~/.ansible/collections/ansible_collections/o0_o
+          cp -R . ~/.ansible/collections/ansible_collections/o0_o/posix
+          cd ~/.ansible/collections/ansible_collections/o0_o/posix
 
           # Use specific Python version for ansible-core installation
           python${{ matrix['python'] }} -m venv .venv
@@ -567,10 +567,10 @@ jobs:
 
       - name: Run integration tests
         run: |
-          # Create proper ansible collections structure
-          mkdir -p ../../../ansible_collections/o0_o
-          cp -R . ../../../ansible_collections/o0_o/posix
-          cd ../../../ansible_collections/o0_o/posix
+          # Create proper ansible collections structure in standard location
+          mkdir -p ~/.ansible/collections/ansible_collections/o0_o
+          cp -R . ~/.ansible/collections/ansible_collections/o0_o/posix
+          cd ~/.ansible/collections/ansible_collections/o0_o/posix
 
           # Use specific Python version for ansible-core installation
           python${{ matrix['python'] }} -m venv .venv
