@@ -11,6 +11,29 @@ name: Ansible Collection CI
   pull_request:
 
 jobs:
+  build:
+    name: Build Collection
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: Install Ansible Core
+        run: pip install ansible-core
+
+      - name: Build Collection
+        run: ansible-galaxy collection build
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ansible-collection-tarball
+          path: ./*.tar.gz
+
   # Read the Linux OS and Python version matrices from JSON files
   linux-matrix:
     runs-on: ubuntu-latest
@@ -41,7 +64,9 @@ jobs:
       Sanity (${{ matrix['os'] }} - Py${{ matrix['python'] }}/
       Ansible${{ matrix['ansible_version'] }})
     runs-on: ubuntu-latest
-    needs: linux-matrix
+    needs:
+      - linux-matrix
+      - build
     strategy:
       fail-fast: false
       matrix:
@@ -50,16 +75,19 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - uses: actions/download-artifact@v4
+        with:
+          name: ansible-collection-tarball
+          path: ./build
+
       - name: Run sanity tests in container
         run: |
-          collection_path=":/root/.ansible/collections/ansible_collections"
-          collection_path="${collection_path}/o0_o/posix"
           # Note: --security-opt seccomp=unconfined is required for shellcheck
           # in ansible-test sanity to access get_mempolicy syscall
           docker run --rm \
             --security-opt seccomp=unconfined \
-            -v "${{ github['workspace'] }}${collection_path}" \
-            -w /root/.ansible/collections/ansible_collections/o0_o/posix \
+            -v "${{ github['workspace'] }}/build:/build" \
+            -w /root \
             ${{ matrix['os'] }} sh -c '
               set -eux
               export LINUX_OS="${{ matrix['os'] }}"
@@ -75,8 +103,12 @@ jobs:
               # Show which Ansible version we got
               ansible --version
 
-              # Install collection dependencies
-              . .github/scripts/install-collection-deps.sh
+              # Install collection from built tarball with dependencies
+              ansible-galaxy collection install /build/o0_o-posix-*.tar.gz \
+                --force -p /root/.ansible/collections -vvv
+
+              # Navigate to installed collection
+              cd /root/.ansible/collections/ansible_collections/o0_o/posix
 
               # Run sanity tests for this specific Python version
               ansible-test sanity --venv --python ${{ matrix['python'] }} -v
@@ -87,7 +119,9 @@ jobs:
       Units (${{ matrix['os'] }} - Py${{ matrix['python'] }}/
       Ansible${{ matrix['ansible_version'] }})
     runs-on: ubuntu-latest
-    needs: linux-matrix
+    needs:
+      - linux-matrix
+      - build
     strategy:
       fail-fast: false
       matrix:
@@ -96,14 +130,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - uses: actions/download-artifact@v4
+        with:
+          name: ansible-collection-tarball
+          path: ./build
+
       - name: Run unit tests in container
         run: |
-          collection_path=":/root/.ansible/collections/ansible_collections"
-          collection_path="${collection_path}/o0_o/posix"
           docker run --rm \
             --security-opt seccomp=unconfined \
-            -v "${{ github['workspace'] }}${collection_path}" \
-            -w /root/.ansible/collections/ansible_collections/o0_o/posix \
+            -v "${{ github['workspace'] }}/build:/build" \
+            -w /root \
             -e ANSIBLE_PACKAGE="${{ matrix['ansible_package'] }}" \
             ${{ matrix['os'] }} sh -c '
               set -eux
@@ -121,7 +158,9 @@ jobs:
       Integration (${{ matrix['os'] }} -
       Py${{ matrix['python'] }}/Ansible${{ matrix['ansible_version'] }})
     runs-on: ubuntu-latest
-    needs: linux-matrix
+    needs:
+      - linux-matrix
+      - build
     strategy:
       fail-fast: false
       matrix:
@@ -130,14 +169,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - uses: actions/download-artifact@v4
+        with:
+          name: ansible-collection-tarball
+          path: ./build
+
       - name: Run integration tests in container
         run: |
-          collection_path=":/root/.ansible/collections/ansible_collections"
-          collection_path="${collection_path}/o0_o/posix"
           docker run --rm \
             --security-opt seccomp=unconfined \
-            -v "${{ github['workspace'] }}${collection_path}" \
-            -w /root/.ansible/collections/ansible_collections/o0_o/posix \
+            -v "${{ github['workspace'] }}/build:/build" \
+            -w /root \
             -e ANSIBLE_PACKAGE="${{ matrix['ansible_package'] }}" \
             ${{ matrix['os'] }} sh -c '
               set -eux
@@ -158,7 +200,9 @@ jobs:
       Sanity (${{ matrix['os'] }} - Py${{ matrix['python'] }}/
       Ansible${{ matrix['ansible_version'] }})
     runs-on: ${{ matrix['os'] }}
-    needs: macos-matrix
+    needs:
+      - macos-matrix
+      - build
     strategy:
       fail-fast: false
       matrix:
@@ -166,6 +210,11 @@ jobs:
           ${{ fromJson(needs['macos-matrix']['outputs']['test-matrix']) }}
     steps:
       - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: ansible-collection-tarball
+          path: ./build
 
       - name: Setup Python
         uses: actions/setup-python@v5
@@ -175,10 +224,6 @@ jobs:
       - name: Run sanity tests
         run: |
           set -eux
-          # Create proper ansible collections structure in standard location
-          mkdir -p ~/.ansible/collections/ansible_collections/o0_o
-          cp -R . ~/.ansible/collections/ansible_collections/o0_o/posix
-          cd ~/.ansible/collections/ansible_collections/o0_o/posix
 
           # Use specific Python version for ansible-core installation
           python${{ matrix['python'] }} -m venv .venv
@@ -189,8 +234,12 @@ jobs:
           # Show which Ansible version we got
           ansible --version
 
-          # Install collection dependencies
-          . .github/scripts/install-collection-deps.sh
+          # Install collection from built tarball with dependencies
+          ansible-galaxy collection install ./build/o0_o-posix-*.tar.gz \
+            --force -p ~/.ansible/collections -vvv
+
+          # Navigate to installed collection
+          cd ~/.ansible/collections/ansible_collections/o0_o/posix
 
           # Run sanity tests for this specific Python version
           ansible-test sanity --venv --python ${{ matrix['python'] }} -v
@@ -200,7 +249,9 @@ jobs:
       Units (${{ matrix['os'] }} - Py${{ matrix['python'] }}/
       Ansible${{ matrix['ansible_version'] }})
     runs-on: ${{ matrix['os'] }}
-    needs: macos-matrix
+    needs:
+      - macos-matrix
+      - build
     strategy:
       fail-fast: false
       matrix:
@@ -208,6 +259,11 @@ jobs:
           ${{ fromJson(needs['macos-matrix']['outputs']['test-matrix']) }}
     steps:
       - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: ansible-collection-tarball
+          path: ./build
 
       - name: Setup Python
         uses: actions/setup-python@v5
@@ -217,10 +273,6 @@ jobs:
       - name: Run unit tests
         run: |
           set -eux
-          # Create proper ansible collections structure in standard location
-          mkdir -p ~/.ansible/collections/ansible_collections/o0_o
-          cp -R . ~/.ansible/collections/ansible_collections/o0_o/posix
-          cd ~/.ansible/collections/ansible_collections/o0_o/posix
 
           # Use specific Python version for ansible-core installation
           python${{ matrix['python'] }} -m venv .venv
@@ -231,8 +283,12 @@ jobs:
           # Show which Ansible version we got
           ansible --version
 
-          # Install collection dependencies
-          . .github/scripts/install-collection-deps.sh
+          # Install collection from built tarball with dependencies
+          ansible-galaxy collection install ./build/o0_o-posix-*.tar.gz \
+            --force -p ~/.ansible/collections -vvv
+
+          # Navigate to installed collection
+          cd ~/.ansible/collections/ansible_collections/o0_o/posix
 
           # Run unit tests for this specific Python version
           ansible-test units --venv --python ${{ matrix['python'] }} -v
@@ -242,7 +298,9 @@ jobs:
       Integration (${{ matrix['os'] }} -
       Py${{ matrix['python'] }}/Ansible${{ matrix['ansible_version'] }})
     runs-on: ${{ matrix['os'] }}
-    needs: macos-matrix
+    needs:
+      - macos-matrix
+      - build
     strategy:
       fail-fast: false
       matrix:
@@ -250,6 +308,11 @@ jobs:
           ${{ fromJson(needs['macos-matrix']['outputs']['test-matrix']) }}
     steps:
       - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: ansible-collection-tarball
+          path: ./build
 
       - name: Setup Python
         uses: actions/setup-python@v5
@@ -259,10 +322,6 @@ jobs:
       - name: Run integration tests
         run: |
           set -eux
-          # Create proper ansible collections structure in standard location
-          mkdir -p ~/.ansible/collections/ansible_collections/o0_o
-          cp -R . ~/.ansible/collections/ansible_collections/o0_o/posix
-          cd ~/.ansible/collections/ansible_collections/o0_o/posix
 
           # Use specific Python version for ansible-core installation
           python${{ matrix['python'] }} -m venv .venv
@@ -273,8 +332,12 @@ jobs:
           # Show which Ansible version we got
           ansible --version
 
-          # Install collection dependencies
-          . .github/scripts/install-collection-deps.sh
+          # Install collection from built tarball with dependencies
+          ansible-galaxy collection install ./build/o0_o-posix-*.tar.gz \
+            --force -p ~/.ansible/collections -vvv
+
+          # Navigate to installed collection
+          cd ~/.ansible/collections/ansible_collections/o0_o/posix
 
           # Run all integration test targets
           ansible-test integration --venv --python ${{ matrix['python'] }} -v
@@ -309,37 +372,13 @@ jobs:
       - name: Integration tests completed
         run: echo "All integration tests have completed successfully"
 
-  build:
-    name: Build Collection
+  publish:
+    name: Publish to Ansible Galaxy
     runs-on: ubuntu-latest
     needs:
       - sanity-complete
       - units-complete
       - integration-complete
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.x'
-
-      - name: Install Ansible Core
-        run: pip install ansible-core
-
-      - name: Build Collection
-        run: ansible-galaxy collection build
-
-      - name: Upload Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: ansible-collection-tarball
-          path: ./*.tar.gz
-
-  publish:
-    name: Publish to Ansible Galaxy
-    runs-on: ubuntu-latest
-    needs: build
     if: startsWith(github['ref'], 'refs/tags/v')
     steps:
       - uses: actions/download-artifact@v4
