@@ -87,12 +87,13 @@ jobs:
           docker run --rm \
             --security-opt seccomp=unconfined \
             -v "${{ github['workspace'] }}/build:/build" \
+            -v "${{ github['workspace'] }}/.github:/workspace/.github:ro" \
             -w /root \
             ${{ matrix['os'] }} sh -c '
               set -eux
               export LINUX_OS="${{ matrix['os'] }}"
               export PYTHON_VERSION="${{ matrix['python'] }}"
-              . .github/scripts/setup-linux-pyenv.sh
+              . /workspace/.github/scripts/setup-linux-pyenv.sh
 
               # Source the venv that was created
               . .venv/bin/activate
@@ -140,6 +141,7 @@ jobs:
           docker run --rm \
             --security-opt seccomp=unconfined \
             -v "${{ github['workspace'] }}/build:/build" \
+            -v "${{ github['workspace'] }}/.github:/workspace/.github:ro" \
             -w /root \
             -e ANSIBLE_PACKAGE="${{ matrix['ansible_package'] }}" \
             ${{ matrix['os'] }} sh -c '
@@ -147,10 +149,10 @@ jobs:
               export LINUX_OS="${{ matrix['os'] }}"
               export PYTHON_VERSION="${{ matrix['python'] }}"
               export TEST_TYPE="units"
-              . .github/scripts/setup-linux-pyenv.sh
+              . /workspace/.github/scripts/setup-linux-pyenv.sh
 
               # Run unit tests as both root and non-root users
-              . .github/scripts/run-tests-multi-user.sh
+              . /workspace/.github/scripts/run-tests-multi-user.sh
             '
 
   linux-integration:
@@ -179,6 +181,7 @@ jobs:
           docker run --rm \
             --security-opt seccomp=unconfined \
             -v "${{ github['workspace'] }}/build:/build" \
+            -v "${{ github['workspace'] }}/.github:/workspace/.github:ro" \
             -w /root \
             -e ANSIBLE_PACKAGE="${{ matrix['ansible_package'] }}" \
             ${{ matrix['os'] }} sh -c '
@@ -187,11 +190,11 @@ jobs:
               export PYTHON_VERSION="${{ matrix['python'] }}"
               export TEST_TYPE="integration"
               # Run all integration tests (no specific target)
-              . .github/scripts/setup-linux-pyenv.sh
+              . /workspace/.github/scripts/setup-linux-pyenv.sh
 
               # Run all integration test targets as both root and
               # non-root users
-              . .github/scripts/run-tests-multi-user.sh
+              . /workspace/.github/scripts/run-tests-multi-user.sh
             '
 
 
