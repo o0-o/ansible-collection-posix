@@ -16,6 +16,26 @@ The `o0_o.posix` collection provides enhanced versions of common Ansible modules
 - Comprehensive unit and integration test coverage
 - _Mostly_ drop-in replacements for `ansible.builtin.command`, `ansible.builtin.slurp` and `ansible.builtin.lineinfile` modules with some quality-of-life enhancements
 
+## Dependencies
+
+### Collection Dependencies
+
+- `o0_o.utils`: Required for hostname filtering capabilities
+
+### Python Dependencies
+
+When using the hostname filter from `o0_o.utils` collection, the following Python packages are required on the Ansible controller:
+
+- `dnspython`: DNS toolkit for Python
+- `idna`: Internationalized Domain Names support
+- `tldextract`: Extract TLD, domain, and subdomain components
+
+Install these dependencies with:
+
+```bash
+pip install dnspython idna tldextract
+```
+
 ## Plugins
 
 ### Action Plugins

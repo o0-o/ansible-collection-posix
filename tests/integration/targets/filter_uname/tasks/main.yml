@@ -1,0 +1,253 @@
+# vim: ts=2:sw=2:sts=2:et:ft=yaml.ansible
+# -*- mode: yaml; yaml-indent-offset: 2; indent-tabs-mode: nil; -*-
+---
+# GNU General Public License v3.0+
+# SPDX-License-Identifier: GPL-3.0-or-later
+# (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
+#
+# Copyright (c) 2025 oØ.o (@o0-o)
+#
+# This file is part of the o0_o.posix Ansible Collection.
+
+- name: Get uname output for testing
+  ansible.builtin.command:
+    cmd: uname -a
+  changed_when: false
+  register: uname_output_reg
+
+- name: Test uname filter with default (facts=false) mode
+  block:
+    - name: Parse uname output with string input
+      ansible.builtin.set_fact:
+        parsed_default: >-
+          {{ uname_output_reg['stdout'] | o0_o.posix.uname }}
+
+    - name: Assert default parsing returns jc format
+      ansible.builtin.assert:
+        that:
+          - parsed_default is defined
+          - parsed_default is mapping
+          - parsed_default['kernel_name'] is defined
+          - parsed_default['node_name'] is defined
+          - parsed_default['kernel_release'] is defined
+          - parsed_default['machine'] is defined
+        fail_msg: >-
+          Default uname parsing should return jc format with all fields
+
+    - name: Parse with stdout_lines input
+      ansible.builtin.set_fact:
+        parsed_lines: >-
+          {{ uname_output_reg['stdout_lines'] | o0_o.posix.uname }}
+
+    - name: Parse with full dict input
+      ansible.builtin.set_fact:
+        parsed_dict: "{{ uname_output_reg | o0_o.posix.uname }}"
+
+    - name: Assert all input types produce same result
+      ansible.builtin.assert:
+        that:
+          - parsed_default == parsed_lines
+          - parsed_default == parsed_dict
+        fail_msg: "All input types should produce identical results"
+
+- name: Test uname filter with facts=true mode
+  block:
+    - name: Parse uname output with facts mode
+      ansible.builtin.set_fact:
+        parsed_facts: >-
+          {{ uname_output_reg['stdout'] | o0_o.posix.uname(facts=true) }}
+
+    - name: Assert facts structure is correct
+      ansible.builtin.assert:
+        that:
+          - parsed_facts is defined
+          - parsed_facts is mapping
+          - parsed_facts['kernel'] is defined
+          - parsed_facts['kernel']['pretty'] is defined
+          - parsed_facts['kernel']['name'] is defined
+          - parsed_facts['architecture'] is defined
+          - parsed_facts['hostname'] is defined
+          - parsed_facts['hostname']['short'] is defined
+        fail_msg: >-
+          Facts mode should return structured kernel, architecture,
+          and hostname
+
+    - name: Verify kernel name normalization
+      ansible.builtin.assert:
+        that:
+          - >-
+            parsed_facts['kernel']['name'] ==
+            parsed_facts['kernel']['pretty'] | lower | replace(' ', '_')
+        fail_msg: >-
+          Kernel name should be normalized (lowercase, spaces to underscores)
+
+    - name: Verify kernel version if present
+      ansible.builtin.assert:
+        that:
+          - >-
+            parsed_facts['kernel']['version'] is not defined or
+            parsed_facts['kernel']['version']['id'] is defined
+        fail_msg: "Kernel version should have 'id' field if present"
+
+- name: Test hostname parsing with FQDN
+  when: "'.' in parsed_default['node_name']"
+  block:
+    - name: Get facts with FQDN
+      ansible.builtin.set_fact:
+        fqdn_facts: >-
+          {{ uname_output_reg['stdout'] | o0_o.posix.uname(facts=true) }}
+
+    - name: Assert FQDN hostname has both short and long
+      ansible.builtin.assert:
+        that:
+          - fqdn_facts['hostname']['short'] is defined
+          - fqdn_facts['hostname']['long'] is defined
+          - "'.' not in fqdn_facts['hostname']['short']"
+          - "'.' in fqdn_facts['hostname']['long']"
+        fail_msg: "FQDN should provide both short and long hostname"
+
+- name: Test hostname parsing without FQDN
+  when: "'.' not in parsed_default['node_name']"
+  block:
+    - name: Get facts without FQDN
+      ansible.builtin.set_fact:
+        no_fqdn_facts: >-
+          {{ uname_output_reg['stdout'] | o0_o.posix.uname(facts=true) }}
+
+    - name: Assert non-FQDN hostname has only short
+      ansible.builtin.assert:
+        that:
+          - no_fqdn_facts['hostname']['short'] is defined
+          - "'long' not in no_fqdn_facts['hostname']"
+        fail_msg: "Non-FQDN should only provide short hostname"
+
+- name: Test architecture field selection
+  block:
+    - name: Check architecture is populated
+      ansible.builtin.assert:
+        that:
+          - parsed_facts['architecture'] is defined
+          - parsed_facts['architecture'] | length > 0
+          - parsed_facts['architecture'] != 'unknown'
+        fail_msg: >-
+          Architecture should be populated from
+          machine/processor/hardware_platform
+
+- name: Test with different OS types
+  block:
+    - name: Check kernel pretty name matches system
+      ansible.builtin.assert:
+        that:
+          - >-
+            parsed_facts['kernel']['pretty'] in
+            ['Linux', 'Darwin', 'FreeBSD', 'OpenBSD', 'NetBSD', 'SunOS', 'AIX']
+        fail_msg: "Kernel pretty name should match the actual OS"
+
+- name: Test empty input handling
+  block:
+    - name: Parse empty string with default mode
+      ansible.builtin.set_fact:
+        empty_default: "{{ '' | o0_o.posix.uname }}"
+      ignore_errors: true
+      register: empty_default_reg
+
+    - name: Parse empty string with facts mode
+      ansible.builtin.set_fact:
+        empty_facts: "{{ '' | o0_o.posix.uname(facts=true) }}"
+      ignore_errors: true
+      register: empty_facts_reg
+
+    - name: Assert empty input handling
+      ansible.builtin.assert:
+        that:
+          - empty_default_reg is failed or empty_default == {}
+          - empty_facts_reg is failed or empty_facts == {}
+        fail_msg: "Empty input should either fail or return empty dict"
+
+- name: Test filter comparison between modes
+  block:
+    - name: Compare node_name handling
+      when: parsed_default['node_name'] is defined
+      ansible.builtin.assert:
+        that:
+          - parsed_facts['hostname'] is defined
+          - parsed_facts['hostname']['short'] is defined
+        fail_msg: >-
+          node_name in default mode should map to hostname in facts mode
+
+    - name: Compare machine/architecture handling
+      when: parsed_default['machine'] is defined
+      ansible.builtin.assert:
+        that:
+          - parsed_facts['architecture'] == parsed_default['machine']
+        fail_msg: >-
+          machine in default mode should map to architecture in facts mode
+
+    - name: Compare kernel_name handling
+      when: parsed_default['kernel_name'] is defined
+      ansible.builtin.assert:
+        that:
+          - parsed_facts['kernel']['pretty'] == parsed_default['kernel_name']
+        fail_msg: "kernel_name should be preserved as kernel.pretty"
+
+- name: Test filter with real uname variations
+  block:
+    - name: Test filter can handle minimal uname output
+      ansible.builtin.set_fact:
+        minimal_parsed: >-
+          {{ 'Linux localhost 5.10.0-generic #1 SMP x86_64 GNU/Linux' |
+             o0_o.posix.uname }}
+
+    - name: Assert minimal parsing works
+      ansible.builtin.assert:
+        that:
+          - minimal_parsed['kernel_name'] == 'Linux'
+          - minimal_parsed['node_name'] == 'localhost'
+          - minimal_parsed['machine'] == 'x86_64'
+        fail_msg: "Should handle minimal uname output"
+
+    - name: Test facts mode with minimal output
+      ansible.builtin.set_fact:
+        minimal_facts: >-
+          {{ 'Linux localhost 5.10.0-generic #1 SMP x86_64 GNU/Linux' |
+             o0_o.posix.uname(facts=true) }}
+
+    - name: Assert minimal facts parsing
+      ansible.builtin.assert:
+        that:
+          - minimal_facts['kernel']['name'] == 'linux'
+          - minimal_facts['hostname']['short'] == 'localhost'
+          - minimal_facts['architecture'] == 'x86_64'
+        fail_msg: "Facts mode should handle minimal uname output"
+
+- name: 'Fail: Test invalid uname output'
+  block:
+    - name: Try to parse incomplete uname output
+      ansible.builtin.set_fact:
+        invalid_result: "{{ 'Linux' | o0_o.posix.uname }}"
+
+  rescue:
+    - name: Assert parsing incomplete output fails
+      ansible.builtin.assert:
+        that:
+          - ansible_failed_result is defined
+          - >-
+            'jc' in ansible_failed_result.msg or
+            'parse' in ansible_failed_result.msg
+        fail_msg: "Should fail when parsing incomplete uname output"
+
+- name: Test hostname filter dependency
+  block:
+    - name: Parse with complex hostname
+      ansible.builtin.set_fact:
+        complex_hostname: >-
+          {{ 'Linux web01.prod.example.com 5.10.0 #1 x86_64 GNU/Linux' |
+             o0_o.posix.uname(facts=true) }}
+
+    - name: Assert hostname parsing uses o0_o.utils.hostname filter
+      ansible.builtin.assert:
+        that:
+          - complex_hostname['hostname']['short'] == 'web01'
+          - complex_hostname['hostname']['long'] == 'web01.prod.example.com'
+        fail_msg: >-
+          Should properly parse complex hostnames using utils.hostname filter

@@ -13,11 +13,15 @@
 
 from __future__ import annotations
 
-# Import JC filter module
+# Import filter modules
 from ansible_collections.o0_o.posix.plugins.filter.jc import (
     FilterModule as JcFilter,
+)
+from ansible_collections.o0_o.posix.plugins.filter.uname import (
+    FilterModule as UnameFilter,
 )
 
 __all__ = [
     "JcFilter",
+    "UnameFilter",
 ]
