@@ -28,7 +28,9 @@ from ansible_collections.o0_o.posix.tests.utils import (
         (None, True, None),  # file does not exist
     ],
 )
-def test_cat_file_content(base, content, expect_error, expected_output) -> None:
+def test_cat_file_content(
+    base, content, expect_error, expected_output
+) -> None:
     """Test _cat method file reading with various content scenarios."""
     path = generate_temp_path()
 
