@@ -13,6 +13,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Union
 
+from ansible.errors import AnsibleFilterError
 from ansible_collections.o0_o.posix.plugins.filter_utils import JCBase
 
 try:
@@ -196,6 +197,15 @@ class FilterModule(JCBase):
 
         # Hostname - use short and long (if present)
         if "node_name" in parsed:
+            if not HAS_HOSTNAME_FILTER:
+                # If hostname filter is not available, raise error
+                # This should have been caught in uname() but check here too
+                raise AnsibleFilterError(
+                    "The 'facts' mode requires the o0_o.utils collection. "
+                    "Please install it with: "
+                    "ansible-galaxy collection install o0_o.utils"
+                )
+
             hostname_filter = HostnameFilter()
             hostname_data = hostname_filter.hostname(parsed["node_name"])
 
@@ -236,7 +246,7 @@ class FilterModule(JCBase):
 
         # Check for hostname filter dependency when facts=True
         if not HAS_HOSTNAME_FILTER:
-            raise ImportError(
+            raise AnsibleFilterError(
                 "The 'facts' mode requires the o0_o.utils collection. "
                 "Please install it with: "
                 "ansible-galaxy collection install o0_o.utils"

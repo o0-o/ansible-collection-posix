@@ -1,10 +1,9 @@
-# Python requirements for o0_o.posix collection
+# Requirements for o0_o.posix collection
 
 # Core dependencies
 jc>=1.25.0                  # Command output parsing
-humanfriendly>=10.0         # Human-readable formatting
 
 # Dependencies for o0_o.utils.hostname filter (used by uname filter)
 dnspython>=2.0.0            # DNS resolution
-idna                        # International domain names
-tldextract                  # Domain extraction
+idna>=3.0                   # IDN support
+tldextract>=3.1.0           # TLD extraction

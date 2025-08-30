@@ -6,5 +6,4 @@ max-line-length = 79
 max-doc-length = 72
 per-file-ignores = [
     "plugins/modules/*.py:E402",
-    "tests/unit/plugins/filter/test_uname.py:E402",
 ]
