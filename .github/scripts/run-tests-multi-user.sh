@@ -12,6 +12,8 @@
 #
 # Script to run tests as both root and non-root users
 
+set -e  # Exit on any command failure
+
 INTEGRATION_TARGET="${INTEGRATION_TARGET:-}"  # optional integration target
 
 # Validate test type

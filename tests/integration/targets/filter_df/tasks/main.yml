@@ -1,0 +1,301 @@
+# vim: ts=2:sw=2:sts=2:et:ft=yaml.ansible
+# -*- mode: yaml; yaml-indent-offset: 2; indent-tabs-mode: nil; -*-
+---
+# GNU General Public License v3.0+
+# SPDX-License-Identifier: GPL-3.0-or-later
+# (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
+#
+# Copyright (c) 2025 oØ.o (@o0-o)
+#
+# This file is part of the o0_o.posix Ansible Collection.
+
+- name: Get df output for testing
+  ansible.builtin.command:
+    cmd: df -P
+  changed_when: false
+  register: df_output_reg
+
+- name: Test df filter with default (facts=false) mode
+  block:
+    - name: Parse df output with string input
+      ansible.builtin.set_fact:
+        parsed_default: >-
+          {{ df_output_reg['stdout'] | o0_o.posix.df }}
+
+    - name: Assert default parsing returns jc format
+      ansible.builtin.assert:
+        that:
+          - parsed_default is defined
+          - parsed_default is iterable
+          - parsed_default is not string
+          - parsed_default is not mapping
+          - parsed_default | length > 0
+          - parsed_default[0]['filesystem'] is defined
+          - parsed_default[0]['mounted_on'] is defined
+          - >-
+            parsed_default[0]['1024_blocks'] is defined or
+            parsed_default[0]['1k_blocks'] is defined or
+            parsed_default[0]['512_blocks'] is defined
+          - parsed_default[0]['used'] is defined
+          - parsed_default[0]['available'] is defined
+        fail_msg: >-
+          Default df parsing should return jc format list with filesystem info
+
+    - name: Parse with stdout_lines input
+      ansible.builtin.set_fact:
+        parsed_lines: >-
+          {{ df_output_reg['stdout_lines'] | o0_o.posix.df }}
+
+    - name: Parse with full dict input
+      ansible.builtin.set_fact:
+        parsed_dict: "{{ df_output_reg | o0_o.posix.df }}"
+
+    - name: Assert all input types produce same result
+      ansible.builtin.assert:
+        that:
+          - parsed_default == parsed_lines
+          - parsed_default == parsed_dict
+        fail_msg: "All input types should produce identical results"
+
+- name: Test df filter with facts=true mode
+  block:
+    - name: Parse df output with facts mode
+      ansible.builtin.set_fact:
+        parsed_facts: >-
+          {{ df_output_reg['stdout'] | o0_o.posix.df(facts=true) }}
+
+    - name: Assert facts structure is correct
+      ansible.builtin.assert:
+        that:
+          - parsed_facts is defined
+          - parsed_facts is mapping
+          - parsed_facts['mounts'] is defined
+          - parsed_facts['mounts'] is mapping
+        fail_msg: >-
+          Facts mode should return structured dict with mounts key
+
+    - name: Verify root filesystem is present
+      ansible.builtin.assert:
+        that:
+          - "'/' in parsed_facts['mounts']"
+          - parsed_facts['mounts']['/']['device'] is defined
+          - parsed_facts['mounts']['/']['capacity'] is defined
+          - parsed_facts['mounts']['/']['capacity']['total'] is defined
+          - >-
+            parsed_facts['mounts']['/']['capacity']['total']['bytes']
+            is number
+          - >-
+            parsed_facts['mounts']['/']['capacity']['total']['pretty']
+            is string
+          - parsed_facts['mounts']['/']['capacity']['used'] is defined
+          - >-
+            parsed_facts['mounts']['/']['capacity']['used']['bytes']
+            is number
+          - >-
+            parsed_facts['mounts']['/']['capacity']['used']['pretty']
+            is string
+          # Available is optional but if present should have correct structure
+          - >-
+            (parsed_facts['mounts']['/']['capacity']['available']
+            is not defined) or
+            (parsed_facts['mounts']['/']['capacity']['available']['bytes']
+            is number and
+             parsed_facts['mounts']['/']['capacity']['available']['pretty']
+             is string)
+        fail_msg: >-
+          Root filesystem should be present in facts output with capacity data
+
+- name: Test filesystem data consistency
+  block:
+    - name: Get specific filesystem from default mode
+      ansible.builtin.set_fact:
+        root_fs_default: >-
+          {{ parsed_default
+             | selectattr('mounted_on', 'equalto', '/')
+             | first }}
+
+    - name: Get specific filesystem from facts mode
+      ansible.builtin.set_fact:
+        root_fs_facts: "{{ parsed_facts['mounts']['/'] }}"
+
+    - name: Assert data consistency between modes
+      ansible.builtin.assert:
+        that:
+          - root_fs_default['filesystem'] == root_fs_facts['device']
+          # Verify capacity values match when converted
+          - >-
+            (root_fs_default.get('1024_blocks', 0) * 1024 ==
+            root_fs_facts['capacity']['total']['bytes']) or
+            (root_fs_default.get('1k_blocks', 0) * 1024 ==
+            root_fs_facts['capacity']['total']['bytes']) or
+            (root_fs_default.get('512_blocks', 0) * 512 ==
+            root_fs_facts['capacity']['total']['bytes'])
+          - >-
+            (root_fs_default.get('used', 0) * 1024 ==
+            root_fs_facts['capacity']['used']['bytes']) or
+            (root_fs_default.get('used', 0) * 512 ==
+            root_fs_facts['capacity']['used']['bytes'])
+        fail_msg: >-
+          Data should be consistent between default and facts modes
+
+- name: Test with multiple filesystems
+  block:
+    - name: Count filesystems in default mode
+      ansible.builtin.set_fact:
+        fs_count_default: "{{ parsed_default | length }}"
+
+    - name: Count filesystems in facts mode
+      ansible.builtin.set_fact:
+        fs_count_facts: "{{ parsed_facts['mounts'] | length }}"
+
+    - name: Assert filesystem counts match
+      ansible.builtin.assert:
+        that:
+          - fs_count_default == fs_count_facts
+        fail_msg: >-
+          Number of filesystems should match between default and facts modes
+
+- name: Test empty input handling
+  block:
+    - name: Parse empty string with default mode
+      ansible.builtin.set_fact:
+        empty_default: "{{ '' | o0_o.posix.df }}"
+      ignore_errors: true
+      register: empty_default_reg
+
+    - name: Parse empty string with facts mode
+      ansible.builtin.set_fact:
+        empty_facts: "{{ '' | o0_o.posix.df(facts=true) }}"
+      ignore_errors: true
+      register: empty_facts_reg
+
+    - name: Assert empty input handling
+      ansible.builtin.assert:
+        that:
+          - empty_default_reg is failed or empty_default == []
+          - >-
+            empty_facts_reg is failed or
+            empty_facts == {'mounts': {}}
+        fail_msg: "Empty input should either fail or return empty structure"
+
+- name: Test special filesystems handling
+  block:
+    - name: Check for tmpfs or devtmpfs filesystems
+      ansible.builtin.set_fact:
+        has_tmpfs: >-
+          {{ parsed_default |
+             selectattr('filesystem', 'match', '(tmpfs|devtmpfs)') |
+             list | length > 0 }}
+
+    - name: Verify tmpfs handling if present
+      when: has_tmpfs
+      block:
+        - name: Get tmpfs entries
+          ansible.builtin.set_fact:
+            tmpfs_entries: >-
+              {{ parsed_default |
+                 selectattr('filesystem', 'match', '(tmpfs|devtmpfs)') |
+                 list }}
+
+        - name: Assert tmpfs entries are valid
+          ansible.builtin.assert:
+            that:
+              - tmpfs_entries | length > 0
+              - tmpfs_entries[0]['mounted_on'] is defined
+              - >-
+                tmpfs_entries[0]['1024_blocks'] is defined or
+                tmpfs_entries[0]['1k_blocks'] is defined or
+                tmpfs_entries[0]['512_blocks'] is defined
+            fail_msg: "tmpfs entries should be properly parsed"
+
+- name: Test network filesystem handling (if present)
+  block:
+    - name: Check for network filesystems
+      ansible.builtin.set_fact:
+        network_fs: >-
+          {{ parsed_default |
+             selectattr('filesystem', 'match', '.*:.*') |
+             list }}
+
+    - name: Verify network filesystem parsing if present
+      when: network_fs | length > 0
+      ansible.builtin.assert:
+        that:
+          - network_fs[0]['mounted_on'] is defined
+          - network_fs[0]['filesystem'] is defined
+          - "':' in network_fs[0]['filesystem']"
+        fail_msg: "Network filesystems should be properly parsed"
+
+- name: Test filter with mock df output
+  block:
+    - name: Create mock df output
+      ansible.builtin.set_fact:
+        mock_df_output: |
+          Filesystem     1024-blocks    Used Available Capacity  Mounted on
+          /dev/sda1         20971520 5242880  15728640      25%  /
+          /dev/sda2        104857600 52428800 52428800      50%  /home
+          tmpfs              2097152       0   2097152       0%  /dev/shm
+
+    - name: Parse mock output with default mode
+      ansible.builtin.set_fact:
+        mock_parsed: "{{ mock_df_output | o0_o.posix.df }}"
+
+    - name: Assert mock parsing works
+      ansible.builtin.assert:
+        that:
+          - mock_parsed | length == 3
+          - mock_parsed[0]['filesystem'] == '/dev/sda1'
+          - mock_parsed[0]['mounted_on'] == '/'
+          - mock_parsed[1]['filesystem'] == '/dev/sda2'
+          - mock_parsed[1]['mounted_on'] == '/home'
+          - mock_parsed[2]['filesystem'] == 'tmpfs'
+          - mock_parsed[2]['mounted_on'] == '/dev/shm'
+        fail_msg: "Should correctly parse mock df output"
+
+    - name: Parse mock output with facts mode
+      ansible.builtin.set_fact:
+        mock_facts: "{{ mock_df_output | o0_o.posix.df(facts=true) }}"
+
+    - name: Assert mock facts structure
+      ansible.builtin.assert:
+        that:
+          - mock_facts['mounts'] | length == 3
+          - mock_facts['mounts']['/']['device'] == '/dev/sda1'
+          - mock_facts['mounts']['/home']['device'] == '/dev/sda2'
+          - mock_facts['mounts']['/dev/shm']['device'] == 'tmpfs'
+          - >-
+            mock_facts['mounts']['/']['capacity']['total']['bytes']
+            is number
+          - >-
+            mock_facts['mounts']['/']['capacity']['total']['pretty']
+            is string
+        fail_msg: "Facts mode should correctly organize mock df output"
+
+- name: 'Fail: Test invalid df output'
+  block:
+    - name: Try to parse incomplete df output
+      ansible.builtin.set_fact:
+        invalid_result: "{{ 'Filesystem' | o0_o.posix.df }}"
+
+  rescue:
+    - name: Assert parsing incomplete output fails gracefully
+      ansible.builtin.assert:
+        that:
+          - ansible_failed_result is defined or invalid_result == []
+        fail_msg: "Should handle incomplete df output gracefully"
+
+- name: Test percentage handling
+  block:
+    - name: Check if use_percent field exists
+      ansible.builtin.set_fact:
+        has_use_percent: >-
+          {{ parsed_default[0]['use_percent'] is defined }}
+
+    - name: Verify percentage is numeric if present
+      when: has_use_percent
+      ansible.builtin.assert:
+        that:
+          - parsed_default[0]['use_percent'] is number
+          - parsed_default[0]['use_percent'] >= 0
+          - parsed_default[0]['use_percent'] <= 100
+        fail_msg: "use_percent should be a valid percentage value"

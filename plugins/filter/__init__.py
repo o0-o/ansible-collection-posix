@@ -14,6 +14,9 @@
 from __future__ import annotations
 
 # Import filter modules
+from ansible_collections.o0_o.posix.plugins.filter.df import (
+    FilterModule as DfFilter,
+)
 from ansible_collections.o0_o.posix.plugins.filter.jc import (
     FilterModule as JcFilter,
 )
@@ -22,6 +25,7 @@ from ansible_collections.o0_o.posix.plugins.filter.uname import (
 )
 
 __all__ = [
+    "DfFilter",
     "JcFilter",
     "UnameFilter",
 ]
