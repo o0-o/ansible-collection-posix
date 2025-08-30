@@ -20,6 +20,9 @@ from ansible_collections.o0_o.posix.plugins.filter.df import (
 from ansible_collections.o0_o.posix.plugins.filter.jc import (
     FilterModule as JcFilter,
 )
+from ansible_collections.o0_o.posix.plugins.filter.mount import (
+    FilterModule as MountFilter,
+)
 from ansible_collections.o0_o.posix.plugins.filter.uname import (
     FilterModule as UnameFilter,
 )
@@ -27,5 +30,6 @@ from ansible_collections.o0_o.posix.plugins.filter.uname import (
 __all__ = [
     "DfFilter",
     "JcFilter",
+    "MountFilter",
     "UnameFilter",
 ]

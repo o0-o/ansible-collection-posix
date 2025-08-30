@@ -58,7 +58,9 @@ class ActionModule(PosixBase):
     _supports_check_mode = True
     _supports_async = False
 
-    def _raw_cmd(self, module_args: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    def _raw_cmd(
+        self, module_args: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
         """
         Execute a command using low-level methods.
 
@@ -136,7 +138,9 @@ class ActionModule(PosixBase):
         # Ensure all args are safely converted to strings
         if is_iterable(args, include_strings=False):
             args = [
-                to_native(arg, errors="surrogate_or_strict", nonstring="simplerepr")
+                to_native(
+                    arg, errors="surrogate_or_strict", nonstring="simplerepr"
+                )
                 for arg in args
             ]
 
@@ -160,7 +164,9 @@ class ActionModule(PosixBase):
             quoted_creates = shlex.quote(creates)
             cr = self._low_level_execute_command(f"test -e {quoted_creates}")
             if cr["rc"] == 0:
-                r["msg"] = f"{shoulda} not run command since '{creates}' exists"
+                r["msg"] = (
+                    f"{shoulda} not run command since '{creates}' exists"
+                )
                 r["stdout"] = f"skipped, since {creates} exists"
                 r["stdout_lines"] = [r["stdout"]]
                 r["stderr_lines"] = []
@@ -172,7 +178,8 @@ class ActionModule(PosixBase):
             rm = self._low_level_execute_command(f"test -e {quoted_removes}")
             if rm["rc"] != 0:
                 r["msg"] = (
-                    f"{shoulda} not run command since '{removes}' " "does not exist"
+                    f"{shoulda} not run command since '{removes}' "
+                    "does not exist"
                 )
                 r["stdout"] = f"skipped, since {removes} does not exist"
                 r["stdout_lines"] = [r["stdout"]]
@@ -296,13 +303,19 @@ class ActionModule(PosixBase):
                 )
 
         input_keys = ("cmd", "argv")
-        provided = [k for k in input_keys if new_module_args.get(k) is not None]
+        provided = [
+            k for k in input_keys if new_module_args.get(k) is not None
+        ]
 
         if not provided:
-            raise AnsibleActionFail("One of 'cmd', or 'argv' must be specified")
+            raise AnsibleActionFail(
+                "One of 'cmd', or 'argv' must be specified"
+            )
 
         if len(provided) > 1:
-            raise AnsibleActionFail("Only one of 'cmd', or 'argv' can be specified")
+            raise AnsibleActionFail(
+                "Only one of 'cmd', or 'argv' can be specified"
+            )
 
         result = super().run(tmp, task_vars)
         result["invocation"] = self._task.args.copy()
@@ -315,7 +328,9 @@ class ActionModule(PosixBase):
 
             # Handle cmd vs argv conversion for builtin command module
             if builtin_module_args.get("cmd") is not None:
-                builtin_module_args["_raw_params"] = builtin_module_args.pop("cmd")
+                builtin_module_args["_raw_params"] = builtin_module_args.pop(
+                    "cmd"
+                )
                 builtin_module_args.pop("argv", None)  # Remove argv if present
             elif builtin_module_args.get("argv") is not None:
                 builtin_module_args["argv"] = builtin_module_args.pop("argv")

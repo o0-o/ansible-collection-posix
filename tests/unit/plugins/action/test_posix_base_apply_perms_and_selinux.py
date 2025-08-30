@@ -25,7 +25,7 @@ from ansible_collections.o0_o.posix.tests.utils import (
 
 
 def get_test_group():
-    """Get a group that exists on the system for testing, avoiding root/wheel."""
+    """Get a group that exists on the system for testing."""
     try:
         # Try to use 'nobody' first as it's a common test group
         grp.getgrnam("nobody")
@@ -41,7 +41,7 @@ def get_test_group():
 
     # Get all available groups
     for group in grp.getgrall():
-        # Skip root, wheel, and current group to ensure we actually test a change
+        # Skip root, wheel, and current group to test a change
         if (
             group.gr_name not in avoid_groups
             and group.gr_gid != 0
@@ -59,7 +59,7 @@ def get_test_group():
 
 
 def get_test_user():
-    """Get a user that exists on the system for testing, avoiding root."""
+    """Get a user that exists on the system for testing."""
     try:
         # Try to use 'nobody' first as it's the most common test user
         pwd.getpwnam("nobody")
@@ -75,7 +75,7 @@ def get_test_user():
 
     # Get all available users
     for user in pwd.getpwall():
-        # Skip root, and current user to ensure we actually test a change
+        # Skip root and current user to test a change
         if (
             user.pw_name not in avoid_users
             and user.pw_uid != 0
@@ -146,8 +146,8 @@ def test_apply_perms_and_selinux_confirmation(
         # Stub _handle_selinux_context to confirm it's called when
         # selinux=True
         called_selinux = {}
-        base._handle_selinux_context = lambda *a, **kw: called_selinux.setdefault(
-            "called", True
+        base._handle_selinux_context = (
+            lambda *a, **kw: called_selinux.setdefault("called", True)
         )
 
         # Mock _get_perms when selinux is True
@@ -167,7 +167,9 @@ def test_apply_perms_and_selinux_confirmation(
                     path, perms, selinux=selinux, task_vars={}
                 )
         else:
-            base._apply_perms_and_selinux(path, perms, selinux=selinux, task_vars={})
+            base._apply_perms_and_selinux(
+                path, perms, selinux=selinux, task_vars={}
+            )
             confirmed = base._get_perms(path, selinux=False, task_vars={})
 
             if perms.get("mode"):

@@ -22,7 +22,9 @@ from ansible.errors import AnsibleActionFail
         (
             {
                 "rc": 0,
-                "stdout_lines": ["-rw-r--r-- 1 user group 123 Jul 1 00:00 file"],
+                "stdout_lines": [
+                    "-rw-r--r-- 1 user group 123 Jul 1 00:00 file"
+                ],
                 "stdout": "",
             },
             False,
@@ -53,7 +55,9 @@ from ansible.errors import AnsibleActionFail
         (
             {
                 "rc": 0,
-                "stdout_lines": ["-rw-r--r--+ 1 user group 123 Jul 1 00:00 file"],
+                "stdout_lines": [
+                    "-rw-r--r--+ 1 user group 123 Jul 1 00:00 file"
+                ],
                 "stdout": "",
             },
             False,

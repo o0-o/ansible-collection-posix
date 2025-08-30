@@ -199,7 +199,7 @@ class FilterModule(JCBase):
         if "node_name" in parsed:
             if not HAS_HOSTNAME_FILTER:
                 # If hostname filter is not available, raise error
-                # This should have been caught in uname() but check here too
+                # Should have been caught in uname() but check here
                 raise AnsibleFilterError(
                     "The 'facts' mode requires the o0_o.utils collection. "
                     "Please install it with: "
