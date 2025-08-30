@@ -12,6 +12,8 @@
 #
 # Script to run tests as both root and non-root users
 
+set -e  # Exit on any command failure
+
 INTEGRATION_TARGET="${INTEGRATION_TARGET:-}"  # optional integration target
 
 # Validate test type
@@ -44,20 +46,12 @@ chgrp -R pyenv /opt/pyenv
 chmod -R g+w /opt/pyenv
 find /opt/pyenv -type d -exec chmod g+s {} \;
 
-# Set up clean collection copy for testuser before running any tests
-echo "Setting up clean collection copy for testuser..."
-test_user_home=$(getent passwd testuser | cut -d: -f6)
-test_user_gid=$(getent passwd testuser | cut -d: -f4)
-test_user_group=$(getent group "${test_user_gid}" | cut -d: -f1)
-test_dir="${test_user_home}/.ansible/collections/ansible_collections/o0_o"
-test_dir="${test_dir}/posix"
-mkdir -p "${test_dir}"
-# Copy everything except .venv (which has hardcoded paths to /root)
-rsync -a --exclude='.venv' . "${test_dir}/"
-chown -R testuser:"${test_user_group}" "${test_user_home}/.ansible"
-
-# Source the venv
+# Create and activate venv for root user
+echo "Setting up Python environment for root user..."
+cd /root
+python -m venv .venv
 . .venv/bin/activate
+pip install --quiet --upgrade pip
 
 # Install specific Ansible version if provided
 if [ -n "${ANSIBLE_PACKAGE:-}" ]; then
@@ -65,6 +59,12 @@ if [ -n "${ANSIBLE_PACKAGE:-}" ]; then
 	echo "Installed Ansible version:"
 	ansible --version
 fi
+
+# Install collection from built tarball with dependencies
+ansible-galaxy collection install /build/o0_o-posix-*.tar.gz --force -p /root/.ansible/collections -vvv
+
+# Navigate to installed collection for running tests
+cd /root/.ansible/collections/ansible_collections/o0_o/posix
 
 # Build the test command
 if [ -n "$INTEGRATION_TARGET" ]; then
@@ -99,7 +99,7 @@ su testuser -c "
 	set -eux
 	umask 002
 	export PATH=\$HOME/.local/bin:/opt/pyenv/shims:/opt/pyenv/bin:\$PATH
-	cd ~/.ansible/collections/ansible_collections/o0_o/posix
+	cd ~
 	python -m venv .venv
 	. .venv/bin/activate
 	pip install --quiet --upgrade pip
@@ -110,5 +110,9 @@ su testuser -c "
 	fi
 	echo 'Installed Ansible version:'
 	ansible --version
+	# Install collection from built tarball with dependencies
+	ansible-galaxy collection install /build/o0_o-posix-*.tar.gz --force -p ~/.ansible/collections -vvv
+	# Navigate to installed collection
+	cd ~/.ansible/collections/ansible_collections/o0_o/posix
 	${testuser_cmd}
 "

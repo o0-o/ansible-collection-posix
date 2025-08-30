@@ -121,7 +121,7 @@
       ansible.builtin.set_fact:
         # Use a complete uname output
         filter_test: >-
-          {{ 'Linux host 5.10.0 #1 SMP PREEMPT x86_64 GNU/Linux' 
+          {{ 'Linux host 5.10.0 #1 SMP PREEMPT x86_64 GNU/Linux'
              | o0_o.posix.jc('uname') }}
 
     - name: Assert filter was callable
