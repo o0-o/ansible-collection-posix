@@ -230,7 +230,10 @@ class FilterModule(JCBase):
             # Calculate total capacity
             if capacity_total:
                 # Add B suffix if not present (for plain numbers)
-                if isinstance(capacity_total, str) and capacity_total.isdigit():
+                if (
+                    isinstance(capacity_total, str)
+                    and capacity_total.isdigit()
+                ):
                     capacity_total = capacity_total + "B"
                 parsed = _si_filter.si(capacity_total, binary=True)
                 capacity_bytes = parsed.get("bytes", 0)

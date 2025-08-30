@@ -52,15 +52,24 @@
       - "'options' in mount_facts.mounts['/']"
       - mount_facts.mounts['/'].options is sequence
       - mount_facts.mounts['/'].options is not string
-    fail_msg: "Root mount missing expected fields: {{ mount_facts.mounts['/'] }}"
+    fail_msg: >-
+      Root mount missing expected fields:
+      {{ mount_facts.mounts['/'] }}
 
 - name: Check if root has a device (only if it starts with /dev/)
-  when: mount_parsed | selectattr('mount_point', 'equalto', '/') | map(attribute='filesystem') | first | regex_search('^/dev/')
+  when: >-
+    mount_parsed
+    | selectattr('mount_point', 'equalto', '/')
+    | map(attribute='filesystem')
+    | first
+    | regex_search('^/dev/')
   ansible.builtin.assert:
     that:
       - "'device' in mount_facts.mounts['/']"
       - mount_facts.mounts['/'].device | regex_search('^/dev/')
-    fail_msg: "Root mount device field incorrect: {{ mount_facts.mounts['/'] }}"
+    fail_msg: >-
+      Root mount device field incorrect:
+      {{ mount_facts.mounts['/'] }}
 
 - name: Test with list input
   vars:
@@ -88,7 +97,13 @@
 
 - name: Find a tmpfs or virtual filesystem mount
   ansible.builtin.set_fact:
-    virtual_mounts: "{{ mount_parsed | selectattr('filesystem', 'in', ['tmpfs', 'devfs', 'procfs', 'sysfs']) | list }}"
+    virtual_mounts: >-
+      {{
+        mount_parsed
+        | selectattr('filesystem', 'in',
+                     ['tmpfs', 'devfs', 'procfs', 'sysfs'])
+        | list
+      }}
 
 - name: Verify virtual filesystems don't have device in facts mode
   when: virtual_mounts | length > 0
@@ -98,7 +113,9 @@
     that:
       - "'device' not in mount_facts.mounts[virtual_mount_point]"
       - "'filesystem' in mount_facts.mounts[virtual_mount_point]"
-    fail_msg: "Virtual filesystem should not have device: {{ mount_facts.mounts[virtual_mount_point] }}"
+    fail_msg: >-
+      Virtual filesystem should not have device:
+      {{ mount_facts.mounts[virtual_mount_point] }}
 
 - name: Test empty input
   ansible.builtin.set_fact:

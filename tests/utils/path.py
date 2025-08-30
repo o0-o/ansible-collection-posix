@@ -50,7 +50,7 @@ def check_path_mode(path, perms):
 
     Args:
         path (str): The path to the file or directory.
-        perms (dict): Dict with "mode" key as an octal string (e.g. "0600").
+        perms (dict): Dict with "mode" key as octal string.
     """
     if "mode" in perms:
         actual_mode = stat.S_IMODE(os.stat(path).st_mode)

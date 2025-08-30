@@ -31,7 +31,7 @@ def format_size(size_bytes: int) -> str:
 def parse_size(size_str: str) -> int:
     """Parse size string to bytes using si filter."""
     si = SiFilter()
-    # Add B suffix if the string ends with just a size prefix (K, M, G, etc.)
+    # Add B suffix if string ends with size prefix (K, M, G)
     if size_str and size_str[-1] in "KMGTPEZY":
         size_str = size_str + "B"
     result = si.si(size_str, binary=True)
@@ -274,8 +274,10 @@ def test_format_as_facts(
     assert result == expected
 
 
-def test_format_as_facts_without_si_filter(filter_module: FilterModule) -> None:
-    """Test that _format_as_facts raises error without o0_o.utils.si filter."""
+def test_format_as_facts_without_si_filter(
+    filter_module: FilterModule,
+) -> None:
+    """Test _format_as_facts raises error without si filter."""
     parsed_data = [
         {
             "filesystem": "/dev/sda1",
@@ -287,13 +289,17 @@ def test_format_as_facts_without_si_filter(filter_module: FilterModule) -> None:
         }
     ]
 
-    with patch("ansible_collections.o0_o.posix.plugins.filter.df.HAS_SI_FILTER", False):
+    with patch(
+        "ansible_collections.o0_o.posix.plugins.filter.df.HAS_SI_FILTER", False
+    ):
         with pytest.raises(AnsibleFilterError, match="o0_o.utils collection"):
             filter_module._format_as_facts(parsed_data)
 
 
-def test_format_as_facts_missing_mounted_on(filter_module: FilterModule) -> None:
-    """Test that _format_as_facts raises error when mounted_on field is missing."""
+def test_format_as_facts_missing_mounted_on(
+    filter_module: FilterModule,
+) -> None:
+    """Test _format_as_facts raises error without mounted_on."""
     parsed_data = [
         {
             "filesystem": "/dev/sda1",
@@ -313,12 +319,16 @@ def test_format_as_facts_missing_mounted_on(filter_module: FilterModule) -> None
         },
     ]
 
-    with pytest.raises(AnsibleFilterError, match="df output missing 'mounted_on' field"):
+    with pytest.raises(
+        AnsibleFilterError, match="df output missing 'mounted_on' field"
+    ):
         filter_module._format_as_facts(parsed_data)
 
 
-def test_format_as_facts_preserves_original(filter_module: FilterModule) -> None:
-    """Test that _format_as_facts doesn't modify the original parsed data."""
+def test_format_as_facts_preserves_original(
+    filter_module: FilterModule,
+) -> None:
+    """Test _format_as_facts doesn't modify original data."""
     original = [
         {
             "filesystem": "/dev/sda1",
@@ -334,7 +344,7 @@ def test_format_as_facts_preserves_original(filter_module: FilterModule) -> None
 
     original_copy = copy.deepcopy(original)
 
-    # Call the method - no need to patch since we're using real o0_o.utils.si filter
+    # Call method - no need to patch since using real si filter
     filter_module._format_as_facts(original)
 
     # Ensure original wasn't modified
