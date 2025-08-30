@@ -21,6 +21,19 @@
 # Install collection dependencies with retry
 # (without --force to avoid overwriting)
 echo "Installing collection dependencies..."
+echo "Current directory: $(pwd)"
+echo "Checking galaxy.yml exists:"
+if [ -f galaxy.yml ]; then
+	echo "  galaxy.yml found"
+	echo "  Dependencies listed in galaxy.yml:"
+	grep -A10 "^dependencies:" galaxy.yml || echo "  No dependencies section found"
+else
+	echo "  WARNING: galaxy.yml not found!"
+fi
+
+echo "Current Ansible collections path:"
+ansible-galaxy collection list --format yaml | head -n 5
+
 n=0
 deps_installed=0
 while [ $n -lt 3 ] && [ $deps_installed -eq 0 ]; do
@@ -30,9 +43,14 @@ while [ $n -lt 3 ] && [ $deps_installed -eq 0 ]; do
 			"in ${sleep_time} seconds..."
 		sleep "$sleep_time"
 	fi
-	if ansible-galaxy collection install .; then
+	echo "Running: ansible-galaxy collection install . -vvv"
+	if ansible-galaxy collection install . -vvv; then
 		deps_installed=1
 		echo "Collection dependencies installed successfully"
+		echo "Verifying o0_o.utils installation:"
+		ansible-galaxy collection list o0_o.utils || echo "  o0_o.utils not found"
+	else
+		echo "  ansible-galaxy collection install failed with exit code $?"
 	fi
 	n=$((n+1))
 done
