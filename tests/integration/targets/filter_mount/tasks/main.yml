@@ -62,7 +62,9 @@
     | selectattr('mount_point', 'equalto', '/')
     | map(attribute='filesystem')
     | first
+    | default('')
     | regex_search('^/dev/')
+    | default(false, true)
   ansible.builtin.assert:
     that:
       - "'device' in mount_facts.mounts['/']"
