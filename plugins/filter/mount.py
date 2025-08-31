@@ -183,16 +183,17 @@ class FilterModule(JCBase):
             "mqueue",
             "bpf",
             "tracefs",
-            "fusectl",
+            "fusectl",  # Control interface for FUSE, not a FUSE filesystem
             "binfmt_misc",
+            "rpc_pipefs",  # RPC kernel interface
         }
 
         # Virtual filesystems (memory-based, not kernel interfaces)
         VIRTUAL_FS_TYPES = {
             "tmpfs",
+            "ramfs",  # RAM-based filesystem
             "autofs",
             "nfsd",
-            "rpc_pipefs",
             "fdescfs",
             "vboxsf",
             "vmhgfs",
@@ -300,15 +301,23 @@ class FilterModule(JCBase):
                 # Look for subtype in options
                 options = mount_info.get("options", [])
                 new_options = []
+                subtype_found = False
                 for opt in options:
                     if opt.startswith("subtype="):
                         # Extract subtype and use it as filesystem
                         subtype = opt.split("=", 1)[1]
                         if subtype:
                             mount_info["filesystem"] = subtype
+                            subtype_found = True
                         # Don't add subtype to new_options
                     else:
                         new_options.append(opt)
+
+                # If no subtype found, don't set filesystem at all
+                # (too ambiguous)
+                if not subtype_found and "filesystem" in mount_info:
+                    del mount_info["filesystem"]
+
                 # Update options without subtype
                 if new_options:
                     mount_info["options"] = new_options
@@ -356,7 +365,9 @@ class FilterModule(JCBase):
                 "sshfs",
             }
             mount_info["fuse"] = (
-                fs_type.startswith("fuse")  # fuse, fuse.*, fuseblk
+                (
+                    fs_type.startswith("fuse") and fs_type != "fusectl"
+                )  # fuse, fuse.*, fuseblk but not fusectl
                 or fs_type.endswith("-fuse")  # *-fuse variants
                 or fs_type.lower() in known_fuse_fs  # Known FUSE filesystems
             )
