@@ -293,6 +293,28 @@ class FilterModule(JCBase):
                 if options:
                     mount_info["options"] = options
 
+            # Check for FUSE subtype in options and use it if
+            # filesystem is generic
+            fs_type = mount_info.get("filesystem", "")
+            if fs_type in ("fuse", "fuseblk"):
+                # Look for subtype in options
+                options = mount_info.get("options", [])
+                new_options = []
+                for opt in options:
+                    if opt.startswith("subtype="):
+                        # Extract subtype and use it as filesystem
+                        subtype = opt.split("=", 1)[1]
+                        if subtype:
+                            mount_info["filesystem"] = subtype
+                        # Don't add subtype to new_options
+                    else:
+                        new_options.append(opt)
+                # Update options without subtype
+                if new_options:
+                    mount_info["options"] = new_options
+                elif "options" in mount_info:
+                    del mount_info["options"]
+
             # Determine mount type based on filesystem if not already
             # set
             if mount_type is None:
