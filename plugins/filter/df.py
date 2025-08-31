@@ -111,7 +111,7 @@ mounts:
   returned: always
   sample:
     /:
-      device: /dev/disk1s1
+      source: /dev/disk1s1
       capacity:
         total:
           bytes: 499963174912
@@ -120,7 +120,7 @@ mounts:
           bytes: 313155427328
           pretty: "291.6 GiB"
     /System/Volumes/VM:
-      device: /dev/disk1s4
+      source: /dev/disk1s4
       capacity:
         total:
           bytes: 499963174912
@@ -157,20 +157,14 @@ class FilterModule(JCBase):
             mount_point = entry.get("mounted_on")
             if not mount_point:
                 raise AnsibleFilterError(
-                    "df output missing 'mounted_on' field for entry: "
-                    f"{entry}"
+                    f"df output missing 'mounted_on' field for entry: {entry}"
                 )
 
             mount_data = {}
 
-            # Handle source field (device for /dev paths, source for network)
+            # Handle source field
             if "filesystem" in entry:
-                source = entry["filesystem"]
-                if source.startswith("/dev/"):
-                    mount_data["device"] = source
-                elif ":" in source or source.startswith("//"):
-                    # Network filesystem (NFS, CIFS/SMB)
-                    mount_data["source"] = source
+                mount_data["source"] = entry["filesystem"]
 
             # Add capacity information if available
             capacity = {}

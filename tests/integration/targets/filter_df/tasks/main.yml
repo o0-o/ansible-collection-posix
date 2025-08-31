@@ -78,7 +78,7 @@
       ansible.builtin.assert:
         that:
           - "'/' in parsed_facts['mounts']"
-          - parsed_facts['mounts']['/']['device'] is defined
+          - parsed_facts['mounts']['/']['source'] is defined
           - parsed_facts['mounts']['/']['capacity'] is defined
           - parsed_facts['mounts']['/']['capacity']['total'] is defined
           - >-

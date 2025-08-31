@@ -11,10 +11,10 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict, Optional, Set
+from typing import Any, Dict, Optional
 
 from ansible.errors import AnsibleActionFail
-from ansible_collections.o0_o.posix.plugins.action_utils.posix_base import (
+from ansible_collections.o0_o.posix.plugins.action_utils import (
     PosixBase,
 )
 from ansible_collections.o0_o.posix.plugins.filter import (
@@ -38,79 +38,6 @@ class ActionModule(PosixBase):
     _supports_check_mode = True
     _supports_async = False
     _supports_diff = False
-
-    # Virtual filesystems to exclude by default
-    VIRTUAL_FS_TYPES: Set[str] = {
-        "autofs",
-        "binfmt_misc",
-        "bpf",
-        "cgroup",
-        "cgroup2",
-        "configfs",
-        "debugfs",
-        "devfs",
-        "devpts",
-        "devtmpfs",
-        "efivarfs",
-        "fdescfs",
-        "fusectl",
-        "hugetlbfs",
-        "mqueue",
-        "nfsd",
-        "overlay",
-        "proc",
-        "procfs",
-        "pstore",
-        "rpc_pipefs",
-        "securityfs",
-        "selinuxfs",
-        "sysfs",
-        "tmpfs",
-        "tracefs",
-        "vboxsf",
-        "vmhgfs",
-    }
-
-    # Network filesystems
-    NETWORK_FS_TYPES: Set[str] = {
-        "nfs",
-        "nfs4",
-        "smbfs",
-        "cifs",
-        "afs",
-        "coda",
-        "ncpfs",
-        "sshfs",
-        "fuse.sshfs",
-        "glusterfs",
-        "ceph",
-        "9p",
-    }
-
-    # Pseudo filesystems (subset of virtual, specifically for
-    # kernel interfaces)
-    PSEUDO_FS_TYPES: Set[str] = {
-        "proc",
-        "procfs",
-        "sysfs",
-        "devfs",
-        "devpts",
-        "devtmpfs",
-        "debugfs",
-        "securityfs",
-        "selinuxfs",
-        "cgroup",
-        "cgroup2",
-        "pstore",
-        "efivarfs",
-        "configfs",
-        "hugetlbfs",
-        "mqueue",
-        "bpf",
-        "tracefs",
-        "fusectl",
-        "binfmt_misc",
-    }
 
     def run(
         self,
@@ -142,6 +69,10 @@ class ActionModule(PosixBase):
 
         # Validate module arguments
         argument_spec = {
+            "device": {
+                "type": "bool",
+                "default": True,
+            },
             "virtual": {
                 "type": "bool",
                 "default": False,
@@ -154,6 +85,14 @@ class ActionModule(PosixBase):
                 "type": "bool",
                 "default": None,  # Will default to virtual
             },
+            "overlay": {
+                "type": "bool",
+                "default": True,
+            },
+            "fuse": {
+                "type": "bool",
+                "default": True,
+            },
         }
 
         validation_result, new_module_args = self.validate_argument_spec(
@@ -163,106 +102,144 @@ class ActionModule(PosixBase):
         self._task.args.update(new_module_args)
 
         # Get mount information
+        mounts = self._get_mounts(task_vars)
+
+        result.update(
+            {
+                "changed": False,
+                "mounts": mounts,
+            }
+        )
+
+        return result
+
+    def _get_mounts(self, task_vars: Dict[str, Any]) -> Dict[str, Any]:
+        """Get mount information from the system.
+
+        :param task_vars: Task variables dictionary
+        :returns: Dictionary of mount points with their information
+        :raises AnsibleActionFail: If mount command fails
+        """
+        # Get raw mount output
+        mount_result = self._get_mount_output(task_vars)
+
+        # Get raw df output (optional)
+        df_result = self._get_df_output(task_vars)
+
+        # Parse mount data
+        mounts = self._parse_mount_data(mount_result)
+
+        # Filter mounts based on arguments
+        filtered_mounts = self._filter_mounts(mounts)
+
+        # Enhance with df data if available
+        if df_result and df_result.get("rc") == 0:
+            self._enhance_with_df_data(filtered_mounts, df_result)
+
+        return filtered_mounts
+
+    def _get_mount_output(self, task_vars: Dict[str, Any]) -> Dict[str, Any]:
+        """Execute mount command and return result.
+
+        :param task_vars: Task variables dictionary
+        :returns: Command result dictionary
+        :raises AnsibleActionFail: If mount command fails
+        """
         try:
-            mount_result = self._cmd(
-                "mount", task_vars=task_vars, check_mode=False
-            )
+            return self._cmd("mount", task_vars=task_vars, check_mode=False)
         except Exception as e:
             raise AnsibleActionFail(f"Failed to execute mount command: {e}")
 
-        # Get df information for capacity data
-        df_result = None
+    def _get_df_output(
+        self, task_vars: Dict[str, Any]
+    ) -> Optional[Dict[str, Any]]:
+        """Execute df command and return result.
+
+        :param task_vars: Task variables dictionary
+        :returns: Command result dictionary or None if failed
+        """
         try:
-            df_result = self._cmd(
-                "df -P", task_vars=task_vars, check_mode=False
-            )
+            return self._cmd("df -P", task_vars=task_vars, check_mode=False)
         except Exception as e:
             # df might not be available, continue without capacity info
             self._display.vvv(
                 f"Failed to get df data (continuing without "
                 f"capacity info): {e}"
             )
+            return None
 
-        # Parse mount data using facts mode
+    def _parse_mount_data(
+        self, mount_result: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """Parse mount command output using mount filter.
+
+        :param mount_result: Result from mount command
+        :returns: Parsed mount information dictionary
+        """
         mount_filter = MountFilter().filters()["mount"]
+        mount_facts = mount_filter(mount_result, facts=True)
+        return mount_facts.get("mounts", {})
+
+    def _filter_mounts(self, mounts: Dict[str, Any]) -> Dict[str, Any]:
+        """Filter mounts based on module arguments.
+
+        :param mounts: Dictionary of all mounts
+        :returns: Filtered dictionary of mounts
+        """
+        include_device = self._task.args.get("device", True)
         include_virtual = self._task.args.get("virtual", False)
         include_network = self._task.args.get("network", True)
         include_pseudo = self._task.args.get("pseudo", None)
+        include_overlay = self._task.args.get("overlay", True)
+        include_fuse = self._task.args.get("fuse", True)
 
         # Default pseudo to virtual if not specified
         if include_pseudo is None:
             include_pseudo = include_virtual
 
-        # Get mounts from mount command with facts mode
-        mount_facts = mount_filter(mount_result, facts=True)
-        mounts = mount_facts.get("mounts", {})
-
-        # Filter out unwanted filesystem types
+        # Filter out unwanted mount types
         filtered_mounts = {}
         for mount_point, mount_info in mounts.items():
-            fs_type = mount_info.get("filesystem", "")
+            mount_type = mount_info.get("type", "other")
+            is_fuse = mount_info.get("fuse", False)
 
-            # Skip filesystems based on type filters
-            if not include_virtual and self._is_virtual_filesystem(fs_type):
+            # Skip mounts based on type filters
+            if not include_device and mount_type == "device":
                 continue
-            if not include_network and self._is_network_filesystem(fs_type):
+            if not include_virtual and mount_type == "virtual":
                 continue
-            if not include_pseudo and self._is_pseudo_filesystem(fs_type):
+            if not include_network and mount_type == "network":
+                continue
+            if not include_pseudo and mount_type == "pseudo":
+                continue
+            if not include_overlay and mount_type == "overlay":
+                continue
+
+            # Filter by FUSE status
+            if not include_fuse and is_fuse:
                 continue
 
             # Keep this mount
             filtered_mounts[mount_point] = mount_info
 
-        # Parse df data if available using facts mode
-        if df_result and df_result.get("rc") == 0:
-            df_filter = DfFilter().filters()["df"]
-            # Use facts mode to get the new structure with capacity
-            df_facts = df_filter(df_result, facts=True)
+        return filtered_mounts
 
-            # Merge capacity info from df into mount data
-            df_mounts = df_facts.get("mounts", {})
-            for mount_point in filtered_mounts:
-                if mount_point in df_mounts:
-                    df_info = df_mounts[mount_point]
-                    if "capacity" in df_info:
-                        filtered_mounts[mount_point]["capacity"] = df_info[
-                            "capacity"
-                        ]
+    def _enhance_with_df_data(
+        self, mounts: Dict[str, Any], df_result: Dict[str, Any]
+    ) -> None:
+        """Enhance mount data with capacity info from df.
 
-        # Sort by mount point for consistent output
-        sorted_mounts = {
-            k: filtered_mounts[k] for k in sorted(filtered_mounts.keys())
-        }
-
-        result.update(
-            {
-                "changed": False,
-                "mounts": sorted_mounts,
-            }
-        )
-
-        return result
-
-    def _is_virtual_filesystem(self, fs_type: str) -> bool:
-        """Check if a filesystem type is virtual.
-
-        :param fs_type: Filesystem type string
-        :returns: True if virtual, False otherwise
+        :param mounts: Dictionary of mounts to enhance
+        :param df_result: Result from df command
         """
-        return fs_type in self.VIRTUAL_FS_TYPES
+        df_filter = DfFilter().filters()["df"]
+        # Use facts mode to get the new structure with capacity
+        df_facts = df_filter(df_result, facts=True)
 
-    def _is_network_filesystem(self, fs_type: str) -> bool:
-        """Check if a filesystem type is network-based.
-
-        :param fs_type: Filesystem type string
-        :returns: True if network filesystem, False otherwise
-        """
-        return fs_type in self.NETWORK_FS_TYPES
-
-    def _is_pseudo_filesystem(self, fs_type: str) -> bool:
-        """Check if a filesystem type is a pseudo filesystem.
-
-        :param fs_type: Filesystem type string
-        :returns: True if pseudo filesystem, False otherwise
-        """
-        return fs_type in self.PSEUDO_FS_TYPES
+        # Merge capacity info from df into mount data
+        df_mounts = df_facts.get("mounts", {})
+        for mount_point in mounts:
+            if mount_point in df_mounts:
+                df_info = df_mounts[mount_point]
+                if "capacity" in df_info:
+                    mounts[mount_point]["capacity"] = df_info["capacity"]

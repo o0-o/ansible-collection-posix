@@ -35,8 +35,8 @@
     - name: Assert root filesystem has required fields
       ansible.builtin.assert:
         that:
-          - mount_result_reg['mounts']['/']['device'] is defined
-          - mount_result_reg['mounts']['/']['device'] is string
+          - mount_result_reg['mounts']['/']['source'] is defined
+          - mount_result_reg['mounts']['/']['source'] is string
           - mount_result_reg['mounts']['/']['filesystem'] is defined
           - mount_result_reg['mounts']['/']['filesystem'] is string
         fail_msg: 'Root filesystem missing required fields'
@@ -45,10 +45,16 @@
       ansible.builtin.debug:
         msg: |
           Root filesystem: {{ mount_result_reg['mounts']['/']['filesystem'] }}
-          Device: {{ mount_result_reg['mounts']['/']['device'] }}
+          Source: {{ mount_result_reg['mounts']['/']['source'] }}
           {% if mount_result_reg['mounts']['/']['capacity'] is defined %}
-          Total: {{ mount_result_reg['mounts']['/']['capacity']['total']['pretty'] }} ({{ mount_result_reg['mounts']['/']['capacity']['total']['bytes'] }} bytes)
-          Used: {{ mount_result_reg['mounts']['/']['capacity']['used']['pretty'] }} ({{ mount_result_reg['mounts']['/']['capacity']['used']['bytes'] }} bytes)
+          Total: {{ mount_result_reg['mounts']['/']
+                    ['capacity']['total']['pretty'] }}
+                 ({{ mount_result_reg['mounts']['/']
+                     ['capacity']['total']['bytes'] }} bytes)
+          Used: {{ mount_result_reg['mounts']['/']
+                   ['capacity']['used']['pretty'] }}
+                ({{ mount_result_reg['mounts']['/']
+                    ['capacity']['used']['bytes'] }} bytes)
           {% else %}
           Capacity information not available
           {% endif %}
@@ -80,7 +86,9 @@
 - name: Verify consistency between normal and check mode
   ansible.builtin.assert:
     that:
-      - mount_result_reg['mounts'] | length == check_mode_reg['mounts'] | length
+      - >-
+        mount_result_reg['mounts'] | length ==
+        check_mode_reg['mounts'] | length
       - mount_result_reg['mounts'].keys() | list ==
         check_mode_reg['mounts'].keys() | list
     fail_msg: 'Mounts module returned different results in check mode'
@@ -88,8 +96,8 @@
 - name: Check mount point structure for all mounts
   ansible.builtin.assert:
     that:
-      - item.value['device'] is defined
-      - item.value['device'] is string
+      - item.value['source'] is defined
+      - item.value['source'] is string
       - item.value['filesystem'] is defined
       - item.value['filesystem'] is string
       - item.value['capacity'] is not defined or
@@ -137,7 +145,9 @@
 - name: Verify consistent results
   ansible.builtin.assert:
     that:
-      - mount_result_reg['mounts'] | length == second_mount_reg['mounts'] | length
+      - >-
+        mount_result_reg['mounts'] | length ==
+        second_mount_reg['mounts'] | length
       - mount_result_reg['mounts'].keys() | list ==
         second_mount_reg['mounts'].keys() | list
     fail_msg: |

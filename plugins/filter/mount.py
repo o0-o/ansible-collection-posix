@@ -66,7 +66,7 @@ EXAMPLES = r"""
 
 - name: Display root filesystem info
   ansible.builtin.debug:
-    msg: "Root mounted from {{ mount_info.mounts['/'].device }}"
+    msg: "Root mounted from {{ mount_info.mounts['/'].source }}"
 """
 
 RETURN = r"""
@@ -105,18 +105,37 @@ mounts:
       description: Mount point information
       type: dict
       contains:
-        device:
-          description: Source device path (only for /dev/ paths)
-          type: str
-          sample: /dev/sda1
         source:
-          description: Network filesystem source (NFS, CIFS, etc.)
+          description: Mount source when different from filesystem type
           type: str
-          sample: nfs-server:/export/home
+          required: false
+          sample: /dev/sda1
+        type:
+          description: Mount type classification
+          type: str
+          choices:
+            - device
+            - network
+            - pseudo
+            - virtual
+            - overlay
+            - other
+          sample: device
         filesystem:
-          description: Type of filesystem
+          description: Filesystem type
           type: str
           sample: ext4
+        pseudo:
+          description: >-
+            Whether this is a pseudo filesystem
+            (only present when type=virtual)
+          type: bool
+          required: false
+          sample: true
+        fuse:
+          description: Whether this is a FUSE filesystem
+          type: bool
+          sample: false
         options:
           description: Mount options as list
           type: list
@@ -144,6 +163,96 @@ class FilterModule(JCBase):
         :param parsed: Parsed mount data from jc
         :returns: Facts structure with mounts by mount point
         """
+        # Pseudo filesystems (kernel interfaces - subset of virtual)
+        PSEUDO_FS_TYPES = {
+            "proc",
+            "procfs",
+            "sysfs",
+            "devfs",
+            "devpts",
+            "devtmpfs",
+            "debugfs",
+            "securityfs",
+            "selinuxfs",
+            "cgroup",
+            "cgroup2",
+            "pstore",
+            "efivarfs",
+            "configfs",
+            "hugetlbfs",
+            "mqueue",
+            "bpf",
+            "tracefs",
+            "fusectl",
+            "binfmt_misc",
+        }
+
+        # Virtual filesystems (memory-based, not kernel interfaces)
+        VIRTUAL_FS_TYPES = {
+            "tmpfs",
+            "autofs",
+            "nfsd",
+            "rpc_pipefs",
+            "fdescfs",
+            "vboxsf",
+            "vmhgfs",
+        }
+
+        # Overlay filesystems (views/unions/transforms of other
+        # filesystems)
+        OVERLAY_FS_TYPES = {
+            # Union / Merge filesystems
+            "overlay",
+            "overlayfs",
+            "aufs",
+            "unionfs",
+            "unionfs-fuse",
+            "fuse.unionfs",
+            "mergerfs",
+            "fuse.mergerfs",
+            "mhddfs",
+            "fuse.mhddfs",
+            # Transform / Re-mapping filesystems
+            "bindfs",
+            "fuse.bindfs",
+            "nullfs",
+            "encfs",
+            "fuse.encfs",
+            "gocryptfs",
+            "fuse.gocryptfs",
+            "cryfs",
+            "fuse.cryfs",
+            "ecryptfs",
+            "fusecompress",
+            "fuse.fusecompress",
+            "compfused",
+            "fuse.compfused",
+            # Isolation / Container-specific
+            "lxcfs",
+            "fuse.lxcfs",
+            "shiftfs",
+            "nsfs",
+            # Snapshot / Copy-on-Write
+            "translucentfs",
+            "fuse.translucentfs",
+        }
+
+        # Network filesystems
+        NETWORK_FS_TYPES = {
+            "nfs",
+            "nfs4",
+            "smbfs",
+            "cifs",
+            "afs",
+            "coda",
+            "ncpfs",
+            "sshfs",
+            "fuse.sshfs",
+            "glusterfs",
+            "ceph",
+            "9p",
+        }
+
         mounts = {}
 
         for entry in parsed:
@@ -154,14 +263,18 @@ class FilterModule(JCBase):
             # Create a clean copy without mount_point (it's the key)
             mount_info = {}
 
-            # Handle source field (device for /dev paths, source for network)
+            # Get source and determine mount type
+            source = None
+            mount_type = None
             if "filesystem" in entry:
                 source = entry["filesystem"]
+
+                # Determine mount type based on source
                 if source.startswith("/dev/"):
-                    mount_info["device"] = source
+                    mount_type = "device"
                 elif ":" in source or source.startswith("//"):
                     # Network filesystem (NFS, CIFS/SMB)
-                    mount_info["source"] = source
+                    mount_type = "network"
 
             # Determine filesystem type
             if "type" in entry:
@@ -179,6 +292,52 @@ class FilterModule(JCBase):
                 # Store remaining options
                 if options:
                     mount_info["options"] = options
+
+            # Determine mount type based on filesystem if not already
+            # set
+            if mount_type is None:
+                fs_type = mount_info.get("filesystem", "")
+                if fs_type in PSEUDO_FS_TYPES:
+                    mount_type = "pseudo"
+                elif fs_type in VIRTUAL_FS_TYPES:
+                    mount_type = "virtual"
+                elif fs_type in OVERLAY_FS_TYPES:
+                    mount_type = "overlay"
+                elif fs_type in NETWORK_FS_TYPES:
+                    mount_type = "network"
+                else:
+                    mount_type = "other"
+
+            # Only set source if it's different from filesystem
+            # This avoids redundancy for virtual filesystems like
+            # tmpfs, proc, etc.
+            if source and source != mount_info.get("filesystem"):
+                mount_info["source"] = source
+
+            mount_info["type"] = mount_type
+
+            # Add pseudo boolean for virtual filesystems
+            if mount_type == "virtual":
+                fs_type = mount_info.get("filesystem", "")
+                mount_info["pseudo"] = fs_type in PSEUDO_FS_TYPES
+
+            # Detect FUSE filesystems
+            fs_type = mount_info.get("filesystem", "")
+            # Known FUSE filesystems without "fuse" prefix
+            known_fuse_fs = {
+                "bindfs",
+                "encfs",
+                "gocryptfs",
+                "cryfs",
+                "mergerfs",
+                "lxcfs",
+                "sshfs",
+            }
+            mount_info["fuse"] = (
+                fs_type.startswith("fuse")  # fuse, fuse.*, fuseblk
+                or fs_type.endswith("-fuse")  # *-fuse variants
+                or fs_type.lower() in known_fuse_fs  # Known FUSE filesystems
+            )
 
             mounts[mount_point] = mount_info
 
