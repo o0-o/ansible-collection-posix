@@ -63,8 +63,7 @@
     | map(attribute='filesystem')
     | first
     | default('')
-    | regex_search('^/dev/')
-    | default(false, true)
+    | regex_search('^/dev/') is not none
   ansible.builtin.assert:
     that:
       - "'source' in mount_facts.mounts['/']"
