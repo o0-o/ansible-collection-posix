@@ -78,7 +78,7 @@ def filter_module() -> FilterModule:
             {
                 "mounts": {
                     "/": {
-                        "device": "/dev/sda1",
+                        "source": "/dev/sda1",
                         "capacity": {
                             "total": {
                                 "bytes": 20971520 * 1024,
@@ -91,7 +91,7 @@ def filter_module() -> FilterModule:
                         },
                     },
                     "/home": {
-                        "device": "/dev/sda2",
+                        "source": "/dev/sda2",
                         "capacity": {
                             "total": {
                                 "bytes": 104857600 * 1024,
@@ -104,6 +104,7 @@ def filter_module() -> FilterModule:
                         },
                     },
                     "/dev/shm": {
+                        "filesystem": "tmpfs",
                         "capacity": {
                             "total": {
                                 "bytes": 2097152 * 1024,
@@ -133,7 +134,7 @@ def filter_module() -> FilterModule:
             {
                 "mounts": {
                     "/": {
-                        "device": "/dev/vda1",
+                        "source": "/dev/vda1",
                         "capacity": {
                             "total": {
                                 "bytes": 20971520 * 512,
@@ -216,7 +217,7 @@ def filter_module() -> FilterModule:
             {
                 "mounts": {
                     "/mnt/my mount": {
-                        "device": "/dev/sda1",
+                        "source": "/dev/sda1",
                         "capacity": {
                             "total": {
                                 "bytes": 10240 * 1024,
@@ -246,7 +247,7 @@ def filter_module() -> FilterModule:
             {
                 "mounts": {
                     "/": {
-                        "device": "/dev/sda1",
+                        "source": "/dev/sda1",
                         "capacity": {
                             "total": {
                                 "bytes": parse_size("20G"),

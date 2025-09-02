@@ -123,7 +123,7 @@
         that:
           - >-
             (root_fs_default['filesystem'].startswith('/dev/') and
-             root_fs_default['filesystem'] == root_fs_facts['device']) or
+             root_fs_default['filesystem'] == root_fs_facts['source']) or
             (':' in root_fs_default['filesystem'] and
              root_fs_default['filesystem'] == root_fs_facts['source']) or
             (root_fs_default['filesystem'].startswith('//') and
@@ -131,7 +131,7 @@
             (not root_fs_default['filesystem'].startswith('/dev/') and
              ':' not in root_fs_default['filesystem'] and
              not root_fs_default['filesystem'].startswith('//') and
-             'device' not in root_fs_facts and 'source' not in root_fs_facts)
+             'source' not in root_fs_facts)
           # Verify capacity values match when converted
           - >-
             (root_fs_default.get('1024_blocks', 0) * 1024 ==
@@ -270,9 +270,9 @@
       ansible.builtin.assert:
         that:
           - mock_facts['mounts'] | length == 3
-          - mock_facts['mounts']['/']['device'] == '/dev/sda1'
-          - mock_facts['mounts']['/home']['device'] == '/dev/sda2'
-          - "'device' not in mock_facts['mounts']['/dev/shm']"
+          - mock_facts['mounts']['/']['source'] == '/dev/sda1'
+          - mock_facts['mounts']['/home']['source'] == '/dev/sda2'
+          - mock_facts['mounts']['/dev/shm']['filesystem'] == 'tmpfs'
           - >-
             mock_facts['mounts']['/']['capacity']['total']['bytes']
             is number

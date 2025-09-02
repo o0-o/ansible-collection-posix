@@ -47,22 +47,18 @@ def test_get_mounts_basic(monkeypatch, plugin) -> None:
         if cmd == "mount":
             return {
                 "rc": 0,
-                "stdout_lines": [
-                    "/dev/sda1 on / type ext4 (rw,relatime)",
-                    "/dev/sda2 on /boot type ext4 (rw,relatime)",
-                    "proc on /proc type proc (rw,nosuid,nodev,noexec)",
-                    "tmpfs on /tmp type tmpfs (rw,nosuid,nodev)",
-                ],
+                "stdout": """\n/dev/sda1 on / type ext4 (rw,relatime)
+/dev/sda2 on /boot type ext4 (rw,relatime)
+proc on /proc type proc (rw,nosuid,nodev,noexec)
+tmpfs on /tmp type tmpfs (rw,nosuid,nodev)""".strip(),
             }
         elif cmd == "df -P":
             return {
                 "rc": 0,
-                "stdout_lines": [
-                    "Filesystem     1024-blocks  Used Available Capacity  Mounted on",
-                    "/dev/sda1         1024000 512000    512000      50%  /",
-                    "/dev/sda2          512000 256000    256000      50%  /boot",
-                    "tmpfs              512000  1000    511000       1%  /tmp",
-                ],
+                "stdout": """Filesystem     1024-blocks  Used Available Capacity  Mounted on
+/dev/sda1         1024000 512000    512000      50%  /
+/dev/sda2          512000 256000    256000      50%  /boot
+tmpfs              512000  1000    511000       1%  /tmp""",
             }
         return {"rc": 1}
 
@@ -80,7 +76,8 @@ def test_get_mounts_basic(monkeypatch, plugin) -> None:
     assert root["source"] == "/dev/sda1"
     assert root["type"] == "device"
     assert root["filesystem"] == "ext4"
-    assert root["options"] == ["rw", "relatime"]
+    assert root["options"] == {"rw": True, "relatime": True}
+    assert root["fuse"] == False
     assert "capacity" in root
     assert "total" in root["capacity"]
     assert "used" in root["capacity"]
@@ -90,7 +87,8 @@ def test_get_mounts_basic(monkeypatch, plugin) -> None:
     assert boot["source"] == "/dev/sda2"
     assert boot["type"] == "device"
     assert boot["filesystem"] == "ext4"
-    assert boot["options"] == ["rw", "relatime"]
+    assert boot["options"] == {"rw": True, "relatime": True}
+    assert boot["fuse"] == False
     assert "capacity" in boot
 
 
@@ -101,21 +99,17 @@ def test_get_mounts_macos_format(monkeypatch, plugin) -> None:
         if cmd == "mount":
             return {
                 "rc": 0,
-                "stdout_lines": [
-                    "/dev/disk3s1s1 on / (apfs, sealed, local, read-only, journaled)",
-                    "devfs on /dev (devfs, local, nobrowse)",
-                    "/dev/disk3s5 on /System/Volumes/Data (apfs, local, journaled, nobrowse)",
-                ],
+                "stdout": """/dev/disk3s1s1 on / (apfs, sealed, local, read-only, journaled)
+devfs on /dev (devfs, local, nobrowse)
+/dev/disk3s5 on /System/Volumes/Data (apfs, local, journaled, nobrowse)""",
             }
         elif cmd == "df -P":
             return {
                 "rc": 0,
-                "stdout_lines": [
-                    "Filesystem     512-blocks       Used  Available Capacity  Mounted on",
-                    "/dev/disk3s1s1 7805330720   22000424 1983696096     2%    /",
-                    "devfs                 742        742          0   100%    /dev",
-                    "/dev/disk3s5   7805330720 5782744992 1983696096    75%    /System/Volumes/Data",
-                ],
+                "stdout": """Filesystem     512-blocks       Used  Available Capacity  Mounted on
+/dev/disk3s1s1 7805330720   22000424 1983696096     2%    /
+devfs                 742        742          0   100%    /dev
+/dev/disk3s5   7805330720 5782744992 1983696096    75%    /System/Volumes/Data""",
             }
         return {"rc": 1}
 
@@ -133,8 +127,9 @@ def test_get_mounts_macos_format(monkeypatch, plugin) -> None:
     assert root["source"] == "/dev/disk3s1s1"
     assert root["type"] == "device"
     assert root["filesystem"] == "apfs"
-    assert "sealed" in root["options"]
-    assert "local" in root["options"]
+    assert root["options"]["sealed"] == True
+    assert root["options"]["local"] == True
+    assert root["fuse"] == False
     assert "capacity" in root
 
     # Check data volume
@@ -142,7 +137,8 @@ def test_get_mounts_macos_format(monkeypatch, plugin) -> None:
     assert data["source"] == "/dev/disk3s5"
     assert data["type"] == "device"
     assert data["filesystem"] == "apfs"
-    assert "local" in data["options"]
+    assert data["options"]["local"] == True
+    assert data["fuse"] == False
     assert "capacity" in data
 
 
@@ -153,17 +149,13 @@ def test_get_mounts_with_spaces(monkeypatch, plugin) -> None:
         if cmd == "mount":
             return {
                 "rc": 0,
-                "stdout_lines": [
-                    "/dev/sda1 on /mnt/my files type ext4 (rw)",
-                ],
+                "stdout": "/dev/sda1 on /mnt/my files type ext4 (rw)",
             }
         elif cmd == "df -P":
             return {
                 "rc": 0,
-                "stdout_lines": [
-                    "Filesystem     1024-blocks  Used Available Capacity  Mounted on",
-                    "/dev/sda1         1024000 512000    512000      50%  /mnt/my files",
-                ],
+                "stdout": """Filesystem     1024-blocks  Used Available Capacity  Mounted on
+/dev/sda1         1024000 512000    512000      50%  /mnt/my files""",
             }
         return {"rc": 1}
 
@@ -200,10 +192,8 @@ def test_get_mounts_no_df(monkeypatch, plugin) -> None:
         if cmd == "mount":
             return {
                 "rc": 0,
-                "stdout_lines": [
-                    "/dev/sda1 on / type ext4 (rw,relatime)",
-                    "/dev/sda2 on /boot type ext4 (rw,relatime)",
-                ],
+                "stdout": """/dev/sda1 on / type ext4 (rw,relatime)
+/dev/sda2 on /boot type ext4 (rw,relatime)""",
             }
         elif cmd == "df -P":
             raise Exception("df: command not found")
@@ -230,27 +220,25 @@ def test_get_mounts_virtual_fs_filtering(monkeypatch, plugin) -> None:
         if cmd == "mount":
             return {
                 "rc": 0,
-                "stdout_lines": [
-                    "/dev/sda1 on / type ext4 (rw)",
-                    "/dev/sda2 on /data type xfs (rw)",
-                    "proc on /proc type proc (rw)",
-                    "sysfs on /sys type sysfs (rw)",
-                    "devfs on /dev type devfs (rw)",
-                    "tmpfs on /tmp type tmpfs (rw)",
-                    "cgroup on /sys/fs/cgroup type cgroup2 (rw)",
-                    "debugfs on /sys/kernel/debug type debugfs (rw)",
-                    "securityfs on /sys/kernel/security type securityfs (rw)",
-                    "pstore on /sys/fs/pstore type pstore (rw)",
-                    "efivarfs on /sys/firmware/efi/efivars type efivarfs (rw)",
-                    "bpf on /sys/fs/bpf type bpf (rw)",
-                    "tracefs on /sys/kernel/tracing type tracefs (rw)",
-                    "hugetlbfs on /dev/hugepages type hugetlbfs (rw)",
-                    "mqueue on /dev/mqueue type mqueue (rw)",
-                    "fusectl on /sys/fs/fuse/connections type fusectl (rw)",
-                ],
+                "stdout": """/dev/sda1 on / type ext4 (rw)
+/dev/sda2 on /data type xfs (rw)
+proc on /proc type proc (rw)
+sysfs on /sys type sysfs (rw)
+devfs on /dev type devfs (rw)
+tmpfs on /tmp type tmpfs (rw)
+cgroup on /sys/fs/cgroup type cgroup2 (rw)
+debugfs on /sys/kernel/debug type debugfs (rw)
+securityfs on /sys/kernel/security type securityfs (rw)
+pstore on /sys/fs/pstore type pstore (rw)
+efivarfs on /sys/firmware/efi/efivars type efivarfs (rw)
+bpf on /sys/fs/bpf type bpf (rw)
+tracefs on /sys/kernel/tracing type tracefs (rw)
+hugetlbfs on /dev/hugepages type hugetlbfs (rw)
+mqueue on /dev/mqueue type mqueue (rw)
+fusectl on /sys/fs/fuse/connections type fusectl (rw)""",
             }
         elif cmd == "df -P":
-            return {"rc": 0, "stdout_lines": []}
+            return {"rc": 0, "stdout": ""}
         return {"rc": 1}
 
     monkeypatch.setattr(plugin, "_cmd", mock_cmd)
@@ -281,14 +269,12 @@ def test_get_mounts_with_virtual_option(monkeypatch, plugin) -> None:
         if cmd == "mount":
             return {
                 "rc": 0,
-                "stdout_lines": [
-                    "/dev/sda1 on / type ext4 (rw)",
-                    "tmpfs on /tmp type tmpfs (rw)",
-                    "proc on /proc type proc (rw)",
-                ],
+                "stdout": """/dev/sda1 on / type ext4 (rw)
+tmpfs on /tmp type tmpfs (rw)
+proc on /proc type proc (rw)""",
             }
         elif cmd == "df -P":
-            return {"rc": 0, "stdout_lines": []}
+            return {"rc": 0, "stdout": ""}
         return {"rc": 1}
 
     monkeypatch.setattr(plugin, "_cmd", mock_cmd)
@@ -307,9 +293,11 @@ def test_get_mounts_with_virtual_option(monkeypatch, plugin) -> None:
     # Check type classification
     assert mounts["/"]["type"] == "device"
     assert mounts["/tmp"]["type"] == "virtual"
-    assert mounts["/tmp"]["source"] == "tmpfs"
+    assert mounts["/tmp"]["source"] is None  # Virtual filesystems have source=None
+    assert mounts["/tmp"]["pseudo"] == False  # tmpfs is virtual but not pseudo
     assert mounts["/proc"]["type"] == "virtual"
-    assert mounts["/proc"]["source"] == "proc"
+    assert mounts["/proc"]["source"] is None
+    assert mounts["/proc"]["pseudo"] == True  # proc is a pseudo filesystem
 
 
 def test_get_mounts_network_fs(monkeypatch, plugin) -> None:
@@ -319,14 +307,12 @@ def test_get_mounts_network_fs(monkeypatch, plugin) -> None:
         if cmd == "mount":
             return {
                 "rc": 0,
-                "stdout_lines": [
-                    "/dev/sda1 on / type ext4 (rw)",
-                    "nfs-server:/export/home on /mnt/nfs type nfs (rw,vers=4.0)",
-                    "//cifs-server/share on /mnt/cifs type cifs (rw,vers=3.0)",
-                ],
+                "stdout": """/dev/sda1 on / type ext4 (rw)
+nfs-server:/export/home on /mnt/nfs type nfs (rw,vers=4.0)
+//cifs-server/share on /mnt/cifs type cifs (rw,vers=3.0)""",
             }
         elif cmd == "df -P":
-            return {"rc": 0, "stdout_lines": []}
+            return {"rc": 0, "stdout": ""}
         return {"rc": 1}
 
     monkeypatch.setattr(plugin, "_cmd", mock_cmd)
@@ -368,19 +354,15 @@ def test_run_method(monkeypatch, plugin) -> None:
         if cmd == "mount":
             return {
                 "rc": 0,
-                "stdout_lines": [
-                    "/dev/sda1 on / type ext4 (rw,relatime)",
-                    "/dev/sda2 on /boot type ext4 (rw,relatime)",
-                ],
+                "stdout": """/dev/sda1 on / type ext4 (rw,relatime)
+/dev/sda2 on /boot type ext4 (rw,relatime)""",
             }
         elif cmd == "df -P":
             return {
                 "rc": 0,
-                "stdout_lines": [
-                    "Filesystem     1024-blocks  Used Available Capacity  Mounted on",
-                    "/dev/sda1         1024000 512000    512000      50%  /",
-                    "/dev/sda2          512000 256000    256000      25%  /boot",
-                ],
+                "stdout": """Filesystem     1024-blocks  Used Available Capacity  Mounted on
+/dev/sda1         1024000 512000    512000      50%  /
+/dev/sda2          512000 256000    256000      25%  /boot""",
             }
         return {"rc": 1}
 

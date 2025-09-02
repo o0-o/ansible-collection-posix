@@ -116,10 +116,8 @@ mounts:
           choices:
             - device
             - network
-            - pseudo
             - virtual
             - overlay
-            - other
           sample: device
         filesystem:
           description: Filesystem type
@@ -127,8 +125,8 @@ mounts:
           sample: ext4
         pseudo:
           description: >-
-            Whether this is a pseudo filesystem
-            (only present when type=virtual)
+            Whether this is a pseudo filesystem (kernel interface).
+            Always present when type=virtual, true only for pseudo filesystems
           type: bool
           required: false
           sample: true
@@ -137,10 +135,9 @@ mounts:
           type: bool
           sample: false
         options:
-          description: Mount options as list
-          type: list
-          elements: str
-          sample: ["rw", "relatime"]
+          description: Mount options as dictionary
+          type: dict
+          sample: {"rw": true, "relatime": true, "errors": "remount-ro"}
 """
 
 
@@ -163,6 +160,13 @@ class FilterModule(JCBase):
         :param parsed: Parsed mount data from jc
         :returns: Facts structure with mounts by mount point
         """
+        # Device-backed filesystems
+        DEVICE_FS_TYPES = {
+            "ext2", "ext3", "ext4", "xfs", "btrfs", "zfs", "zfs_member", "apfs",
+            "ufs", "ffs", "hfs", "hfsplus", "jfs", "reiserfs", "f2fs", "nilfs2",
+            "ocfs2", "gfs2", "vfat", "msdos", "exfat", "ntfs", "ntfs3", "bcachefs",
+        }
+
         # Pseudo filesystems (kernel interfaces - subset of virtual)
         PSEUDO_FS_TYPES = {
             "proc",
@@ -257,103 +261,90 @@ class FilterModule(JCBase):
         mounts = {}
 
         for entry in parsed:
+            # Keys should be set explicity to None if they are
+            # definitively irrelevant or absent. Key should be excluded
+            # entirely if their value is unknown or ambiguous.
+
             mount_point = entry.get("mount_point")
             if not mount_point:
                 continue
 
-            # Create a clean copy without mount_point (it's the key)
-            mount_info = {}
+            mount_info = {"fuse": False}
 
-            # Get source and determine mount type
-            source = None
-            mount_type = None
-            if "filesystem" in entry:
-                source = entry["filesystem"]
-
-                # Determine mount type based on source
-                if source.startswith("/dev/"):
-                    mount_type = "device"
-                elif ":" in source or source.startswith("//"):
-                    # Network filesystem (NFS, CIFS/SMB)
-                    mount_type = "network"
+            # Get source
+            source = entry.get("filesystem", None)
+            if source:
+                source = source.lower()
 
             # Determine filesystem type
+            filesystem = None
+            options = entry.get("options", []).copy()
             if "type" in entry:
                 # Use explicit type field if available
-                mount_info["filesystem"] = entry["type"]
-                # Use options as-is
-                if "options" in entry:
-                    mount_info["options"] = entry["options"]
-            elif "options" in entry and entry["options"]:
-                # On macOS, type is the first option
-                options = entry[
-                    "options"
-                ].copy()  # Make a copy to avoid modifying original
-                mount_info["filesystem"] = options.pop(0)
-                # Store remaining options
-                if options:
-                    mount_info["options"] = options
+                filesystem = entry["type"]
+            elif options:
+                # On macOS and FreeBSD, type is the first option
+                filesystem = options.pop(0)
 
-            # Check for FUSE subtype in options and use it if
-            # filesystem is generic
-            fs_type = mount_info.get("filesystem", "")
-            if fs_type in ("fuse", "fuseblk"):
-                # Look for subtype in options
-                options = mount_info.get("options", [])
-                new_options = []
-                subtype_found = False
-                for opt in options:
-                    if opt.startswith("subtype="):
-                        # Extract subtype and use it as filesystem
-                        subtype = opt.split("=", 1)[1]
-                        if subtype:
-                            mount_info["filesystem"] = subtype
-                            subtype_found = True
-                        # Don't add subtype to new_options
-                    else:
-                        new_options.append(opt)
+            if filesystem:
+                filesystem = filesystem.lower()
 
-                # If no subtype found, don't set filesystem at all
-                # (too ambiguous)
-                if not subtype_found and "filesystem" in mount_info:
-                    del mount_info["filesystem"]
+            if filesystem == "fuseblk":
+                mount_info["type"] = "device"
 
-                # Update options without subtype
-                if new_options:
-                    mount_info["options"] = new_options
-                elif "options" in mount_info:
-                    del mount_info["options"]
-
-            # Determine mount type based on filesystem if not already
-            # set
-            if mount_type is None:
-                fs_type = mount_info.get("filesystem", "")
-                if fs_type in PSEUDO_FS_TYPES:
-                    mount_type = "pseudo"
-                elif fs_type in VIRTUAL_FS_TYPES:
-                    mount_type = "virtual"
-                elif fs_type in OVERLAY_FS_TYPES:
-                    mount_type = "overlay"
-                elif fs_type in NETWORK_FS_TYPES:
-                    mount_type = "network"
+            new_options = {}
+            for opt in options:
+                split_opt = opt.split("=", 1)
+                # Check for FUSE subtype in options and use it if
+                # filesystem is generic
+                if filesystem in ("fuse", "fuseblk") and split_opt[0] == "subtype":
+                    # Extract subtype and use it as filesystem
+                    filesystem = split_opt[1] if len(split_opt) > 1 else None
+                    mount_info["fuse"] = True
+                    # Don't add subtype to new_options
                 else:
-                    mount_type = "other"
+                    new_options[split_opt[0]] = (
+                        split_opt[1] if len(split_opt) > 1 else True
+                    )
+
+            if filesystem not in (None, "fuse", "fuseblk"):
+                mount_info["filesystem"] = filesystem
 
             # Only set source if it's different from filesystem
             # This avoids redundancy for virtual filesystems like
             # tmpfs, proc, etc.
-            if source and source != mount_info.get("filesystem"):
+            if source and source != filesystem:
                 mount_info["source"] = source
 
-            mount_info["type"] = mount_type
+            if new_options:
+                mount_info["options"] = new_options
 
-            # Add pseudo boolean for virtual filesystems
-            if mount_type == "virtual":
-                fs_type = mount_info.get("filesystem", "")
-                mount_info["pseudo"] = fs_type in PSEUDO_FS_TYPES
+            # Determine mount type based on filesystem
+            if filesystem in VIRTUAL_FS_TYPES or filesystem in PSEUDO_FS_TYPES:
+                mount_info["type"] = "virtual"
+                mount_info["source"] = None
+                mount_info["pseudo"] = filesystem in PSEUDO_FS_TYPES
+            elif filesystem in OVERLAY_FS_TYPES:
+                mount_info["type"] = "overlay"
+            elif filesystem in NETWORK_FS_TYPES:
+                mount_info["type"] = "network"
+            elif filesystem in DEVICE_FS_TYPES:
+                mount_info["type"] = "device"
+
+            # Determine mount type based on source
+            elif source:
+                if (
+                    source.startswith(
+                        ("/dev/", "uuid=", "label=", "partuuid=", "partlabel=")
+                    )
+                    and source != "/dev/fuse"
+                ):
+                    mount_info["type"] = "device"
+                elif ":" in source or source.startswith("//"):
+                    # Network filesystem (NFS, CIFS/SMB)
+                    mount_info["type"] = "network"
 
             # Detect FUSE filesystems
-            fs_type = mount_info.get("filesystem", "")
             # Known FUSE filesystems without "fuse" prefix
             known_fuse_fs = {
                 "bindfs",
@@ -364,13 +355,14 @@ class FilterModule(JCBase):
                 "lxcfs",
                 "sshfs",
             }
-            mount_info["fuse"] = (
-                (
-                    fs_type.startswith("fuse") and fs_type != "fusectl"
-                )  # fuse, fuse.*, fuseblk but not fusectl
-                or fs_type.endswith("-fuse")  # *-fuse variants
-                or fs_type.lower() in known_fuse_fs  # Known FUSE filesystems
-            )
+            if filesystem:
+                if (
+                    # fuse, fuse.*, fuseblk but not fusectl
+                    (filesystem.startswith("fuse") and filesystem != "fusectl")
+                    or filesystem.endswith("-fuse")  # *-fuse variants
+                    or filesystem.lower() in known_fuse_fs  # Known FUSE filesystems
+                ):
+                    mount_info["fuse"] = True
 
             mounts[mount_point] = mount_info
 

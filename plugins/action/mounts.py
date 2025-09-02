@@ -200,8 +200,9 @@ class ActionModule(PosixBase):
         # Filter out unwanted mount types
         filtered_mounts = {}
         for mount_point, mount_info in mounts.items():
-            mount_type = mount_info.get("type", "other")
+            mount_type = mount_info.get("type")
             is_fuse = mount_info.get("fuse", False)
+            is_pseudo = mount_info.get("pseudo", False)
 
             # Skip mounts based on type filters
             if not include_device and mount_type == "device":
@@ -210,9 +211,11 @@ class ActionModule(PosixBase):
                 continue
             if not include_network and mount_type == "network":
                 continue
-            if not include_pseudo and mount_type == "pseudo":
-                continue
             if not include_overlay and mount_type == "overlay":
+                continue
+
+            # Filter by pseudo status (subset of virtual)
+            if not include_pseudo and mount_type == "virtual" and is_pseudo:
                 continue
 
             # Filter by FUSE status

@@ -106,21 +106,28 @@ def test_mount_facts_mode(
 
     # Verify root mount
     root_mount = result["mounts"]["/"]
-    assert root_mount["device"] == "/dev/sda1"
+    assert root_mount["source"] == "/dev/sda1"
+    assert root_mount["type"] == "device"
     assert root_mount["filesystem"] == "ext4"
-    assert root_mount["options"] == ["rw", "relatime", "errors=remount-ro"]
+    assert root_mount["fuse"] == False
+    assert root_mount["options"] == {"rw": True, "relatime": True, "errors": "remount-ro"}
 
     # Verify home mount
     home_mount = result["mounts"]["/home"]
-    assert home_mount["device"] == "/dev/sda2"
+    assert home_mount["source"] == "/dev/sda2"
+    assert home_mount["type"] == "device"
     assert home_mount["filesystem"] == "ext4"
-    assert home_mount["options"] == ["rw", "relatime"]
+    assert home_mount["fuse"] == False
+    assert home_mount["options"] == {"rw": True, "relatime": True}
 
-    # Verify tmpfs mount (no device since it's not /dev/)
+    # Verify tmpfs mount (virtual filesystem)
     shm_mount = result["mounts"]["/dev/shm"]
-    assert "device" not in shm_mount
+    assert shm_mount.get("source") is None  # Virtual filesystems have source=None
+    assert shm_mount["type"] == "virtual"
     assert shm_mount["filesystem"] == "tmpfs"
-    assert shm_mount["options"] == ["rw", "nosuid", "nodev"]
+    assert shm_mount["pseudo"] == False  # tmpfs is virtual but not pseudo
+    assert shm_mount["fuse"] == False
+    assert shm_mount["options"] == {"rw": True, "nosuid": True, "nodev": True}
 
 
 class TestFormatAsFacts:
@@ -148,19 +155,23 @@ class TestFormatAsFacts:
                 {
                     "mounts": {
                         "/": {
-                            "device": "/dev/sda1",
+                            "source": "/dev/sda1",
+                            "type": "device",
                             "filesystem": "ext4",
-                            "options": ["rw", "relatime"],
+                            "fuse": False,
+                            "options": {"rw": True, "relatime": True},
                         },
                         "/boot": {
-                            "device": "/dev/sda2",
+                            "source": "/dev/sda2",
+                            "type": "device",
                             "filesystem": "ext4",
-                            "options": ["rw", "relatime"],
+                            "fuse": False,
+                            "options": {"rw": True, "relatime": True},
                         },
                     }
                 },
             ),
-            # Network filesystem (NFS with source field)
+            # Network filesystem (NFS)
             (
                 [
                     {
@@ -174,13 +185,15 @@ class TestFormatAsFacts:
                     "mounts": {
                         "/mnt/nfs": {
                             "source": "nfs-server:/export/home",
+                            "type": "network",
                             "filesystem": "nfs",
-                            "options": ["rw", "vers=4.2", "rsize=1048576"],
+                            "fuse": False,
+                            "options": {"rw": True, "vers": "4.2", "rsize": "1048576"},
                         }
                     }
                 },
             ),
-            # Network filesystem (CIFS/SMB with source field)
+            # Network filesystem (CIFS/SMB)
             (
                 [
                     {
@@ -194,13 +207,15 @@ class TestFormatAsFacts:
                     "mounts": {
                         "/mnt/smb": {
                             "source": "//smb-server/share",
+                            "type": "network",
                             "filesystem": "cifs",
-                            "options": ["rw", "uid=1000", "gid=1000"],
+                            "fuse": False,
+                            "options": {"rw": True, "uid": "1000", "gid": "1000"},
                         }
                     }
                 },
             ),
-            # macOS mounts with mixed device types (with type field)
+            # macOS mounts with type field
             (
                 [
                     {
@@ -219,13 +234,19 @@ class TestFormatAsFacts:
                 {
                     "mounts": {
                         "/": {
-                            "device": "/dev/disk3s1s1",
+                            "source": "/dev/disk3s1s1",
+                            "type": "device",
                             "filesystem": "apfs",
-                            "options": ["local", "journaled", "nobrowse"],
+                            "fuse": False,
+                            "options": {"local": True, "journaled": True, "nobrowse": True},
                         },
                         "/dev": {
+                            "source": None,
+                            "type": "virtual",
                             "filesystem": "devfs",
-                            "options": ["local", "nobrowse"],
+                            "pseudo": True,  # devfs is a pseudo filesystem
+                            "fuse": False,
+                            "options": {"local": True, "nobrowse": True},
                         },
                     }
                 },
@@ -247,18 +268,24 @@ class TestFormatAsFacts:
                 {
                     "mounts": {
                         "/": {
-                            "device": "/dev/disk3s1s1",
+                            "source": "/dev/disk3s1s1",
+                            "type": "device",
                             "filesystem": "apfs",
-                            "options": ["sealed", "local", "journaled"],
+                            "fuse": False,
+                            "options": {"sealed": True, "local": True, "journaled": True},
                         },
                         "/dev": {
+                            "source": None,
+                            "type": "virtual",
                             "filesystem": "devfs",
-                            "options": ["local", "nobrowse"],
+                            "pseudo": True,
+                            "fuse": False,
+                            "options": {"local": True, "nobrowse": True},
                         },
                     }
                 },
             ),
-            # Virtual filesystems (no devices)
+            # Virtual and pseudo filesystems
             (
                 [
                     {
@@ -283,21 +310,54 @@ class TestFormatAsFacts:
                 {
                     "mounts": {
                         "/proc": {
+                            "source": None,
+                            "type": "virtual",
                             "filesystem": "proc",
-                            "options": ["rw", "nosuid", "nodev", "noexec"],
+                            "pseudo": True,  # proc is a pseudo filesystem
+                            "fuse": False,
+                            "options": {"rw": True, "nosuid": True, "nodev": True, "noexec": True},
                         },
                         "/sys": {
+                            "source": None,
+                            "type": "virtual",
                             "filesystem": "sysfs",
-                            "options": ["rw", "nosuid", "nodev", "noexec"],
+                            "pseudo": True,  # sysfs is a pseudo filesystem
+                            "fuse": False,
+                            "options": {"rw": True, "nosuid": True, "nodev": True, "noexec": True},
                         },
                         "/run": {
+                            "source": None,
+                            "type": "virtual",
                             "filesystem": "tmpfs",
-                            "options": ["rw", "nosuid", "nodev"],
+                            "pseudo": False,  # tmpfs is virtual but not pseudo
+                            "fuse": False,
+                            "options": {"rw": True, "nosuid": True, "nodev": True},
                         },
                     }
                 },
             ),
-            # Missing mount_point (should be skipped)
+            # Empty options list
+            (
+                [
+                    {
+                        "filesystem": "/dev/sda1",
+                        "mount_point": "/",
+                        "type": "ext4",
+                        "options": [],
+                    }
+                ],
+                {
+                    "mounts": {
+                        "/": {
+                            "source": "/dev/sda1",
+                            "type": "device",
+                            "filesystem": "ext4",
+                            "fuse": False,
+                        }
+                    }
+                },
+            ),
+            # Mount with no mount_point (should skip)
             (
                 [
                     {
@@ -308,43 +368,91 @@ class TestFormatAsFacts:
                 ],
                 {"mounts": {}},
             ),
-            # Empty data
-            ([], {"mounts": {}}),
-            # Minimal mount info
-            (
-                [{"mount_point": "/tmp"}],
-                {"mounts": {"/tmp": {}}},
-            ),
-            # Mount with only device and mount_point
+            # Overlay filesystem
             (
                 [
                     {
-                        "filesystem": "/dev/sdb1",
-                        "mount_point": "/data",
+                        "filesystem": "overlay",
+                        "mount_point": "/var/lib/docker/overlay2",
+                        "type": "overlay",
+                        "options": ["rw", "lowerdir=/lower", "upperdir=/upper"],
                     }
                 ],
-                {"mounts": {"/data": {"device": "/dev/sdb1"}}},
+                {
+                    "mounts": {
+                        "/var/lib/docker/overlay2": {
+                            "type": "overlay",
+                            "filesystem": "overlay",
+                            "fuse": False,
+                            "options": {"rw": True, "lowerdir": "/lower", "upperdir": "/upper"},
+                        }
+                    }
+                },
             ),
-            # Mount with non-device filesystem and mount_point
+            # FUSE filesystem with subtype
             (
                 [
                     {
-                        "filesystem": "tmpfs",
-                        "mount_point": "/tmp",
+                        "filesystem": "portal",
+                        "mount_point": "/mnt/portal",
+                        "type": "fuse",
+                        "options": ["rw", "nosuid", "nodev", "subtype=sshfs"],
                     }
                 ],
-                {"mounts": {"/tmp": {}}},
+                {
+                    "mounts": {
+                        "/mnt/portal": {
+                            "source": "portal",
+                            "type": "network",  # sshfs is a network filesystem
+                            "filesystem": "sshfs",  # subtype replaces generic fuse
+                            "fuse": True,
+                            "options": {"rw": True, "nosuid": True, "nodev": True},
+                        }
+                    }
+                },
             ),
-            # Mount with options (no type) - first option becomes type
+            # FUSE filesystem without subtype (ambiguous)
             (
                 [
                     {
-                        "filesystem": "tmpfs",
-                        "mount_point": "/run",
-                        "options": ["tmpfs"],
+                        "filesystem": "some.fuse.mount",
+                        "mount_point": "/mnt/fuse",
+                        "type": "fuse",
+                        "options": ["rw", "nosuid", "nodev"],
                     }
                 ],
-                {"mounts": {"/run": {"filesystem": "tmpfs"}}},
+                {
+                    "mounts": {
+                        "/mnt/fuse": {
+                            "source": "some.fuse.mount",
+                            # No filesystem field when FUSE type is ambiguous
+                            "fuse": True,
+                            "options": {"rw": True, "nosuid": True, "nodev": True},
+                        }
+                    }
+                },
+            ),
+            # FUSE filesystem with fuse. prefix
+            (
+                [
+                    {
+                        "filesystem": "sshfs#user@host:",
+                        "mount_point": "/mnt/ssh",
+                        "type": "fuse.sshfs",
+                        "options": ["rw", "nosuid", "nodev"],
+                    }
+                ],
+                {
+                    "mounts": {
+                        "/mnt/ssh": {
+                            "source": "sshfs#user@host:",
+                            "type": "network",  # fuse.sshfs is detected as sshfs network filesystem
+                            "filesystem": "fuse.sshfs",
+                            "fuse": True,
+                            "options": {"rw": True, "nosuid": True, "nodev": True},
+                        }
+                    }
+                },
             ),
         ],
     )
@@ -354,12 +462,12 @@ class TestFormatAsFacts:
         parsed_data: List[Dict[str, Any]],
         expected: Dict[str, Any],
     ) -> None:
-        """Test _format_as_facts with various input scenarios."""
+        """Test _format_as_facts with various mount configurations."""
         result = filter_module._format_as_facts(parsed_data)
         assert result == expected
 
 
-def test_mount_with_command_result_dict(
+def test_mount_with_dict_input(
     filter_module: FilterModule, mock_parse_command: MagicMock
 ) -> None:
     """Test mount filter with command result dict input."""
@@ -373,9 +481,10 @@ def test_mount_with_command_result_dict(
     ]
     mock_parse_command.return_value = parsed_data
 
-    # Test with dict input (like from command module)
+    # Test with dict input
     command_result = {
         "stdout": "/dev/sda1 on / type ext4 (rw)",
+        "stdout_lines": ["/dev/sda1 on / type ext4 (rw)"],
         "stderr": "",
         "rc": 0,
     }
