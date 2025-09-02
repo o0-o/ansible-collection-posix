@@ -186,6 +186,10 @@ class FilterModule(JCBase):
             "ntfs",
             "ntfs3",
             "bcachefs",
+            "iso9660",
+            "udf",
+            "squashfs",
+            "erofs",
         }
 
         # Pseudo filesystems (kernel interfaces - subset of virtual)
@@ -211,6 +215,7 @@ class FilterModule(JCBase):
             "fusectl",  # Control interface for FUSE, not a FUSE filesystem
             "binfmt_misc",
             "rpc_pipefs",  # RPC kernel interface
+            "nsfs",
         }
 
         # Virtual filesystems (memory-based, not kernel interfaces)
@@ -224,8 +229,7 @@ class FilterModule(JCBase):
             "vmhgfs",
         }
 
-        # Overlay filesystems (views/unions/transforms of other
-        # filesystems)
+        # Views/unions/transforms of other filesystems
         OVERLAY_FS_TYPES = {
             # Union / Merge filesystems
             "overlay",
@@ -257,13 +261,11 @@ class FilterModule(JCBase):
             "lxcfs",
             "fuse.lxcfs",
             "shiftfs",
-            "nsfs",
             # Snapshot / Copy-on-Write
             "translucentfs",
             "fuse.translucentfs",
         }
 
-        # Network filesystems
         NETWORK_FS_TYPES = {
             "nfs",
             "nfs4",
@@ -277,6 +279,25 @@ class FilterModule(JCBase):
             "glusterfs",
             "ceph",
             "9p",
+            "smb3",
+            "lustre",
+            "orangefs",
+            "pmxfs",
+        }
+
+        # Known FUSE filesystems without "fuse" prefix or "-fuse" suffix
+        FUSE_FS_TYPES = {
+            "bindfs",
+            "encfs",
+            "gocryptfs",
+            "cryfs",
+            "mergerfs",
+            "lxcfs",
+            "sshfs",
+            "ntfs-3g",  # FUSE NTFS (kernel-backed is 'ntfs' or 'ntfs3')
+            "osxfuse",  # macOS FUSE type name on some versions
+            "osxfusefs",  # older macOS FUSE
+            "macfuse",  # newer macFUSE label seen in some outputs
         }
 
         mounts = {}
@@ -293,11 +314,13 @@ class FilterModule(JCBase):
             mount_info = {"fuse": False}
 
             # Get source
-            source = entry.get("filesystem", None)
+            source = entry.get("filesystem")
+            if isinstance(source, str) and source.lower() in ("-", "none"):
+                source = None
 
             # Determine filesystem type
             filesystem = None
-            options = entry.get("options", []).copy()
+            options = list(entry.get("options", []).copy())
             if "type" in entry:
                 # Use explicit type field if available
                 filesystem = entry["type"]
@@ -342,11 +365,14 @@ class FilterModule(JCBase):
                 mount_info["options"] = new_options
 
             # Determine mount type based on filesystem
+            is_bind = mount_info.get("options", {}).get(
+                "bind", False
+            ) or mount_info.get("options", {}).get("rbind", False)
             if filesystem in VIRTUAL_FS_TYPES or filesystem in PSEUDO_FS_TYPES:
                 mount_info["type"] = "virtual"
                 mount_info["source"] = None
                 mount_info["pseudo"] = filesystem in PSEUDO_FS_TYPES
-            elif filesystem in OVERLAY_FS_TYPES:
+            elif filesystem in OVERLAY_FS_TYPES or is_bind:
                 mount_info["type"] = "overlay"
             elif filesystem in NETWORK_FS_TYPES:
                 mount_info["type"] = "network"
@@ -356,34 +382,25 @@ class FilterModule(JCBase):
             # Determine mount type based on source
             elif source:
                 if (
-                    source.startswith(
+                    source.lower().startswith(
                         ("/dev/", "uuid=", "label=", "partuuid=", "partlabel=")
                     )
                     and source != "/dev/fuse"
                 ):
                     mount_info["type"] = "device"
-                elif ":" in source or source.startswith("//"):
+                elif (
+                    ":" in source and not source.startswith("/")
+                ) or source.startswith("//"):
                     # Network filesystem (NFS, CIFS/SMB)
                     mount_info["type"] = "network"
 
             # Detect FUSE filesystems
-            # Known FUSE filesystems without "fuse" prefix
-            known_fuse_fs = {
-                "bindfs",
-                "encfs",
-                "gocryptfs",
-                "cryfs",
-                "mergerfs",
-                "lxcfs",
-                "sshfs",
-            }
             if filesystem:
                 if (
                     # fuse, fuse.*, fuseblk but not fusectl
                     (filesystem.startswith("fuse") and filesystem != "fusectl")
                     or filesystem.endswith("-fuse")  # *-fuse variants
-                    or filesystem.lower()
-                    in known_fuse_fs  # Known FUSE filesystems
+                    or filesystem in FUSE_FS_TYPES  # Known FUSE filesystems
                 ):
                     mount_info["fuse"] = True
 
