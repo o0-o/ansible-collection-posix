@@ -294,8 +294,6 @@ class FilterModule(JCBase):
 
             # Get source
             source = entry.get("filesystem", None)
-            if source:
-                source = source.lower()
 
             # Determine filesystem type
             filesystem = None
