@@ -67,7 +67,7 @@
   ansible.builtin.assert:
     that:
       - "'source' in mount_facts.mounts['/']"
-      - mount_facts.mounts['/'].source | regex_search('^/dev/')
+      - mount_facts.mounts['/'].source | regex_search('^/dev/') is not none
     fail_msg: >-
       Root mount source field incorrect:
       {{ mount_facts.mounts['/'] }}
