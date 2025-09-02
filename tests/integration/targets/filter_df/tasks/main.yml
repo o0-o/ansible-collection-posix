@@ -78,7 +78,9 @@
       ansible.builtin.assert:
         that:
           - "'/' in parsed_facts['mounts']"
-          - parsed_facts['mounts']['/']['source'] is defined
+          - >-
+            parsed_facts['mounts']['/']['source'] is defined or
+            parsed_facts['mounts']['/']['filesystem'] is defined
           - parsed_facts['mounts']['/']['capacity'] is defined
           - parsed_facts['mounts']['/']['capacity']['total'] is defined
           - >-
@@ -131,7 +133,7 @@
             (not root_fs_default['filesystem'].startswith('/dev/') and
              ':' not in root_fs_default['filesystem'] and
              not root_fs_default['filesystem'].startswith('//') and
-             'source' not in root_fs_facts)
+             root_fs_default['filesystem'] == root_fs_facts.get('filesystem', ''))
           # Verify capacity values match when converted
           - >-
             (root_fs_default.get('1024_blocks', 0) * 1024 ==
@@ -280,6 +282,36 @@
             mock_facts['mounts']['/']['capacity']['total']['pretty']
             is string
         fail_msg: "Facts mode should correctly organize mock df output"
+
+- name: Test filter with overlay filesystem (CI environment)
+  block:
+    - name: Create mock CI environment df output
+      ansible.builtin.set_fact:
+        ci_df_output: |
+          Filesystem      1024-blocks     Used Available Capacity  Mounted on
+          overlay            75085824 48660900  22572364   69%     /
+          /dev/root          75085824 48660900  22572364   69%     /build
+          tmpfs                 65536        0     65536    0%     /dev
+          shm                   65536      136     65400    1%     /dev/shm
+          tmpfs               8189844        0   8189844    0%     /proc/acpi
+          tmpfs               8189844        0   8189844    0%     /proc/scsi
+          tmpfs               8189844        0   8189844    0%     /sys/firmware
+
+    - name: Parse CI output with facts mode
+      ansible.builtin.set_fact:
+        ci_facts: "{{ ci_df_output | o0_o.posix.df(facts=true) }}"
+
+    - name: Assert overlay filesystem is handled correctly
+      ansible.builtin.assert:
+        that:
+          - ci_facts['mounts']['/']['filesystem'] == 'overlay'
+          - ci_facts['mounts']['/']['source'] is not defined
+          - ci_facts['mounts']['/build']['source'] == '/dev/root'
+          - ci_facts['mounts']['/build']['filesystem'] is not defined
+          - ci_facts['mounts']['/dev']['filesystem'] == 'tmpfs'
+          - ci_facts['mounts']['/dev/shm']['filesystem'] == 'shm'
+        fail_msg: >-
+          Should correctly distinguish filesystem types from device sources
 
 - name: 'Fail: Test invalid df output'
   block:
