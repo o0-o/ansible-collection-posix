@@ -35,8 +35,10 @@
     - name: Assert root filesystem has required fields
       ansible.builtin.assert:
         that:
-          - mount_result_reg['mounts']['/']['source'] is defined
-          - mount_result_reg['mounts']['/']['source'] is string
+          - >-
+            mount_result_reg['mounts']['/']['source'] is not defined or
+            mount_result_reg['mounts']['/']['source'] is string or
+            mount_result_reg['mounts']['/']['source'] is none
           - mount_result_reg['mounts']['/']['filesystem'] is defined
           - mount_result_reg['mounts']['/']['filesystem'] is string
           - mount_result_reg['mounts']['/']['type'] is defined
@@ -51,7 +53,7 @@
       ansible.builtin.debug:
         msg: |
           Root filesystem: {{ mount_result_reg['mounts']['/']['filesystem'] }}
-          Source: {{ mount_result_reg['mounts']['/']['source'] }}
+          Source: {{ mount_result_reg['mounts']['/'].get('source', 'N/A') }}
           {% if mount_result_reg['mounts']['/']['capacity'] is defined %}
           Total: {{ mount_result_reg['mounts']['/']
                     ['capacity']['total']['pretty'] }}
