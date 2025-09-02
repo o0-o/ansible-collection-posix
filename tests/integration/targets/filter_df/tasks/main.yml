@@ -133,7 +133,8 @@
             (not root_fs_default['filesystem'].startswith('/dev/') and
              ':' not in root_fs_default['filesystem'] and
              not root_fs_default['filesystem'].startswith('//') and
-             root_fs_default['filesystem'] == root_fs_facts.get('filesystem', ''))
+             root_fs_default['filesystem'] ==
+             root_fs_facts.get('filesystem', ''))
           # Verify capacity values match when converted
           - >-
             (root_fs_default.get('1024_blocks', 0) * 1024 ==
@@ -295,7 +296,7 @@
           shm                   65536      136     65400    1%     /dev/shm
           tmpfs               8189844        0   8189844    0%     /proc/acpi
           tmpfs               8189844        0   8189844    0%     /proc/scsi
-          tmpfs               8189844        0   8189844    0%     /sys/firmware
+          tmpfs               8189844        0   8189844    0%     /sys/fs
 
     - name: Parse CI output with facts mode
       ansible.builtin.set_fact:
