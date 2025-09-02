@@ -245,7 +245,7 @@ class ActionModule(PosixBase):
             if mount_point in df_mounts:
                 df_info = df_mounts[mount_point]
                 mount_info = mounts[mount_point]
-                
+
                 # Check for conflicts between mount and df data
                 if "source" in df_info and "source" in mount_info:
                     if df_info["source"] != mount_info["source"]:
@@ -254,15 +254,16 @@ class ActionModule(PosixBase):
                             f"'{df_info['source']}' but mount reports "
                             f"'{mount_info['source']}'. Using mount data."
                         )
-                
+
                 if "filesystem" in df_info and "filesystem" in mount_info:
                     if df_info["filesystem"] != mount_info["filesystem"]:
                         self._display.warning(
-                            f"Mount point {mount_point}: df reports filesystem as "
-                            f"'{df_info['filesystem']}' but mount reports "
-                            f"'{mount_info['filesystem']}'. Using mount data."
+                            f"Mount point {mount_point}: df reports "
+                            f"filesystem as '{df_info['filesystem']}' but "
+                            f"mount reports '{mount_info['filesystem']}'. "
+                            f"Using mount data."
                         )
-                
-                # Only merge capacity info, mount data takes priority for everything else
+
+                # Only merge capacity info, mount data takes priority
                 if "capacity" in df_info:
                     mounts[mount_point]["capacity"] = df_info["capacity"]

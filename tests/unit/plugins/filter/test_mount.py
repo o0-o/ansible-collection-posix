@@ -109,24 +109,30 @@ def test_mount_facts_mode(
     assert root_mount["source"] == "/dev/sda1"
     assert root_mount["type"] == "device"
     assert root_mount["filesystem"] == "ext4"
-    assert root_mount["fuse"] == False
-    assert root_mount["options"] == {"rw": True, "relatime": True, "errors": "remount-ro"}
+    assert root_mount["fuse"] is False
+    assert root_mount["options"] == {
+        "rw": True,
+        "relatime": True,
+        "errors": "remount-ro",
+    }
 
     # Verify home mount
     home_mount = result["mounts"]["/home"]
     assert home_mount["source"] == "/dev/sda2"
     assert home_mount["type"] == "device"
     assert home_mount["filesystem"] == "ext4"
-    assert home_mount["fuse"] == False
+    assert home_mount["fuse"] is False
     assert home_mount["options"] == {"rw": True, "relatime": True}
 
     # Verify tmpfs mount (virtual filesystem)
     shm_mount = result["mounts"]["/dev/shm"]
-    assert shm_mount.get("source") is None  # Virtual filesystems have source=None
+    assert (
+        shm_mount.get("source") is None
+    )  # Virtual filesystems have source=None
     assert shm_mount["type"] == "virtual"
     assert shm_mount["filesystem"] == "tmpfs"
-    assert shm_mount["pseudo"] == False  # tmpfs is virtual but not pseudo
-    assert shm_mount["fuse"] == False
+    assert shm_mount["pseudo"] is False  # tmpfs is virtual but not pseudo
+    assert shm_mount["fuse"] is False
     assert shm_mount["options"] == {"rw": True, "nosuid": True, "nodev": True}
 
 
@@ -188,7 +194,11 @@ class TestFormatAsFacts:
                             "type": "network",
                             "filesystem": "nfs",
                             "fuse": False,
-                            "options": {"rw": True, "vers": "4.2", "rsize": "1048576"},
+                            "options": {
+                                "rw": True,
+                                "vers": "4.2",
+                                "rsize": "1048576",
+                            },
                         }
                     }
                 },
@@ -210,7 +220,11 @@ class TestFormatAsFacts:
                             "type": "network",
                             "filesystem": "cifs",
                             "fuse": False,
-                            "options": {"rw": True, "uid": "1000", "gid": "1000"},
+                            "options": {
+                                "rw": True,
+                                "uid": "1000",
+                                "gid": "1000",
+                            },
                         }
                     }
                 },
@@ -238,7 +252,11 @@ class TestFormatAsFacts:
                             "type": "device",
                             "filesystem": "apfs",
                             "fuse": False,
-                            "options": {"local": True, "journaled": True, "nobrowse": True},
+                            "options": {
+                                "local": True,
+                                "journaled": True,
+                                "nobrowse": True,
+                            },
                         },
                         "/dev": {
                             "source": None,
@@ -272,7 +290,11 @@ class TestFormatAsFacts:
                             "type": "device",
                             "filesystem": "apfs",
                             "fuse": False,
-                            "options": {"sealed": True, "local": True, "journaled": True},
+                            "options": {
+                                "sealed": True,
+                                "local": True,
+                                "journaled": True,
+                            },
                         },
                         "/dev": {
                             "source": None,
@@ -315,7 +337,12 @@ class TestFormatAsFacts:
                             "filesystem": "proc",
                             "pseudo": True,  # proc is a pseudo filesystem
                             "fuse": False,
-                            "options": {"rw": True, "nosuid": True, "nodev": True, "noexec": True},
+                            "options": {
+                                "rw": True,
+                                "nosuid": True,
+                                "nodev": True,
+                                "noexec": True,
+                            },
                         },
                         "/sys": {
                             "source": None,
@@ -323,7 +350,12 @@ class TestFormatAsFacts:
                             "filesystem": "sysfs",
                             "pseudo": True,  # sysfs is a pseudo filesystem
                             "fuse": False,
-                            "options": {"rw": True, "nosuid": True, "nodev": True, "noexec": True},
+                            "options": {
+                                "rw": True,
+                                "nosuid": True,
+                                "nodev": True,
+                                "noexec": True,
+                            },
                         },
                         "/run": {
                             "source": None,
@@ -331,7 +363,11 @@ class TestFormatAsFacts:
                             "filesystem": "tmpfs",
                             "pseudo": False,  # tmpfs is virtual but not pseudo
                             "fuse": False,
-                            "options": {"rw": True, "nosuid": True, "nodev": True},
+                            "options": {
+                                "rw": True,
+                                "nosuid": True,
+                                "nodev": True,
+                            },
                         },
                     }
                 },
@@ -375,7 +411,11 @@ class TestFormatAsFacts:
                         "filesystem": "overlay",
                         "mount_point": "/var/lib/docker/overlay2",
                         "type": "overlay",
-                        "options": ["rw", "lowerdir=/lower", "upperdir=/upper"],
+                        "options": [
+                            "rw",
+                            "lowerdir=/lower",
+                            "upperdir=/upper",
+                        ],
                     }
                 ],
                 {
@@ -384,7 +424,11 @@ class TestFormatAsFacts:
                             "type": "overlay",
                             "filesystem": "overlay",
                             "fuse": False,
-                            "options": {"rw": True, "lowerdir": "/lower", "upperdir": "/upper"},
+                            "options": {
+                                "rw": True,
+                                "lowerdir": "/lower",
+                                "upperdir": "/upper",
+                            },
                         }
                     }
                 },
@@ -404,9 +448,14 @@ class TestFormatAsFacts:
                         "/mnt/portal": {
                             "source": "portal",
                             "type": "network",  # sshfs is a network filesystem
-                            "filesystem": "sshfs",  # subtype replaces generic fuse
+                            # subtype replaces generic fuse
+                            "filesystem": "sshfs",
                             "fuse": True,
-                            "options": {"rw": True, "nosuid": True, "nodev": True},
+                            "options": {
+                                "rw": True,
+                                "nosuid": True,
+                                "nodev": True,
+                            },
                         }
                     }
                 },
@@ -425,9 +474,13 @@ class TestFormatAsFacts:
                     "mounts": {
                         "/mnt/fuse": {
                             "source": "some.fuse.mount",
-                            # No filesystem field when FUSE type is ambiguous
+                            # No filesystem when FUSE type ambiguous
                             "fuse": True,
-                            "options": {"rw": True, "nosuid": True, "nodev": True},
+                            "options": {
+                                "rw": True,
+                                "nosuid": True,
+                                "nodev": True,
+                            },
                         }
                     }
                 },
@@ -446,10 +499,15 @@ class TestFormatAsFacts:
                     "mounts": {
                         "/mnt/ssh": {
                             "source": "sshfs#user@host:",
-                            "type": "network",  # fuse.sshfs is detected as sshfs network filesystem
+                            # fuse.sshfs detected as sshfs network FS
+                            "type": "network",
                             "filesystem": "fuse.sshfs",
                             "fuse": True,
-                            "options": {"rw": True, "nosuid": True, "nodev": True},
+                            "options": {
+                                "rw": True,
+                                "nosuid": True,
+                                "nodev": True,
+                            },
                         }
                     }
                 },

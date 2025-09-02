@@ -102,17 +102,31 @@
 - name: Check mount point structure for all mounts
   ansible.builtin.assert:
     that:
-      - item.value['source'] is defined or item.value['type'] == 'virtual' or item.value['type'] == 'overlay'
+      - >
+        item.value['source'] is defined or
+        item.value['type'] == 'virtual' or
+        item.value['type'] == 'overlay'
       - item.value['source'] is none or item.value['source'] is string
-      - item.value['filesystem'] is defined or (item.value['fuse'] is defined and item.value['fuse'] == true)
-      - item.value['filesystem'] is not defined or item.value['filesystem'] is string
+      - >
+        item.value['filesystem'] is defined or
+        (item.value['fuse'] is defined and item.value['fuse'] == true)
+      - >
+        item.value['filesystem'] is not defined or
+        item.value['filesystem'] is string
       - item.value['type'] is defined
       - item.value['type'] in ['device', 'network', 'virtual', 'overlay']
       - item.value['fuse'] is defined
       - item.value['fuse'] is boolean
-      - item.value['options'] is not defined or item.value['options'] is mapping
-      - item.value['pseudo'] is not defined or (item.value['type'] == 'virtual' and item.value['pseudo'] is boolean)
-      - item.value['capacity'] is not defined or item.value['capacity'] is mapping
+      - >
+        item.value['options'] is not defined or
+        item.value['options'] is mapping
+      - >
+        item.value['pseudo'] is not defined or
+        (item.value['type'] == 'virtual' and
+        item.value['pseudo'] is boolean)
+      - >
+        item.value['capacity'] is not defined or
+        item.value['capacity'] is mapping
     fail_msg: |
       Mount point {{ item.key }} has invalid structure
   loop: "{{ mount_result_reg['mounts'] | dict2items }}"

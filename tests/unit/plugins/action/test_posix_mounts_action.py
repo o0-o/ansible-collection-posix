@@ -55,10 +55,14 @@ tmpfs on /tmp type tmpfs (rw,nosuid,nodev)""".strip(),
         elif cmd == "df -P":
             return {
                 "rc": 0,
-                "stdout": """Filesystem     1024-blocks  Used Available Capacity  Mounted on
-/dev/sda1         1024000 512000    512000      50%  /
-/dev/sda2          512000 256000    256000      50%  /boot
-tmpfs              512000  1000    511000       1%  /tmp""",
+                "stdout": (
+                    "Filesystem     1024-blocks  Used Available "
+                    "Capacity  Mounted on\n"
+                    "/dev/sda1         1024000 512000    512000      50%  /\n"
+                    "/dev/sda2          512000 256000    256000      50%  "
+                    "/boot\n"
+                    "tmpfs              512000  1000    511000       1%  /tmp"
+                ),
             }
         return {"rc": 1}
 
@@ -77,7 +81,7 @@ tmpfs              512000  1000    511000       1%  /tmp""",
     assert root["type"] == "device"
     assert root["filesystem"] == "ext4"
     assert root["options"] == {"rw": True, "relatime": True}
-    assert root["fuse"] == False
+    assert root["fuse"] is False
     assert "capacity" in root
     assert "total" in root["capacity"]
     assert "used" in root["capacity"]
@@ -88,7 +92,7 @@ tmpfs              512000  1000    511000       1%  /tmp""",
     assert boot["type"] == "device"
     assert boot["filesystem"] == "ext4"
     assert boot["options"] == {"rw": True, "relatime": True}
-    assert boot["fuse"] == False
+    assert boot["fuse"] is False
     assert "capacity" in boot
 
 
@@ -99,17 +103,28 @@ def test_get_mounts_macos_format(monkeypatch, plugin) -> None:
         if cmd == "mount":
             return {
                 "rc": 0,
-                "stdout": """/dev/disk3s1s1 on / (apfs, sealed, local, read-only, journaled)
-devfs on /dev (devfs, local, nobrowse)
-/dev/disk3s5 on /System/Volumes/Data (apfs, local, journaled, nobrowse)""",
+                "stdout": (
+                    "/dev/disk3s1s1 on / "
+                    "(apfs, sealed, local, read-only, journaled)\n"
+                    "devfs on /dev (devfs, local, nobrowse)\n"
+                    "/dev/disk3s5 on /System/Volumes/Data "
+                    "(apfs, local, journaled, nobrowse)"
+                ),
             }
         elif cmd == "df -P":
             return {
                 "rc": 0,
-                "stdout": """Filesystem     512-blocks       Used  Available Capacity  Mounted on
-/dev/disk3s1s1 7805330720   22000424 1983696096     2%    /
-devfs                 742        742          0   100%    /dev
-/dev/disk3s5   7805330720 5782744992 1983696096    75%    /System/Volumes/Data""",
+                "stdout": (
+                    "Filesystem     512-blocks       Used  Available "
+                    "Capacity  Mounted on\n"
+                    "/dev/disk3s1s1 7805330720   22000424 1983696096     "
+                    "2%    /\n"
+                    "devfs                 742        742          0   "
+                    "100%    /dev\n"
+                    "/dev/disk3s5   7805330720 5782744992 1983696096    "
+                    "75%    "
+                    "/System/Volumes/Data"
+                ),
             }
         return {"rc": 1}
 
@@ -127,9 +142,9 @@ devfs                 742        742          0   100%    /dev
     assert root["source"] == "/dev/disk3s1s1"
     assert root["type"] == "device"
     assert root["filesystem"] == "apfs"
-    assert root["options"]["sealed"] == True
-    assert root["options"]["local"] == True
-    assert root["fuse"] == False
+    assert root["options"]["sealed"] is True
+    assert root["options"]["local"] is True
+    assert root["fuse"] is False
     assert "capacity" in root
 
     # Check data volume
@@ -137,8 +152,8 @@ devfs                 742        742          0   100%    /dev
     assert data["source"] == "/dev/disk3s5"
     assert data["type"] == "device"
     assert data["filesystem"] == "apfs"
-    assert data["options"]["local"] == True
-    assert data["fuse"] == False
+    assert data["options"]["local"] is True
+    assert data["fuse"] is False
     assert "capacity" in data
 
 
@@ -154,8 +169,12 @@ def test_get_mounts_with_spaces(monkeypatch, plugin) -> None:
         elif cmd == "df -P":
             return {
                 "rc": 0,
-                "stdout": """Filesystem     1024-blocks  Used Available Capacity  Mounted on
-/dev/sda1         1024000 512000    512000      50%  /mnt/my files""",
+                "stdout": (
+                    "Filesystem     1024-blocks  Used Available "
+                    "Capacity  Mounted on\n"
+                    "/dev/sda1         1024000 512000    512000      50%  "
+                    "/mnt/my files"
+                ),
             }
         return {"rc": 1}
 
@@ -293,11 +312,13 @@ proc on /proc type proc (rw)""",
     # Check type classification
     assert mounts["/"]["type"] == "device"
     assert mounts["/tmp"]["type"] == "virtual"
-    assert mounts["/tmp"]["source"] is None  # Virtual filesystems have source=None
-    assert mounts["/tmp"]["pseudo"] == False  # tmpfs is virtual but not pseudo
+    assert (
+        mounts["/tmp"]["source"] is None
+    )  # Virtual filesystems have source=None
+    assert mounts["/tmp"]["pseudo"] is False  # tmpfs is virtual but not pseudo
     assert mounts["/proc"]["type"] == "virtual"
     assert mounts["/proc"]["source"] is None
-    assert mounts["/proc"]["pseudo"] == True  # proc is a pseudo filesystem
+    assert mounts["/proc"]["pseudo"] is True  # proc is a pseudo filesystem
 
 
 def test_get_mounts_network_fs(monkeypatch, plugin) -> None:
@@ -360,9 +381,13 @@ def test_run_method(monkeypatch, plugin) -> None:
         elif cmd == "df -P":
             return {
                 "rc": 0,
-                "stdout": """Filesystem     1024-blocks  Used Available Capacity  Mounted on
-/dev/sda1         1024000 512000    512000      50%  /
-/dev/sda2          512000 256000    256000      25%  /boot""",
+                "stdout": (
+                    "Filesystem     1024-blocks  Used Available "
+                    "Capacity  Mounted on\n"
+                    "/dev/sda1         1024000 512000    512000      50%  /\n"
+                    "/dev/sda2          512000 256000    256000      25%  "
+                    "/boot"
+                ),
             }
         return {"rc": 1}
 

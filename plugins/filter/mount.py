@@ -162,9 +162,30 @@ class FilterModule(JCBase):
         """
         # Device-backed filesystems
         DEVICE_FS_TYPES = {
-            "ext2", "ext3", "ext4", "xfs", "btrfs", "zfs", "zfs_member", "apfs",
-            "ufs", "ffs", "hfs", "hfsplus", "jfs", "reiserfs", "f2fs", "nilfs2",
-            "ocfs2", "gfs2", "vfat", "msdos", "exfat", "ntfs", "ntfs3", "bcachefs",
+            "ext2",
+            "ext3",
+            "ext4",
+            "xfs",
+            "btrfs",
+            "zfs",
+            "zfs_member",
+            "apfs",
+            "ufs",
+            "ffs",
+            "hfs",
+            "hfsplus",
+            "jfs",
+            "reiserfs",
+            "f2fs",
+            "nilfs2",
+            "ocfs2",
+            "gfs2",
+            "vfat",
+            "msdos",
+            "exfat",
+            "ntfs",
+            "ntfs3",
+            "bcachefs",
         }
 
         # Pseudo filesystems (kernel interfaces - subset of virtual)
@@ -297,7 +318,10 @@ class FilterModule(JCBase):
                 split_opt = opt.split("=", 1)
                 # Check for FUSE subtype in options and use it if
                 # filesystem is generic
-                if filesystem in ("fuse", "fuseblk") and split_opt[0] == "subtype":
+                if (
+                    filesystem in ("fuse", "fuseblk")
+                    and split_opt[0] == "subtype"
+                ):
                     # Extract subtype and use it as filesystem
                     filesystem = split_opt[1] if len(split_opt) > 1 else None
                     mount_info["fuse"] = True
@@ -360,7 +384,8 @@ class FilterModule(JCBase):
                     # fuse, fuse.*, fuseblk but not fusectl
                     (filesystem.startswith("fuse") and filesystem != "fusectl")
                     or filesystem.endswith("-fuse")  # *-fuse variants
-                    or filesystem.lower() in known_fuse_fs  # Known FUSE filesystems
+                    or filesystem.lower()
+                    in known_fuse_fs  # Known FUSE filesystems
                 ):
                     mount_info["fuse"] = True
 

@@ -165,18 +165,22 @@ class FilterModule(JCBase):
             # Handle source vs filesystem field intelligently
             if "filesystem" in entry:
                 fs_value = entry["filesystem"]
-                
+
                 # Special case: macOS autofs mounts
                 if fs_value.startswith("map "):
                     mount_data["filesystem"] = "autofs"
                 # Device paths, UUID/LABEL, network mounts, or paths
                 elif (
-                    fs_value.startswith("/") or  # Absolute paths, devices
-                    fs_value.startswith("\\\\") or  # Windows UNC paths
-                    fs_value.startswith("//") or  # SMB/CIFS
-                    ":" in fs_value or  # NFS (server:path) or Windows drives (C:)
-                    fs_value.upper().startswith(("UUID=", "LABEL=", "PARTUUID=", "PARTLABEL=")) or
-                    "/" in fs_value  # ZFS datasets like tank/dataset, rpool/home
+                    fs_value.startswith("/")  # Absolute paths, devices
+                    or fs_value.startswith("\\\\")  # Windows UNC paths
+                    or fs_value.startswith("//")  # SMB/CIFS
+                    or ":"
+                    in fs_value  # NFS (server:path) or Windows drives (C:)
+                    or fs_value.upper().startswith(
+                        ("UUID=", "LABEL=", "PARTUUID=", "PARTLABEL=")
+                    )
+                    or "/"
+                    in fs_value  # ZFS datasets like tank/dataset, rpool/home
                 ):
                     mount_data["source"] = fs_value
                 # Everything else is a filesystem type
