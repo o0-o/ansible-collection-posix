@@ -108,7 +108,10 @@
         item.value['source'] is defined or
         item.value['type'] == 'virtual' or
         item.value['type'] == 'overlay'
-      - item.value['source'] is none or item.value['source'] is string
+      - >
+        item.value['source'] is not defined or
+        item.value['source'] is none or
+        item.value['source'] is string
       - >
         item.value['filesystem'] is defined or
         (item.value['fuse'] is defined and item.value['fuse'] == true)
