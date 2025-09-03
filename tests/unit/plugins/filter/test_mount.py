@@ -11,7 +11,8 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict
+from typing import Any, Dict, List
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -24,414 +25,720 @@ def filter_module() -> FilterModule:
     return FilterModule()
 
 
-class TestMountParsing:
-    """Test mount filter with parametrized test cases."""
+@pytest.fixture
+def mock_parse_command(monkeypatch) -> MagicMock:
+    """Mock the parse_command method."""
+    mock = MagicMock()
+    monkeypatch.setattr(FilterModule, "parse_command", mock)
+    return mock
 
-    @pytest.mark.parametrize(
-        "mount_output,expected_count,first_mount",
-        [
-            # Standard Linux mounts
-            (
-                """/dev/sda1 on / type ext4 (rw,relatime,errors=remount-ro)
-/dev/sda2 on /boot type ext4 (rw,relatime)""",
-                2,
-                {
-                    "filesystem": "/dev/sda1",
-                    "mount_point": "/",
-                    "type": "ext4",
-                    "options": ["rw", "relatime", "errors=remount-ro"],
-                },
-            ),
-            # macOS style without 'type' keyword
-            (
-                """/dev/disk3s1s1 on / (apfs, sealed, local, read-only, journaled)
-devfs on /dev (devfs, local, nobrowse)""",
-                2,
-                {
-                    "filesystem": "/dev/disk3s1s1",
-                    "mount_point": "/",
-                    # First option is the type on macOS
-                    "options": ["apfs", "sealed", "local", "read-only", "journaled"],
-                },
-            ),
-            # Empty input
-            ("", 0, None),
-            # Single mount
-            (
-                "/dev/sda1 on / type ext4 (rw)",
-                1,
-                {
-                    "filesystem": "/dev/sda1",
-                    "mount_point": "/",
-                    "type": "ext4",
-                    "options": ["rw"],
-                },
-            ),
-        ],
+
+def test_mount_default_mode(
+    filter_module: FilterModule, mock_parse_command: MagicMock
+) -> None:
+    """Test mount filter in default mode (facts=False)."""
+    # Setup mock to return parsed data
+    parsed_data = [
+        {
+            "filesystem": "/dev/sda1",
+            "mount_point": "/",
+            "type": "ext4",
+            "options": ["rw", "relatime", "errors=remount-ro"],
+        },
+        {
+            "filesystem": "/dev/sda2",
+            "mount_point": "/home",
+            "type": "ext4",
+            "options": ["rw", "relatime"],
+        },
+    ]
+    mock_parse_command.return_value = parsed_data
+
+    # Test with string input
+    result = filter_module.mount(
+        "/dev/sda1 on / type ext4 (rw,relatime,errors=remount-ro)"
     )
-    def test_raw_parsing(
-        self,
-        filter_module: FilterModule,
-        mount_output: str,
-        expected_count: int,
-        first_mount: Dict[str, Any],
-    ) -> None:
-        """Test raw mount parsing (facts=False)."""
-        result = filter_module.mount(mount_output)
-        assert len(result) == expected_count
 
-        if first_mount:
-            # Check key fields of first mount
-            assert result[0]["filesystem"] == first_mount["filesystem"]
-            assert result[0]["mount_point"] == first_mount["mount_point"]
-            # Check options are present (order may vary)
-            for opt in first_mount["options"]:
-                assert opt in result[0]["options"]
-            # Type field may or may not be present depending on OS
-            if "type" in first_mount:
-                assert result[0]["type"] == first_mount["type"]
+    # Verify parse_command was called
+    mock_parse_command.assert_called_once_with(
+        "/dev/sda1 on / type ext4 (rw,relatime,errors=remount-ro)", "mount"
+    )
+
+    # Verify raw parsed data is returned
+    assert result == parsed_data
+
+
+def test_mount_facts_mode(
+    filter_module: FilterModule, mock_parse_command: MagicMock
+) -> None:
+    """Test mount filter in facts mode."""
+    # Setup mock to return parsed data
+    parsed_data = [
+        {
+            "filesystem": "/dev/sda1",
+            "mount_point": "/",
+            "type": "ext4",
+            "options": ["rw", "relatime", "errors=remount-ro"],
+        },
+        {
+            "filesystem": "/dev/sda2",
+            "mount_point": "/home",
+            "type": "ext4",
+            "options": ["rw", "relatime"],
+        },
+        {
+            "filesystem": "tmpfs",
+            "mount_point": "/dev/shm",
+            "type": "tmpfs",
+            "options": ["rw", "nosuid", "nodev"],
+        },
+    ]
+    mock_parse_command.return_value = parsed_data
+
+    # Test with facts=True
+    result = filter_module.mount("dummy", facts=True)
+
+    # Verify the structure
+    assert "mounts" in result
+    assert "/" in result["mounts"]
+    assert "/home" in result["mounts"]
+    assert "/dev/shm" in result["mounts"]
+
+    # Verify root mount
+    root_mount = result["mounts"]["/"]
+    assert root_mount["source"] == "/dev/sda1"
+    assert root_mount["type"] == "device"
+    assert root_mount["filesystem"] == "ext4"
+    assert root_mount["fuse"] is False
+    assert root_mount["options"] == {
+        "rw": True,
+        "relatime": True,
+        "errors": "remount-ro",
+    }
+
+    # Verify home mount
+    home_mount = result["mounts"]["/home"]
+    assert home_mount["source"] == "/dev/sda2"
+    assert home_mount["type"] == "device"
+    assert home_mount["filesystem"] == "ext4"
+    assert home_mount["fuse"] is False
+    assert home_mount["options"] == {"rw": True, "relatime": True}
+
+    # Verify tmpfs mount (virtual filesystem)
+    shm_mount = result["mounts"]["/dev/shm"]
+    assert (
+        shm_mount.get("source") is None
+    )  # Virtual filesystems have source=None
+    assert shm_mount["type"] == "virtual"
+    assert shm_mount["filesystem"] == "tmpfs"
+    assert shm_mount["pseudo"] is False  # tmpfs is virtual but not pseudo
+    assert shm_mount["fuse"] is False
+    assert shm_mount["options"] == {"rw": True, "nosuid": True, "nodev": True}
+
+
+class TestFormatAsFacts:
+    """Test the _format_as_facts method directly."""
 
     @pytest.mark.parametrize(
-        "mount_output,mount_point,expected_facts",
+        "parsed_data,expected",
         [
-            # Device mount
+            # Standard Linux mounts with /dev/ devices
             (
-                "/dev/sda1 on / type ext4 (rw,relatime)",
-                "/",
-                {
-                    "source": "/dev/sda1",
-                    "type": "device",
-                    "filesystem": "ext4",
-                    "fuse": False,
-                    "options": {"rw": True, "relatime": True},
-                },
-            ),
-            # Virtual filesystem - tmpfs
-            (
-                "tmpfs on /dev/shm type tmpfs (rw,nosuid,nodev)",
-                "/dev/shm",
-                {
-                    "source": None,
-                    "type": "virtual",
-                    "filesystem": "tmpfs",
-                    "pseudo": False,  # tmpfs is virtual but not pseudo
-                    "fuse": False,
-                    "options": {"rw": True, "nosuid": True, "nodev": True},
-                },
-            ),
-            # Pseudo filesystem - proc
-            (
-                "proc on /proc type proc (rw,nosuid,nodev,noexec,relatime)",
-                "/proc",
-                {
-                    "source": None,
-                    "type": "virtual",
-                    "filesystem": "proc",
-                    "pseudo": True,  # proc is a pseudo filesystem
-                    "fuse": False,
-                    "options": {
-                        "rw": True,
-                        "nosuid": True,
-                        "nodev": True,
-                        "noexec": True,
-                        "relatime": True,
+                [
+                    {
+                        "filesystem": "/dev/sda1",
+                        "mount_point": "/",
+                        "type": "ext4",
+                        "options": ["rw", "relatime"],
                     },
-                },
-            ),
-            # Network filesystem - NFS
-            (
-                "server:/export on /mnt/nfs type nfs (rw,vers=4.2,rsize=1048576)",
-                "/mnt/nfs",
-                {
-                    "source": "server:/export",
-                    "type": "network",
-                    "filesystem": "nfs",
-                    "fuse": False,
-                    "options": {"rw": True, "vers": "4.2", "rsize": "1048576"},
-                },
-            ),
-            # Network filesystem - CIFS
-            (
-                "//server/share on /mnt/smb type cifs (rw,uid=1000,gid=1000)",
-                "/mnt/smb",
-                {
-                    "source": "//server/share",
-                    "type": "network",
-                    "filesystem": "cifs",
-                    "fuse": False,
-                    "options": {"rw": True, "uid": "1000", "gid": "1000"},
-                },
-            ),
-            # Overlay filesystem (Docker root)
-            (
-                "overlay on / type overlay (rw,relatime,lowerdir=/var/lib/docker/overlay2/l/ABC:/var/lib/docker/overlay2/l/DEF,upperdir=/var/lib/docker/overlay2/xyz/diff,workdir=/var/lib/docker/overlay2/xyz/work)",
-                "/",
-                {
-                    # No source field for overlay
-                    "type": "overlay",
-                    "filesystem": "overlay",
-                    "fuse": False,
-                    "options": {
-                        "rw": True,
-                        "relatime": True,
-                        "lowerdir": "/var/lib/docker/overlay2/l/ABC:/var/lib/docker/overlay2/l/DEF",
-                        "upperdir": "/var/lib/docker/overlay2/xyz/diff",
-                        "workdir": "/var/lib/docker/overlay2/xyz/work",
+                    {
+                        "filesystem": "/dev/sda2",
+                        "mount_point": "/boot",
+                        "type": "ext4",
+                        "options": ["rw", "relatime"],
                     },
+                ],
+                {
+                    "mounts": {
+                        "/": {
+                            "source": "/dev/sda1",
+                            "type": "device",
+                            "filesystem": "ext4",
+                            "fuse": False,
+                            "options": {"rw": True, "relatime": True},
+                        },
+                        "/boot": {
+                            "source": "/dev/sda2",
+                            "type": "device",
+                            "filesystem": "ext4",
+                            "fuse": False,
+                            "options": {"rw": True, "relatime": True},
+                        },
+                    }
                 },
             ),
-            # Bind mount
+            # Network filesystem (NFS)
             (
-                "/dev/sda1 on /mnt/bind type ext4 (rw,relatime,bind)",
-                "/mnt/bind",
+                [
+                    {
+                        "filesystem": "nfs-server:/export/home",
+                        "mount_point": "/mnt/nfs",
+                        "type": "nfs",
+                        "options": ["rw", "vers=4.2", "rsize=1048576"],
+                    }
+                ],
                 {
-                    "source": "/dev/sda1",
-                    "type": "overlay",  # bind mounts are classified as overlay
-                    "filesystem": "ext4",
-                    "fuse": False,
-                    "options": {"rw": True, "relatime": True, "bind": True},
+                    "mounts": {
+                        "/mnt/nfs": {
+                            "source": "nfs-server:/export/home",
+                            "type": "network",
+                            "filesystem": "nfs",
+                            "fuse": False,
+                            "options": {
+                                "rw": True,
+                                "vers": "4.2",
+                                "rsize": "1048576",
+                            },
+                        }
+                    }
+                },
+            ),
+            # Network filesystem (CIFS/SMB)
+            (
+                [
+                    {
+                        "filesystem": "//smb-server/share",
+                        "mount_point": "/mnt/smb",
+                        "type": "cifs",
+                        "options": ["rw", "uid=1000", "gid=1000"],
+                    }
+                ],
+                {
+                    "mounts": {
+                        "/mnt/smb": {
+                            "source": "//smb-server/share",
+                            "type": "network",
+                            "filesystem": "cifs",
+                            "fuse": False,
+                            "options": {
+                                "rw": True,
+                                "uid": "1000",
+                                "gid": "1000",
+                            },
+                        }
+                    }
+                },
+            ),
+            # macOS mounts with type field
+            (
+                [
+                    {
+                        "filesystem": "/dev/disk3s1s1",
+                        "mount_point": "/",
+                        "type": "apfs",
+                        "options": ["local", "journaled", "nobrowse"],
+                    },
+                    {
+                        "filesystem": "devfs",
+                        "mount_point": "/dev",
+                        "type": "devfs",
+                        "options": ["local", "nobrowse"],
+                    },
+                ],
+                {
+                    "mounts": {
+                        "/": {
+                            "source": "/dev/disk3s1s1",
+                            "type": "device",
+                            "filesystem": "apfs",
+                            "fuse": False,
+                            "options": {
+                                "local": True,
+                                "journaled": True,
+                                "nobrowse": True,
+                            },
+                        },
+                        "/dev": {
+                            "source": None,
+                            "type": "virtual",
+                            "filesystem": "devfs",
+                            "pseudo": True,  # devfs is a pseudo filesystem
+                            "fuse": False,
+                            "options": {"local": True, "nobrowse": True},
+                        },
+                    }
+                },
+            ),
+            # macOS mounts without type field (fs type in first option)
+            (
+                [
+                    {
+                        "filesystem": "/dev/disk3s1s1",
+                        "mount_point": "/",
+                        "options": ["apfs", "sealed", "local", "journaled"],
+                    },
+                    {
+                        "filesystem": "devfs",
+                        "mount_point": "/dev",
+                        "options": ["devfs", "local", "nobrowse"],
+                    },
+                ],
+                {
+                    "mounts": {
+                        "/": {
+                            "source": "/dev/disk3s1s1",
+                            "type": "device",
+                            "filesystem": "apfs",
+                            "fuse": False,
+                            "options": {
+                                "sealed": True,
+                                "local": True,
+                                "journaled": True,
+                            },
+                        },
+                        "/dev": {
+                            "source": None,
+                            "type": "virtual",
+                            "filesystem": "devfs",
+                            "pseudo": True,
+                            "fuse": False,
+                            "options": {"local": True, "nobrowse": True},
+                        },
+                    }
+                },
+            ),
+            # Virtual and pseudo filesystems
+            (
+                [
+                    {
+                        "filesystem": "proc",
+                        "mount_point": "/proc",
+                        "type": "proc",
+                        "options": ["rw", "nosuid", "nodev", "noexec"],
+                    },
+                    {
+                        "filesystem": "sysfs",
+                        "mount_point": "/sys",
+                        "type": "sysfs",
+                        "options": ["rw", "nosuid", "nodev", "noexec"],
+                    },
+                    {
+                        "filesystem": "tmpfs",
+                        "mount_point": "/run",
+                        "type": "tmpfs",
+                        "options": ["rw", "nosuid", "nodev"],
+                    },
+                ],
+                {
+                    "mounts": {
+                        "/proc": {
+                            "source": None,
+                            "type": "virtual",
+                            "filesystem": "proc",
+                            "pseudo": True,  # proc is a pseudo filesystem
+                            "fuse": False,
+                            "options": {
+                                "rw": True,
+                                "nosuid": True,
+                                "nodev": True,
+                                "noexec": True,
+                            },
+                        },
+                        "/sys": {
+                            "source": None,
+                            "type": "virtual",
+                            "filesystem": "sysfs",
+                            "pseudo": True,  # sysfs is a pseudo filesystem
+                            "fuse": False,
+                            "options": {
+                                "rw": True,
+                                "nosuid": True,
+                                "nodev": True,
+                                "noexec": True,
+                            },
+                        },
+                        "/run": {
+                            "source": None,
+                            "type": "virtual",
+                            "filesystem": "tmpfs",
+                            "pseudo": False,  # tmpfs is virtual but not pseudo
+                            "fuse": False,
+                            "options": {
+                                "rw": True,
+                                "nosuid": True,
+                                "nodev": True,
+                            },
+                        },
+                    }
+                },
+            ),
+            # Empty options list
+            (
+                [
+                    {
+                        "filesystem": "/dev/sda1",
+                        "mount_point": "/",
+                        "type": "ext4",
+                        "options": [],
+                    }
+                ],
+                {
+                    "mounts": {
+                        "/": {
+                            "source": "/dev/sda1",
+                            "type": "device",
+                            "filesystem": "ext4",
+                            "fuse": False,
+                        }
+                    }
+                },
+            ),
+            # Mount with no mount_point (should skip)
+            (
+                [
+                    {
+                        "filesystem": "/dev/sda1",
+                        "type": "ext4",
+                        "options": ["rw"],
+                    }
+                ],
+                {"mounts": {}},
+            ),
+            # Overlay filesystem
+            (
+                [
+                    {
+                        "filesystem": "overlay",
+                        "mount_point": "/var/lib/docker/overlay2",
+                        "type": "overlay",
+                        "options": [
+                            "rw",
+                            "lowerdir=/lower",
+                            "upperdir=/upper",
+                        ],
+                    }
+                ],
+                {
+                    "mounts": {
+                        "/var/lib/docker/overlay2": {
+                            "type": "overlay",
+                            "filesystem": "overlay",
+                            "fuse": False,
+                            "options": {
+                                "rw": True,
+                                "lowerdir": "/lower",
+                                "upperdir": "/upper",
+                            },
+                        }
+                    }
                 },
             ),
             # FUSE filesystem with subtype
             (
-                "portal on /mnt/portal type fuse (rw,nosuid,nodev,subtype=sshfs)",
-                "/mnt/portal",
+                [
+                    {
+                        "filesystem": "portal",
+                        "mount_point": "/mnt/portal",
+                        "type": "fuse",
+                        "options": ["rw", "nosuid", "nodev", "subtype=sshfs"],
+                    }
+                ],
                 {
-                    "source": "portal",
-                    "type": "network",  # sshfs is network type
-                    "filesystem": "sshfs",  # subtype replaces generic fuse
-                    "fuse": True,
-                    "options": {"rw": True, "nosuid": True, "nodev": True},
+                    "mounts": {
+                        "/mnt/portal": {
+                            "source": "portal",
+                            "type": "network",  # sshfs is a network filesystem
+                            # subtype replaces generic fuse
+                            "filesystem": "sshfs",
+                            "fuse": True,
+                            "options": {
+                                "rw": True,
+                                "nosuid": True,
+                                "nodev": True,
+                            },
+                        }
+                    }
+                },
+            ),
+            # FUSE filesystem without subtype (ambiguous)
+            (
+                [
+                    {
+                        "filesystem": "some.fuse.mount",
+                        "mount_point": "/mnt/fuse",
+                        "type": "fuse",
+                        "options": ["rw", "nosuid", "nodev"],
+                    }
+                ],
+                {
+                    "mounts": {
+                        "/mnt/fuse": {
+                            "source": "some.fuse.mount",
+                            # No filesystem when FUSE type ambiguous
+                            "fuse": True,
+                            "options": {
+                                "rw": True,
+                                "nosuid": True,
+                                "nodev": True,
+                            },
+                        }
+                    }
                 },
             ),
             # FUSE filesystem with fuse. prefix
             (
-                "encfs on /mnt/enc type fuse.encfs (rw,nosuid,nodev)",
-                "/mnt/enc",
+                [
+                    {
+                        "filesystem": "sshfs#user@host:",
+                        "mount_point": "/mnt/ssh",
+                        "type": "fuse.sshfs",
+                        "options": ["rw", "nosuid", "nodev"],
+                    }
+                ],
                 {
-                    "source": "encfs",
-                    "filesystem": "fuse.encfs",
-                    "fuse": True,
-                    "options": {"rw": True, "nosuid": True, "nodev": True},
+                    "mounts": {
+                        "/mnt/ssh": {
+                            "source": "sshfs#user@host:",
+                            # fuse.sshfs detected as sshfs network FS
+                            "type": "network",
+                            "filesystem": "fuse.sshfs",
+                            "fuse": True,
+                            "options": {
+                                "rw": True,
+                                "nosuid": True,
+                                "nodev": True,
+                            },
+                        }
+                    }
                 },
             ),
-            # fuseblk (NTFS)
+            # Docker overlay filesystem (no explicit source)
             (
-                "/dev/sda1 on /mnt/ntfs type fuseblk (rw,relatime,allow_other)",
-                "/mnt/ntfs",
+                [
+                    {
+                        "filesystem": "overlay",
+                        "mount_point": "/",
+                        "type": "overlay",
+                        "options": [
+                            "rw",
+                            "relatime",
+                            ("lowerdir=/var/lib/docker/overlay2/l/ABC:"
+                             "/var/lib/docker/overlay2/l/DEF"),
+                            "upperdir=/var/lib/docker/overlay2/xyz/diff",
+                            "workdir=/var/lib/docker/overlay2/xyz/work",
+                            "nouserxattr",
+                        ],
+                    }
+                ],
                 {
-                    "source": "/dev/sda1",
-                    "type": "device",  # fuseblk is device type
-                    # No filesystem field when fuseblk without subtype
-                    "fuse": True,
-                    "options": {"rw": True, "relatime": True, "allow_other": True},
+                    "mounts": {
+                        "/": {
+                            # No source field for overlay
+                            "type": "overlay",
+                            "filesystem": "overlay",
+                            "fuse": False,
+                            "options": {
+                                "rw": True,
+                                "relatime": True,
+                                "lowerdir": (
+                                    "/var/lib/docker/overlay2/l/ABC:"
+                                    "/var/lib/docker/overlay2/l/DEF"
+                                ),
+                                "upperdir": (
+                                    "/var/lib/docker/overlay2/xyz/diff"
+                                ),
+                                "workdir": "/var/lib/docker/overlay2/xyz/work",
+                                "nouserxattr": True,
+                            },
+                        }
+                    }
+                },
+            ),
+            # Bind mount
+            (
+                [
+                    {
+                        "filesystem": "/dev/sda1",
+                        "mount_point": "/mnt/bind",
+                        "type": "ext4",
+                        "options": ["rw", "relatime", "bind"],
+                    }
+                ],
+                {
+                    "mounts": {
+                        "/mnt/bind": {
+                            "source": "/dev/sda1",
+                            # bind mounts are classified as overlay
+                            "type": "overlay",
+                            "filesystem": "ext4",
+                            "fuse": False,
+                            "options": {
+                                "rw": True,
+                                "relatime": True,
+                                "bind": True,
+                            },
+                        }
+                    }
+                },
+            ),
+            # Recursive bind mount
+            (
+                [
+                    {
+                        "filesystem": "/dev/sda1",
+                        "mount_point": "/mnt/rbind",
+                        "type": "ext4",
+                        "options": ["rw", "relatime", "rbind"],
+                    }
+                ],
+                {
+                    "mounts": {
+                        "/mnt/rbind": {
+                            "source": "/dev/sda1",
+                            # rbind mounts are classified as overlay
+                            "type": "overlay",
+                            "filesystem": "ext4",
+                            "fuse": False,
+                            "options": {
+                                "rw": True,
+                                "relatime": True,
+                                "rbind": True,
+                            },
+                        }
+                    }
                 },
             ),
             # Source as 'none'
             (
-                "none on /proc type proc (rw)",
-                "/proc",
+                [
+                    {
+                        "filesystem": "none",
+                        "mount_point": "/proc",
+                        "type": "proc",
+                        "options": ["rw"],
+                    }
+                ],
                 {
-                    "source": None,  # 'none' becomes None
-                    "type": "virtual",
-                    "filesystem": "proc",
-                    "pseudo": True,
-                    "fuse": False,
-                    "options": {"rw": True},
+                    "mounts": {
+                        "/proc": {
+                            "source": None,  # 'none' becomes None
+                            "type": "virtual",
+                            "filesystem": "proc",
+                            "pseudo": True,
+                            "fuse": False,
+                            "options": {"rw": True},
+                        }
+                    }
                 },
             ),
             # Source as '-'
             (
-                "- on /sys type sysfs (rw)",
-                "/sys",
+                [
+                    {
+                        "filesystem": "-",
+                        "mount_point": "/sys",
+                        "type": "sysfs",
+                        "options": ["rw"],
+                    }
+                ],
                 {
-                    "source": None,  # '-' becomes None
-                    "type": "virtual",
-                    "filesystem": "sysfs",
-                    "pseudo": True,
-                    "fuse": False,
-                    "options": {"rw": True},
+                    "mounts": {
+                        "/sys": {
+                            "source": None,  # '-' becomes None
+                            "type": "virtual",
+                            "filesystem": "sysfs",
+                            "pseudo": True,
+                            "fuse": False,
+                            "options": {"rw": True},
+                        }
+                    }
                 },
             ),
-        ],
-    )
-    def test_facts_mode(
-        self,
-        filter_module: FilterModule,
-        mount_output: str,
-        mount_point: str,
-        expected_facts: Dict[str, Any],
-    ) -> None:
-        """Test mount filter in facts mode."""
-        facts = filter_module.mount(mount_output, facts=True)
-        assert "mounts" in facts
-        assert mount_point in facts["mounts"]
-
-        mount_facts = facts["mounts"][mount_point]
-
-        # Check all expected fields
-        for key, expected_value in expected_facts.items():
-            if key == "source" and "source" not in expected_facts:
-                # Source field may not exist (e.g., overlay)
-                assert key not in mount_facts
-            else:
-                assert mount_facts[key] == expected_value
-
-    @pytest.mark.parametrize(
-        "mount_output,expected_mounts",
-        [
-            # Multiple virtual filesystems
-            (
-                """proc on /proc type proc (rw)
-sysfs on /sys type sysfs (rw)
-devpts on /dev/pts type devpts (rw,gid=5,mode=620)
-tmpfs on /run type tmpfs (rw,mode=755)
-cgroup2 on /sys/fs/cgroup type cgroup2 (rw)
-debugfs on /sys/kernel/debug type debugfs (rw)
-fusectl on /sys/fs/fuse/connections type fusectl (rw)""",
-                {
-                    "/proc": {"type": "virtual", "pseudo": True},
-                    "/sys": {"type": "virtual", "pseudo": True},
-                    "/dev/pts": {"type": "virtual", "pseudo": True},
-                    "/run": {"type": "virtual", "pseudo": False},  # tmpfs
-                    "/sys/fs/cgroup": {"type": "virtual", "pseudo": True},
-                    "/sys/kernel/debug": {"type": "virtual", "pseudo": True},
-                    "/sys/fs/fuse/connections": {"type": "virtual", "pseudo": True},
-                },
-            ),
-            # Docker container with overlay and bind mounts
-            (
-                """overlay on / type overlay (rw,relatime,lowerdir=/var/lib/docker/overlay2/l/A:/var/lib/docker/overlay2/l/B,upperdir=/var/lib/docker/overlay2/c/diff,workdir=/var/lib/docker/overlay2/c/work)
-/dev/vda1 on /etc/resolv.conf type ext4 (rw,relatime,bind)
-/dev/vda1 on /etc/hostname type ext4 (rw,relatime,bind)
-/dev/vda1 on /etc/hosts type ext4 (rw,relatime,bind)""",
-                {
-                    "/": {"type": "overlay", "filesystem": "overlay"},
-                    "/etc/resolv.conf": {"type": "overlay", "filesystem": "ext4"},
-                    "/etc/hostname": {"type": "overlay", "filesystem": "ext4"},
-                    "/etc/hosts": {"type": "overlay", "filesystem": "ext4"},
-                },
-            ),
-        ],
-    )
-    def test_multiple_mounts(
-        self,
-        filter_module: FilterModule,
-        mount_output: str,
-        expected_mounts: Dict[str, Dict[str, Any]],
-    ) -> None:
-        """Test parsing multiple mounts with correct classification."""
-        facts = filter_module.mount(mount_output, facts=True)
-
-        for mount_point, expected in expected_mounts.items():
-            assert mount_point in facts["mounts"]
-            mount = facts["mounts"][mount_point]
-            for key, value in expected.items():
-                assert mount[key] == value
-
-    @pytest.mark.parametrize(
-        "input_data,input_type",
-        [
-            # Command result dict
-            (
-                {
-                    "stdout": "/dev/sda1 on / type ext4 (rw)",
-                    "stdout_lines": ["/dev/sda1 on / type ext4 (rw)"],
-                    "stderr": "",
-                    "rc": 0,
-                },
-                "dict",
-            ),
-            # List of lines
+            # fuseblk (NTFS)
             (
                 [
-                    "/dev/sda1 on / type ext4 (rw)",
-                    "tmpfs on /tmp type tmpfs (rw)",
+                    {
+                        "filesystem": "/dev/sda1",
+                        "mount_point": "/mnt/ntfs",
+                        "type": "fuseblk",
+                        "options": ["rw", "relatime", "allow_other"],
+                    }
                 ],
-                "list",
-            ),
-            # Plain string
-            (
-                "/dev/sda1 on / type ext4 (rw)\ntmpfs on /tmp type tmpfs (rw)",
-                "str",
+                {
+                    "mounts": {
+                        "/mnt/ntfs": {
+                            "source": "/dev/sda1",
+                            "type": "device",  # fuseblk is device type
+                            # No filesystem when fuseblk without subtype
+                            "fuse": True,
+                            "options": {
+                                "rw": True,
+                                "relatime": True,
+                                "allow_other": True,
+                            },
+                        }
+                    }
+                },
             ),
         ],
     )
-    def test_input_types(
+    def test_format_as_facts(
         self,
         filter_module: FilterModule,
-        input_data: Any,
-        input_type: str,
+        parsed_data: List[Dict[str, Any]],
+        expected: Dict[str, Any],
     ) -> None:
-        """Test mount filter with different input types."""
-        result = filter_module.mount(input_data)
+        """Test _format_as_facts with various mount configurations."""
+        result = filter_module._format_as_facts(parsed_data)
+        assert result == expected
 
-        # All should parse successfully
-        assert len(result) >= 1
-        assert result[0]["mount_point"] == "/"
 
-        if input_type in ["list", "str"]:
-            assert len(result) == 2
-            assert result[1]["mount_point"] == "/tmp"
+def test_mount_with_dict_input(
+    filter_module: FilterModule, mock_parse_command: MagicMock
+) -> None:
+    """Test mount filter with command result dict input."""
+    parsed_data = [
+        {
+            "filesystem": "/dev/sda1",
+            "mount_point": "/",
+            "type": "ext4",
+            "options": ["rw"],
+        }
+    ]
+    mock_parse_command.return_value = parsed_data
 
-    def test_empty_input(self, filter_module: FilterModule) -> None:
-        """Test handling of empty input."""
-        # Empty string
-        assert filter_module.mount("") == []
-        assert filter_module.mount("", facts=True) == {"mounts": {}}
+    # Test with dict input
+    command_result = {
+        "stdout": "/dev/sda1 on / type ext4 (rw)",
+        "stdout_lines": ["/dev/sda1 on / type ext4 (rw)"],
+        "stderr": "",
+        "rc": 0,
+    }
+    result = filter_module.mount(command_result)
 
-        # Empty list
-        assert filter_module.mount([]) == []
-        assert filter_module.mount([], facts=True) == {"mounts": {}}
+    # Verify parse_command was called with the dict
+    mock_parse_command.assert_called_once_with(command_result, "mount")
+    assert result == parsed_data
 
-    @pytest.mark.parametrize(
-        "filesystem,expected_type,is_fuse",
-        [
-            # Standard filesystems
-            ("ext4", "device", False),
-            ("xfs", "device", False),
-            ("btrfs", "device", False),
-            ("zfs", "device", False),
-            ("apfs", "device", False),
-            # Virtual filesystems
-            ("tmpfs", "virtual", False),
-            ("ramfs", "virtual", False),
-            # Pseudo filesystems
-            ("proc", "virtual", False),  # pseudo=True would also be set
-            ("sysfs", "virtual", False),  # pseudo=True would also be set
-            ("devfs", "virtual", False),  # pseudo=True would also be set
-            # Network filesystems
-            ("nfs", "network", False),
-            ("cifs", "network", False),
-            ("smbfs", "network", False),
-            # Overlay filesystems
-            ("overlay", "overlay", False),
-            ("overlayfs", "overlay", False),
-            ("aufs", "overlay", False),
-            # FUSE filesystems
-            ("fuse.sshfs", "network", True),  # sshfs is network
-            ("fuse.encfs", None, True),  # encfs has no specific type
-            ("fuse.bindfs", "overlay", True),  # bindfs is overlay
-        ],
-    )
-    def test_filesystem_classification(
-        self,
-        filter_module: FilterModule,
-        filesystem: str,
-        expected_type: str,
-        is_fuse: bool,
-    ) -> None:
-        """Test correct classification of filesystem types."""
-        # Create minimal mount output
-        if filesystem.startswith("fuse."):
-            mount_output = f"source on /mnt type {filesystem} (rw)"
-        else:
-            mount_output = f"/dev/sda1 on /mnt type {filesystem} (rw)"
 
-        facts = filter_module.mount(mount_output, facts=True)
+def test_mount_with_list_input(
+    filter_module: FilterModule, mock_parse_command: MagicMock
+) -> None:
+    """Test mount filter with list of lines input."""
+    parsed_data = [
+        {
+            "filesystem": "/dev/sda1",
+            "mount_point": "/",
+            "type": "ext4",
+            "options": ["rw"],
+        }
+    ]
+    mock_parse_command.return_value = parsed_data
 
-        if "/mnt" in facts["mounts"]:
-            mount = facts["mounts"]["/mnt"]
-            if expected_type:
-                assert mount.get("type") == expected_type
-            assert mount.get("fuse", False) == is_fuse
+    # Test with list input
+    lines = ["/dev/sda1 on / type ext4 (rw)"]
+    result = filter_module.mount(lines)
+
+    # Verify parse_command was called with the list
+    mock_parse_command.assert_called_once_with(lines, "mount")
+    assert result == parsed_data
