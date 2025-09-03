@@ -57,7 +57,9 @@ def test_get_kernel_and_hardware_success(monkeypatch, plugin) -> None:
     assert cpu["architecture"] == "x86_64"
 
 
-def test_get_kernel_and_hardware_connection_failure(monkeypatch, plugin) -> None:
+def test_get_kernel_and_hardware_connection_failure(
+    monkeypatch, plugin
+) -> None:
     """Test that connection failures are properly propagated."""
     monkeypatch.setattr(
         plugin,
@@ -76,7 +78,9 @@ def test_run_skips_on_non_posix(monkeypatch, plugin) -> None:
     monkeypatch.setattr(
         plugin,
         "_cmd",
-        lambda *args, **kwargs: (x for x in ()).throw(RuntimeError("not POSIX")),
+        lambda *args, **kwargs: (x for x in ()).throw(
+            RuntimeError("not POSIX")
+        ),
     )
 
     result = plugin.run(tmp=None, task_vars={})
@@ -116,7 +120,9 @@ def test_run_subset_selection(
     if expect_os:
         assert "o0_os" in facts
         assert facts["o0_os"]["kernel"]["name"] == "linux"
-        assert {"name": "posix", "pretty": "POSIX"} in facts["o0_os"]["compliance"]
+        assert {"name": "posix", "pretty": "POSIX"} in facts["o0_os"][
+            "compliance"
+        ]
     else:
         assert "o0_os" not in facts
 

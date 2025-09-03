@@ -111,7 +111,7 @@ mounts:
   returned: always
   sample:
     /:
-      device: /dev/disk1s1
+      source: /dev/disk1s1
       capacity:
         total:
           bytes: 499963174912
@@ -120,7 +120,7 @@ mounts:
           bytes: 313155427328
           pretty: "291.6 GiB"
     /System/Volumes/VM:
-      device: /dev/disk1s4
+      source: /dev/disk1s4
       capacity:
         total:
           bytes: 499963174912
@@ -157,15 +157,35 @@ class FilterModule(JCBase):
             mount_point = entry.get("mounted_on")
             if not mount_point:
                 raise AnsibleFilterError(
-                    "df output missing 'mounted_on' field for entry: "
-                    f"{entry}"
+                    f"df output missing 'mounted_on' field for entry: {entry}"
                 )
 
             mount_data = {}
 
-            # Add device (what jc calls "filesystem")
+            # Handle source vs filesystem field intelligently
             if "filesystem" in entry:
-                mount_data["device"] = entry["filesystem"]
+                fs_value = entry["filesystem"]
+
+                # Special case: macOS autofs mounts
+                if fs_value.startswith("map "):
+                    mount_data["filesystem"] = "autofs"
+                # Device paths, UUID/LABEL, network mounts, or paths
+                elif (
+                    fs_value.startswith("/")  # Absolute paths, devices
+                    or fs_value.startswith("\\\\")  # Windows UNC paths
+                    or fs_value.startswith("//")  # SMB/CIFS
+                    or ":"
+                    in fs_value  # NFS (server:path) or Windows drives (C:)
+                    or fs_value.upper().startswith(
+                        ("UUID=", "LABEL=", "PARTUUID=", "PARTLABEL=")
+                    )
+                    or "/"
+                    in fs_value  # ZFS datasets like tank/dataset, rpool/home
+                ):
+                    mount_data["source"] = fs_value
+                # Everything else is a filesystem type
+                else:
+                    mount_data["filesystem"] = fs_value
 
             # Add capacity information if available
             capacity = {}
@@ -225,7 +245,10 @@ class FilterModule(JCBase):
             # Calculate total capacity
             if capacity_total:
                 # Add B suffix if not present (for plain numbers)
-                if isinstance(capacity_total, str) and capacity_total.isdigit():
+                if (
+                    isinstance(capacity_total, str)
+                    and capacity_total.isdigit()
+                ):
                     capacity_total = capacity_total + "B"
                 parsed = _si_filter.si(capacity_total, binary=True)
                 capacity_bytes = parsed.get("bytes", 0)

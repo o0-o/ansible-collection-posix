@@ -1,0 +1,142 @@
+# vim: ts=2:sw=2:sts=2:et:ft=yaml.ansible
+# -*- mode: yaml; yaml-indent-offset: 2; indent-tabs-mode: nil; -*-
+---
+# GNU General Public License v3.0+
+# SPDX-License-Identifier: GPL-3.0-or-later
+# (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
+#
+# Copyright (c) 2025 oØ.o (@o0-o)
+#
+# This file is part of the o0_o.posix Ansible Collection.
+
+- name: Get mount output
+  ansible.builtin.command:
+    cmd: mount
+  register: mount_cmd_reg
+
+- name: Parse mount output with default mode
+  ansible.builtin.set_fact:
+    mount_parsed: "{{ mount_cmd_reg.stdout | o0_o.posix.mount }}"
+
+- name: Debug first mount entry
+  ansible.builtin.debug:
+    var: mount_parsed[0]
+  when: mount_parsed | length > 0
+
+- name: Verify default mode returns list
+  ansible.builtin.assert:
+    that:
+      - mount_parsed is sequence
+      - mount_parsed is not string
+      - mount_parsed is not mapping
+      - mount_parsed | length > 0
+      - "'mount_point' in mount_parsed[0]"
+      - "'filesystem' in mount_parsed[0]"
+      # Note: 'type' field may not be present on all systems
+
+- name: Parse mount output with facts mode
+  ansible.builtin.set_fact:
+    mount_facts: "{{ mount_cmd_reg.stdout | o0_o.posix.mount(facts=true) }}"
+
+- name: Verify facts mode structure
+  ansible.builtin.assert:
+    that:
+      - "'mounts' in mount_facts"
+      - mount_facts.mounts is mapping
+      - "'/' in mount_facts.mounts"
+
+- name: Verify root mount has correct fields
+  ansible.builtin.assert:
+    that:
+      - "'filesystem' in mount_facts.mounts['/']"
+      - "'options' in mount_facts.mounts['/']"
+      - mount_facts.mounts['/'].options is sequence
+      - mount_facts.mounts['/'].options is not string
+    fail_msg: >-
+      Root mount missing expected fields:
+      {{ mount_facts.mounts['/'] }}
+
+- name: Check if root has a source (only if it starts with /dev/)
+  when: >-
+    mount_parsed
+    | selectattr('mount_point', 'equalto', '/')
+    | map(attribute='filesystem')
+    | first
+    | default('')
+    | regex_search('^/dev/') is not none
+  ansible.builtin.assert:
+    that:
+      - "'source' in mount_facts.mounts['/']"
+      - mount_facts.mounts['/'].source | regex_search('^/dev/') is not none
+    fail_msg: >-
+      Root mount source field incorrect:
+      {{ mount_facts.mounts['/'] }}
+
+- name: Test with list input
+  vars:
+    mount_lines: "{{ mount_cmd_reg.stdout_lines }}"
+  ansible.builtin.set_fact:
+    mount_from_list: "{{ mount_lines | o0_o.posix.mount }}"
+
+- name: Verify list input works
+  ansible.builtin.assert:
+    that:
+      - mount_from_list is sequence
+      - mount_from_list is not string
+      - mount_from_list | length == mount_parsed | length
+
+- name: Test with command result dict
+  ansible.builtin.set_fact:
+    mount_from_dict: "{{ mount_cmd_reg | o0_o.posix.mount }}"
+
+- name: Verify dict input works
+  ansible.builtin.assert:
+    that:
+      - mount_from_dict is sequence
+      - mount_from_dict is not string
+      - mount_from_dict | length == mount_parsed | length
+
+- name: Find a tmpfs or virtual filesystem mount
+  ansible.builtin.set_fact:
+    virtual_mounts: >-
+      {{
+        mount_parsed
+        | selectattr('filesystem', 'in',
+                     ['tmpfs', 'devfs', 'procfs', 'sysfs'])
+        | list
+      }}
+
+- name: Verify virtual filesystems have proper structure in facts mode
+  when: virtual_mounts | length > 0
+  vars:
+    virtual_mount_point: "{{ virtual_mounts[0].mount_point }}"
+  ansible.builtin.assert:
+    that:
+      - mount_facts.mounts[virtual_mount_point].source is none
+      - "'filesystem' in mount_facts.mounts[virtual_mount_point]"
+      - mount_facts.mounts[virtual_mount_point].type == 'virtual'
+    fail_msg: >-
+      Virtual filesystem should have source=None and type=virtual:
+      {{ mount_facts.mounts[virtual_mount_point] }}
+
+- name: Test empty input
+  ansible.builtin.set_fact:
+    empty_result: "{{ '' | o0_o.posix.mount }}"
+
+- name: Verify empty input returns empty list
+  ansible.builtin.assert:
+    that:
+      - empty_result is sequence
+      - empty_result is not string
+      - empty_result | length == 0
+
+- name: Test empty input with facts mode
+  ansible.builtin.set_fact:
+    empty_facts: "{{ '' | o0_o.posix.mount(facts=true) }}"
+
+- name: Verify empty input in facts mode
+  ansible.builtin.assert:
+    that:
+      - "'mounts' in empty_facts"
+      - empty_facts.mounts is mapping
+      - empty_facts.mounts | length == 0
