@@ -18,7 +18,7 @@ DOCUMENTATION = r"""
 ---
 module: facts
 short_description: Gather POSIX facts from the managed host
-version_added: '1.1.0'
+version_added: '1.3.0'
 description:
   - Collects minimal OS and hardware facts from POSIX-compatible remote hosts.
   - Uses raw shell commands like C(uname) to gather kernel name, version,

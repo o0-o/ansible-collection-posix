@@ -18,7 +18,7 @@ DOCUMENTATION = r"""
 ---
 module: mounts
 short_description: Gather filesystem mount information
-version_added: "1.1.0"
+version_added: "1.4.0"
 description:
   - Gathers information about mounted filesystems on the target system.
   - Combines data from the C(mount) and C(df -P) commands to provide

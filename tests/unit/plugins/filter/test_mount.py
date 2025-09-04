@@ -522,8 +522,10 @@ class TestFormatAsFacts:
                         "options": [
                             "rw",
                             "relatime",
-                            ("lowerdir=/var/lib/docker/overlay2/l/ABC:"
-                             "/var/lib/docker/overlay2/l/DEF"),
+                            (
+                                "lowerdir=/var/lib/docker/overlay2/l/ABC:"
+                                "/var/lib/docker/overlay2/l/DEF"
+                            ),
                             "upperdir=/var/lib/docker/overlay2/xyz/diff",
                             "workdir=/var/lib/docker/overlay2/xyz/work",
                             "nouserxattr",

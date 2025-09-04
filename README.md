@@ -43,17 +43,32 @@ pip install dnspython idna tldextract
 | Name                | Description                                                                 |
 |---------------------|-----------------------------------------------------------------------------|
 | `command`           | Enhanced `command` module with raw execution fallback and _nearly_ full param parity |
-| `slurp64`           | Read remote file contents with automatic base64 decoding, fallback to raw `cat`       |
+| `compliance`        | Detect POSIX and UNIX standards compliance on target systems               |
+| `facts`             | Gather POSIX facts from the managed host with raw fallback support         |
 | `lineinfile_dedupe` | Manage lines with deduplication, regex support, and enforced relative insertion; fallback included |
+| `mounts`            | Gather mount point information with raw fallback support                   |
+| `slurp64`           | Read remote file contents with automatic base64 decoding, fallback to raw `cat`       |
 | `template`          | Drop-in replacement for `template` with raw fallback and enhanced check mode and force logic |
+
+### Filter Plugins
+
+| Name     | Description                                                                 |
+|----------|-----------------------------------------------------------------------------|
+| `df`     | Parse df command output into structured data                               |
+| `jc`     | Parse command outputs into structured data using the jc library            |
+| `mount`  | Parse mount command output into structured data                            |
+| `uname`  | Parse uname output with hostname support                                   |
 
 ### Module Stubs
 
 These exist to support `ansible-doc` and collection metadata. Do not use directly.
 
 - `command`: see [`plugins/action/command.py`](plugins/action/command.py)
-- `slurp64`: see [`plugins/action/slurp64.py`](plugins/action/slurp64.py)
+- `compliance`: see [`plugins/action/compliance.py`](plugins/action/compliance.py)
+- `facts`: see [`plugins/action/facts.py`](plugins/action/facts.py)
 - `lineinfile_dedupe`: see [`plugins/action/lineinfile_dedupe.py`](plugins/action/lineinfile_dedupe.py)
+- `mounts`: see [`plugins/action/mounts.py`](plugins/action/mounts.py)
+- `slurp64`: see [`plugins/action/slurp64.py`](plugins/action/slurp64.py)
 - `template`: see [`plugins/action/template.py`](plugins/action/template.py)
 
 ## Usage
@@ -115,6 +130,59 @@ These exist to support `ansible-doc` and collection metadata. Do not use directl
     mode: '0644'
   vars:
     greeting: Hello world
+```
+
+### `facts`
+
+```yaml
+- name: Gather POSIX facts
+  o0_o.posix.facts:
+    gather_subset:
+      - all
+```
+
+### `compliance`
+
+```yaml
+- name: Check POSIX compliance
+  o0_o.posix.compliance:
+  register: compliance_result
+
+- name: Display compliance info
+  debug:
+    var: compliance_result.ansible_facts.o0_posix_compliance
+```
+
+### `mounts`
+
+```yaml
+- name: Gather mount information
+  o0_o.posix.mounts:
+  register: mount_info
+
+- name: Display mount points
+  debug:
+    var: mount_info.ansible_facts.o0_mounts
+```
+
+### Filter Examples
+
+```yaml
+- name: Parse df output
+  set_fact:
+    disk_usage: "{{ df_output | o0_o.posix.df }}"
+
+- name: Parse mount output
+  set_fact:
+    mount_points: "{{ mount_output | o0_o.posix.mount }}"
+
+- name: Parse uname output
+  set_fact:
+    system_info: "{{ uname_output | o0_o.posix.uname }}"
+
+- name: Parse command output with jc
+  set_fact:
+    parsed_data: "{{ command_output | o0_o.posix.jc('ls') }}"
 ```
 
 ## Installation

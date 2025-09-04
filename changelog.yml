@@ -6,6 +6,11 @@ releases:
   v1.4.0:
     changes:
       added:
+        - New `mounts` module for gathering mount point information with raw
+          fallback support.
+        - New `mount` filter for parsing mount command output into structured
+          data.
+        - New `df` filter for parsing df command output into structured data.
         - New `compliance` module for detecting POSIX and UNIX standards
           compliance on target systems.
         - Detects POSIX.1 (XSH), POSIX.2 (XCU), XSI, and SUS compliance
@@ -15,9 +20,10 @@ releases:
         - Support for both current and anticipated future standards
           (POSIX.1-2024, SUSv5).
         - Full transparency with actual getconf values in output.
-        - JC filter plugin for parsing command outputs into structured data.
-        - Centralized linter configuration with 79-character line limits.
+        - New `jc` filter plugin for parsing command outputs into structured
+          data using the jc library.
         - New `uname` filter for parsing uname output with hostname support.
+        - Centralized linter configuration with 79-character line limits.
       fixed:
         - Applied consistent formatting across all action plugins and modules.
         - Fixed line length issues to comply with 79-character limit.
