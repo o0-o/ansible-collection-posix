@@ -13,6 +13,9 @@
 
 from __future__ import annotations
 
+from ansible_collections.o0_o.posix.plugins.filter_utils.fs_base import (
+    FilesystemBase,
+)
 from ansible_collections.o0_o.posix.plugins.filter_utils.jc_base import JCBase
 
-__all__ = ["JCBase"]
+__all__ = ["FilesystemBase", "JCBase"]

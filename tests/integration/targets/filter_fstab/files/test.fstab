@@ -1,0 +1,16 @@
+# /etc/fstab: static file system information
+#
+# <file system>         <mount point>   <type>  <options>               <dump>  <pass>
+/dev/sda1               /               ext4    defaults,noatime        0       1
+UUID=abc-123            /boot           ext2    defaults,ro             1       2
+/dev/sda2               /home           ext4    defaults                0       2
+tmpfs                   /tmp            tmpfs   defaults,nodev,nosuid   0       0
+proc                    /proc           proc    defaults                0       0
+sysfs                   /sys            sysfs   defaults                0       0
+devpts                  /dev/pts        devpts  gid=5,mode=620          0       0
+nfs-server:/export/home /mnt/nfs        nfs     rw,hard,intr            0       0
+//smb-server/share      /mnt/smb        cifs    rw,uid=1000,gid=1000    0       0
+/dev/sda3               none            swap    sw                      0       0
+/olddir                 /newdir         none    bind                    0       0
+sshfs#user@host:/path   /mnt/ssh        fuse.sshfs defaults              0       0
+overlay                 /var/docker     overlay  lowerdir=/lower,upperdir=/upper  0  0

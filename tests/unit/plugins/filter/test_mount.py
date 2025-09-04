@@ -136,25 +136,69 @@ def test_mount_facts_mode(
     assert shm_mount["options"] == {"rw": True, "nosuid": True, "nodev": True}
 
 
-class TestFormatAsFacts:
-    """Test the _format_as_facts method directly."""
+class TestNormalizeMountData:
+    """Test the _normalize_mount_data method."""
+
+    def test_normalize_linux_style(self, filter_module: FilterModule) -> None:
+        """Test normalization of Linux-style mount data with type field."""
+        parsed = [
+            {
+                "filesystem": "/dev/sda1",
+                "mount_point": "/",
+                "type": "ext4",
+                "options": ["rw", "relatime"],
+            },
+        ]
+
+        normalized = filter_module._normalize_mount_data(parsed)
+
+        assert len(normalized) == 1
+        assert normalized[0]["mount_point"] == "/"
+        assert normalized[0]["source"] == "/dev/sda1"
+        assert normalized[0]["filesystem"] == "ext4"
+        assert normalized[0]["options"] == ["rw", "relatime"]
+
+    def test_normalize_macos_style(self, filter_module: FilterModule) -> None:
+        """Test normalization of macOS-style mount data (type in options)."""
+        parsed = [
+            {
+                "filesystem": "/dev/disk3s1s1",
+                "mount_point": "/",
+                "options": ["apfs", "local", "journaled"],
+            },
+        ]
+
+        normalized = filter_module._normalize_mount_data(parsed)
+
+        assert len(normalized) == 1
+        assert normalized[0]["mount_point"] == "/"
+        assert normalized[0]["source"] == "/dev/disk3s1s1"
+        assert normalized[0]["filesystem"] == "apfs"
+        assert normalized[0]["options"] == [
+            "local",
+            "journaled",
+        ]  # type removed
+
+
+class TestFormatMountsAsFacts:
+    """Test the format_mounts_as_facts method (inherited from FilesystemBase)."""
 
     @pytest.mark.parametrize(
-        "parsed_data,expected",
+        "normalized_data,expected",
         [
-            # Standard Linux mounts with /dev/ devices
+            # Standard Linux mounts with /dev/ devices (normalized format)
             (
                 [
                     {
-                        "filesystem": "/dev/sda1",
+                        "source": "/dev/sda1",
                         "mount_point": "/",
-                        "type": "ext4",
+                        "filesystem": "ext4",
                         "options": ["rw", "relatime"],
                     },
                     {
-                        "filesystem": "/dev/sda2",
+                        "source": "/dev/sda2",
                         "mount_point": "/boot",
-                        "type": "ext4",
+                        "filesystem": "ext4",
                         "options": ["rw", "relatime"],
                     },
                 ],
@@ -177,13 +221,13 @@ class TestFormatAsFacts:
                     }
                 },
             ),
-            # Network filesystem (NFS)
+            # Network filesystem (NFS) (normalized format)
             (
                 [
                     {
-                        "filesystem": "nfs-server:/export/home",
+                        "source": "nfs-server:/export/home",
                         "mount_point": "/mnt/nfs",
-                        "type": "nfs",
+                        "filesystem": "nfs",
                         "options": ["rw", "vers=4.2", "rsize=1048576"],
                     }
                 ],
@@ -203,13 +247,13 @@ class TestFormatAsFacts:
                     }
                 },
             ),
-            # Network filesystem (CIFS/SMB)
+            # Network filesystem (CIFS/SMB) (normalized format)
             (
                 [
                     {
-                        "filesystem": "//smb-server/share",
+                        "source": "//smb-server/share",
                         "mount_point": "/mnt/smb",
-                        "type": "cifs",
+                        "filesystem": "cifs",
                         "options": ["rw", "uid=1000", "gid=1000"],
                     }
                 ],
@@ -229,19 +273,19 @@ class TestFormatAsFacts:
                     }
                 },
             ),
-            # macOS mounts with type field
+            # macOS mounts (normalized format - type already extracted)
             (
                 [
                     {
-                        "filesystem": "/dev/disk3s1s1",
+                        "source": "/dev/disk3s1s1",
                         "mount_point": "/",
-                        "type": "apfs",
+                        "filesystem": "apfs",
                         "options": ["local", "journaled", "nobrowse"],
                     },
                     {
-                        "filesystem": "devfs",
+                        "source": "devfs",
                         "mount_point": "/dev",
-                        "type": "devfs",
+                        "filesystem": "devfs",
                         "options": ["local", "nobrowse"],
                     },
                 ],
@@ -269,63 +313,66 @@ class TestFormatAsFacts:
                     }
                 },
             ),
-            # macOS mounts without type field (fs type in first option)
+            # Virtual filesystems (normalized format)
             (
                 [
                     {
-                        "filesystem": "/dev/disk3s1s1",
-                        "mount_point": "/",
-                        "options": ["apfs", "sealed", "local", "journaled"],
+                        "source": "tmpfs",
+                        "mount_point": "/dev/shm",
+                        "filesystem": "tmpfs",
+                        "options": ["rw", "nosuid", "nodev"],
                     },
                     {
-                        "filesystem": "devfs",
+                        "source": "devfs",
                         "mount_point": "/dev",
-                        "options": ["devfs", "local", "nobrowse"],
+                        "filesystem": "devfs",
+                        "options": ["local", "nobrowse"],
                     },
                 ],
                 {
                     "mounts": {
-                        "/": {
-                            "source": "/dev/disk3s1s1",
-                            "type": "device",
-                            "filesystem": "apfs",
+                        "/dev/shm": {
+                            "source": None,  # tmpfs doesn't need source
+                            "type": "virtual",
+                            "filesystem": "tmpfs",
+                            "pseudo": False,  # tmpfs is virtual but not pseudo
                             "fuse": False,
                             "options": {
-                                "sealed": True,
-                                "local": True,
-                                "journaled": True,
+                                "rw": True,
+                                "nosuid": True,
+                                "nodev": True,
                             },
                         },
                         "/dev": {
                             "source": None,
                             "type": "virtual",
                             "filesystem": "devfs",
-                            "pseudo": True,
+                            "pseudo": True,  # devfs is pseudo
                             "fuse": False,
                             "options": {"local": True, "nobrowse": True},
                         },
                     }
                 },
             ),
-            # Virtual and pseudo filesystems
+            # Virtual and pseudo filesystems (normalized format)
             (
                 [
                     {
-                        "filesystem": "proc",
+                        "source": "proc",
                         "mount_point": "/proc",
-                        "type": "proc",
+                        "filesystem": "proc",
                         "options": ["rw", "nosuid", "nodev", "noexec"],
                     },
                     {
-                        "filesystem": "sysfs",
+                        "source": "sysfs",
                         "mount_point": "/sys",
-                        "type": "sysfs",
+                        "filesystem": "sysfs",
                         "options": ["rw", "nosuid", "nodev", "noexec"],
                     },
                     {
-                        "filesystem": "tmpfs",
+                        "source": "tmpfs",
                         "mount_point": "/run",
-                        "type": "tmpfs",
+                        "filesystem": "tmpfs",
                         "options": ["rw", "nosuid", "nodev"],
                     },
                 ],
@@ -372,13 +419,13 @@ class TestFormatAsFacts:
                     }
                 },
             ),
-            # Empty options list
+            # Empty options list (normalized format)
             (
                 [
                     {
-                        "filesystem": "/dev/sda1",
+                        "source": "/dev/sda1",
                         "mount_point": "/",
-                        "type": "ext4",
+                        "filesystem": "ext4",
                         "options": [],
                     }
                 ],
@@ -397,8 +444,8 @@ class TestFormatAsFacts:
             (
                 [
                     {
-                        "filesystem": "/dev/sda1",
-                        "type": "ext4",
+                        "source": "/dev/sda1",
+                        "filesystem": "ext4",
                         "options": ["rw"],
                     }
                 ],
@@ -408,9 +455,9 @@ class TestFormatAsFacts:
             (
                 [
                     {
-                        "filesystem": "overlay",
+                        "source": "overlay",
                         "mount_point": "/var/lib/docker/overlay2",
-                        "type": "overlay",
+                        "filesystem": "overlay",
                         "options": [
                             "rw",
                             "lowerdir=/lower",
@@ -433,13 +480,13 @@ class TestFormatAsFacts:
                     }
                 },
             ),
-            # FUSE filesystem with subtype
+            # FUSE filesystem with subtype (normalized format)
             (
                 [
                     {
-                        "filesystem": "portal",
+                        "source": "portal",
                         "mount_point": "/mnt/portal",
-                        "type": "fuse",
+                        "filesystem": "fuse",
                         "options": ["rw", "nosuid", "nodev", "subtype=sshfs"],
                     }
                 ],
@@ -464,9 +511,9 @@ class TestFormatAsFacts:
             (
                 [
                     {
-                        "filesystem": "some.fuse.mount",
+                        "source": "some.fuse.mount",
                         "mount_point": "/mnt/fuse",
-                        "type": "fuse",
+                        "filesystem": "fuse",
                         "options": ["rw", "nosuid", "nodev"],
                     }
                 ],
@@ -485,13 +532,13 @@ class TestFormatAsFacts:
                     }
                 },
             ),
-            # FUSE filesystem with fuse. prefix
+            # FUSE filesystem with fuse. prefix (normalized format)
             (
                 [
                     {
-                        "filesystem": "sshfs#user@host:",
+                        "source": "sshfs#user@host:",
                         "mount_point": "/mnt/ssh",
-                        "type": "fuse.sshfs",
+                        "filesystem": "fuse.sshfs",
                         "options": ["rw", "nosuid", "nodev"],
                     }
                 ],
@@ -516,9 +563,9 @@ class TestFormatAsFacts:
             (
                 [
                     {
-                        "filesystem": "overlay",
+                        "source": "overlay",
                         "mount_point": "/",
-                        "type": "overlay",
+                        "filesystem": "overlay",
                         "options": [
                             "rw",
                             "relatime",
@@ -556,13 +603,13 @@ class TestFormatAsFacts:
                     }
                 },
             ),
-            # Bind mount
+            # Bind mount (normalized format)
             (
                 [
                     {
-                        "filesystem": "/dev/sda1",
+                        "source": "/dev/sda1",
                         "mount_point": "/mnt/bind",
-                        "type": "ext4",
+                        "filesystem": "ext4",
                         "options": ["rw", "relatime", "bind"],
                     }
                 ],
@@ -583,13 +630,13 @@ class TestFormatAsFacts:
                     }
                 },
             ),
-            # Recursive bind mount
+            # Recursive bind mount (normalized format)
             (
                 [
                     {
-                        "filesystem": "/dev/sda1",
+                        "source": "/dev/sda1",
                         "mount_point": "/mnt/rbind",
-                        "type": "ext4",
+                        "filesystem": "ext4",
                         "options": ["rw", "relatime", "rbind"],
                     }
                 ],
@@ -610,13 +657,13 @@ class TestFormatAsFacts:
                     }
                 },
             ),
-            # Source as 'none'
+            # Source as 'none' (normalized format)
             (
                 [
                     {
-                        "filesystem": "none",
+                        "source": "none",
                         "mount_point": "/proc",
-                        "type": "proc",
+                        "filesystem": "proc",
                         "options": ["rw"],
                     }
                 ],
@@ -633,13 +680,13 @@ class TestFormatAsFacts:
                     }
                 },
             ),
-            # Source as '-'
+            # Source as '-' (normalized format)
             (
                 [
                     {
-                        "filesystem": "-",
+                        "source": "-",
                         "mount_point": "/sys",
-                        "type": "sysfs",
+                        "filesystem": "sysfs",
                         "options": ["rw"],
                     }
                 ],
@@ -656,13 +703,13 @@ class TestFormatAsFacts:
                     }
                 },
             ),
-            # fuseblk (NTFS)
+            # fuseblk (NTFS) (normalized format)
             (
                 [
                     {
-                        "filesystem": "/dev/sda1",
+                        "source": "/dev/sda1",
                         "mount_point": "/mnt/ntfs",
-                        "type": "fuseblk",
+                        "filesystem": "fuseblk",
                         "options": ["rw", "relatime", "allow_other"],
                     }
                 ],
@@ -684,14 +731,14 @@ class TestFormatAsFacts:
             ),
         ],
     )
-    def test_format_as_facts(
+    def test_format_mounts_as_facts(
         self,
         filter_module: FilterModule,
-        parsed_data: List[Dict[str, Any]],
+        normalized_data: List[Dict[str, Any]],
         expected: Dict[str, Any],
     ) -> None:
-        """Test _format_as_facts with various mount configurations."""
-        result = filter_module._format_as_facts(parsed_data)
+        """Test format_mounts_as_facts with various mount configurations."""
+        result = filter_module.format_mounts_as_facts(normalized_data)
         assert result == expected
 
 
