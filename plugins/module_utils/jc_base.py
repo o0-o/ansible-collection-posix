@@ -16,7 +16,6 @@ from __future__ import annotations
 import traceback
 from typing import Any, Dict, List, Union
 
-from ansible.errors import AnsibleFilterError
 
 try:
     import jc
@@ -54,16 +53,15 @@ class JCBase:
         """
         # Check for jc availability
         if not HAS_JC:
-            raise AnsibleFilterError(
+            raise ValueError(
                 "The jc library is required for jc-based filters. "
-                "Install it with: pip install jc",
-                orig_exc=JC_IMPORT_ERROR,
+                "Install it with: pip install jc"
             )
 
         # Check validity of the parser name
         jc_parsers = sorted(jc.parser_mod_list())
         if parser not in jc_parsers:
-            raise AnsibleFilterError(
+            raise ValueError(
                 f"jc parser '{parser}' not found. "
                 f"Available parsers: {', '.join(jc_parsers)}"
             )
@@ -76,7 +74,7 @@ class JCBase:
             return jc.parse(parser, raw_output, raw=raw, quiet=quiet)
         except Exception as e:
             # jc raises various exceptions, catch them all
-            raise AnsibleFilterError(f"Error parsing {parser}: {e}")
+            raise ValueError(f"Error parsing {parser}: {e}") from e
 
     def _extract_output(
         self, data: Union[str, List[str], Dict[str, Any]]

@@ -16,6 +16,11 @@ from .path import (
     check_path_mode,
     check_path_ownership,
 )
+from .mounts import (
+    find_mount_by_target,
+    assert_mount_has_fields,
+    convert_dict_mounts_to_list,
+)
 
 __all__ = [
     "real_cmd",
@@ -23,4 +28,7 @@ __all__ = [
     "cleanup_path",
     "check_path_mode",
     "check_path_ownership",
+    "find_mount_by_target",
+    "assert_mount_has_fields",
+    "convert_dict_mounts_to_list",
 ]

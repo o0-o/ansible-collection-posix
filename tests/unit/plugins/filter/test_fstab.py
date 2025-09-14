@@ -19,6 +19,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from ansible_collections.o0_o.posix.plugins.filter.fstab import FilterModule
+from ansible_collections.o0_o.posix.tests.utils import find_mount_by_target
 
 
 @pytest.fixture
@@ -105,38 +106,38 @@ def test_fstab_with_facts_format(
 
     result = filter_module.fstab("dummy_content", facts=True)
 
-    expected = {
-        "mounts": {
-            "/": {
+    expected = [
+            {
+                "target": "/",
                 "source": "/dev/sda1",
-                "filesystem": "ext4",
-                "type": "device",
+                "driver": "ext4",
+                "type": "regular",
                 "fuse": False,
                 "options": {"defaults": True},
                 "dump": {"enabled": False},
                 "fsck": {"enabled": True, "pass": 1},
             },
-            "/boot": {
+            {
+                "target": "/boot",
                 "source": "UUID=abc123",
-                "filesystem": "ext2",
-                "type": "device",
+                "driver": "ext2",
+                "type": "regular",
                 "fuse": False,
                 "options": {"defaults": True, "ro": True},
                 "dump": {"enabled": True, "days": 1},
                 "fsck": {"enabled": True, "pass": 2},
             },
-            "/tmp": {
+            {
+                "target": "/tmp",
                 "source": None,
-                "filesystem": "tmpfs",
+                "driver": "tmpfs",
                 "type": "virtual",
-                "pseudo": False,
                 "fuse": False,
                 "options": {"defaults": True, "nodev": True, "nosuid": True},
                 "dump": {"enabled": False},
                 "fsck": {"enabled": False},
             },
-        }
-    }
+    ]
 
     assert result == expected
 
@@ -196,16 +197,16 @@ def test_fstab_normalize_to_mount_format(filter_module: FilterModule) -> None:
     expected = [
         {
             "source": "/dev/sda1",
-            "mount_point": "/",
-            "filesystem": "ext4",
+            "target": "/",
+            "driver": "ext4",
             "options": ["defaults", "noatime"],
             "dump": 0,
             "pass": 1,
         },
         {
             "source": "nfs-server:/export",
-            "mount_point": "/mnt/nfs",
-            "filesystem": "nfs",
+            "target": "/mnt/nfs",
+            "driver": "nfs",
             "options": ["rw", "hard", "intr"],
             "dump": 0,
             "pass": 0,
@@ -233,19 +234,18 @@ def test_fstab_with_swap(
 
     result = filter_module.fstab("dummy", facts=True)
 
-    expected = {
-        "mounts": {
-            "swap": {
+    expected = [
+            {
+                "target": "swap",
                 "source": "/dev/sda3",
-                "type": "device",  # swap is on a device
-                "filesystem": "swap",
+                "type": "paging",  # swap is paging type
+                # No driver key since swap isn't a filesystem
                 "fuse": False,
                 "options": {"sw": True},
                 "dump": {"enabled": False},
                 "fsck": {"enabled": False},
             }
-        }
-    }
+    ]
 
     assert result == expected
 
@@ -268,19 +268,18 @@ def test_fstab_with_bind_mount(
 
     result = filter_module.fstab("dummy", facts=True)
 
-    expected = {
-        "mounts": {
-            "/newdir": {
+    expected = [
+            {
+                "target": "/newdir",
                 "source": "/olddir",
-                "filesystem": "none",
+                "driver": "none",
                 "type": "overlay",  # bind mounts are overlay type
                 "fuse": False,
                 "options": {"bind": True},
                 "dump": {"enabled": False},
                 "fsck": {"enabled": False},
             }
-        }
-    }
+    ]
 
     assert result == expected
 
@@ -311,28 +310,28 @@ def test_fstab_with_invalid_dump_pass_values(
 
     result = filter_module.fstab("dummy", facts=True)
 
-    expected = {
-        "mounts": {
-            "/": {
+    expected = [
+            {
+                "target": "/",
                 "source": "/dev/sda1",
-                "filesystem": "ext4",
-                "type": "device",
+                "driver": "ext4",
+                "type": "regular",
                 "fuse": False,
                 "options": {"defaults": True},
                 "dump": {"invalid": -1},
                 "fsck": {"invalid": -1, "enabled": False},
             },
-            "/home": {
+            {
+                "target": "/home",
                 "source": "/dev/sda2",
-                "filesystem": "ext4",
-                "type": "device",
+                "driver": "ext4",
+                "type": "regular",
                 "fuse": False,
                 "options": {"defaults": True},
                 "dump": {"invalid": "auto"},
                 "fsck": {"invalid": "auto"},
             },
-        }
-    }
+    ]
 
     assert result == expected
 
@@ -384,7 +383,7 @@ def test_fstab_empty_input(
 
     result = filter_module.fstab("", facts=True)
 
-    assert result == {"mounts": {}}
+    assert result == []
 
 
 def test_fstab_with_fuse_filesystem(
@@ -413,27 +412,27 @@ def test_fstab_with_fuse_filesystem(
 
     result = filter_module.fstab("dummy", facts=True)
 
-    expected = {
-        "mounts": {
-            "/mnt/ssh": {
+    expected = [
+            {
+                "target": "/mnt/ssh",
                 "source": "sshfs#user@host:/path",
-                "filesystem": "fuse.sshfs",
+                "driver": "fuse.sshfs",
                 "type": "network",  # sshfs is network type
                 "fuse": True,
                 "options": {"defaults": True},
                 "dump": {"enabled": False},
                 "fsck": {"enabled": False},
             },
-            "/decrypted": {
+            {
+                "target": "/decrypted",
                 "source": "encfs#/encrypted",
-                "filesystem": "fuse.encfs",
+                "driver": "fuse.encfs",
                 "type": "overlay",  # encfs is overlay type
                 "fuse": True,
                 "options": {"defaults": True},
                 "dump": {"enabled": False},
                 "fsck": {"enabled": False},
             },
-        }
-    }
+    ]
 
     assert result == expected

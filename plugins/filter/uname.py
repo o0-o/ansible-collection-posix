@@ -14,7 +14,7 @@ from __future__ import annotations
 from typing import Any, Dict, List, Union
 
 from ansible.errors import AnsibleFilterError
-from ansible_collections.o0_o.posix.plugins.filter_utils import JCBase
+from ansible_collections.o0_o.posix.plugins.module_utils import JCBase
 
 try:
     from ansible_collections.o0_o.utils.plugins.filter import HostnameFilter

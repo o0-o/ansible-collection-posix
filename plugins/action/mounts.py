@@ -11,11 +11,12 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 from ansible.errors import AnsibleActionFail
-from ansible_collections.o0_o.posix.plugins.action_utils import (
-    PosixBase,
+from ansible.plugins.action import ActionBase
+from ansible_collections.o0_o.posix.plugins.module_utils import (
+    PosixActionBase,
 )
 from ansible_collections.o0_o.posix.plugins.filter import (
     DfFilter,
@@ -23,7 +24,7 @@ from ansible_collections.o0_o.posix.plugins.filter import (
 )
 
 
-class ActionModule(PosixBase):
+class ActionModule(PosixActionBase, ActionBase):
     """
     Gather mount point information from the target system.
 
@@ -113,11 +114,11 @@ class ActionModule(PosixBase):
 
         return result
 
-    def _get_mounts(self, task_vars: Dict[str, Any]) -> Dict[str, Any]:
+    def _get_mounts(self, task_vars: Dict[str, Any]) -> List[Dict[str, Any]]:
         """Get mount information from the system.
 
         :param task_vars: Task variables dictionary
-        :returns: Dictionary of mount points with their information
+        :returns: List of mount entries with their information
         :raises AnsibleActionFail: If mount command fails
         """
         # Get raw mount output
@@ -170,21 +171,21 @@ class ActionModule(PosixBase):
 
     def _parse_mount_data(
         self, mount_result: Dict[str, Any]
-    ) -> Dict[str, Any]:
+    ) -> List[Dict[str, Any]]:
         """Parse mount command output using mount filter.
 
         :param mount_result: Result from mount command
-        :returns: Parsed mount information dictionary
+        :returns: List of parsed mount entries
         """
         mount_filter = MountFilter().filters()["mount"]
-        mount_facts = mount_filter(mount_result, facts=True)
-        return mount_facts.get("mounts", {})
+        # mount filter now returns a list directly when facts=True
+        return mount_filter(mount_result, facts=True)
 
-    def _filter_mounts(self, mounts: Dict[str, Any]) -> Dict[str, Any]:
-        """Filter mounts based on module arguments.
+    def _should_include_mount(self, mount_info: Dict[str, Any]) -> bool:
+        """Check if a mount should be included based on filter arguments.
 
-        :param mounts: Dictionary of all mounts
-        :returns: Filtered dictionary of mounts
+        :param mount_info: Mount entry to check
+        :returns: True if the mount should be included
         """
         include_device = self._task.args.get("device", True)
         include_virtual = self._task.args.get("virtual", False)
@@ -197,73 +198,102 @@ class ActionModule(PosixBase):
         if include_pseudo is None:
             include_pseudo = include_virtual
 
+        mount_type = mount_info.get("type")
+        is_fuse = mount_info.get("fuse", False)
+        # Pseudo filesystems have source="kernel"
+        is_pseudo = mount_info.get("source") == "kernel"
+
+        # Skip mounts based on type filters
+        if not include_device and mount_type == "regular":
+            return False
+        if not include_virtual and mount_type == "virtual":
+            return False
+        if not include_network and mount_type == "network":
+            return False
+        if not include_overlay and mount_type == "overlay":
+            return False
+
+        # Filter by pseudo status (subset of virtual)
+        if not include_pseudo and mount_type == "virtual" and is_pseudo:
+            return False
+
+        # Filter by FUSE status
+        if not include_fuse and is_fuse:
+            return False
+
+        return True
+
+    def _filter_mounts(self, mounts: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Filter mounts based on module arguments.
+
+        :param mounts: List of all mounts
+        :returns: Filtered list of mounts
+        """
         # Filter out unwanted mount types
-        filtered_mounts = {}
-        for mount_point, mount_info in mounts.items():
-            mount_type = mount_info.get("type")
-            is_fuse = mount_info.get("fuse", False)
-            is_pseudo = mount_info.get("pseudo", False)
-
-            # Skip mounts based on type filters
-            if not include_device and mount_type == "device":
-                continue
-            if not include_virtual and mount_type == "virtual":
-                continue
-            if not include_network and mount_type == "network":
-                continue
-            if not include_overlay and mount_type == "overlay":
-                continue
-
-            # Filter by pseudo status (subset of virtual)
-            if not include_pseudo and mount_type == "virtual" and is_pseudo:
-                continue
-
-            # Filter by FUSE status
-            if not include_fuse and is_fuse:
-                continue
-
-            # Keep this mount
-            filtered_mounts[mount_point] = mount_info
+        filtered_mounts = []
+        for mount_info in mounts:
+            if self._should_include_mount(mount_info):
+                filtered_mounts.append(mount_info)
 
         return filtered_mounts
 
     def _enhance_with_df_data(
-        self, mounts: Dict[str, Any], df_result: Dict[str, Any]
+        self, mounts: List[Dict[str, Any]], df_result: Dict[str, Any]
     ) -> None:
         """Enhance mount data with capacity info from df.
 
-        :param mounts: Dictionary of mounts to enhance
+        Iterates through df entries and merges capacity data into matching
+        mount entries (by source and target). Creates new entries for df
+        entries that don't have a corresponding mount entry.
+
+        :param mounts: List of mounts to enhance (modified in place)
         :param df_result: Result from df command
         """
         df_filter = DfFilter().filters()["df"]
-        # Use facts mode to get the new structure with capacity
-        df_facts = df_filter(df_result, facts=True)
+        # df filter now returns a list directly when facts=True
+        df_entries = df_filter(df_result, facts=True)
 
-        # Merge capacity info from df into mount data
-        df_mounts = df_facts.get("mounts", {})
-        for mount_point in mounts:
-            if mount_point in df_mounts:
-                df_info = df_mounts[mount_point]
-                mount_info = mounts[mount_point]
-
-                # Check for conflicts between mount and df data
-                if "source" in df_info and "source" in mount_info:
-                    if df_info["source"] != mount_info["source"]:
-                        self._display.warning(
-                            f"Mount point {mount_point}: df reports source as "
-                            f"'{df_info['source']}' but mount reports "
-                            f"'{mount_info['source']}'. Using mount data."
+        # Track which df entries have been merged
+        merged_df_indices = set()
+        
+        # First pass: merge capacity into existing mount entries
+        for df_idx, df_entry in enumerate(df_entries):
+            df_target = df_entry.get("target")
+            df_source = df_entry.get("source")
+            
+            for mount_entry in mounts:
+                mount_target = mount_entry.get("target")
+                mount_source = mount_entry.get("source")
+                
+                # Match by both source and target for accuracy
+                if df_target == mount_target:
+                    # Check source compatibility
+                    if df_source and mount_source and df_source != mount_source:
+                        # Sources differ - check if it's just a symlink difference
+                        # or device naming difference, but still merge capacity
+                        self._display.vvv(
+                            f"Mount point {mount_target}: df reports source as "
+                            f"'{df_source}' but mount reports '{mount_source}'. "
+                            f"Merging capacity data anyway."
                         )
-
-                if "filesystem" in df_info and "filesystem" in mount_info:
-                    if df_info["filesystem"] != mount_info["filesystem"]:
-                        self._display.warning(
-                            f"Mount point {mount_point}: df reports "
-                            f"filesystem as '{df_info['filesystem']}' but "
-                            f"mount reports '{mount_info['filesystem']}'. "
-                            f"Using mount data."
-                        )
-
-                # Only merge capacity info, mount data takes priority
-                if "capacity" in df_info:
-                    mounts[mount_point]["capacity"] = df_info["capacity"]
+                    
+                    # Merge capacity info
+                    if "capacity" in df_entry:
+                        mount_entry["capacity"] = df_entry["capacity"]
+                    
+                    merged_df_indices.add(df_idx)
+                    break
+        
+        # Second pass: add df entries that weren't in mount output
+        # (This can happen for some filesystem types that df sees but mount doesn't)
+        # BUT only if they pass the same filtering criteria
+        for df_idx, df_entry in enumerate(df_entries):
+            if df_idx not in merged_df_indices:
+                # Check if this df-only entry should be included based on filters
+                if self._should_include_mount(df_entry):
+                    # This df entry didn't match any mount entry
+                    # Add it as a new entry (it has capacity but might lack other mount details)
+                    self._display.vvv(
+                        f"Adding df-only entry for {df_entry.get('target', 'unknown')}"
+                    )
+                    mounts.append(df_entry)

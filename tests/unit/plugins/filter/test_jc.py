@@ -17,7 +17,7 @@ import pytest
 
 from ansible.errors import AnsibleFilterError
 from ansible_collections.o0_o.posix.plugins.filter.jc import FilterModule
-from ansible_collections.o0_o.posix.plugins.filter_utils import JCBase
+from ansible_collections.o0_o.posix.plugins.module_utils import JCBase
 
 
 class TestJCBase:
@@ -73,8 +73,8 @@ class TestJCBase:
         assert result["kernel_name"] == "Linux"
 
     def test_jc_invalid_parser_raises_error(self, jc_base):
-        """Test that invalid parser name raises AnsibleFilterError."""
-        with pytest.raises(AnsibleFilterError) as exc_info:
+        """Test that invalid parser name raises ValueError."""
+        with pytest.raises(ValueError) as exc_info:
             jc_base.jc("test data", "invalid_parser_name_xyz")
 
         assert "jc parser 'invalid_parser_name_xyz' not found" in str(
@@ -121,8 +121,8 @@ class TestFilterModule:
         assert isinstance(filters, dict)
         assert "jc" in filters
         assert callable(filters["jc"])
-        # The filter should be the jc method from JCBase
-        assert filters["jc"].__name__ == "jc"
+        # The filter should be the jc_filter wrapper method
+        assert filters["jc"].__name__ == "jc_filter"
 
     def test_filter_inherits_from_jcbase(self, filter_module):
         """Test that FilterModule properly inherits from JCBase."""

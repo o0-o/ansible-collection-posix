@@ -16,6 +16,7 @@ from typing import Generator
 import pytest
 
 from ansible_collections.o0_o.posix.plugins.action.mounts import ActionModule
+from ansible_collections.o0_o.posix.tests.utils import find_mount_by_target
 
 
 @pytest.fixture
@@ -72,14 +73,18 @@ tmpfs on /tmp type tmpfs (rw,nosuid,nodev)""".strip(),
 
     # proc and tmpfs are filtered out as virtual filesystems by default
     assert len(mounts) == 2
-    assert "/" in mounts
-    assert "/boot" in mounts
-
+    
+    # Find mounts by target
+    root = find_mount_by_target(mounts, "/")
+    boot = find_mount_by_target(mounts, "/boot")
+    
+    assert root is not None
+    assert boot is not None
+    
     # Check root mount details
-    root = mounts["/"]
     assert root["source"] == "/dev/sda1"
-    assert root["type"] == "device"
-    assert root["filesystem"] == "ext4"
+    assert root["type"] == "regular"
+    assert root["driver"] == "ext4"
     assert root["options"] == {"rw": True, "relatime": True}
     assert root["fuse"] is False
     assert "capacity" in root
@@ -87,10 +92,9 @@ tmpfs on /tmp type tmpfs (rw,nosuid,nodev)""".strip(),
     assert "used" in root["capacity"]
 
     # Check boot mount details
-    boot = mounts["/boot"]
     assert boot["source"] == "/dev/sda2"
-    assert boot["type"] == "device"
-    assert boot["filesystem"] == "ext4"
+    assert boot["type"] == "regular"
+    assert boot["driver"] == "ext4"
     assert boot["options"] == {"rw": True, "relatime": True}
     assert boot["fuse"] is False
     assert "capacity" in boot
@@ -134,24 +138,27 @@ def test_get_mounts_macos_format(monkeypatch, plugin) -> None:
 
     # devfs is filtered out as virtual filesystem
     assert len(mounts) == 2
-    assert "/" in mounts
-    assert "/System/Volumes/Data" in mounts
-
+    
+    # Find mounts by target
+    root = find_mount_by_target(mounts, "/")
+    data = find_mount_by_target(mounts, "/System/Volumes/Data")
+    
+    assert root is not None
+    assert data is not None
+    
     # Check root mount
-    root = mounts["/"]
     assert root["source"] == "/dev/disk3s1s1"
-    assert root["type"] == "device"
-    assert root["filesystem"] == "apfs"
+    assert root["type"] == "regular"
+    assert root["driver"] == "apfs"
     assert root["options"]["sealed"] is True
     assert root["options"]["local"] is True
     assert root["fuse"] is False
     assert "capacity" in root
 
     # Check data volume
-    data = mounts["/System/Volumes/Data"]
     assert data["source"] == "/dev/disk3s5"
-    assert data["type"] == "device"
-    assert data["filesystem"] == "apfs"
+    assert data["type"] == "regular"
+    assert data["driver"] == "apfs"
     assert data["options"]["local"] is True
     assert data["fuse"] is False
     assert "capacity" in data
@@ -183,8 +190,9 @@ def test_get_mounts_with_spaces(monkeypatch, plugin) -> None:
     mounts = plugin._get_mounts(task_vars={})
 
     assert len(mounts) == 1
-    assert "/mnt/my files" in mounts
-    assert "capacity" in mounts["/mnt/my files"]
+    mount = find_mount_by_target(mounts, "/mnt/my files")
+    assert mount is not None
+    assert "capacity" in mount
 
 
 def test_get_mounts_mount_fails(monkeypatch, plugin) -> None:
@@ -224,12 +232,14 @@ def test_get_mounts_no_df(monkeypatch, plugin) -> None:
 
     # Should work without df, just no capacity info
     assert len(mounts) == 2
-    assert "/" in mounts
-    assert "/boot" in mounts
+    root = find_mount_by_target(mounts, "/")
+    boot = find_mount_by_target(mounts, "/boot")
+    assert root is not None
+    assert boot is not None
 
     # No capacity info without df
-    assert "capacity" not in mounts["/"]
-    assert "capacity" not in mounts["/boot"]
+    assert "capacity" not in root
+    assert "capacity" not in boot
 
 
 def test_get_mounts_virtual_fs_filtering(monkeypatch, plugin) -> None:
@@ -266,8 +276,10 @@ fusectl on /sys/fs/fuse/connections type fusectl (rw)""",
 
     # Should only have real filesystems (ext4, xfs), not virtual ones
     assert len(mounts) == 2
-    assert "/" in mounts
-    assert "/data" in mounts
+    root = find_mount_by_target(mounts, "/")
+    data = find_mount_by_target(mounts, "/data")
+    assert root is not None
+    assert data is not None
 
     # Virtual filesystems should be filtered out
     assert "/proc" not in mounts
@@ -305,20 +317,21 @@ proc on /proc type proc (rw)""",
 
     # Should include all filesystems
     assert len(mounts) == 3
-    assert "/" in mounts
-    assert "/tmp" in mounts
-    assert "/proc" in mounts
-
+    
     # Check type classification
-    assert mounts["/"]["type"] == "device"
-    assert mounts["/tmp"]["type"] == "virtual"
-    assert (
-        mounts["/tmp"]["source"] is None
-    )  # Virtual filesystems have source=None
-    assert mounts["/tmp"]["pseudo"] is False  # tmpfs is virtual but not pseudo
-    assert mounts["/proc"]["type"] == "virtual"
-    assert mounts["/proc"]["source"] is None
-    assert mounts["/proc"]["pseudo"] is True  # proc is a pseudo filesystem
+    root = find_mount_by_target(mounts, "/")
+    tmp = find_mount_by_target(mounts, "/tmp")
+    proc = find_mount_by_target(mounts, "/proc")
+    
+    assert root is not None
+    assert tmp is not None
+    assert proc is not None
+    
+    assert root["type"] == "regular"
+    assert tmp["type"] == "virtual"
+    assert tmp["source"] is None  # Virtual filesystems have source=None
+    assert proc["type"] == "virtual"
+    assert proc["source"] == "kernel"  # proc is a pseudo filesystem
 
 
 def test_get_mounts_network_fs(monkeypatch, plugin) -> None:
@@ -342,30 +355,29 @@ nfs-server:/export/home on /mnt/nfs type nfs (rw,vers=4.0)
     mounts = plugin._get_mounts(task_vars={})
 
     assert len(mounts) == 3
-    assert "/" in mounts
-    assert "/mnt/nfs" in mounts
-    assert "/mnt/cifs" in mounts
-
+    
     # Check NFS mount
-    nfs = mounts["/mnt/nfs"]
+    nfs = find_mount_by_target(mounts, "/mnt/nfs")
+    assert nfs is not None
     assert nfs["source"] == "nfs-server:/export/home"
     assert nfs["type"] == "network"
-    assert nfs["filesystem"] == "nfs"
+    assert nfs["driver"] == "nfs"
 
-    # Check CIFS mount
-    cifs = mounts["/mnt/cifs"]
+    # Check CIFS mount  
+    cifs = find_mount_by_target(mounts, "/mnt/cifs")
+    assert cifs is not None
     assert cifs["source"] == "//cifs-server/share"
     assert cifs["type"] == "network"
-    assert cifs["filesystem"] == "cifs"
+    assert cifs["driver"] == "cifs"
 
     # Now exclude network filesystems
     plugin._task.args["network"] = False
     mounts = plugin._get_mounts(task_vars={})
 
     assert len(mounts) == 1
-    assert "/" in mounts
-    assert "/mnt/nfs" not in mounts
-    assert "/mnt/cifs" not in mounts
+    assert find_mount_by_target(mounts, "/") is not None
+    assert find_mount_by_target(mounts, "/mnt/nfs") is None
+    assert find_mount_by_target(mounts, "/mnt/cifs") is None
 
 
 def test_run_method(monkeypatch, plugin) -> None:
@@ -398,13 +410,18 @@ def test_run_method(monkeypatch, plugin) -> None:
     assert result["changed"] is False
     assert "mounts" in result
     assert len(result["mounts"]) == 2
-    assert "/" in result["mounts"]
-    assert "/boot" in result["mounts"]
-
+    
+    # Find mounts by target
+    root = find_mount_by_target(result["mounts"], "/")
+    boot = find_mount_by_target(result["mounts"], "/boot")
+    
+    assert root is not None
+    assert boot is not None
+    
     # Check that capacity was merged from df
-    assert "capacity" in result["mounts"]["/"]
-    assert "capacity" in result["mounts"]["/boot"]
+    assert "capacity" in root
+    assert "capacity" in boot
 
     # Capacity should have the proper structure
-    assert "total" in result["mounts"]["/"]["capacity"]
-    assert "used" in result["mounts"]["/"]["capacity"]
+    assert "total" in root["capacity"]
+    assert "used" in root["capacity"]

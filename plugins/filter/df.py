@@ -15,16 +15,11 @@ import re
 from typing import Any, Dict, List, Union
 
 from ansible.errors import AnsibleFilterError
-from ansible_collections.o0_o.posix.plugins.filter_utils import JCBase
+from ansible_collections.o0_o.posix.plugins.module_utils import (
+    JCBase,
+    StorageBase,
+)
 
-try:
-    from ansible_collections.o0_o.utils.plugins.filter import SiFilter
-
-    HAS_SI_FILTER = True
-    _si_filter = SiFilter()
-except ImportError:
-    HAS_SI_FILTER = False
-    _si_filter = None
 
 DOCUMENTATION = r"""
 ---
@@ -33,9 +28,9 @@ short_description: Parse df command output
 version_added: "1.4.0"
 description:
   - Parse output from the df command into structured data using jc
-  - Can return either raw jc format or simplified facts structure
-  - When used with facts=True, returns mounts keyed by mount point with
-    structured capacity information
+  - Returns a list of mount entries with structured capacity information
+    and filesystem classification
+  - Automatically classifies filesystem types and formats capacity data
 options:
   _input:
     description:
@@ -43,21 +38,15 @@ options:
         command result dict
     type: raw
     required: true
-  facts:
-    description:
-      - If True, format output for direct merge into Ansible facts
-      - Returns structure with mounts keyed by mount point
-    type: bool
-    default: false
 requirements:
   - jc (Python library)
   - o0_o.utils collection (required for facts=True)
 notes:
   - The jc library handles various df output formats (df, df -h, df -k, etc.)
   - Field names vary based on block size (1024_blocks, 512_blocks, size)
-  - When facts=True, mount point is used as key and removed from entry data
-  - When facts=True, capacity values are provided in both bytes and
-    human-readable format
+  - Returns a list structure matching other storage filters
+  - Capacity values are provided in both bytes and human-readable format
+  - Filesystem types are automatically classified (regular, virtual, network, overlay)
 author:
   - oØ.o (@o0-o)
 """
@@ -69,49 +58,28 @@ EXAMPLES = r"""
     cmd: df -h
   register: df_result
 
-- name: Parse df output
-  ansible.builtin.debug:
-    msg: "{{ df_result.stdout | o0_o.posix.df }}"
-
-# Use facts format for structured data
-- name: Parse for facts
+- name: Parse df output and store
   ansible.builtin.set_fact:
-    fs_info: "{{ df_result.stdout | o0_o.posix.df(facts=true) }}"
+    fs_info: "{{ df_result.stdout | o0_o.posix.df }}"
 
 - name: Display root filesystem usage
   ansible.builtin.debug:
-    msg: "Root uses {{ fs_info.mounts['/'].capacity.used.pretty }}"
+    msg: >-
+      Root uses {{ (fs_info | selectattr('mount', 'equalto', '/') | first).capacity.used.pretty }}
 """
 
 RETURN = r"""
-# When facts=False (default)
 _output:
-  description: List of filesystem entries from jc parser
+  description: List of mount entries with structured capacity data
   type: list
   elements: dict
   returned: always
   sample:
-    - filesystem: /dev/disk1s1
-      1024_blocks: 488245288
-      used: 305659284
-      available: 180530392
-      use_percent: 63
-      mounted_on: /
-    - filesystem: /dev/disk1s4
-      1024_blocks: 488245288
-      used: 5369176
-      available: 180530392
-      use_percent: 3
-      mounted_on: /System/Volumes/VM
-
-# When facts=True
-mounts:
-  description: Mounts keyed by mount point with structured capacity data
-  type: dict
-  returned: always
-  sample:
-    /:
+    - mount: /
       source: /dev/disk1s1
+      type: regular
+      driver: ext4
+      fuse: false
       capacity:
         total:
           bytes: 499963174912
@@ -119,8 +87,11 @@ mounts:
         used:
           bytes: 313155427328
           pretty: "291.6 GiB"
-    /System/Volumes/VM:
+    - mount: /System/Volumes/VM
       source: /dev/disk1s4
+      type: regular
+      driver: apfs
+      fuse: false
       capacity:
         total:
           bytes: 499963174912
@@ -131,7 +102,7 @@ mounts:
 """
 
 
-class FilterModule(JCBase):
+class FilterModule(JCBase, StorageBase):
     """Filter for parsing df command output using jc."""
 
     def filters(self) -> Dict[str, Any]:
@@ -140,165 +111,67 @@ class FilterModule(JCBase):
             "df": self.df,
         }
 
-    def _format_as_facts(self, parsed: List[Dict[str, Any]]) -> Dict[str, Any]:
-        """Format parsed df data for Ansible facts structure.
-
-        :param parsed: List of filesystem dictionaries from jc
-        :returns: Facts structure with mounts keyed by mount point
-        """
-        if not HAS_SI_FILTER:
-            raise AnsibleFilterError(
-                "The 'facts' mode requires the o0_o.utils collection. "
-                "Please install it with: "
-                "ansible-galaxy collection install o0_o.utils"
-            )
-        mounts = {}
-        for entry in parsed:
-            mount_point = entry.get("mounted_on")
-            if not mount_point:
-                raise AnsibleFilterError(
-                    f"df output missing 'mounted_on' field for entry: {entry}"
-                )
-
-            mount_data = {}
-
-            # Handle source vs filesystem field intelligently
-            if "filesystem" in entry:
-                fs_value = entry["filesystem"]
-
-                # Special case: macOS autofs mounts
-                if fs_value.startswith("map "):
-                    mount_data["filesystem"] = "autofs"
-                # Device paths, UUID/LABEL, network mounts, or paths
-                elif (
-                    fs_value.startswith("/")  # Absolute paths, devices
-                    or fs_value.startswith("\\\\")  # Windows UNC paths
-                    or fs_value.startswith("//")  # SMB/CIFS
-                    or ":"
-                    in fs_value  # NFS (server:path) or Windows drives (C:)
-                    or fs_value.upper().startswith(
-                        ("UUID=", "LABEL=", "PARTUUID=", "PARTLABEL=")
-                    )
-                    or "/"
-                    in fs_value  # ZFS datasets like tank/dataset, rpool/home
-                ):
-                    mount_data["source"] = fs_value
-                # Everything else is a filesystem type
-                else:
-                    mount_data["filesystem"] = fs_value
-
-            # Add capacity information if available
-            capacity = {}
-
-            blocks_field = None
-            blocks_multiplier = None
-            capacity_total = None
-            used_total = None
-
-            # Define the block size
-            for key in entry.keys():
-                if key.endswith("_blocks"):
-                    blocks_field = key
-                    # Extract the multiplier from field name
-                    # (e.g., "512_blocks" -> 512)
-                    blocks = key.replace("_blocks", "")
-                    # Handle formats: 512, 1024, 1k, 1K, 1M, etc.
-                    if blocks.isdigit():
-                        blocks_multiplier = int(blocks)
-                        unit = "B"
-                    else:
-                        # Parse size units like 1K, 1M, 1G
-                        match = re.match(r"^(\d+)([a-zA-Z]+)$", blocks)
-                        if match:
-                            blocks_multiplier = int(match.group(1))
-                            unit = f"{match.group(2).upper()}iB"
-                        else:
-                            raise AnsibleFilterError(
-                                f"Unable to parse block size format: {blocks}"
-                            )
-                    break
-
-            # Define parsable used and total sizes
-            if (
-                blocks_field
-                and blocks_multiplier
-                and blocks_field in entry
-                and entry[blocks_field] is not None
-            ):
-                capacity_total = (
-                    f"{entry[blocks_field] * blocks_multiplier}{unit}"
-                )
-                if "used" in entry and entry["used"] is not None:
-                    used_total = f"{entry['used'] * blocks_multiplier}{unit}"
-            else:
-                if entry.get("size"):
-                    capacity_total = entry["size"]
-                if entry.get("used"):
-                    # Check if it's a string with units (like "5.1G")
-                    # vs just a number
-                    if (
-                        isinstance(entry["used"], str)
-                        and not entry["used"].isdigit()
-                    ):
-                        used_total = entry["used"]
-
-            # Calculate total capacity
-            if capacity_total:
-                # Add B suffix if not present (for plain numbers)
-                if (
-                    isinstance(capacity_total, str)
-                    and capacity_total.isdigit()
-                ):
-                    capacity_total = capacity_total + "B"
-                parsed = _si_filter.si(capacity_total, binary=True)
-                capacity_bytes = parsed.get("bytes", 0)
-                capacity_pretty = parsed.get("pretty", capacity_total)
-                capacity["total"] = {
-                    "bytes": capacity_bytes,
-                    "pretty": capacity_pretty,
-                }
-
-            # Calculate used capacity
-            if used_total:
-                # Add B suffix if not present (for plain numbers)
-                if isinstance(used_total, str) and used_total.isdigit():
-                    used_total = used_total + "B"
-                # Used field uses same multiplier as blocks field
-                parsed = _si_filter.si(used_total, binary=True)
-                used_bytes = parsed.get("bytes", 0)
-                used_pretty = parsed.get("pretty", used_total)
-                capacity["used"] = {
-                    "bytes": used_bytes,
-                    "pretty": used_pretty,
-                }
-
-            if capacity:
-                mount_data["capacity"] = capacity
-
-            mounts[mount_point] = mount_data
-
-        return {"mounts": mounts}
 
     def df(
         self,
         data: Union[str, List[str], Dict[str, Any]],
-        facts: bool = False,
-    ) -> Union[List[Dict[str, Any]], Dict[str, Any]]:
-        """Parse df output into structured data using jc.
+    ) -> List[Dict[str, Any]]:
+        """Parse df output into structured data with filesystem classification.
+
+        Converts JC's df parser output to standardized format with:
+        - mounted_on -> mount
+        - filesystem -> source (when it's a device/path)
+        - Extracts block_size from field names like 1024_blocks
+        - Normalizes capacity data to total, used fields
+        - Classifies filesystem types
+        - Formats capacity with bytes and human-readable values
 
         :param data: Output from df command - string, list of lines, or
             command result
-        :param facts: If True, format for direct merge into Ansible
-            facts
-        :returns: List of filesystem dictionaries from jc, or facts
-            structure
+        :returns: List of mount entries with standardized structure
         """
         # Get parsed data from jc
         parsed = self.parse_command(data, "df")
+        
+        # Normalize to standard format
+        normalized = []
+        for entry in parsed:
+            norm_entry = {"class": "filesystem"}
 
-        if not facts:
-            # Return jc's parsed format directly
-            return parsed
+            if "mounted_on" in entry:
+                norm_entry["mount"] = entry["mounted_on"]
 
-        # Format for facts module
-        return self._format_as_facts(parsed)
+            if "filesystem" in entry:
+                norm_entry["source"] = entry["filesystem"]
+
+            # Find block size from field names like 1024_blocks, 512_blocks
+            for key in entry.keys():
+                if key.endswith("_blocks"):
+                    # Total is the value in this blocks field
+                    norm_entry["total"] = entry[key]
+                    # Extract the block size
+                    block_size = key.replace("_blocks", "")
+                    if block_size.isdigit():
+                        norm_entry["block_size"] = f"{block_size}B"
+                    elif re.match(r"^(\d+)([a-zA-Z]+)$", block_size):
+                        # Handle formats like 1k_blocks, 1M_blocks
+                        norm_entry["block_size"] = str(block_size)
+                    del block_size
+                    break
+
+            # Handle size field (alternative to blocks)
+            if "size" in entry and "total" not in norm_entry:
+                # size field already has units
+                norm_entry["total"] = entry["size"]
+
+            # Handle used field
+            if "used" in entry:
+                norm_entry["used"] = entry["used"]
+
+            normalized.append(norm_entry)
+
+        # Format with filesystem classification and capacity formatting
+        try:
+            return self.format_storage_as_facts(normalized)
+        except Exception as e:
+            raise AnsibleFilterError(str(e)) from e

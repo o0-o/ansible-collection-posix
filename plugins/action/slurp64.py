@@ -15,10 +15,11 @@ from base64 import b64decode
 from typing import Any, Dict, Optional
 
 from ansible.errors import AnsibleActionFail
-from ansible_collections.o0_o.posix.plugins.action_utils import PosixBase
+from ansible.plugins.action import ActionBase
+from ansible_collections.o0_o.posix.plugins.module_utils import PosixActionBase
 
 
-class ActionModule(PosixBase):
+class ActionModule(PosixActionBase, ActionBase):
     """
     Read file contents from remote hosts with raw fallback support.
 

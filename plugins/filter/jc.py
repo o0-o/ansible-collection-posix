@@ -11,9 +11,10 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict
+from typing import Any, Dict, Union, List
 
-from ansible_collections.o0_o.posix.plugins.filter_utils import JCBase
+from ansible.errors import AnsibleFilterError
+from ansible_collections.o0_o.posix.plugins.module_utils import JCBase
 
 DOCUMENTATION = r"""
 name: jc
@@ -111,5 +112,18 @@ class FilterModule(JCBase):
     def filters(self) -> Dict[str, Any]:
         """Return the filter functions."""
         return {
-            "jc": self.jc,
+            "jc": self.jc_filter,
         }
+
+    def jc_filter(
+        self,
+        data: Union[str, List[str], Dict[str, Any]],
+        parser: str,
+        raw: bool = False,
+        quiet: bool = False,
+    ) -> Union[List[Dict[str, Any]], Dict[str, Any]]:
+        """Wrapper that converts exceptions to AnsibleFilterError."""
+        try:
+            return self.jc(data, parser, raw, quiet)
+        except Exception as e:
+            raise AnsibleFilterError(str(e)) from e

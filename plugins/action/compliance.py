@@ -15,14 +15,15 @@ from copy import deepcopy
 from typing import Any, Dict, Optional
 
 from ansible.errors import AnsibleActionFail, AnsibleConnectionFailure
+from ansible.plugins.action import ActionBase
 from ansible.module_utils.common.text.converters import to_text
 import yaml
-from ansible_collections.o0_o.posix.plugins.action_utils.posix_base import (
-    PosixBase,
+from ansible_collections.o0_o.posix.plugins.module_utils import (
+    PosixActionBase,
 )
 
 
-class ActionModule(PosixBase):
+class ActionModule(PosixActionBase, ActionBase):
     """
     Check POSIX and UNIX standards compliance of the target host.
 

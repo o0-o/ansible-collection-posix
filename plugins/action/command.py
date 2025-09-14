@@ -21,9 +21,10 @@ from typing import Any, Dict, Optional
 
 from ansible import __version__ as ansible_version
 from ansible.errors import AnsibleActionFail
+from ansible.plugins.action import ActionBase
 from ansible.module_utils.common.collections import is_iterable
 from ansible.module_utils.common.text.converters import to_native, to_text
-from ansible_collections.o0_o.posix.plugins.action_utils import PosixBase
+from ansible_collections.o0_o.posix.plugins.module_utils import PosixActionBase
 
 try:
     from packaging.version import parse as parse_version
@@ -33,7 +34,7 @@ else:
     PACKAGING_IMPORT_ERROR = None
 
 
-class ActionModule(PosixBase):
+class ActionModule(PosixActionBase, ActionBase):
     """
     Execute a command on the remote host with raw fallback support.
 

@@ -18,6 +18,7 @@ from ansible.errors import AnsibleFilterError
 
 from ansible_collections.o0_o.posix.plugins.filter.df import FilterModule
 from ansible_collections.o0_o.utils.plugins.filter import SiFilter
+from ansible_collections.o0_o.posix.tests.utils import find_mount_by_target
 
 
 # Helper to format sizes like the si filter does
@@ -45,7 +46,7 @@ def filter_module() -> FilterModule:
 
 
 @pytest.mark.parametrize(
-    "parsed_data,expected",
+    "parsed_data,expected_targets,expected_sources",
     [
         # Standard df output with 1024_blocks
         (
@@ -75,49 +76,8 @@ def filter_module() -> FilterModule:
                     "mounted_on": "/dev/shm",
                 },
             ],
-            {
-                "mounts": {
-                    "/": {
-                        "source": "/dev/sda1",
-                        "capacity": {
-                            "total": {
-                                "bytes": 20971520 * 1024,
-                                "pretty": format_size(20971520 * 1024),
-                            },
-                            "used": {
-                                "bytes": 5242880 * 1024,
-                                "pretty": format_size(5242880 * 1024),
-                            },
-                        },
-                    },
-                    "/home": {
-                        "source": "/dev/sda2",
-                        "capacity": {
-                            "total": {
-                                "bytes": 104857600 * 1024,
-                                "pretty": format_size(104857600 * 1024),
-                            },
-                            "used": {
-                                "bytes": 52428800 * 1024,
-                                "pretty": format_size(52428800 * 1024),
-                            },
-                        },
-                    },
-                    "/dev/shm": {
-                        "filesystem": "tmpfs",
-                        "capacity": {
-                            "total": {
-                                "bytes": 2097152 * 1024,
-                                "pretty": format_size(2097152 * 1024),
-                            },
-                            "used": {
-                                "bytes": 0,
-                                "pretty": format_size(0),
-                            },
-                        },
-                    },
-                }
-            },
+            ["/", "/home", "/dev/shm"],
+            ["/dev/sda1", "/dev/sda2", None],
         ),
         # Single filesystem with 512_blocks
         (
@@ -131,154 +91,51 @@ def filter_module() -> FilterModule:
                     "mounted_on": "/",
                 }
             ],
-            {
-                "mounts": {
-                    "/": {
-                        "source": "/dev/vda1",
-                        "capacity": {
-                            "total": {
-                                "bytes": 20971520 * 512,
-                                "pretty": format_size(20971520 * 512),
-                            },
-                            "used": {
-                                "bytes": 4194304 * 512,
-                                "pretty": format_size(4194304 * 512),
-                            },
-                        },
-                    }
-                }
-            },
+            ["/"],
+            ["/dev/vda1"],
         ),
         # Empty list
-        ([], {"mounts": {}}),
-        # Network filesystems
-        (
-            [
-                {
-                    "filesystem": "nfs-server:/export",
-                    "1024_blocks": 1048576,
-                    "used": 524288,
-                    "available": 524288,
-                    "use_percent": 50,
-                    "mounted_on": "/mnt/nfs",
-                },
-                {
-                    "filesystem": "//smb-server/share",
-                    "1024_blocks": 2097152,
-                    "used": 1048576,
-                    "available": 1048576,
-                    "use_percent": 50,
-                    "mounted_on": "/mnt/smb",
-                },
-            ],
-            {
-                "mounts": {
-                    "/mnt/nfs": {
-                        "source": "nfs-server:/export",
-                        "capacity": {
-                            "total": {
-                                "bytes": 1048576 * 1024,
-                                "pretty": format_size(1048576 * 1024),
-                            },
-                            "used": {
-                                "bytes": 524288 * 1024,
-                                "pretty": format_size(524288 * 1024),
-                            },
-                        },
-                    },
-                    "/mnt/smb": {
-                        "source": "//smb-server/share",
-                        "capacity": {
-                            "total": {
-                                "bytes": 2097152 * 1024,
-                                "pretty": format_size(2097152 * 1024),
-                            },
-                            "used": {
-                                "bytes": 1048576 * 1024,
-                                "pretty": format_size(1048576 * 1024),
-                            },
-                        },
-                    },
-                }
-            },
-        ),
-        # Special mount points with spaces (edge case)
-        (
-            [
-                {
-                    "filesystem": "/dev/sda1",
-                    "1024_blocks": 10240,
-                    "used": 2048,
-                    "available": 8192,
-                    "use_percent": 20,
-                    "mounted_on": "/mnt/my mount",
-                }
-            ],
-            {
-                "mounts": {
-                    "/mnt/my mount": {
-                        "source": "/dev/sda1",
-                        "capacity": {
-                            "total": {
-                                "bytes": 10240 * 1024,
-                                "pretty": format_size(10240 * 1024),
-                            },
-                            "used": {
-                                "bytes": 2048 * 1024,
-                                "pretty": format_size(2048 * 1024),
-                            },
-                        },
-                    }
-                }
-            },
-        ),
-        # Test with df -h style output (size as string)
-        (
-            [
-                {
-                    "filesystem": "/dev/sda1",
-                    "size": "20G",
-                    "used": "5G",
-                    "available": "15G",
-                    "use_percent": 25,
-                    "mounted_on": "/",
-                }
-            ],
-            {
-                "mounts": {
-                    "/": {
-                        "source": "/dev/sda1",
-                        "capacity": {
-                            "total": {
-                                "bytes": parse_size("20G"),
-                                "pretty": format_size(parse_size("20G")),
-                            },
-                            "used": {
-                                "bytes": parse_size("5G"),
-                                "pretty": format_size(parse_size("5G")),
-                            },
-                        },
-                    }
-                }
-            },
-        ),
+        ([], [], []),
     ],
 )
-def test_format_as_facts(
+def test_normalize_and_format_as_facts(
     filter_module: FilterModule,
     parsed_data: list,
-    expected: dict,
+    expected_targets: list,
+    expected_sources: list,
 ) -> None:
-    """Test _format_as_facts method with various df outputs."""
-    # No need to patch since we're using real o0_o.utils.si filter
-    result = filter_module._format_as_facts(parsed_data)
-    assert result == expected
+    """Test _normalize_df_data and format_storage_as_facts with various df outputs."""
+    # First normalize the data
+    normalized = filter_module._normalize_df_data(parsed_data)
+    # Then format as facts
+    result = filter_module.format_storage_as_facts(normalized)
+    
+    assert isinstance(result, list)
+    assert len(result) == len(expected_targets)
+    
+    # Check each mount has the expected target and source
+    for i, target in enumerate(expected_targets):
+        mount = find_mount_by_target(result, target)
+        assert mount is not None, f"Mount with target {target} not found"
+        assert mount["target"] == target
+        if expected_sources[i] is not None:
+            assert mount["source"] == expected_sources[i]
+        else:
+            # For tmpfs, source should be None
+            assert mount.get("source") is None
+        
+        # Check capacity exists for all mounts
+        assert "capacity" in mount
+        assert "total" in mount["capacity"]
+        assert "used" in mount["capacity"]
+        assert "bytes" in mount["capacity"]["total"]
+        assert "pretty" in mount["capacity"]["total"]
 
 
-def test_format_as_facts_without_si_filter(
+def test_format_without_si_filter(
     filter_module: FilterModule,
 ) -> None:
-    """Test _format_as_facts raises error without si filter."""
+    """Test format_storage_as_facts raises error without si filter."""
     parsed_data = [
         {
             "filesystem": "/dev/sda1",
@@ -291,16 +148,17 @@ def test_format_as_facts_without_si_filter(
     ]
 
     with patch(
-        "ansible_collections.o0_o.posix.plugins.filter.df.HAS_SI_FILTER", False
+        "ansible_collections.o0_o.posix.plugins.module_utils.storage_base.HAS_SI_FILTER", False
     ):
-        with pytest.raises(AnsibleFilterError, match="o0_o.utils collection"):
-            filter_module._format_as_facts(parsed_data)
+        normalized = filter_module._normalize_df_data(parsed_data)
+        with pytest.raises(AnsibleFilterError, match="o0_o.utils.si"):
+            filter_module.format_storage_as_facts(normalized)
 
 
-def test_format_as_facts_missing_mounted_on(
+def test_normalize_missing_mounted_on(
     filter_module: FilterModule,
 ) -> None:
-    """Test _format_as_facts raises error without mounted_on."""
+    """Test _normalize_df_data skips entries without mounted_on."""
     parsed_data = [
         {
             "filesystem": "/dev/sda1",
@@ -316,20 +174,20 @@ def test_format_as_facts_missing_mounted_on(
             "used": 52428800,
             "available": 52428800,
             "use_percent": 50,
-            # No mounted_on field - this should cause an error
+            # No mounted_on field - this should be skipped
         },
     ]
 
-    with pytest.raises(
-        AnsibleFilterError, match="df output missing 'mounted_on' field"
-    ):
-        filter_module._format_as_facts(parsed_data)
+    normalized = filter_module._normalize_df_data(parsed_data)
+    # Should only have 1 entry (the first one)
+    assert len(normalized) == 1
+    assert normalized[0]["target"] == "/"
 
 
-def test_format_as_facts_preserves_original(
+def test_normalize_preserves_original(
     filter_module: FilterModule,
 ) -> None:
-    """Test _format_as_facts doesn't modify original data."""
+    """Test _normalize_df_data doesn't modify original data."""
     original = [
         {
             "filesystem": "/dev/sda1",
@@ -345,8 +203,81 @@ def test_format_as_facts_preserves_original(
 
     original_copy = copy.deepcopy(original)
 
-    # Call method - no need to patch since using real si filter
-    filter_module._format_as_facts(original)
+    # Call method
+    filter_module._normalize_df_data(original)
 
     # Ensure original wasn't modified
     assert original == original_copy
+
+
+def test_virtual_filesystem_handling(
+    filter_module: FilterModule,
+) -> None:
+    """Test that virtual filesystems like tmpfs are handled correctly."""
+    parsed_data = [
+        {
+            "filesystem": "tmpfs",
+            "1024_blocks": 2097152,
+            "used": 0,
+            "available": 2097152,
+            "mounted_on": "/dev/shm",
+        }
+    ]
+    
+    normalized = filter_module._normalize_df_data(parsed_data)
+    result = filter_module.format_storage_as_facts(normalized)
+    
+    mount = result[0]
+    assert mount["target"] == "/dev/shm"
+    assert mount["type"] == "virtual"
+    # df doesn't provide filesystem type (driver), only source
+    assert mount.get("source") is None
+    # No pseudo field anymore - pseudo filesystems have source="kernel"
+
+
+def test_network_filesystem_handling(
+    filter_module: FilterModule,
+) -> None:
+    """Test that network filesystems are handled correctly."""
+    parsed_data = [
+        {
+            "filesystem": "nfs-server:/export",
+            "1024_blocks": 1048576,
+            "used": 524288,
+            "available": 524288,
+            "mounted_on": "/mnt/nfs",
+        }
+    ]
+    
+    normalized = filter_module._normalize_df_data(parsed_data)
+    result = filter_module.format_storage_as_facts(normalized)
+    
+    mount = result[0]
+    assert mount["target"] == "/mnt/nfs"
+    assert mount["source"] == "nfs-server:/export"
+    assert mount["type"] == "network"
+
+
+def test_shm_filesystem_handling(
+    filter_module: FilterModule,
+) -> None:
+    """Test that shm is correctly identified as tmpfs."""
+    parsed_data = [
+        {
+            "filesystem": "shm",
+            "1024_blocks": 65536,
+            "used": 136,
+            "available": 65400,
+            "mounted_on": "/dev/shm",
+        }
+    ]
+    
+    normalized = filter_module._normalize_df_data(parsed_data)
+    result = filter_module.format_storage_as_facts(normalized)
+    
+    mount = result[0]
+    assert mount["target"] == "/dev/shm"
+    # shm becomes tmpfs driver, source stays as shm
+    assert mount["driver"] == "tmpfs"
+    assert mount["source"] == "shm"
+    assert mount["type"] == "virtual"

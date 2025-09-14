@@ -110,7 +110,7 @@
       ansible.builtin.assert:
         that:
           - fstab_facts['mounts']['swap']['source'] == '/dev/sda3'
-          - fstab_facts['mounts']['swap']['filesystem'] == 'swap'
+          - fstab_facts['mounts']['swap']['filesystem'] is not defined
           - fstab_facts['mounts']['swap']['type'] == 'device'
           - fstab_facts['mounts']['swap']['options']['sw'] == true
 

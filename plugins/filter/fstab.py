@@ -13,9 +13,11 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Union
 
-from ansible_collections.o0_o.posix.plugins.filter_utils import (
-    FilesystemBase,
-    JCBase,
+from ansible.errors import AnsibleFilterError
+from ansible_collections.o0_o.posix.plugins.module_utils import JCBase
+from ansible_collections.o0_o.utils.plugins.module_utils import (
+    string2items,
+    wantlist,
 )
 
 DOCUMENTATION = r"""
@@ -25,27 +27,25 @@ short_description: Parse /etc/fstab file content
 version_added: "1.5.0"
 description:
   - Parse /etc/fstab file content into structured data using jc
-  - Can return either raw jc format or normalized mount-compatible structure
-  - When used with facts=True, returns mount information organized by
-    mount point using the same structure as the mount filter
+  - Returns a list of mount entries with filesystem classification
+    and structured options
+  - Automatically classifies filesystem types and converts options to dictionary
+  - Includes dump frequency and fsck pass information
 options:
   _input:
     description:
       - Content of /etc/fstab as string, list of lines, or file content
     type: raw
     required: true
-  facts:
-    description:
-      - If True, normalize output to match mount filter structure
-      - Returns structure compatible with o0_mounts facts
-    type: bool
-    default: false
 requirements:
   - jc (Python library)
 notes:
   - The jc library parses fstab format into structured data
-  - When facts=True, output structure matches the mount filter for consistency
-  - Options are parsed into dictionary format when facts=True
+  - Returns a list structure matching other storage filters
+  - Options are parsed into dictionary format for easier manipulation
+  - Filesystem types are automatically classified (regular, virtual, network, overlay)
+  - FUSE filesystems are automatically detected
+  - Includes dump frequency and fsck pass information from fstab
 author:
   - oØ.o (@o0-o)
 """
@@ -57,171 +57,134 @@ EXAMPLES = r"""
     src: /etc/fstab
   register: fstab_content
 
-- name: Parse fstab
-  ansible.builtin.debug:
-    msg: "{{ fstab_content.content | b64decode | o0_o.posix.fstab }}"
-
-# Use facts format for mount-compatible structure
-- name: Parse for facts
+- name: Parse fstab and store
   ansible.builtin.set_fact:
-    fstab_info: "{{ fstab_content.content | b64decode | o0_o.posix.fstab(facts=true) }}"
+    fstab_info: "{{ fstab_content.content | b64decode | o0_o.posix.fstab }}"
 
 - name: Display root filesystem info
   ansible.builtin.debug:
-    msg: "Root configured to mount from {{ fstab_info.mounts['/'].source }}"
+    msg: >-
+      Root configured to mount from {{ (fstab_info | selectattr('mount', 'equalto', '/') | first).source }}
 """
 
 RETURN = r"""
-# When facts=False (default)
 _value:
-  description: List of fstab entries
+  description: List of mount entries with standardized structure
   type: list
   elements: dict
   returned: always
-  contains:
-    fs_spec:
-      description: Block special device or remote filesystem
-      type: str
-      sample: /dev/sda1
-    fs_file:
-      description: Mount point
-      type: str
-      sample: /home
-    fs_vfstype:
-      description: Filesystem type
-      type: str
-      sample: ext4
-    fs_mntops:
-      description: Mount options as comma-separated string
-      type: str
-      sample: defaults,noatime
-    fs_freq:
-      description: Dump frequency in days
-      type: int
-      sample: 0
-    fs_passno:
-      description: Pass number for fsck
-      type: int
-      sample: 2
-
-# When facts=True
-mounts:
-  description: Mount information keyed by mount point (matches mount filter structure)
-  type: dict
-  returned: always
-  contains:
-    <mount_point>:
-      description: Mount point information
-      type: dict
-      contains:
-        source:
-          description: Mount source when different from filesystem type
-          type: str
-          required: false
-          sample: /dev/sda1
-        type:
-          description: Mount type classification
-          type: str
-          choices:
-            - device
-            - network
-            - virtual
-            - overlay
-          sample: device
-        filesystem:
-          description: Filesystem type
-          type: str
-          sample: ext4
-        pseudo:
-          description: >-
-            Whether this is a pseudo filesystem (kernel interface).
-            Always present when type=virtual, true only for pseudo filesystems
-          type: bool
-          required: false
-          sample: true
-        fuse:
-          description: Whether this is a FUSE filesystem
-          type: bool
-          sample: false
-        options:
-          description: Mount options as dictionary
-          type: dict
-          sample: {"defaults": true, "noatime": true}
-        dump:
-          description: Dump frequency (fs_freq from fstab)
-          type: int
-          sample: 0
-        pass:
-          description: fsck pass number (fs_passno from fstab)
-          type: int
-          sample: 2
+  sample:
+    - mount: /
+      source: /dev/sda1
+      type: regular
+      driver: ext4
+      fuse: false
+      options:
+        defaults: true
+        noatime: true
+      dump:
+        enabled: false
+      fsck:
+        enabled: true
+        pass: 1
+    - mount: /boot
+      source: UUID=abc-123
+      type: regular
+      driver: ext2
+      fuse: false
+      options:
+        defaults: true
+        ro: true
+      dump:
+        enabled: true
+        days: 1
+      fsck:
+        enabled: true
+        pass: 2
+    - mount: swap
+      source: /dev/sda2
+      type: paging
+      options:
+        sw: true
+      dump:
+        enabled: false
+      fsck:
+        enabled: false
 """
 
 
-class FilterModule(JCBase, FilesystemBase):
+class FilterModule(JCBase):
     """Filter for parsing fstab file content using jc."""
 
     def filters(self) -> Dict[str, Any]:
         """Return the filter functions."""
-        return {
-            "fstab": self.fstab,
-        }
+        return {"fstab": self.fstab}
 
-    def _normalize_to_mount_format(
-        self, parsed: List[Dict[str, Any]]
+    def fstab(
+        self, config: Union[str, List[str], Dict[str, Any]]
     ) -> List[Dict[str, Any]]:
-        """Normalize fstab entries to match mount filter format.
+        """Parse fstab file content with filesystem classification.
 
         Converts jc's fstab field names to standardized format:
         - fs_spec → source
-        - fs_file → mount_point
-        - fs_vfstype → filesystem
-        - fs_mntops → options (as list)
+        - fs_file → mount
+        - fs_vfstype → type (single value preferred, list if multiple)
+        - fs_mntops → options (as dictionary with key=value pairs)
         - fs_freq → dump
         - fs_passno → pass
+        - Options are parsed as key=value or key=True for flags
 
-        :param parsed: Parsed fstab data from jc
-        :returns: List with normalized field names
-        """
-        normalized = []
-        for entry in parsed:
-            normalized_entry = {
-                "source": entry.get("fs_spec", ""),
-                "mount_point": entry.get("fs_file", ""),
-                "filesystem": entry.get("fs_vfstype", ""),
-                "options": [],
-            }
-
-            # Parse options string into list
-            options_str = entry.get("fs_mntops", "")
-            if options_str:
-                normalized_entry["options"] = [
-                    opt.strip() for opt in options_str.split(",") if opt.strip()
-                ]
-
-            # Keep fstab-specific fields
-            normalized_entry["dump"] = entry.get("fs_freq", 0)
-            normalized_entry["pass"] = entry.get("fs_passno", 0)
-
-            normalized.append(normalized_entry)
-
-        return normalized
-
-    def fstab(
-        self, text: Union[str, List[str], Dict[str, Any]], facts: bool = False
-    ) -> Union[List[Dict[str, Any]], Dict[str, Any]]:
-        """Parse fstab file content using jc.
-
-        :param text: fstab content as string, list of lines, or dict
-        :param facts: If True, format for Ansible facts with mount-compatible structure
-        :returns: Parsed fstab data (list or facts dict)
+        :param config: fstab config as string, list of lines, or dict
+        :returns: List of mount entries with standardized structure
         """
         # Parse with jc
-        parsed = self.parse_command(text, "fstab")
+        parsed = self.parse_command(config, "fstab")
 
-        if facts:
-            # Normalize and format for facts module
-            normalized = self._normalize_to_mount_format(parsed)
-            return self.format_mounts_as_facts(normalized)
+        # Normalize to standard format
+        normalized = []
+        for entry in parsed:
+            norm_entry = {}
 
-        return parsed
+            norm_entry["source"] = entry.get("fs_spec")
+            norm_entry["mount"] = entry.get("fs_file")
+
+            # Parse vfstype with string2items first (in case of comma-separated types)
+            # then use wantlist(false) to get single value if only one type
+            try:
+                types = string2items(entry.get("fs_vfstype"))
+                norm_entry["type"] = wantlist(types, False)
+            except (TypeError, ValueError) as e:
+                raise AnsibleFilterError(f"Error parsing fs_vfstype: {e}") from e
+
+            # Parse options string into list of dicts using string2items
+            if "fs_mntops" in entry:
+                # Use string2items to parse comma-separated options
+                # It handles None/empty strings gracefully
+                try:
+                    options = string2items(entry["fs_mntops"])
+                    norm_entry["options"] = []
+                    for opt in options:
+                        if "=" in opt:
+                            # Split on first = only
+                            key, value = opt.split("=", 1)
+                            norm_entry["options"].append({key: value})
+                        else:
+                            # Treat as boolean flag
+                            norm_entry["options"].append({opt: True})
+                except (TypeError, ValueError) as e:
+                    raise AnsibleFilterError(f"Error parsing fs_mntops: {e}") from e
+
+
+            if "fs_freq" in entry:
+                norm_entry["dump"] = int(entry["fs_freq"])
+            else:
+                norm_entry["dump"] = None
+
+            if "fs_passno" in entry:
+                norm_entry["pass"] = int(entry["fs_passno"])
+            else:
+                norm_entry["pass"] = None
+
+            normalized.append(norm_entry)
+
+        return normalized

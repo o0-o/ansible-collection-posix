@@ -14,12 +14,13 @@ from __future__ import annotations
 from typing import Any, Dict, Optional, Tuple
 
 from ansible.errors import AnsibleActionFail, AnsibleConnectionFailure
-from ansible_collections.o0_o.posix.plugins.action_utils.posix_base import (
-    PosixBase,
+from ansible.plugins.action import ActionBase
+from ansible_collections.o0_o.posix.plugins.module_utils import (
+    PosixActionBase,
 )
 
 
-class ActionModule(PosixBase):
+class ActionModule(PosixActionBase, ActionBase):
     """
     Gather basic POSIX kernel and hardware facts.
 

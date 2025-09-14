@@ -29,19 +29,16 @@ from datetime import datetime, timezone
 from os import path
 from typing import Any, Dict, List, Optional, Union, Tuple
 
-from ansible.errors import AnsibleActionFail
 from ansible.module_utils.common.text.converters import to_text
-from ansible.plugins.action import ActionBase
 
 
-class PosixBase(ActionBase):
+class PosixActionBase:
     """
-    Base class for POSIX-compatible Ansible action plugins with raw
+    Mixin class for POSIX-compatible Ansible action plugins with raw
     fallback support.
 
-    This class extends `ActionBase` and provides shared helpers for
-    action plugins that must operate on remote hosts without a working
-    Python interpreter.
+    This mixin provides shared helpers for action plugins that must
+    operate on remote hosts without a working Python interpreter.
 
     It implements fallback-compatible versions of common file and shell
     operations, including command execution, file slurping, directory
@@ -49,37 +46,19 @@ class PosixBase(ActionBase):
     SELinux support. It also enables inter-plugin delegation using fully
     qualified collection names (FQCNs).
 
-    This base is intended for use in collections targeting POSIX
-    systems.
-    All operations rely exclusively on POSIX-standard tools such as
-    `cat`, `mv`, `cp`, `mkdir`, `chown`, `chmod`, and `printf`. Non-
-    portable utilities like `install` are deliberately avoided.
+    This mixin is intended for use in collections targeting POSIX
+    systems. All operations rely exclusively on POSIX-standard tools
+    such as `cat`, `mv`, `cp`, `mkdir`, `chown`, `chmod`, and `printf`.
+    Non-portable utilities like `install` are deliberately avoided.
 
     Usage:
-        class ActionModule(PosixBase):
+        from ansible.plugins.action import ActionBase
+        from ansible_collections.o0_o.posix.plugins.module_utils import PosixActionBase
+
+        class ActionModule(PosixActionBase, ActionBase):
             def run(self, tmp=None, task_vars=None):
                 ...
     """
-
-    def run(
-        self,
-        tmp: Optional[str] = None,
-        task_vars: Optional[Dict[str, Any]] = None,
-    ) -> Dict[str, Any]:
-        """
-        Base run method that initializes the result structure.
-
-        This replaces the NotImplementedError with a minimal
-        implementation so that child classes can safely call
-        super().run() to get a standard result dict.
-
-        :param Optional[str] tmp: Temporary path (unused in modern
-            Ansible)
-        :param Optional[Dict[str, Any]] task_vars: Task variables
-            dictionary
-        :returns Dict[str, Any]: Initial result dictionary
-        """
-        return super().run(tmp, task_vars)
 
     def _is_interpreter_missing(self, result: Dict[str, Any]) -> bool:
         """
@@ -137,7 +116,7 @@ class PosixBase(ActionBase):
         requested_fqcn = plugin_name.lower().strip()
 
         if requested_fqcn == current_fqcn:
-            raise AnsibleActionFail(
+            raise RecursionError(
                 f"CompatAction attempted to call '{plugin_name}' from within "
                 "itself. This would result in infinite recursion."
             )
@@ -288,7 +267,7 @@ class PosixBase(ActionBase):
             passed to _cmd()
         :returns dict: Dictionary with keys 'exists' (bool), 'type'
             (str or None), 'is_symlink' (bool), 'raw' (bool)
-        :raises AnsibleActionFail: if type cannot be determined
+        :raises RuntimeError: if type cannot be determined
         """
         exists_test = self._cmd(
             ["test", "-e", target_path], task_vars=task_vars, check_mode=False
@@ -328,7 +307,7 @@ class PosixBase(ActionBase):
                 result["type"] = type_name
                 return result
 
-        raise AnsibleActionFail(
+        raise RuntimeError(
             f"All POSIX 'test' commands failed on '{target_path}'"
         )
 
@@ -353,7 +332,7 @@ class PosixBase(ActionBase):
         :param Optional[str] mode: Optional permission mode string
             (e.g. "0755")
         :returns dict: Dictionary with ``changed`` boolean key
-        :raises AnsibleActionFail: On directory creation error
+        :raises RuntimeError: On directory creation error
         """
         self._display.vvv(f"Creating directory: {target_path}")
 
@@ -363,7 +342,7 @@ class PosixBase(ActionBase):
             self._display.vvv(f"Directory already exists: {target_path}")
             return {"rc": 0, "changed": False}
         if stat["exists"]:
-            raise AnsibleActionFail(
+            raise NotADirectoryError(
                 f"Path '{target_path}' exists but is not a directory "
                 f"({stat['type']})"
             )
@@ -378,7 +357,7 @@ class PosixBase(ActionBase):
 
         mkdir_result = self._cmd(args, task_vars=task_vars)
         if mkdir_result["rc"] != 0:
-            raise AnsibleActionFail(
+            raise RuntimeError(
                 f"Failed to create directory '{target_path}': "
                 f"{mkdir_result.get('stderr', '').strip()}"
             )
@@ -425,7 +404,7 @@ class PosixBase(ActionBase):
         :param str validate_cmd: The validation command template
         :param Optional[dict] task_vars: Task vars from the calling
             action
-        :raises AnsibleActionFail: If validation fails
+        :raises RuntimeError: If validation fails
         """
         self._display.vvv(f"Validating {tmpfile}")
         if not validate_cmd:
@@ -435,7 +414,7 @@ class PosixBase(ActionBase):
         result = self._cmd(cmd, task_vars=task_vars)
 
         if result["rc"] != 0:
-            raise AnsibleActionFail(
+            raise RuntimeError(
                 f"Validation failed: {validate_cmd} => "
                 f"{result.get('stderr', '')}"
             )
@@ -451,7 +430,7 @@ class PosixBase(ActionBase):
             action
         :returns Optional[str]: Path to the backup file or None if not
             created
-        :raises AnsibleActionFail: If backup fails
+        :raises RuntimeError: If backup fails
         """
         result = self._cmd(["test", "-e", dest], task_vars=task_vars)
         if result["rc"] != 0:
@@ -464,7 +443,7 @@ class PosixBase(ActionBase):
         )
 
         if result["rc"] != 0:
-            raise AnsibleActionFail(
+            raise RuntimeError(
                 f"Backup failed: {result.get('stderr', '')}"
             )
 
@@ -488,7 +467,7 @@ class PosixBase(ActionBase):
             setype, selevel)
         :param Optional[dict] task_vars: Ansible task_vars from the
             calling context
-        :raises AnsibleActionFail: If context application fails
+        :raises RuntimeError: If context application fails
         """
         self._display.vvv(f"Handling SELinux for {dest}")
         if not perms:
@@ -523,7 +502,7 @@ class PosixBase(ActionBase):
             ]
             result = self._cmd(semanage_cmd, task_vars=task_vars)
             if result["rc"] != 0:
-                raise AnsibleActionFail(
+                raise RuntimeError(
                     "Failed to register SELinux context with semanage: "
                     f"{result.get('stderr', '')}"
                 )
@@ -531,7 +510,7 @@ class PosixBase(ActionBase):
             restorecon_cmd = ["restorecon", dest]
             result = self._cmd(restorecon_cmd, task_vars=task_vars)
             if result["rc"] != 0:
-                raise AnsibleActionFail(
+                raise RuntimeError(
                     "Failed to apply SELinux context with restorecon: "
                     f"{result.get('stderr', '')}"
                 )
@@ -551,7 +530,7 @@ class PosixBase(ActionBase):
 
         result = self._cmd(chcon_cmd, task_vars=task_vars)
         if result["rc"] != 0:
-            raise AnsibleActionFail(
+            raise RuntimeError(
                 "Failed to set SELinux context with chcon: "
                 f"{result.get('stderr', '')}"
             )
@@ -627,7 +606,7 @@ class PosixBase(ActionBase):
             - ``group`` (str): File group
             - Optional SELinux keys: ``seuser``, ``setype``, ``serole``,
               ``selevel``
-        :raises AnsibleActionFail: If the ``ls`` command fails or
+        :raises RuntimeError: If the ``ls`` command fails or
             produces unexpected output
         """
         self._display.vvv(f"Getting permissions of {target}")
@@ -640,7 +619,7 @@ class PosixBase(ActionBase):
 
         cmd_result = self._cmd(ls_args, task_vars=task_vars)
         if cmd_result["rc"] != 0:
-            raise AnsibleActionFail(
+            raise RuntimeError(
                 f"Could not stat {target}: {cmd_result['stderr']}"
             )
 
@@ -655,7 +634,7 @@ class PosixBase(ActionBase):
                 group = parts[3]
                 seuser, serole, setype, selevel = context.split(":")
             except Exception:
-                raise AnsibleActionFail(
+                raise RuntimeError(
                     "Unexpected SELinux output from ls -Zd: "
                     f"{cmd_result['stdout']}"
                 )
@@ -688,13 +667,13 @@ class PosixBase(ActionBase):
 
         Accepts either a string or a list of strings/numbers. Ensures
         the output string ends with a newline character and all list
-        elements are converted to strings. Raises an AnsibleActionFail
+        elements are converted to strings. Raises an RuntimeError
         on unsupported input types.
 
         :param Union[str, List[Union[str, int, float]]] content: The
             input to normalize
         :returns Tuple[List[str], str]: Tuple of (lines, content)
-        :raises AnsibleActionFail: If input is of invalid type or
+        :raises RuntimeError: If input is of invalid type or
             contains non-stringlike items
         """
         if isinstance(content, str):
@@ -704,13 +683,13 @@ class PosixBase(ActionBase):
             if not all(
                 isinstance(line, (str, int, float)) for line in content
             ):
-                raise AnsibleActionFail(
+                raise RuntimeError(
                     "_write_file() requires strings or numbers"
                 )
             lines = [str(line) for line in content]
             normalized = "\n".join(lines) + "\n"
         else:
-            raise AnsibleActionFail(
+            raise RuntimeError(
                 "_write_file() requires a string or list of strings"
             )
         self._display.vvv(f"Normalized lines: {lines}")
@@ -732,7 +711,7 @@ class PosixBase(ActionBase):
         :param str tmpfile: Temporary file path on remote host
         :param Optional[dict] task_vars: Ansible task variables
         :returns dict: Result from the ``tee`` command
-        :raises AnsibleActionFail: If writing or chmod fails
+        :raises RuntimeError: If writing or chmod fails
         """
         self._display.vvv(f"Writing to temp file: {tmpfile}")
         lines_str = "\n".join(lines)
@@ -742,7 +721,7 @@ class PosixBase(ActionBase):
             task_vars=task_vars,
         )
         if write_result.get("rc", 1) != 0:
-            raise AnsibleActionFail(
+            raise RuntimeError(
                 f"Failed to write temp file {tmpfile}: "
                 f"{write_result.get('stderr', '')}"
             )
@@ -752,7 +731,7 @@ class PosixBase(ActionBase):
             ["chmod", "0600", tmpfile], task_vars=task_vars
         )
         if chmod_result.get("rc", 1) != 0:
-            raise AnsibleActionFail(
+            raise RuntimeError(
                 f"Failed to chmod temp file: {chmod_result.get('stderr', '')}"
             )
         return write_result
@@ -762,7 +741,7 @@ class PosixBase(ActionBase):
     ) -> bool:
         """
         Check whether SELinux tools are available if SELinux parameters
-        are requested. Raises AnsibleActionFail if required tools are
+        are requested. Raises RuntimeError if required tools are
         missing.
 
         :param perms: dict of permission settings
@@ -787,12 +766,12 @@ class PosixBase(ActionBase):
 
         if not chcon_path:
             if not semanage_path:
-                raise AnsibleActionFail(
+                raise RuntimeError(
                     "SELinux parameters were specified, but both 'chcon' "
                     "and 'semanage' are missing on the remote host"
                 )
             else:
-                raise AnsibleActionFail(
+                raise RuntimeError(
                     "SELinux requires 'chcon' to apply contexts, but it is "
                     "missing on the remote host"
                 )
@@ -818,14 +797,14 @@ class PosixBase(ActionBase):
             (e.g. 644, "0755")
         :returns str: String of the symbolic mode without type or ACL
             symbols
-        :raises AnsibleActionFail: On conversion error
+        :raises RuntimeError: On conversion error
         """
         int_mode = int(str(octal_mode), 8)
         try:
             # Strip type and ACL symbols
             symbolic_mode = stat.filemode(int_mode)[1:10]
         except Exception:
-            raise AnsibleActionFail(
+            raise RuntimeError(
                 f"Error converting mode {octal_mode} to symbols"
             )
         return symbolic_mode
@@ -850,7 +829,7 @@ class PosixBase(ActionBase):
             ``run()``
         :returns Tuple[bool, Optional[str], List[str]]: Tuple of
             (changed, old_content, old_lines)
-        :raises AnsibleActionFail: On invalid input
+        :raises RuntimeError: On invalid input
         """
         self._display.vvv(f"Comparing content and permissions with {dest}")
         changed = False
@@ -902,7 +881,7 @@ class PosixBase(ActionBase):
                         )
                         changed = True
                 except Exception as e:
-                    raise AnsibleActionFail(
+                    raise RuntimeError(
                         f"Invalid mode: {perms['mode']}: {e}"
                     )
 
@@ -931,7 +910,7 @@ class PosixBase(ActionBase):
         :param bool selinux: Boolean indicating whether SELinux handling
             is enabled
         :param Optional[dict] task_vars: Ansible task variables
-        :raises AnsibleActionFail: On failure to apply or verify any
+        :raises RuntimeError: On failure to apply or verify any
             permission or SELinux step
         """
         self._display.vvv(f"Applying permissions to {dest}")
@@ -943,7 +922,7 @@ class PosixBase(ActionBase):
                     ["chown", perms["owner"], dest], task_vars=task_vars
                 )
                 if chown_result["rc"] != 0:
-                    raise AnsibleActionFail(
+                    raise RuntimeError(
                         f"Failed to chown {dest}: "
                         f"{chown_result.get('stderr', '')}"
                     )
@@ -953,7 +932,7 @@ class PosixBase(ActionBase):
                     ["chgrp", perms["group"], dest], task_vars=task_vars
                 )
                 if chgrp_result["rc"] != 0:
-                    raise AnsibleActionFail(
+                    raise RuntimeError(
                         f"Failed to chgrp {dest}: "
                         f"{chgrp_result.get('stderr', '')}"
                     )
@@ -963,7 +942,7 @@ class PosixBase(ActionBase):
                     ["chmod", perms["mode"], dest], task_vars=task_vars
                 )
                 if chmod_result["rc"] != 0:
-                    raise AnsibleActionFail(
+                    raise RuntimeError(
                         f"Failed to chmod {dest}: "
                         f"{chmod_result.get('stderr', '')}"
                     )
@@ -986,7 +965,7 @@ class PosixBase(ActionBase):
                 "seuser",
             ]:
                 if perms.get(key) and final_perms.get(key) != perms.get(key):
-                    raise AnsibleActionFail(
+                    raise RuntimeError(
                         f"Post-apply verification failed: expected {key}="
                         f"{perms[key]}, got {final_perms.get(key)}"
                     )
@@ -998,12 +977,12 @@ class PosixBase(ActionBase):
                     )
                     actual_mode = final_perms.get("mode")
                     if actual_mode != expected_mode:
-                        raise AnsibleActionFail(
+                        raise RuntimeError(
                             "Post-apply verification failed: expected mode="
                             f"{expected_mode}, got {actual_mode}"
                         )
                 except Exception as e:
-                    raise AnsibleActionFail(
+                    raise RuntimeError(
                         f"Invalid mode format: {perms['mode']}: {e}"
                     )
 
@@ -1019,7 +998,7 @@ class PosixBase(ActionBase):
 
         :param Optional[dict] task_vars: Ansible task variables
         :returns str: The path to the created temporary directory
-        :raises AnsibleActionFail: If directory creation fails
+        :raises RuntimeError: If directory creation fails
         """
         cmd = self._cmd
         shell = self._connection._shell
@@ -1033,7 +1012,7 @@ class PosixBase(ActionBase):
             cmd_result = cmd(tmp_path_cmd, task_vars=task_vars)
 
             if cmd_result["rc"] != 0 or not cmd_result["stdout"]:
-                raise AnsibleActionFail(
+                raise RuntimeError(
                     "Failed to create temporary directory via raw fallback: "
                     f"{cmd_result['stderr']}"
                 )
@@ -1072,7 +1051,7 @@ class PosixBase(ActionBase):
             ``run()``
         :returns dict: Dictionary with 'changed', 'rc', 'msg', and
             optional 'backup_file'
-        :raises AnsibleActionFail: On any critical failure
+        :raises RuntimeError: On any critical failure
         """
         self._display.vvv(f"Starting _write_file to {dest}")
 
@@ -1091,7 +1070,7 @@ class PosixBase(ActionBase):
         old_stat = self._pseudo_stat(dest, task_vars=task_vars)
         self._display.vvv(f"Old stat: {old_stat}")
         if old_stat["exists"] and old_stat["type"] != "file":
-            raise AnsibleActionFail(f"Cannot write over {old_stat['type']}")
+            raise RuntimeError(f"Cannot write over {old_stat['type']}")
 
         # Normalize content and lines list
         lines, content = self._normalize_content(content)
@@ -1150,7 +1129,7 @@ class PosixBase(ActionBase):
                 mv_result = cmd(["mv", tmpfile, dest], task_vars=task_vars)
                 self._display.vvv(f"mv result: {mv_result}")
                 if mv_result["rc"] != 0:
-                    raise AnsibleActionFail(
+                    raise RuntimeError(
                         "Failed to move temp file into place: "
                         f"{mv_result.get('stderr', '')}"
                     )

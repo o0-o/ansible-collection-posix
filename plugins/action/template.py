@@ -35,7 +35,8 @@ from ansible import __version__ as ansible_version
 from ansible.errors import AnsibleActionFail, AnsibleError
 from ansible.module_utils.common.file import get_file_arg_spec
 from ansible.module_utils.common.text.converters import to_bytes, to_text
-from ansible_collections.o0_o.posix.plugins.action_utils import PosixBase
+from ansible.plugins.action import ActionBase
+from ansible_collections.o0_o.posix.plugins.module_utils import PosixActionBase
 
 
 def _is_ansible_2_19_plus():
@@ -75,7 +76,7 @@ else:
     _template_vars = None
 
 
-class ActionModule(PosixBase):
+class ActionModule(PosixActionBase, ActionBase):
     """
     Template files with Jinja2 and transfer to remote hosts.
 
