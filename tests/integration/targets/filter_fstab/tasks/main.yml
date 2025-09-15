@@ -16,127 +16,134 @@
 
 - name: Test basic fstab parsing
   block:
-    - name: Parse fstab content (raw format)
+    - name: Parse fstab content
       ansible.builtin.set_fact:
-        fstab_raw: "{{ fstab_content_reg.content | b64decode | o0_o.posix.fstab }}"
+        fstab_parsed: "{{ fstab_content_reg.content | b64decode | o0_o.posix.fstab }}"
 
-    - name: Assert raw parsing results
+    - name: Assert parsing results
       ansible.builtin.assert:
         that:
-          - fstab_raw is sequence
-          - fstab_raw | length == 13
-          - fstab_raw[0]['fs_spec'] == '/dev/sda1'
-          - fstab_raw[0]['fs_file'] == '/'
-          - fstab_raw[0]['fs_vfstype'] == 'ext4'
-          - fstab_raw[0]['fs_mntops'] == 'defaults,noatime'
-          - fstab_raw[0]['fs_freq'] == 0
-          - fstab_raw[0]['fs_passno'] == 1
+          - fstab_parsed is sequence
+          - fstab_parsed | length == 13
+          - fstab_parsed[0]['source'] == '/dev/sda1'
+          - fstab_parsed[0]['mount'] == '/'
+          - fstab_parsed[0]['type'] == 'ext4'
+          - fstab_parsed[0]['options'][0]['defaults'] == true
+          - fstab_parsed[0]['options'][1]['noatime'] == true
+          - fstab_parsed[0]['dump'] == 0
+          - fstab_parsed[0]['pass'] == 1
 
-- name: Test facts format
+- name: Test specific mount entries
   block:
-    - name: Parse fstab content (facts format)
+    - name: Find root filesystem in parsed fstab
       ansible.builtin.set_fact:
-        fstab_facts: "{{ fstab_content_reg.content | b64decode | o0_o.posix.fstab(facts=true) }}"
-
-    - name: Assert facts structure
-      ansible.builtin.assert:
-        that:
-          - fstab_facts is mapping
-          - "'mounts' in fstab_facts"
-          - fstab_facts['mounts'] is mapping
-          - "'/' in fstab_facts['mounts']"
-          - "'/boot' in fstab_facts['mounts']"
-          - "'/home' in fstab_facts['mounts']"
-          - "'swap' in fstab_facts['mounts']"  # swap uses "swap" as key
+        root_mount: "{{ fstab_parsed | selectattr('mount', 'equalto', '/') | first }}"
 
     - name: Assert root filesystem details
       ansible.builtin.assert:
         that:
-          - fstab_facts['mounts']['/']['source'] == '/dev/sda1'
-          - fstab_facts['mounts']['/']['filesystem'] == 'ext4'
-          - fstab_facts['mounts']['/']['type'] == 'device'
-          - fstab_facts['mounts']['/']['fuse'] == false
-          - fstab_facts['mounts']['/']['options']['defaults'] == true
-          - fstab_facts['mounts']['/']['options']['noatime'] == true
-          - fstab_facts['mounts']['/']['dump']['enabled'] == false
-          - fstab_facts['mounts']['/']['fsck']['enabled'] == true
-          - fstab_facts['mounts']['/']['fsck']['pass'] == 1
+          - root_mount['source'] == '/dev/sda1'
+          - root_mount['type'] == 'ext4'
+          - root_mount['options'][0]['defaults'] == true
+          - root_mount['options'][1]['noatime'] == true
+          - root_mount['dump'] == 0
+          - root_mount['pass'] == 1
+
+    - name: Find boot filesystem in parsed fstab
+      ansible.builtin.set_fact:
+        boot_mount: "{{ fstab_parsed | selectattr('mount', 'equalto', '/boot') | first }}"
 
     - name: Assert boot filesystem with UUID
       ansible.builtin.assert:
         that:
-          - fstab_facts['mounts']['/boot']['source'] == 'UUID=abc-123'
-          - fstab_facts['mounts']['/boot']['filesystem'] == 'ext2'
-          - fstab_facts['mounts']['/boot']['type'] == 'device'
-          - fstab_facts['mounts']['/boot']['dump']['enabled'] == true
-          - fstab_facts['mounts']['/boot']['dump']['days'] == 1
-          - fstab_facts['mounts']['/boot']['fsck']['enabled'] == true
-          - fstab_facts['mounts']['/boot']['fsck']['pass'] == 2
+          - boot_mount['source'] == 'UUID=abc-123'
+          - boot_mount['type'] == 'ext2'
+          - boot_mount['dump'] == 1
+          - boot_mount['pass'] == 2
+
+    - name: Find tmpfs in parsed fstab
+      ansible.builtin.set_fact:
+        tmp_mount: "{{ fstab_parsed | selectattr('mount', 'equalto', '/tmp') | first }}"
 
     - name: Assert virtual filesystem (tmpfs)
       ansible.builtin.assert:
         that:
-          - fstab_facts['mounts']['/tmp']['source'] is none
-          - fstab_facts['mounts']['/tmp']['filesystem'] == 'tmpfs'
-          - fstab_facts['mounts']['/tmp']['type'] == 'virtual'
-          - fstab_facts['mounts']['/tmp']['pseudo'] == false
-          - fstab_facts['mounts']['/tmp']['fuse'] == false
+          - tmp_mount['source'] == 'tmpfs'
+          - tmp_mount['type'] == 'tmpfs'
+
+    - name: Find proc filesystem in parsed fstab
+      ansible.builtin.set_fact:
+        proc_mount: "{{ fstab_parsed | selectattr('mount', 'equalto', '/proc') | first }}"
 
     - name: Assert pseudo filesystem (proc)
       ansible.builtin.assert:
         that:
-          - fstab_facts['mounts']['/proc']['source'] is none
-          - fstab_facts['mounts']['/proc']['filesystem'] == 'proc'
-          - fstab_facts['mounts']['/proc']['type'] == 'virtual'
-          - fstab_facts['mounts']['/proc']['pseudo'] == true
-          - fstab_facts['mounts']['/proc']['fuse'] == false
+          - proc_mount['source'] == 'proc'
+          - proc_mount['type'] == 'proc'
+
+    - name: Find NFS mount in parsed fstab
+      ansible.builtin.set_fact:
+        nfs_mount: "{{ fstab_parsed | selectattr('mount', 'equalto', '/mnt/nfs') | first }}"
 
     - name: Assert network filesystem (NFS)
       ansible.builtin.assert:
         that:
-          - fstab_facts['mounts']['/mnt/nfs']['source'] == 'nfs-server:/export/home'
-          - fstab_facts['mounts']['/mnt/nfs']['filesystem'] == 'nfs'
-          - fstab_facts['mounts']['/mnt/nfs']['type'] == 'network'
-          - fstab_facts['mounts']['/mnt/nfs']['fuse'] == false
+          - nfs_mount['source'] == 'nfs-server:/export/home'
+          - nfs_mount['type'] == 'nfs'
+
+    - name: Find CIFS mount in parsed fstab
+      ansible.builtin.set_fact:
+        smb_mount: "{{ fstab_parsed | selectattr('mount', 'equalto', '/mnt/smb') | first }}"
 
     - name: Assert network filesystem (CIFS/SMB)
       ansible.builtin.assert:
         that:
-          - fstab_facts['mounts']['/mnt/smb']['source'] == '//smb-server/share'
-          - fstab_facts['mounts']['/mnt/smb']['filesystem'] == 'cifs'
-          - fstab_facts['mounts']['/mnt/smb']['type'] == 'network'
+          - smb_mount['source'] == '//smb-server/share'
+          - smb_mount['type'] == 'cifs'
+
+    - name: Find swap entry in parsed fstab
+      ansible.builtin.set_fact:
+        swap_mount: "{{ fstab_parsed | selectattr('mount', 'equalto', 'none') | selectattr('type', 'equalto', 'swap') | first }}"
 
     - name: Assert swap entry
       ansible.builtin.assert:
         that:
-          - fstab_facts['mounts']['swap']['source'] == '/dev/sda3'
-          - fstab_facts['mounts']['swap']['filesystem'] is not defined
-          - fstab_facts['mounts']['swap']['type'] == 'device'
-          - fstab_facts['mounts']['swap']['options']['sw'] == true
+          - swap_mount['source'] == '/dev/sda3'
+          - swap_mount['type'] == 'swap'
+          - swap_mount['options'][0]['sw'] == true
+
+    - name: Find bind mount in parsed fstab
+      ansible.builtin.set_fact:
+        bind_mount: "{{ fstab_parsed | selectattr('mount', 'equalto', '/newdir') | first }}"
 
     - name: Assert bind mount
       ansible.builtin.assert:
         that:
-          - fstab_facts['mounts']['/newdir']['source'] == '/olddir'
-          - fstab_facts['mounts']['/newdir']['filesystem'] == 'none'
-          - fstab_facts['mounts']['/newdir']['type'] == 'overlay'
-          - fstab_facts['mounts']['/newdir']['options']['bind'] == true
+          - bind_mount['source'] == '/olddir'
+          - bind_mount['type'] == 'none'
+          - bind_mount['options'][0]['bind'] == true
+
+    - name: Find FUSE filesystem in parsed fstab
+      ansible.builtin.set_fact:
+        sshfs_mount: "{{ fstab_parsed | selectattr('mount', 'equalto', '/mnt/ssh') | first }}"
 
     - name: Assert FUSE filesystem (sshfs)
       ansible.builtin.assert:
         that:
-          - fstab_facts['mounts']['/mnt/ssh']['source'] == 'sshfs#user@host:/path'
-          - fstab_facts['mounts']['/mnt/ssh']['filesystem'] == 'fuse.sshfs'
-          - fstab_facts['mounts']['/mnt/ssh']['type'] == 'network'
-          - fstab_facts['mounts']['/mnt/ssh']['fuse'] == true
+          - sshfs_mount['source'] == 'sshfs#user@host:/path'
+          - sshfs_mount['type'] == 'fuse.sshfs'
+
+    - name: Find overlay filesystem in parsed fstab
+      ansible.builtin.set_fact:
+        overlay_mount: "{{ fstab_parsed | selectattr('mount', 'equalto', '/var/docker') | first }}"
 
     - name: Assert overlay filesystem
       ansible.builtin.assert:
         that:
-          - fstab_facts['mounts']['/var/docker']['filesystem'] == 'overlay'
-          - fstab_facts['mounts']['/var/docker']['type'] == 'overlay'
-          - fstab_facts['mounts']['/var/docker']['options']['lowerdir'] == '/lower'
-          - fstab_facts['mounts']['/var/docker']['options']['upperdir'] == '/upper'
+          - overlay_mount['type'] == 'overlay'
+          # Check for lowerdir and upperdir in options
+          - overlay_mount['options'] | selectattr('lowerdir', 'defined') | list | length > 0
+          - overlay_mount['options'] | selectattr('upperdir', 'defined') | list | length > 0
 
 - name: Test with command output format
   block:
@@ -155,7 +162,8 @@
         that:
           - fstab_from_cmd is sequence
           - fstab_from_cmd | length == 13
-          - fstab_from_cmd[0]['fs_spec'] == '/dev/sda1'
+          - fstab_from_cmd[0]['source'] == '/dev/sda1'
+          - fstab_from_cmd[0]['mount'] == '/'
 
 - name: Test with list input format
   block:
@@ -177,12 +185,12 @@
   block:
     - name: Parse empty fstab
       ansible.builtin.set_fact:
-        empty_fstab: "{{ '' | o0_o.posix.fstab(facts=true) }}"
+        empty_fstab: "{{ '' | o0_o.posix.fstab }}"
 
     - name: Assert empty result
       ansible.builtin.assert:
         that:
-          - empty_fstab['mounts'] == {}
+          - empty_fstab == []
 
 - name: Test fstab with only comments
   block:
@@ -196,9 +204,9 @@
 
     - name: Parse comment-only fstab
       ansible.builtin.set_fact:
-        comment_result: "{{ comment_only_fstab | o0_o.posix.fstab(facts=true) }}"
+        comment_result: "{{ comment_only_fstab | o0_o.posix.fstab }}"
 
     - name: Assert empty result for comments
       ansible.builtin.assert:
         that:
-          - comment_result['mounts'] == {}
+          - comment_result == []

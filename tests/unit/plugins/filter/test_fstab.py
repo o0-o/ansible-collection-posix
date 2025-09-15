@@ -39,23 +39,23 @@ def mock_parse_command(monkeypatch: pytest.MonkeyPatch) -> MagicMock:
 def test_fstab_basic(
     filter_module: FilterModule, mock_parse_command: MagicMock
 ) -> None:
-    """Test basic fstab parsing without facts format."""
+    """Test basic fstab parsing."""
     parsed_data = [
         {
             "fs_spec": "/dev/sda1",
             "fs_file": "/",
             "fs_vfstype": "ext4",
             "fs_mntops": "defaults",
-            "fs_freq": 0,
-            "fs_passno": 1,
+            "fs_freq": "0",
+            "fs_passno": "1",
         },
         {
             "fs_spec": "/dev/sda2",
             "fs_file": "/home",
             "fs_vfstype": "ext4",
             "fs_mntops": "defaults,noatime",
-            "fs_freq": 0,
-            "fs_passno": 2,
+            "fs_freq": "0",
+            "fs_passno": "2",
         },
     ]
     mock_parse_command.return_value = parsed_data
@@ -69,13 +69,33 @@ def test_fstab_basic(
 
     # Verify parse_command was called
     mock_parse_command.assert_called_once_with(fstab_content, "fstab")
-    assert result == parsed_data
+
+    # Check the normalized output
+    expected = [
+        {
+            "source": "/dev/sda1",
+            "mount": "/",
+            "type": "ext4",
+            "options": [{"defaults": True}],
+            "dump": 0,
+            "pass": 1,
+        },
+        {
+            "source": "/dev/sda2",
+            "mount": "/home",
+            "type": "ext4",
+            "options": [{"defaults": True}, {"noatime": True}],
+            "dump": 0,
+            "pass": 2,
+        },
+    ]
+    assert result == expected
 
 
-def test_fstab_with_facts_format(
+def test_fstab_with_complex_options(
     filter_module: FilterModule, mock_parse_command: MagicMock
 ) -> None:
-    """Test fstab parsing with facts=True format."""
+    """Test fstab parsing with complex mount options."""
     parsed_data = [
         {
             "fs_spec": "/dev/sda1",
@@ -104,39 +124,33 @@ def test_fstab_with_facts_format(
     ]
     mock_parse_command.return_value = parsed_data
 
-    result = filter_module.fstab("dummy_content", facts=True)
+    result = filter_module.fstab("dummy_content")
 
     expected = [
-            {
-                "target": "/",
-                "source": "/dev/sda1",
-                "driver": "ext4",
-                "type": "regular",
-                "fuse": False,
-                "options": {"defaults": True},
-                "dump": {"enabled": False},
-                "fsck": {"enabled": True, "pass": 1},
-            },
-            {
-                "target": "/boot",
-                "source": "UUID=abc123",
-                "driver": "ext2",
-                "type": "regular",
-                "fuse": False,
-                "options": {"defaults": True, "ro": True},
-                "dump": {"enabled": True, "days": 1},
-                "fsck": {"enabled": True, "pass": 2},
-            },
-            {
-                "target": "/tmp",
-                "source": None,
-                "driver": "tmpfs",
-                "type": "virtual",
-                "fuse": False,
-                "options": {"defaults": True, "nodev": True, "nosuid": True},
-                "dump": {"enabled": False},
-                "fsck": {"enabled": False},
-            },
+        {
+            "source": "/dev/sda1",
+            "mount": "/",
+            "type": "ext4",
+            "options": [{"defaults": True}],
+            "dump": 0,
+            "pass": 1,
+        },
+        {
+            "source": "UUID=abc123",
+            "mount": "/boot",
+            "type": "ext2",
+            "options": [{"defaults": True}, {"ro": True}],
+            "dump": 1,
+            "pass": 2,
+        },
+        {
+            "source": "tmpfs",
+            "mount": "/tmp",
+            "type": "tmpfs",
+            "options": [{"defaults": True}, {"nodev": True}, {"nosuid": True}],
+            "dump": 0,
+            "pass": 0,
+        },
     ]
 
     assert result == expected
@@ -168,46 +182,58 @@ def test_fstab_with_comments_and_blank_lines(
 # This is a comment
 """
     result = filter_module.fstab(fstab_content)
-    assert result == parsed_data
+
+    expected = [{
+        "source": "/dev/sda1",
+        "mount": "/",
+        "type": "ext4",
+        "options": [{"defaults": True}],
+        "dump": 0,
+        "pass": 1,
+    }]
+    assert result == expected
 
 
-def test_fstab_normalize_to_mount_format(filter_module: FilterModule) -> None:
-    """Test normalization of fstab entries to mount format."""
-    fstab_entries = [
+def test_fstab_with_nfs(
+    filter_module: FilterModule, mock_parse_command: MagicMock
+) -> None:
+    """Test fstab parsing with NFS entries."""
+    parsed_data = [
         {
             "fs_spec": "/dev/sda1",
             "fs_file": "/",
             "fs_vfstype": "ext4",
             "fs_mntops": "defaults,noatime",
-            "fs_freq": 0,
-            "fs_passno": 1,
+            "fs_freq": "0",
+            "fs_passno": "1",
         },
         {
             "fs_spec": "nfs-server:/export",
             "fs_file": "/mnt/nfs",
             "fs_vfstype": "nfs",
             "fs_mntops": "rw,hard,intr",
-            "fs_freq": 0,
-            "fs_passno": 0,
+            "fs_freq": "0",
+            "fs_passno": "0",
         },
     ]
+    mock_parse_command.return_value = parsed_data
 
-    result = filter_module._normalize_to_mount_format(fstab_entries)
+    result = filter_module.fstab("dummy_content")
 
     expected = [
         {
             "source": "/dev/sda1",
-            "target": "/",
-            "driver": "ext4",
-            "options": ["defaults", "noatime"],
+            "mount": "/",
+            "type": "ext4",
+            "options": [{"defaults": True}, {"noatime": True}],
             "dump": 0,
             "pass": 1,
         },
         {
             "source": "nfs-server:/export",
-            "target": "/mnt/nfs",
-            "driver": "nfs",
-            "options": ["rw", "hard", "intr"],
+            "mount": "/mnt/nfs",
+            "type": "nfs",
+            "options": [{"rw": True}, {"hard": True}, {"intr": True}],
             "dump": 0,
             "pass": 0,
         },
@@ -232,19 +258,17 @@ def test_fstab_with_swap(
     ]
     mock_parse_command.return_value = parsed_data
 
-    result = filter_module.fstab("dummy", facts=True)
+    result = filter_module.fstab("dummy")
 
     expected = [
-            {
-                "target": "swap",
-                "source": "/dev/sda3",
-                "type": "paging",  # swap is paging type
-                # No driver key since swap isn't a filesystem
-                "fuse": False,
-                "options": {"sw": True},
-                "dump": {"enabled": False},
-                "fsck": {"enabled": False},
-            }
+        {
+            "source": "/dev/sda3",
+            "mount": "none",
+            "type": "swap",
+            "options": [{"sw": True}],
+            "dump": 0,
+            "pass": 0,
+        }
     ]
 
     assert result == expected
@@ -266,19 +290,17 @@ def test_fstab_with_bind_mount(
     ]
     mock_parse_command.return_value = parsed_data
 
-    result = filter_module.fstab("dummy", facts=True)
+    result = filter_module.fstab("dummy")
 
     expected = [
-            {
-                "target": "/newdir",
-                "source": "/olddir",
-                "driver": "none",
-                "type": "overlay",  # bind mounts are overlay type
-                "fuse": False,
-                "options": {"bind": True},
-                "dump": {"enabled": False},
-                "fsck": {"enabled": False},
-            }
+        {
+            "source": "/olddir",
+            "mount": "/newdir",
+            "type": "none",
+            "options": [{"bind": True}],
+            "dump": 0,
+            "pass": 0,
+        }
     ]
 
     assert result == expected
@@ -308,29 +330,25 @@ def test_fstab_with_invalid_dump_pass_values(
     ]
     mock_parse_command.return_value = parsed_data
 
-    result = filter_module.fstab("dummy", facts=True)
+    result = filter_module.fstab("dummy")
 
     expected = [
-            {
-                "target": "/",
-                "source": "/dev/sda1",
-                "driver": "ext4",
-                "type": "regular",
-                "fuse": False,
-                "options": {"defaults": True},
-                "dump": {"invalid": -1},
-                "fsck": {"invalid": -1, "enabled": False},
-            },
-            {
-                "target": "/home",
-                "source": "/dev/sda2",
-                "driver": "ext4",
-                "type": "regular",
-                "fuse": False,
-                "options": {"defaults": True},
-                "dump": {"invalid": "auto"},
-                "fsck": {"invalid": "auto"},
-            },
+        {
+            "source": "/dev/sda1",
+            "mount": "/",
+            "type": "ext4",
+            "options": [{"defaults": True}],
+            "dump": -1,
+            "pass": -1,
+        },
+        {
+            "source": "/dev/sda2",
+            "mount": "/home",
+            "type": "ext4",
+            "options": [{"defaults": True}],
+            "dump": None,  # Non-integer becomes None
+            "pass": None,  # Non-integer becomes None
+        },
     ]
 
     assert result == expected
@@ -372,7 +390,16 @@ def test_fstab_input_types(
     result = filter_module.fstab(input_data)
 
     mock_parse_command.assert_called_once_with(input_data, "fstab")
-    assert result == parsed_data
+    # Result should be normalized, not raw parsed data
+    expected = [{
+        "source": "/dev/sda1",
+        "mount": "/",
+        "type": "ext4",
+        "options": [{"defaults": True}],
+        "dump": 0,
+        "pass": 1,
+    }]
+    assert result == expected
 
 
 def test_fstab_empty_input(
@@ -381,7 +408,7 @@ def test_fstab_empty_input(
     """Test fstab filter with empty input."""
     mock_parse_command.return_value = []
 
-    result = filter_module.fstab("", facts=True)
+    result = filter_module.fstab("")
 
     assert result == []
 
@@ -410,29 +437,25 @@ def test_fstab_with_fuse_filesystem(
     ]
     mock_parse_command.return_value = parsed_data
 
-    result = filter_module.fstab("dummy", facts=True)
+    result = filter_module.fstab("dummy")
 
     expected = [
-            {
-                "target": "/mnt/ssh",
-                "source": "sshfs#user@host:/path",
-                "driver": "fuse.sshfs",
-                "type": "network",  # sshfs is network type
-                "fuse": True,
-                "options": {"defaults": True},
-                "dump": {"enabled": False},
-                "fsck": {"enabled": False},
-            },
-            {
-                "target": "/decrypted",
-                "source": "encfs#/encrypted",
-                "driver": "fuse.encfs",
-                "type": "overlay",  # encfs is overlay type
-                "fuse": True,
-                "options": {"defaults": True},
-                "dump": {"enabled": False},
-                "fsck": {"enabled": False},
-            },
+        {
+            "source": "sshfs#user@host:/path",
+            "mount": "/mnt/ssh",
+            "type": "fuse.sshfs",
+            "options": [{"defaults": True}],
+            "dump": 0,
+            "pass": 0,
+        },
+        {
+            "source": "encfs#/encrypted",
+            "mount": "/decrypted",
+            "type": "fuse.encfs",
+            "options": [{"defaults": True}],
+            "dump": 0,
+            "pass": 0,
+        },
     ]
 
     assert result == expected

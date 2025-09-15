@@ -74,42 +74,29 @@ _value:
   elements: dict
   returned: always
   sample:
-    - mount: /
-      source: /dev/sda1
-      type: regular
-      driver: ext4
-      fuse: false
+    - source: /dev/sda1
+      mount: /
+      type: ext4
       options:
-        defaults: true
-        noatime: true
-      dump:
-        enabled: false
-      fsck:
-        enabled: true
-        pass: 1
-    - mount: /boot
-      source: UUID=abc-123
-      type: regular
-      driver: ext2
-      fuse: false
+        - defaults: true
+        - noatime: true
+      dump: 0
+      pass: 1
+    - source: UUID=abc-123
+      mount: /boot
+      type: ext2
       options:
-        defaults: true
-        ro: true
-      dump:
-        enabled: true
-        days: 1
-      fsck:
-        enabled: true
-        pass: 2
-    - mount: swap
-      source: /dev/sda2
-      type: paging
+        - defaults: true
+        - ro: true
+      dump: 1
+      pass: 2
+    - source: /dev/sda2
+      mount: none
+      type: swap
       options:
-        sw: true
-      dump:
-        enabled: false
-      fsck:
-        enabled: false
+        - sw: true
+      dump: 0
+      pass: 0
 """
 
 
@@ -154,7 +141,9 @@ class FilterModule(JCBase):
                 types = string2items(entry.get("fs_vfstype"))
                 norm_entry["type"] = wantlist(types, False)
             except (TypeError, ValueError) as e:
-                raise AnsibleFilterError(f"Error parsing fs_vfstype: {e}") from e
+                raise AnsibleFilterError(
+                    f"Error parsing fs_vfstype: {e}"
+                ) from e
 
             # Parse options string into list of dicts using string2items
             if "fs_mntops" in entry:
@@ -172,16 +161,25 @@ class FilterModule(JCBase):
                             # Treat as boolean flag
                             norm_entry["options"].append({opt: True})
                 except (TypeError, ValueError) as e:
-                    raise AnsibleFilterError(f"Error parsing fs_mntops: {e}") from e
-
+                    raise AnsibleFilterError(
+                        f"Error parsing fs_mntops: {e}"
+                    ) from e
 
             if "fs_freq" in entry:
-                norm_entry["dump"] = int(entry["fs_freq"])
+                try:
+                    norm_entry["dump"] = int(entry["fs_freq"])
+                except (TypeError, ValueError):
+                    # Non-integer values become None
+                    norm_entry["dump"] = None
             else:
                 norm_entry["dump"] = None
 
             if "fs_passno" in entry:
-                norm_entry["pass"] = int(entry["fs_passno"])
+                try:
+                    norm_entry["pass"] = int(entry["fs_passno"])
+                except (TypeError, ValueError):
+                    # Non-integer values become None
+                    norm_entry["pass"] = None
             else:
                 norm_entry["pass"] = None
 

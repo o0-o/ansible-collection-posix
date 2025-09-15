@@ -18,20 +18,20 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from ansible_collections.o0_o.posix.plugins.action_utils import PosixBase
+from ansible_collections.o0_o.posix.plugins.module_utils import PosixActionBase
 from ansible_collections.o0_o.posix.tests.utils import real_cmd
 
 
 @pytest.fixture
-def base() -> Generator[PosixBase, None, None]:
-    """Create a mocked PosixBase instance for unit testing.
+def base() -> Generator[PosixActionBase, None, None]:
+    """Create a mocked PosixActionBase instance for unit testing.
 
-    Provides a PosixBase instance with mocked Ansible dependencies
+    Provides a PosixActionBase instance with mocked Ansible dependencies
     but real command execution capabilities for integration-style
     testing. Creates an isolated temporary directory for file
     operations.
 
-    :returns Generator[PosixBase, None, None]: Configured PosixBase
+    :returns Generator[PosixActionBase, None, None]: Configured PosixActionBase
         instance with mocked dependencies and real command execution
 
     .. note::
@@ -41,8 +41,8 @@ def base() -> Generator[PosixBase, None, None]:
     # MagicMock action to override command execution
     action = MagicMock()
 
-    # Create PosixBase instance with mocked dependencies
-    base = PosixBase(
+    # Create PosixActionBase instance with mocked dependencies
+    base = PosixActionBase(
         task=MagicMock(),
         connection=MagicMock(),
         play_context=MagicMock(),
