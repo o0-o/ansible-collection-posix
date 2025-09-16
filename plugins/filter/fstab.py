@@ -14,57 +14,85 @@ from __future__ import annotations
 from typing import Any, Dict, List, Union
 
 from ansible.errors import AnsibleFilterError
-from ansible_collections.o0_o.posix.plugins.module_utils import JCBase
-from ansible_collections.o0_o.utils.plugins.module_utils import (
-    string2items,
-    wantlist,
-)
+from ansible_collections.o0_o.posix.plugins.module_utils import fstab as _fstab
 
 DOCUMENTATION = r"""
 ---
 name: fstab
-short_description: Parse /etc/fstab file content
+short_description: Parse or generate /etc/fstab content
 version_added: "1.5.0"
 description:
-  - Parse /etc/fstab file content into structured data using jc
-  - Returns a list of mount entries with filesystem classification
-    and structured options
-  - Automatically classifies filesystem types and converts options to dictionary
-  - Includes dump frequency and fsck pass information
+  - Bidirectional filter for /etc/fstab content
+  - Parse fstab text into structured data using jc
+  - Generate fstab text from structured mount entries
+  - Automatically detects operation based on input type
 options:
   _input:
-    description:
-      - Content of /etc/fstab as string, list of lines, or file content
+    description: |
+      For parsing: fstab content as string, list of lines, or
+      command output dict. For generation: list of mount entry
+      dicts with source, mount, type, options.
     type: raw
     required: true
 requirements:
   - jc (Python library)
 notes:
-  - The jc library parses fstab format into structured data
-  - Returns a list structure matching other storage filters
-  - Options are parsed into dictionary format for easier manipulation
-  - Filesystem types are automatically classified (regular, virtual, network, overlay)
-  - FUSE filesystems are automatically detected
-  - Includes dump frequency and fsck pass information from fstab
+  - Automatically detects whether to parse or generate based on input
+  - For parsing, returns normalized list of mount entries
+  - For generation, returns formatted fstab text
+  - Options are stored as list of dicts for flexible manipulation
+  - Supports all standard fstab fields including dump and pass
 author:
   - oØ.o (@o0-o)
 """
 
 EXAMPLES = r"""
 # Parse fstab content
-- name: Read fstab file
+- name: Read and parse fstab file
   ansible.builtin.slurp:
     src: /etc/fstab
   register: fstab_content
 
-- name: Parse fstab and store
+- name: Parse fstab into structured data
   ansible.builtin.set_fact:
-    fstab_info: "{{ fstab_content.content | b64decode | o0_o.posix.fstab }}"
+    fstab_entries: "{{ fstab_content.content | b64decode | o0_o.posix.fstab }}"
 
 - name: Display root filesystem info
+  vars:
+    root_fs: >-
+      {{ fstab_entries | selectattr('mount', 'equalto', '/') | first }}
   ansible.builtin.debug:
-    msg: >-
-      Root configured to mount from {{ (fstab_info | selectattr('mount', 'equalto', '/') | first).source }}
+    msg: "Root configured to mount from {{ root_fs.source }}"
+
+# Generate fstab content
+- name: Define mount entries
+  ansible.builtin.set_fact:
+    new_mounts:
+      - source: /dev/sda1
+        mount: /
+        type: ext4
+        options:
+          - defaults: true
+          - noatime: true
+        dump: 0
+        pass: 1
+      - source: /dev/sda2
+        mount: /home
+        type: ext4
+        options:
+          - defaults: true
+        dump: 0
+        pass: 2
+
+- name: Generate fstab content
+  ansible.builtin.set_fact:
+    new_fstab: "{{ new_mounts | o0_o.posix.fstab }}"
+
+- name: Write new fstab
+  ansible.builtin.copy:
+    content: "{{ new_fstab }}"
+    dest: /etc/fstab.new
+    backup: true
 """
 
 RETURN = r"""
@@ -100,89 +128,45 @@ _value:
 """
 
 
-class FilterModule(JCBase):
-    """Filter for parsing fstab file content using jc."""
+class FilterModule:
+    """Filter for parsing and generating fstab file content."""
 
     def filters(self) -> Dict[str, Any]:
         """Return the filter functions."""
         return {"fstab": self.fstab}
 
     def fstab(
-        self, config: Union[str, List[str], Dict[str, Any]]
-    ) -> List[Dict[str, Any]]:
-        """Parse fstab file content with filesystem classification.
+        self,
+        config: Union[str, Dict[str, Any], List[Dict[str, Any]]],
+    ) -> Union[List[Dict[str, Any]], str]:
+        """Parse or generate fstab content.
 
-        Converts jc's fstab field names to standardized format:
+        Bidirectional filter that either:
+        1. Parses fstab text into normalized list of mount entries
+        2. Generates fstab text from list of mount entries
+
+        For parsing (string/list input):
         - fs_spec → source
         - fs_file → mount
-        - fs_vfstype → type (single value preferred, list if multiple)
-        - fs_mntops → options (as dictionary with key=value pairs)
+        - fs_vfstype → type
+        - fs_mntops → options (as list of dicts)
         - fs_freq → dump
         - fs_passno → pass
-        - Options are parsed as key=value or key=True for flags
 
-        :param config: fstab config as string, list of lines, or dict
-        :returns: List of mount entries with standardized structure
+        For generation (list of dicts input):
+        - source → fs_spec
+        - mount → fs_file
+        - type → fs_vfstype
+        - options → fs_mntops (comma-separated)
+        - dump → fs_freq
+        - pass → fs_passno
+
+        :param config: Either fstab text to parse or list of entries
+            to generate
+        :returns: Either parsed entries list or generated fstab text
+        :raises AnsibleFilterError: If parsing or generation fails
         """
-        # Parse with jc
-        parsed = self.parse_command(config, "fstab")
-
-        # Normalize to standard format
-        normalized = []
-        for entry in parsed:
-            norm_entry = {}
-
-            norm_entry["source"] = entry.get("fs_spec")
-            norm_entry["mount"] = entry.get("fs_file")
-
-            # Parse vfstype with string2items first (in case of comma-separated types)
-            # then use wantlist(false) to get single value if only one type
-            try:
-                types = string2items(entry.get("fs_vfstype"))
-                norm_entry["type"] = wantlist(types, False)
-            except (TypeError, ValueError) as e:
-                raise AnsibleFilterError(
-                    f"Error parsing fs_vfstype: {e}"
-                ) from e
-
-            # Parse options string into list of dicts using string2items
-            if "fs_mntops" in entry:
-                # Use string2items to parse comma-separated options
-                # It handles None/empty strings gracefully
-                try:
-                    options = string2items(entry["fs_mntops"])
-                    norm_entry["options"] = []
-                    for opt in options:
-                        if "=" in opt:
-                            # Split on first = only
-                            key, value = opt.split("=", 1)
-                            norm_entry["options"].append({key: value})
-                        else:
-                            # Treat as boolean flag
-                            norm_entry["options"].append({opt: True})
-                except (TypeError, ValueError) as e:
-                    raise AnsibleFilterError(
-                        f"Error parsing fs_mntops: {e}"
-                    ) from e
-
-            if "fs_freq" in entry:
-                try:
-                    norm_entry["dump"] = int(entry["fs_freq"])
-                except (TypeError, ValueError):
-                    # Non-integer values become None
-                    norm_entry["dump"] = None
-            else:
-                norm_entry["dump"] = None
-
-            if "fs_passno" in entry:
-                try:
-                    norm_entry["pass"] = int(entry["fs_passno"])
-                except (TypeError, ValueError):
-                    # Non-integer values become None
-                    norm_entry["pass"] = None
-            else:
-                norm_entry["pass"] = None
-
-            normalized.append(norm_entry)
-
-        return normalized
+        try:
+            return _fstab(config)
+        except (ValueError, ImportError) as e:
+            raise AnsibleFilterError(f"Error processing fstab: {e}") from e

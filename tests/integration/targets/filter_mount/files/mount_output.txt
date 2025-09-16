@@ -1,0 +1,6 @@
+/dev/sda1 on / type ext4 (rw,relatime,errors=remount-ro)
+proc on /proc type proc (rw,nosuid,nodev,noexec,relatime)
+sysfs on /sys type sysfs (rw,nosuid,nodev,noexec,relatime)
+tmpfs on /dev/shm type tmpfs (rw,nosuid,nodev)
+/dev/sda2 on /home type ext4 (rw,relatime,noatime)
+server:/export on /mnt/nfs type nfs (rw,vers=4.2,rsize=1048576,wsize=1048576)

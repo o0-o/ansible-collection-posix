@@ -12,771 +12,198 @@
 from __future__ import annotations
 
 from typing import Any, Dict, List
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
-
-from ansible_collections.o0_o.posix.plugins.filter.mount import FilterModule
-from ansible_collections.o0_o.posix.tests.utils import find_mount_by_target
+from ansible.errors import AnsibleFilterError
 
 
 @pytest.fixture
-def filter_module() -> FilterModule:
+def filter_module():
     """Create a FilterModule instance for testing."""
+    from ansible_collections.o0_o.posix.plugins.filter.mount import FilterModule
     return FilterModule()
 
 
-@pytest.fixture
-def mock_parse_command(monkeypatch) -> MagicMock:
-    """Mock the parse_command method."""
-    mock = MagicMock()
-    monkeypatch.setattr(FilterModule, "parse_command", mock)
-    return mock
+def test_mount_parse_linux_output(filter_module):
+    """Test parsing Linux mount output."""
+    mount_output = """/dev/sda1 on / type ext4 (rw,relatime,errors=remount-ro)
+proc on /proc type proc (rw,nosuid,nodev,noexec,relatime)
+tmpfs on /dev/shm type tmpfs (rw,nosuid,nodev)"""
 
+    result = filter_module.mount(mount_output)
 
-def test_mount_default_mode(
-    filter_module: FilterModule, mock_parse_command: MagicMock
-) -> None:
-    """Test mount filter in default mode (facts=False)."""
-    # Setup mock to return parsed data
-    parsed_data = [
-        {
-            "filesystem": "/dev/sda1",
-            "mount_point": "/",
-            "type": "ext4",
-            "options": ["rw", "relatime", "errors=remount-ro"],
-        },
-        {
-            "filesystem": "/dev/sda2",
-            "mount_point": "/home",
-            "type": "ext4",
-            "options": ["rw", "relatime"],
-        },
-    ]
-    mock_parse_command.return_value = parsed_data
-
-    # Test with string input
-    result = filter_module.mount(
-        "/dev/sda1 on / type ext4 (rw,relatime,errors=remount-ro)"
-    )
-
-    # Verify parse_command was called
-    mock_parse_command.assert_called_once_with(
-        "/dev/sda1 on / type ext4 (rw,relatime,errors=remount-ro)", "mount"
-    )
-
-    # Verify raw parsed data is returned
-    assert result == parsed_data
-
-
-def test_mount_facts_mode(
-    filter_module: FilterModule, mock_parse_command: MagicMock
-) -> None:
-    """Test mount filter in facts mode."""
-    # Setup mock to return parsed data
-    parsed_data = [
-        {
-            "filesystem": "/dev/sda1",
-            "mount_point": "/",
-            "type": "ext4",
-            "options": ["rw", "relatime", "errors=remount-ro"],
-        },
-        {
-            "filesystem": "/dev/sda2",
-            "mount_point": "/home",
-            "type": "ext4",
-            "options": ["rw", "relatime"],
-        },
-        {
-            "filesystem": "tmpfs",
-            "mount_point": "/dev/shm",
-            "type": "tmpfs",
-            "options": ["rw", "nosuid", "nodev"],
-        },
-    ]
-    mock_parse_command.return_value = parsed_data
-
-    # Test with facts=True
-    result = filter_module.mount("dummy", facts=True)
-
-    # Verify the structure
-    assert isinstance(result, list)
+    # Verify the result structure matches our expected format
     assert len(result) == 3
 
-    # Verify root mount
-    root_mount = find_mount_by_target(result, "/")
-    assert root_mount is not None
-    assert root_mount["source"] == "/dev/sda1"
-    assert root_mount["type"] == "regular"
-    assert root_mount["driver"] == "ext4"
-    assert root_mount["fuse"] is False
-    assert root_mount["options"] == {
-        "rw": True,
-        "relatime": True,
-        "errors": "remount-ro",
-    }
+    # Check root filesystem
+    assert result[0]["source"] == "/dev/sda1"
+    assert result[0]["mount"] == "/"
+    assert result[0]["type"] == "ext4"
+    assert {"rw": True} in result[0]["options"]
+    assert {"relatime": True} in result[0]["options"]
+    assert {"errors": "remount-ro"} in result[0]["options"]
 
-    # Verify home mount
-    home_mount = find_mount_by_target(result, "/home")
-    assert home_mount is not None
-    assert home_mount["source"] == "/dev/sda2"
-    assert home_mount["type"] == "regular"
-    assert home_mount["driver"] == "ext4"
-    assert home_mount["fuse"] is False
-    assert home_mount["options"] == {"rw": True, "relatime": True}
+    # Check proc filesystem
+    assert result[1]["source"] == "proc"
+    assert result[1]["mount"] == "/proc"
+    assert result[1]["type"] == "proc"
+    assert {"rw": True} in result[1]["options"]
+    assert {"nosuid": True} in result[1]["options"]
 
-    # Verify tmpfs mount (virtual filesystem)
-    shm_mount = find_mount_by_target(result, "/dev/shm")
-    assert shm_mount is not None
-    assert (
-        shm_mount.get("source") is None
-    )  # Virtual filesystems have source=None
-    assert shm_mount["type"] == "virtual"
-    assert shm_mount["driver"] == "tmpfs"
-    assert shm_mount["fuse"] is False
-    assert shm_mount["options"] == {"rw": True, "nosuid": True, "nodev": True}
+    # Check tmpfs
+    assert result[2]["source"] == "tmpfs"
+    assert result[2]["mount"] == "/dev/shm"
+    assert result[2]["type"] == "tmpfs"
 
 
-class TestNormalizeMountData:
-    """Test the _normalize_mount_data method."""
+def test_mount_parse_macos_output(filter_module):
+    """Test parsing macOS mount output (type in options)."""
+    # macOS style output where filesystem type is the first option
+    mount_output = "/dev/disk3s1s1 on / (apfs, local, journaled)"
 
-    def test_normalize_linux_style(self, filter_module: FilterModule) -> None:
-        """Test normalization of Linux-style mount data with type field."""
-        parsed = [
-            {
-                "filesystem": "/dev/sda1",
-                "mount_point": "/",
-                "type": "ext4",
-                "options": ["rw", "relatime"],
-            },
-        ]
+    result = filter_module.mount(mount_output)
 
-        normalized = filter_module._normalize_mount_data(parsed)
-
-        assert len(normalized) == 1
-        assert normalized[0]["target"] == "/"
-        assert normalized[0]["source"] == "/dev/sda1"
-        assert normalized[0]["driver"] == "ext4"
-        assert normalized[0]["options"] == ["rw", "relatime"]
-
-    def test_normalize_macos_style(self, filter_module: FilterModule) -> None:
-        """Test normalization of macOS-style mount data (type in options)."""
-        parsed = [
-            {
-                "filesystem": "/dev/disk3s1s1",
-                "mount_point": "/",
-                "options": ["apfs", "local", "journaled"],
-            },
-        ]
-
-        normalized = filter_module._normalize_mount_data(parsed)
-
-        assert len(normalized) == 1
-        assert normalized[0]["target"] == "/"
-        assert normalized[0]["source"] == "/dev/disk3s1s1"
-        assert normalized[0]["driver"] == "apfs"
-        assert normalized[0]["options"] == [
-            "local",
-            "journaled",
-        ]  # type removed
+    assert len(result) == 1
+    assert result[0]["source"] == "/dev/disk3s1s1"
+    assert result[0]["mount"] == "/"
+    assert result[0]["type"] == "apfs"  # Extracted from first option
+    assert {"local": True} in result[0]["options"]
+    assert {"journaled": True} in result[0]["options"]
 
 
-class TestFormatStorageAsFacts:
-    """Test the format_storage_as_facts method (inherited from StorageBase)."""
-
-    @pytest.mark.parametrize(
-        "normalized_data,expected",
-        [
-            # Standard Linux mounts with /dev/ devices (normalized format)
-            (
-                [
-                    {
-                        "source": "/dev/sda1",
-                        "target": "/",
-                        "driver": "ext4",
-                        "options": ["rw", "relatime"],
-                    },
-                    {
-                        "source": "/dev/sda2",
-                        "target": "/boot",
-                        "driver": "ext4",
-                        "options": ["rw", "relatime"],
-                    },
-                ],
-                [
-                    {
-                        "target": "/",
-                        "source": "/dev/sda1",
-                        "type": "regular",
-                        "driver": "ext4",
-                        "fuse": False,
-                        "options": {"rw": True, "relatime": True},
-                    },
-                    {
-                        "target": "/boot",
-                        "source": "/dev/sda2",
-                        "type": "regular",
-                        "driver": "ext4",
-                        "fuse": False,
-                        "options": {"rw": True, "relatime": True},
-                    },
-                ],
-            ),
-            # Network filesystem (NFS) (normalized format)
-            (
-                [
-                    {
-                        "source": "nfs-server:/export/home",
-                        "target": "/mnt/nfs",
-                        "driver": "nfs",
-                        "options": ["rw", "vers=4.2", "rsize=1048576"],
-                    }
-                ],
-                [
-                    {
-                        "target": "/mnt/nfs",
-                        "source": "nfs-server:/export/home",
-                        "type": "network",
-                        "driver": "nfs",
-                        "fuse": False,
-                        "options": {
-                            "rw": True,
-                            "vers": "4.2",
-                            "rsize": "1048576",
-                        },
-                    }
-                ],
-            ),
-            # Network filesystem (CIFS/SMB) (normalized format)
-            (
-                [
-                    {
-                        "source": "//smb-server/share",
-                        "target": "/mnt/smb",
-                        "driver": "cifs",
-                        "options": ["rw", "uid=1000", "gid=1000"],
-                    }
-                ],
-                [
-                    {
-                        "target": "/mnt/smb",
-                        "source": "//smb-server/share",
-                        "type": "network",
-                        "driver": "cifs",
-                        "fuse": False,
-                        "options": {
-                            "rw": True,
-                            "uid": "1000",
-                            "gid": "1000",
-                        },
-                    }
-                ],
-            ),
-            # macOS mounts (normalized format - type already extracted)
-            (
-                [
-                    {
-                        "source": "/dev/disk3s1s1",
-                        "target": "/",
-                        "driver": "apfs",
-                        "options": ["local", "journaled", "nobrowse"],
-                    },
-                    {
-                        "source": "devfs",
-                        "target": "/dev",
-                        "driver": "devfs",
-                        "options": ["local", "nobrowse"],
-                    },
-                ],
-                [
-                    {
-                        "target": "/",
-                        "source": "/dev/disk3s1s1",
-                        "type": "regular",
-                        "driver": "apfs",
-                        "fuse": False,
-                        "options": {
-                            "local": True,
-                            "journaled": True,
-                            "nobrowse": True,
-                        },
-                    },
-                    {
-                        "target": "/dev",
-                        "source": "kernel",
-                        "type": "virtual",
-                        "driver": "devfs",
-                        "fuse": False,
-                        "options": {"local": True, "nobrowse": True},
-                    },
-                ],
-            ),
-            # Virtual filesystems (normalized format)
-            (
-                [
-                    {
-                        "source": "tmpfs",
-                        "target": "/dev/shm",
-                        "driver": "tmpfs",
-                        "options": ["rw", "nosuid", "nodev"],
-                    },
-                    {
-                        "source": "devfs",
-                        "target": "/dev",
-                        "driver": "devfs",
-                        "options": ["local", "nobrowse"],
-                    },
-                ],
-                [
-                    {
-                        "target": "/dev/shm",
-                        "source": None,  # tmpfs doesn't need source
-                        "type": "virtual",
-                        "driver": "tmpfs",
-                        "fuse": False,
-                        "options": {
-                            "rw": True,
-                            "nosuid": True,
-                            "nodev": True,
-                        },
-                    },
-                    {
-                        "target": "/dev",
-                        "source": "kernel",
-                        "type": "virtual",
-                        "driver": "devfs",
-                        "fuse": False,
-                        "options": {"local": True, "nobrowse": True},
-                    },
-                ],
-            ),
-            # Virtual and pseudo filesystems (normalized format)
-            (
-                [
-                    {
-                        "source": "proc",
-                        "target": "/proc",
-                        "driver": "proc",
-                        "options": ["rw", "nosuid", "nodev", "noexec"],
-                    },
-                    {
-                        "source": "sysfs",
-                        "target": "/sys",
-                        "driver": "sysfs",
-                        "options": ["rw", "nosuid", "nodev", "noexec"],
-                    },
-                    {
-                        "source": "tmpfs",
-                        "target": "/run",
-                        "driver": "tmpfs",
-                        "options": ["rw", "nosuid", "nodev"],
-                    },
-                ],
-                [
-                    {
-                        "target": "/proc",
-                        "source": "kernel",
-                        "type": "virtual",
-                        "driver": "proc",
-                        "fuse": False,
-                        "options": {
-                            "rw": True,
-                            "nosuid": True,
-                            "nodev": True,
-                            "noexec": True,
-                        },
-                    },
-                    {
-                        "target": "/sys",
-                        "source": "kernel",
-                        "type": "virtual",
-                        "driver": "sysfs",
-                        "fuse": False,
-                        "options": {
-                            "rw": True,
-                            "nosuid": True,
-                            "nodev": True,
-                            "noexec": True,
-                        },
-                    },
-                    {
-                        "target": "/run",
-                        "source": None,
-                        "type": "virtual",
-                        "driver": "tmpfs",
-                        "fuse": False,
-                        "options": {
-                            "rw": True,
-                            "nosuid": True,
-                            "nodev": True,
-                        },
-                    },
-                ],
-            ),
-            # Empty options list (normalized format)
-            (
-                [
-                    {
-                        "source": "/dev/sda1",
-                        "target": "/",
-                        "driver": "ext4",
-                        "options": [],
-                    }
-                ],
-                [
-                    {
-                        "target": "/",
-                        "source": "/dev/sda1",
-                        "type": "regular",
-                        "driver": "ext4",
-                        "fuse": False,
-                        "options": {},  # Empty options list becomes empty dict
-                    }
-                ],
-            ),
-            # Mount with no mount_point (still included, just no target field)
-            (
-                [
-                    {
-                        "source": "/dev/sda1",
-                        "driver": "ext4",
-                        "options": ["rw"],
-                    }
-                ],
-                [
-                    {
-                        # No target field
-                        "source": "/dev/sda1",
-                        "type": "regular",
-                        "driver": "ext4",
-                        "fuse": False,
-                        "options": {"rw": True},
-                    }
-                ],
-            ),
-            # Overlay filesystem
-            (
-                [
-                    {
-                        "source": "overlay",
-                        "target": "/var/lib/docker/overlay2",
-                        "driver": "overlay",
-                        "options": [
-                            "rw",
-                            "lowerdir=/lower",
-                            "upperdir=/upper",
-                        ],
-                    }
-                ],
-                [
-                    {
-                        "target": "/var/lib/docker/overlay2",
-                        "type": "overlay",
-                        "driver": "overlay",
-                        "fuse": False,
-                        "options": {
-                            "rw": True,
-                            "lowerdir": "/lower",
-                            "upperdir": "/upper",
-                        },
-                    }
-                ],
-            ),
-            # FUSE filesystem with subtype (normalized format)
-            (
-                [
-                    {
-                        "source": "portal",
-                        "target": "/mnt/portal",
-                        "driver": "fuse",
-                        "options": ["rw", "nosuid", "nodev", "subtype=sshfs"],
-                    }
-                ],
-                [
-                    {
-                        "target": "/mnt/portal",
-                        "source": "portal",
-                        "type": "network",  # sshfs is a network filesystem
-                        # subtype replaces generic fuse
-                        "driver": "sshfs",
-                        "fuse": True,
-                        "options": {
-                            "rw": True,
-                            "nosuid": True,
-                            "nodev": True,
-                        },
-                    }
-                ],
-            ),
-            # FUSE filesystem without subtype (ambiguous)
-            (
-                [
-                    {
-                        "source": "some.fuse.mount",
-                        "target": "/mnt/fuse",
-                        "driver": "fuse",
-                        "options": ["rw", "nosuid", "nodev"],
-                    }
-                ],
-                [
-                    {
-                        "target": "/mnt/fuse",
-                        "source": "some.fuse.mount",
-                        # No filesystem when FUSE type ambiguous
-                        "fuse": True,
-                        "options": {
-                            "rw": True,
-                            "nosuid": True,
-                            "nodev": True,
-                        },
-                    }
-                ],
-            ),
-            # FUSE filesystem with fuse. prefix (normalized format)
-            (
-                [
-                    {
-                        "source": "sshfs#user@host:",
-                        "target": "/mnt/ssh",
-                        "driver": "fuse.sshfs",
-                        "options": ["rw", "nosuid", "nodev"],
-                    }
-                ],
-                [
-                    {
-                        "target": "/mnt/ssh",
-                        "source": "sshfs#user@host:",
-                        # fuse.sshfs detected as sshfs network FS
-                        "type": "network",
-                        "driver": "fuse.sshfs",
-                        "fuse": True,
-                        "options": {
-                            "rw": True,
-                            "nosuid": True,
-                            "nodev": True,
-                        },
-                    }
-                ],
-            ),
-            # Docker overlay filesystem (no explicit source)
-            (
-                [
-                    {
-                        "source": "overlay",
-                        "target": "/",
-                        "driver": "overlay",
-                        "options": [
-                            "rw",
-                            "relatime",
-                            (
-                                "lowerdir=/var/lib/docker/overlay2/l/ABC:"
-                                "/var/lib/docker/overlay2/l/DEF"
-                            ),
-                            "upperdir=/var/lib/docker/overlay2/xyz/diff",
-                            "workdir=/var/lib/docker/overlay2/xyz/work",
-                            "nouserxattr",
-                        ],
-                    }
-                ],
-                [
-                    {
-                        "target": "/",
-                        # No source field for overlay
-                        "type": "overlay",
-                        "driver": "overlay",
-                        "fuse": False,
-                        "options": {
-                            "rw": True,
-                            "relatime": True,
-                            "lowerdir": (
-                                "/var/lib/docker/overlay2/l/ABC:"
-                                "/var/lib/docker/overlay2/l/DEF"
-                            ),
-                            "upperdir": ("/var/lib/docker/overlay2/xyz/diff"),
-                            "workdir": "/var/lib/docker/overlay2/xyz/work",
-                            "nouserxattr": True,
-                        },
-                    }
-                ],
-            ),
-            # Bind mount (normalized format)
-            (
-                [
-                    {
-                        "source": "/dev/sda1",
-                        "target": "/mnt/bind",
-                        "driver": "ext4",
-                        "options": ["rw", "relatime", "bind"],
-                    }
-                ],
-                [
-                    {
-                        "target": "/mnt/bind",
-                        "source": "/dev/sda1",
-                        # bind mounts are classified as overlay
-                        "type": "overlay",
-                        "driver": "ext4",
-                        "fuse": False,
-                        "options": {
-                            "rw": True,
-                            "relatime": True,
-                            "bind": True,
-                        },
-                    }
-                ],
-            ),
-            # Recursive bind mount (normalized format)
-            (
-                [
-                    {
-                        "source": "/dev/sda1",
-                        "target": "/mnt/rbind",
-                        "driver": "ext4",
-                        "options": ["rw", "relatime", "rbind"],
-                    }
-                ],
-                [
-                    {
-                        "target": "/mnt/rbind",
-                        "source": "/dev/sda1",
-                        # rbind mounts are classified as overlay
-                        "type": "overlay",
-                        "driver": "ext4",
-                        "fuse": False,
-                        "options": {
-                            "rw": True,
-                            "relatime": True,
-                            "rbind": True,
-                        },
-                    }
-                ],
-            ),
-            # Source as 'none' (normalized format)
-            (
-                [
-                    {
-                        "source": "none",
-                        "target": "/proc",
-                        "driver": "proc",
-                        "options": ["rw"],
-                    }
-                ],
-                [
-                    {
-                        "target": "/proc",
-                        "source": "kernel",  # 'none' becomes "kernel" for pseudo filesystems
-                        "type": "virtual",
-                        "driver": "proc",
-                        "fuse": False,
-                        "options": {"rw": True},
-                    }
-                ],
-            ),
-            # Source as '-' (normalized format)
-            (
-                [
-                    {
-                        "source": "-",
-                        "target": "/sys",
-                        "driver": "sysfs",
-                        "options": ["rw"],
-                    }
-                ],
-                [
-                    {
-                        "target": "/sys",
-                        "source": "kernel",  # sysfs is pseudo, so gets source="kernel"
-                        "type": "virtual",
-                        "driver": "sysfs",
-                        "fuse": False,
-                        "options": {"rw": True},
-                    }
-                ],
-            ),
-            # fuseblk (NTFS) (normalized format)
-            (
-                [
-                    {
-                        "source": "/dev/sda1",
-                        "target": "/mnt/ntfs",
-                        "driver": "fuseblk",
-                        "options": ["rw", "relatime", "allow_other"],
-                    }
-                ],
-                [
-                    {
-                        "target": "/mnt/ntfs",
-                        "source": "/dev/sda1",
-                        "type": "regular",  # fuseblk is device type
-                        # No filesystem when fuseblk without subtype
-                        "fuse": True,
-                        "options": {
-                            "rw": True,
-                            "relatime": True,
-                            "allow_other": True,
-                        },
-                    }
-                ],
-            ),
-        ],
-    )
-    def test_format_storage_as_facts(
-        self,
-        filter_module: FilterModule,
-        normalized_data: List[Dict[str, Any]],
-        expected: List[Dict[str, Any]],
-    ) -> None:
-        """Test format_storage_as_facts with various storage configurations."""
-        result = filter_module.format_storage_as_facts(normalized_data)
-        assert result == expected
-
-
-def test_mount_with_dict_input(
-    filter_module: FilterModule, mock_parse_command: MagicMock
-) -> None:
-    """Test mount filter with command result dict input."""
-    parsed_data = [
-        {
-            "filesystem": "/dev/sda1",
-            "mount_point": "/",
-            "type": "ext4",
-            "options": ["rw"],
-        }
-    ]
-    mock_parse_command.return_value = parsed_data
-
-    # Test with dict input
+def test_mount_parse_with_command_dict(filter_module):
+    """Test parsing mount output from command result dict."""
     command_result = {
-        "stdout": "/dev/sda1 on / type ext4 (rw)",
-        "stdout_lines": ["/dev/sda1 on / type ext4 (rw)"],
+        "stdout": "/dev/sda1 on / type ext4 (rw,relatime)",
+        "stdout_lines": ["/dev/sda1 on / type ext4 (rw,relatime)"],
         "stderr": "",
         "rc": 0,
     }
+
     result = filter_module.mount(command_result)
 
-    # Verify parse_command was called with the dict
-    mock_parse_command.assert_called_once_with(command_result, "mount")
-    assert result == parsed_data
+    assert len(result) == 1
+    assert result[0]["source"] == "/dev/sda1"
+    assert result[0]["mount"] == "/"
+    assert result[0]["type"] == "ext4"
+    assert {"rw": True} in result[0]["options"]
 
 
-def test_mount_with_list_input(
-    filter_module: FilterModule, mock_parse_command: MagicMock
-) -> None:
-    """Test mount filter with list of lines input."""
-    parsed_data = [
-        {
-            "filesystem": "/dev/sda1",
-            "mount_point": "/",
-            "type": "ext4",
-            "options": ["rw"],
-        }
-    ]
-    mock_parse_command.return_value = parsed_data
+def test_mount_parse_with_slurp_dict(filter_module):
+    """Test parsing mount output from slurp result dict (base64)."""
+    import base64
 
-    # Test with list input
-    lines = ["/dev/sda1 on / type ext4 (rw)"]
-    result = filter_module.mount(lines)
+    mount_content = "/dev/sda1 on / type ext4 (rw,relatime)"
+    encoded = base64.b64encode(mount_content.encode()).decode()
 
-    # Verify parse_command was called with the list
-    mock_parse_command.assert_called_once_with(lines, "mount")
-    assert result == parsed_data
+    slurp_result = {
+        "content": encoded,
+        "source": "/proc/mounts",
+        "encoding": "base64",
+    }
+
+    result = filter_module.mount(slurp_result)
+
+    # Should decode base64 and parse
+    assert len(result) == 1
+    assert result[0]["source"] == "/dev/sda1"
+    assert result[0]["mount"] == "/"
+    assert result[0]["type"] == "ext4"
+
+
+def test_mount_parse_multiline_string(filter_module):
+    """Test parsing mount output from multiline string."""
+    mount_output = """/dev/sda1 on / type ext4 (rw)
+proc on /proc type proc (rw,nosuid,nodev,noexec)"""
+
+    result = filter_module.mount(mount_output)
+
+    assert len(result) == 2
+    assert result[0]["source"] == "/dev/sda1"
+    assert result[1]["source"] == "proc"
+
+
+def test_mount_parse_error_handling(filter_module):
+    """Test error handling when parsing fails."""
+    with pytest.raises(AnsibleFilterError) as exc_info:
+        # Invalid mount output that jc can't parse
+        filter_module.mount("this is not valid mount output")
+
+    assert "Error processing mount" in str(exc_info.value)
+
+
+def test_mount_parse_import_error(filter_module):
+    """Test error handling when jc is not available."""
+    with patch(
+        "ansible_collections.o0_o.posix.plugins.module_utils.mount_utils.HAS_JC", False
+    ):
+        with pytest.raises(AnsibleFilterError) as exc_info:
+            filter_module.mount("mount output")
+
+        assert "jc library is required" in str(exc_info.value)
+
+
+def test_mount_options_parsing(filter_module):
+    """Test parsing of various mount option formats."""
+    mount_output = "/dev/sda1 on /mnt type ext4 (rw,uid=1000,gid=1000,umask=0022)"
+    result = filter_module.mount(mount_output)
+
+    assert len(result) == 1
+    assert {"rw": True} in result[0]["options"]
+    assert {"uid": "1000"} in result[0]["options"]
+    assert {"gid": "1000"} in result[0]["options"]
+    assert {"umask": "0022"} in result[0]["options"]
+
+
+def test_mount_network_filesystem(filter_module):
+    """Test parsing network filesystem mounts."""
+    mount_output = "server:/export on /mnt/nfs type nfs (rw,vers=4.2,rsize=1048576,wsize=1048576)"
+    result = filter_module.mount(mount_output)
+
+    assert len(result) == 1
+    assert result[0]["source"] == "server:/export"
+    assert result[0]["mount"] == "/mnt/nfs"
+    assert result[0]["type"] == "nfs"
+    assert {"vers": "4.2"} in result[0]["options"]
+    assert {"rsize": "1048576"} in result[0]["options"]
+
+
+def test_mount_virtual_filesystem(filter_module):
+    """Test parsing virtual filesystem mounts."""
+    mount_output = "tmpfs on /dev/shm type tmpfs (rw,nosuid,nodev)"
+    result = filter_module.mount(mount_output)
+
+    assert len(result) == 1
+    assert result[0]["source"] == "tmpfs"
+    assert result[0]["mount"] == "/dev/shm"
+    assert result[0]["type"] == "tmpfs"
+    assert {"rw": True} in result[0]["options"]
+    assert {"nosuid": True} in result[0]["options"]
+
+
+def test_mount_empty_options(filter_module):
+    """Test mount entries with no options."""
+    mount_output = "/dev/sda1 on / type ext4 ()"
+    result = filter_module.mount(mount_output)
+
+    assert len(result) == 1
+    assert result[0]["options"] == []
+
+
+def test_mount_multiple_entries(filter_module):
+    """Test parsing multiple mount entries."""
+    mount_output = """/dev/sda1 on / type ext4 (rw,relatime)
+/dev/sda2 on /home type ext4 (rw,relatime,noatime)
+proc on /proc type proc (rw,nosuid,nodev,noexec)"""
+
+    result = filter_module.mount(mount_output)
+
+    assert len(result) == 3
+    # Verify each entry has required fields
+    for entry in result:
+        assert "source" in entry
+        assert "mount" in entry
+        assert "type" in entry
+        assert "options" in entry
+        assert isinstance(entry["options"], list)

@@ -14,10 +14,7 @@ from __future__ import annotations
 from typing import Any, Dict, List, Union
 
 from ansible.errors import AnsibleFilterError
-from ansible_collections.o0_o.posix.plugins.module_utils import (
-    JCBase,
-    StorageBase,
-)
+from ansible_collections.o0_o.posix.plugins.module_utils import mount as _mount
 
 DOCUMENTATION = r"""
 ---
@@ -26,9 +23,8 @@ short_description: Parse mount command output
 version_added: "1.1.0"
 description:
   - Parse output from the mount command into structured data using jc
-  - Returns a list of mount entries with filesystem classification
-    and structured options
-  - Automatically classifies filesystem types and converts options to dictionary
+  - Returns a list of mount entries matching fstab structure
+  - Unidirectional filter (parse only, no generation)
 options:
   _input:
     description:
@@ -40,10 +36,9 @@ requirements:
   - jc (Python library)
 notes:
   - The jc library parses mount output into structured data
-  - Returns a list structure matching other storage filters
-  - Options are parsed into dictionary format for easier manipulation
-  - Filesystem types are automatically classified (regular, virtual, network, overlay)
-  - FUSE filesystems are automatically detected
+  - Returns same structure as fstab filter (but without dump/pass)
+  - Options are parsed into list of dicts for consistency with fstab
+  - Type is always a string (never a list)
 author:
   - oØ.o (@o0-o)
 """
@@ -60,9 +55,11 @@ EXAMPLES = r"""
     mount_info: "{{ mount_result.stdout | o0_o.posix.mount }}"
 
 - name: Display root filesystem info
+  vars:
+    root_fs: >-
+      {{ mount_info | selectattr('mount', 'equalto', '/') | first }}
   ansible.builtin.debug:
-    msg: >-
-      Root mounted from {{ (mount_info | selectattr('mount', 'equalto', '/') | first).source }}
+    msg: "Root mounted from {{ root_fs.source }} as {{ root_fs.type }}"
 """
 
 RETURN = r"""
@@ -72,91 +69,55 @@ _value:
   elements: dict
   returned: always
   sample:
-    - mount: /
-      source: /dev/sda1
-      type: regular
-      driver: ext4
-      fuse: false
+    - source: /dev/sda1
+      mount: /
+      type: ext4
       options:
-        rw: true
-        relatime: true
-        errors: remount-ro
-    - mount: /proc
-      source: kernel
-      type: virtual
-      driver: proc
-      fuse: false
+        - rw: true
+        - relatime: true
+        - errors: remount-ro
+    - source: proc
+      mount: /proc
+      type: proc
       options:
-        rw: true
-        nosuid: true
-        nodev: true
-        noexec: true
-    - mount: /mnt/nfs
-      source: server:/export
-      type: network
-      driver: nfs
-      fuse: false
+        - rw: true
+        - nosuid: true
+        - nodev: true
+        - noexec: true
+    - source: server:/export
+      mount: /mnt/nfs
+      type: nfs
       options:
-        rw: true
-        vers: 4.0
+        - rw: true
+        - vers: 4.0
 """
 
 
-class FilterModule(JCBase, StorageBase):
-    """Filter for parsing mount command output using jc."""
+class FilterModule:
+    """Filter for parsing mount command output."""
 
     def filters(self) -> Dict[str, Any]:
         """Return the filter functions."""
-        return {
-            "mount": self.mount,
-        }
-
+        return {"mount": self.mount}
 
     def mount(
         self,
-        data: Union[str, List[str], Dict[str, Any]],
+        config: Union[str, Dict[str, Any]],
     ) -> List[Dict[str, Any]]:
-        """Parse mount output into structured data with filesystem classification.
+        """Parse mount output into structured data.
 
-        Converts JC's mount parser output to standardized format with:
-        - mount_point -> mount
-        - filesystem -> source
-        - type -> driver (when present)
-        - Extracts driver from first option on macOS/FreeBSD
-        - Classifies filesystem types
-        - Converts options to dictionary format
+        Parses mount command output into normalized list of entries
+        matching fstab structure (without dump/pass fields):
+        - filesystem → source
+        - mount_point → mount
+        - type field or first option → type
+        - remaining options → options (as list of dicts)
 
-        :param data: Command output from 'mount'
+        :param config: Mount command output as string, list, or dict
         :returns: List of mount entries with standardized structure
+        :raises AnsibleFilterError: If parsing fails
         """
-        # Get parsed data from jc
-        parsed = self.parse_command(data, "mount")
-        
-        # Normalize to standard format
-        normalized = []
-        for entry in parsed:
-            norm_entry = {"class": "filesystem"}
-
-            if "mount_point" in entry:
-                norm_entry["mount"] = entry["mount_point"]
-
-            if "options" in entry:
-                norm_entry["options"] = list(entry.get("options", []).copy())
-
-            if "filesystem" in entry:
-                norm_entry["source"] = entry["filesystem"]
-
-            if "type" in entry:
-                # Linux style - explicit type field
-                norm_entry["driver"] = entry["type"]
-            elif norm_entry.get("options"):
-                # macOS/FreeBSD style - type is first option
-                norm_entry["driver"] = norm_entry["options"].pop(0)
-
-            normalized.append(norm_entry)
-
-        # Format with filesystem classification
         try:
-            return self.format_storage_as_facts(normalized)
-        except Exception as e:
-            raise AnsibleFilterError(str(e)) from e
+            return _mount(config)
+        except (ValueError, ImportError) as e:
+            raise AnsibleFilterError(f"Error processing mount: {e}") from e
