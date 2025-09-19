@@ -14,159 +14,89 @@
 from __future__ import annotations
 
 import pytest
+from unittest.mock import patch
 
-from ansible.errors import AnsibleFilterError
 from ansible_collections.o0_o.posix.plugins.filter.jc import FilterModule
-from ansible_collections.o0_o.posix.plugins.module_utils import JCBase
+from ansible.errors import AnsibleFilterError
 
 
-class TestJCBase:
-    """Test JCBase utility class methods."""
-
-    @pytest.fixture
-    def jc_base(self):
-        """Create a JCBase instance for testing."""
-        return JCBase()
-
-    @pytest.mark.parametrize(
-        "input_data,expected",
-        [
-            # String input returns as-is
-            ("simple string", "simple string"),
-            ("", ""),
-            # List input gets joined with newlines
-            (["line1", "line2"], "line1\nline2"),
-            (["single line"], "single line"),
-            ([" line1 ", " line2 "], " line1 \n line2 "),
-            ([], ""),
-            # Dict input extracts stdout only
-            ({"stdout": "test output"}, "test output"),
-            ({"stdout_lines": ["line1", "line2"]}, ""),  # Only stdout is used
-            (
-                {"stdout": "stdout wins", "stdout_lines": ["ignored"]},
-                "stdout wins",
-            ),
-            ({"rc": 0}, ""),
-            ({}, ""),
-            # Invalid types return empty string
-            (42, ""),
-            (3.14, ""),
-            (None, ""),
-            (True, ""),
-            (object(), ""),
-        ],
-    )
-    def test_extract_output(self, jc_base, input_data, expected):
-        """Test _extract_output handles all input types correctly."""
-        result = jc_base._extract_output(input_data)
-        assert result == expected
-
-    def test_jc_method_calls_jc_library(self, jc_base):
-        """Test that jc method successfully calls the jc library."""
-        # Use a complete uname -a output
-        uname_output = "Linux hostname 5.10.0 #1 SMP PREEMPT x86_64 GNU/Linux"
-        result = jc_base.jc(uname_output, "uname")
-
-        # We just verify it returns a dict and has expected structure
-        assert isinstance(result, dict)
-        assert "kernel_name" in result
-        assert result["kernel_name"] == "Linux"
-
-    def test_jc_invalid_parser_raises_error(self, jc_base):
-        """Test that invalid parser name raises ValueError."""
-        with pytest.raises(ValueError) as exc_info:
-            jc_base.jc("test data", "invalid_parser_name_xyz")
-
-        assert "jc parser 'invalid_parser_name_xyz' not found" in str(
-            exc_info.value
-        )
-
-    def test_parse_command_calls_jc(self, jc_base):
-        """Test that parse_command is a working alias for jc."""
-        uname_output = "Linux hostname 5.10.0 #1 SMP PREEMPT x86_64 GNU/Linux"
-        result1 = jc_base.jc(uname_output, "uname")
-        result2 = jc_base.parse_command(uname_output, "uname")
-
-        assert result1 == result2
-
-    def test_jc_raw_parameter(self, jc_base):
-        """Test that raw parameter is passed to jc.parse."""
-        # The raw parameter affects jc's post-processing
-        # We just verify it doesn't error
-        uname_output = "Linux hostname 5.10.0 #1 SMP PREEMPT x86_64 GNU/Linux"
-        result = jc_base.jc(uname_output, "uname", raw=True)
-        assert isinstance(result, dict)
-
-    def test_jc_quiet_parameter(self, jc_base):
-        """Test that quiet parameter is passed to jc.parse."""
-        # The quiet parameter suppresses warnings
-        # We just verify it doesn't error
-        uname_output = "Linux hostname 5.10.0 #1 SMP PREEMPT x86_64 GNU/Linux"
-        result = jc_base.jc(uname_output, "uname", quiet=True)
-        assert isinstance(result, dict)
-
-
-class TestFilterModule:
-    """Test FilterModule class."""
+class TestJCFilter:
+    """Test JC filter plugin."""
 
     @pytest.fixture
     def filter_module(self):
         """Create a FilterModule instance for testing."""
         return FilterModule()
 
-    def test_filters_returns_correct_dict(self, filter_module):
-        """Test that filters() returns a dict with 'jc' key."""
+    @patch('ansible_collections.o0_o.posix.plugins.filter.jc.jc_parse')
+    def test_jc_filter_with_string_input(self, mock_jc_parse, filter_module):
+        """Test jc_filter with string input."""
+        mock_jc_parse.return_value = [{"user": "root", "pid": 1}]
+
+        result = filter_module.jc_filter("ps output", "ps")
+
+        mock_jc_parse.assert_called_once_with("ps", "ps output", False, False)
+        assert result == [{"user": "root", "pid": 1}]
+
+    @patch('ansible_collections.o0_o.posix.plugins.filter.jc.jc_parse')
+    def test_jc_filter_with_list_input(self, mock_jc_parse, filter_module):
+        """Test jc_filter with list input (joined with newlines)."""
+        mock_jc_parse.return_value = [{"filesystem": "/dev/sda1"}]
+
+        result = filter_module.jc_filter(["line1", "line2"], "df")
+
+        mock_jc_parse.assert_called_once_with("df", "line1\nline2", False, False)
+        assert result == [{"filesystem": "/dev/sda1"}]
+
+    @patch('ansible_collections.o0_o.posix.plugins.filter.jc.jc_parse')
+    def test_jc_filter_with_dict_input(self, mock_jc_parse, filter_module):
+        """Test jc_filter with dict input (command result)."""
+        mock_jc_parse.return_value = [{"mount_point": "/"}]
+
+        result = filter_module.jc_filter({"stdout": "mount output"}, "mount")
+
+        mock_jc_parse.assert_called_once_with("mount", {"stdout": "mount output"}, False, False)
+        assert result == [{"mount_point": "/"}]
+
+    @patch('ansible_collections.o0_o.posix.plugins.filter.jc.jc_parse')
+    def test_jc_filter_with_raw_option(self, mock_jc_parse, filter_module):
+        """Test jc_filter with raw=True option."""
+        mock_jc_parse.return_value = [{"raw": "data"}]
+
+        result = filter_module.jc_filter("input", "uname", raw=True)
+
+        mock_jc_parse.assert_called_once_with("uname", "input", False, True)
+        assert result == [{"raw": "data"}]
+
+    @patch('ansible_collections.o0_o.posix.plugins.filter.jc.jc_parse')
+    def test_jc_filter_with_quiet_option(self, mock_jc_parse, filter_module):
+        """Test jc_filter with quiet=True option."""
+        mock_jc_parse.return_value = {"kernel": "Linux"}
+
+        result = filter_module.jc_filter("input", "uname", quiet=True)
+
+        mock_jc_parse.assert_called_once_with("uname", "input", True, False)
+        assert result == {"kernel": "Linux"}
+
+    @patch('ansible_collections.o0_o.posix.plugins.filter.jc.jc_parse')
+    def test_jc_filter_error_handling(self, mock_jc_parse, filter_module):
+        """Test jc_filter error handling."""
+        mock_jc_parse.side_effect = ValueError("Parser not found")
+
+        with pytest.raises(AnsibleFilterError, match="jc failed: ValueError: Parser not found"):
+            filter_module.jc_filter("input", "invalid_parser")
+
+    @patch('ansible_collections.o0_o.posix.plugins.filter.jc.jc_parse')
+    def test_jc_filter_import_error(self, mock_jc_parse, filter_module):
+        """Test jc_filter handles ImportError."""
+        mock_jc_parse.side_effect = ImportError("jc not installed")
+
+        with pytest.raises(AnsibleFilterError, match="jc failed: ImportError: jc not installed"):
+            filter_module.jc_filter("input", "ps")
+
+    def test_filters_method(self, filter_module):
+        """Test that filters() returns the correct filter mapping."""
         filters = filter_module.filters()
 
-        assert isinstance(filters, dict)
         assert "jc" in filters
-        assert callable(filters["jc"])
-        # The filter should be the jc_filter wrapper method
-        assert filters["jc"].__name__ == "jc_filter"
-
-    def test_filter_inherits_from_jcbase(self, filter_module):
-        """Test that FilterModule properly inherits from JCBase."""
-        assert isinstance(filter_module, JCBase)
-        assert hasattr(filter_module, "jc")
-        assert hasattr(filter_module, "_extract_output")
-        assert hasattr(filter_module, "parse_command")
-
-    @pytest.mark.parametrize(
-        "input_data",
-        [
-            # Test different input formats are handled
-            ("Linux hostname 5.10.0 #1 SMP PREEMPT x86_64 GNU/Linux"),
-            (["Linux hostname 5.10.0 #1 SMP PREEMPT x86_64 GNU/Linux"]),
-            (
-                {
-                    "stdout": (
-                        "Linux hostname 5.10.0 #1 SMP PREEMPT x86_64 GNU/Linux"
-                    )
-                }
-            ),
-        ],
-    )
-    def test_jc_filter_processes_input_types(self, filter_module, input_data):
-        """Test that the filter processes different input types."""
-        jc_filter = filter_module.filters()["jc"]
-
-        # Don't test parsing result, just that it processes w/o error
-        result = jc_filter(input_data, "uname")
-        assert result is not None
-        assert isinstance(result, dict)
-
-    def test_jc_filter_with_empty_inputs(self, filter_module):
-        """Test filter handles empty inputs gracefully."""
-        jc_filter = filter_module.filters()["jc"]
-
-        # Empty string should parse to empty result
-        result = jc_filter("", "ls")
-        assert result == []
-
-        # Empty list should parse to empty result
-        result = jc_filter([], "ls")
-        assert result == []
-
-        # Dict with empty stdout should parse to empty result
-        result = jc_filter({"stdout": ""}, "ls")
-        assert result == []
+        assert filters["jc"] == filter_module.jc_filter

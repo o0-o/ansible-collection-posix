@@ -32,7 +32,8 @@ def test_fstab_basic(filter_module: FilterModule) -> None:
     fstab_content = """/dev/sda1   /       ext4    defaults        0   1
 /dev/sda2   /home   ext4    defaults,noatime   0   2"""
 
-    result = filter_module.fstab(fstab_content)
+    fstab_filter = filter_module.filters()["fstab"]
+    result = fstab_filter(fstab_content)
 
     # Check the normalized output
     expected = [
@@ -62,7 +63,8 @@ def test_fstab_with_complex_options(filter_module: FilterModule) -> None:
 UUID=abc123   /boot   ext2    defaults,ro   1   2
 tmpfs   /tmp   tmpfs    defaults,nodev,nosuid   0   0"""
 
-    result = filter_module.fstab(fstab_content)
+    fstab_filter = filter_module.filters()["fstab"]
+    result = fstab_filter(fstab_content)
 
     expected = [
         {
@@ -106,7 +108,8 @@ def test_fstab_with_comments_and_blank_lines(
 
 # This is a comment
 """
-    result = filter_module.fstab(fstab_content)
+    fstab_filter = filter_module.filters()["fstab"]
+    result = fstab_filter(fstab_content)
 
     expected = [
         {
@@ -126,7 +129,8 @@ def test_fstab_with_nfs(filter_module: FilterModule) -> None:
     fstab_content = """/dev/sda1   /   ext4   defaults,noatime   0   1
 nfs-server:/export   /mnt/nfs   nfs   rw,hard,intr   0   0"""
 
-    result = filter_module.fstab(fstab_content)
+    fstab_filter = filter_module.filters()["fstab"]
+    result = fstab_filter(fstab_content)
 
     expected = [
         {
@@ -154,7 +158,8 @@ def test_fstab_with_swap(filter_module: FilterModule) -> None:
     """Test fstab parsing with swap entries."""
     fstab_content = "/dev/sda3   none   swap   sw   0   0"
 
-    result = filter_module.fstab(fstab_content)
+    fstab_filter = filter_module.filters()["fstab"]
+    result = fstab_filter(fstab_content)
 
     expected = [
         {
@@ -174,7 +179,8 @@ def test_fstab_with_bind_mount(filter_module: FilterModule) -> None:
     """Test fstab parsing with bind mount entries."""
     fstab_content = "/olddir   /newdir   none   bind   0   0"
 
-    result = filter_module.fstab(fstab_content)
+    fstab_filter = filter_module.filters()["fstab"]
+    result = fstab_filter(fstab_content)
 
     expected = [
         {
@@ -199,7 +205,8 @@ def test_fstab_with_invalid_dump_pass_values(
     fstab_content = """/dev/sda1   /   ext4   defaults   -1   -1
 /dev/sda2   /home   ext4   defaults   auto   auto"""
 
-    result = filter_module.fstab(fstab_content)
+    fstab_filter = filter_module.filters()["fstab"]
+    result = fstab_filter(fstab_content)
 
     expected = [
         {
@@ -242,7 +249,8 @@ def test_fstab_input_types(
     input_data: Union[str, Dict[str, Any]],
 ) -> None:
     """Test fstab filter with different input types."""
-    result = filter_module.fstab(input_data)
+    fstab_filter = filter_module.filters()["fstab"]
+    result = fstab_filter(input_data)
 
     # Result should be normalized
     expected = [
@@ -260,7 +268,8 @@ def test_fstab_input_types(
 
 def test_fstab_empty_input(filter_module: FilterModule) -> None:
     """Test fstab filter with empty input."""
-    result = filter_module.fstab("")
+    fstab_filter = filter_module.filters()["fstab"]
+    result = fstab_filter("")
     assert result == []
 
 
@@ -271,7 +280,8 @@ def test_fstab_with_fuse_filesystem(filter_module: FilterModule) -> None:
         "encfs#/encrypted   /decrypted   fuse.encfs   defaults   0   0"
     )
 
-    result = filter_module.fstab(fstab_content)
+    fstab_filter = filter_module.filters()["fstab"]
+    result = fstab_filter(fstab_content)
 
     expected = [
         {
@@ -316,7 +326,8 @@ def test_fstab_generation_basic(filter_module: FilterModule) -> None:
         },
     ]
 
-    result = filter_module.fstab(entries)
+    fstab_filter = filter_module.filters()["fstab"]
+    result = fstab_filter(entries)
 
     expected_lines = [
         "/dev/sda1\t/\text4\tdefaults,noatime\t0\t1",
@@ -436,7 +447,8 @@ def test_fstab_generation_multiple_types(filter_module: FilterModule) -> None:
         },
     ]
 
-    result = filter_module.fstab(entries)
+    fstab_filter = filter_module.filters()["fstab"]
+    result = fstab_filter(entries)
 
     expected_lines = [
         "/dev/sda1\t/\text4\tdefaults,noatime\t0\t1",
@@ -490,7 +502,8 @@ def test_fstab_generation_with_options(filter_module: FilterModule) -> None:
         },
     ]
 
-    result = filter_module.fstab(entries)
+    fstab_filter = filter_module.filters()["fstab"]
+    result = fstab_filter(entries)
 
     expected_lines = [
         "UUID=abc-123\t/boot\text2\tdefaults,ro\t1\t2",
@@ -514,7 +527,8 @@ def test_fstab_generation_swap(filter_module: FilterModule) -> None:
         }
     ]
 
-    result = filter_module.fstab(entries)
+    fstab_filter = filter_module.filters()["fstab"]
+    result = fstab_filter(entries)
 
     expected = "/dev/sda3\tnone\tswap\tsw\t0\t0\n"
     assert result == expected
@@ -533,7 +547,8 @@ def test_fstab_generation_nfs(filter_module: FilterModule) -> None:
         }
     ]
 
-    result = filter_module.fstab(entries)
+    fstab_filter = filter_module.filters()["fstab"]
+    result = fstab_filter(entries)
 
     expected = "nfs-server:/export\t/mnt/nfs\tnfs\trw,hard,intr\t0\t0\n"
     assert result == expected
@@ -558,7 +573,8 @@ def test_fstab_generation_single_entry(filter_module: FilterModule) -> None:
         "pass": 1,
     }
 
-    result = filter_module.fstab(single_entry)
+    fstab_filter = filter_module.filters()["fstab"]
+    result = fstab_filter(single_entry)
 
     expected = "/dev/sda1\t/\text4\tdefaults\t0\t1\n"
     assert result == expected
@@ -577,7 +593,8 @@ def test_fstab_generation_with_defaults(filter_module: FilterModule) -> None:
         }
     ]
 
-    result = filter_module.fstab(entries)
+    fstab_filter = filter_module.filters()["fstab"]
+    result = fstab_filter(entries)
 
     # type=auto, pass=1 for root, defaults for options
     expected = "/dev/sda1\t/\tauto\tdefaults\t0\t1\n"
@@ -627,7 +644,8 @@ def test_fstab_generation_intelligent_defaults(
         },
     ]
 
-    result = filter_module.fstab(entries)
+    fstab_filter = filter_module.filters()["fstab"]
+    result = fstab_filter(entries)
 
     expected_lines = [
         "/dev/sda1\t/\text4\tdefaults\t0\t1",  # root gets pass=1
@@ -650,10 +668,11 @@ def test_fstab_bidirectional_conversion(filter_module: FilterModule) -> None:
     """Test parsing fstab and then generating it back."""
     # Parse the content
     fstab_content = "/dev/sda1\t/\text4\tdefaults,noatime\t0\t1"
-    parsed = filter_module.fstab(fstab_content)
+    fstab_filter = filter_module.filters()["fstab"]
+    parsed = fstab_filter(fstab_content)
 
     # Generate it back
-    regenerated = filter_module.fstab(parsed)
+    regenerated = fstab_filter(parsed)
 
     expected = "/dev/sda1\t/\text4\tdefaults,noatime\t0\t1\n"
     assert regenerated == expected
@@ -679,7 +698,8 @@ def test_fstab_base64_content(filter_module: FilterModule) -> None:
         "source": "/etc/fstab",
     }
 
-    result = filter_module.fstab(slurp_result)
+    fstab_filter = filter_module.filters()["fstab"]
+    result = fstab_filter(slurp_result)
 
     expected = [
         {
@@ -711,7 +731,8 @@ def test_fstab_non_base64_content_key(filter_module: FilterModule) -> None:
         "source": "/etc/fstab",
     }
 
-    result = filter_module.fstab(plain_result)
+    fstab_filter = filter_module.filters()["fstab"]
+    result = fstab_filter(plain_result)
 
     expected = [
         {
@@ -739,10 +760,11 @@ def test_fstab_invalid_base64_content(filter_module: FilterModule) -> None:
     }
 
     # This should raise an error because it's not valid fstab content
+    fstab_filter = filter_module.filters()["fstab"]
     with pytest.raises(AnsibleFilterError) as exc_info:
-        filter_module.fstab(invalid_result)
+        fstab_filter(invalid_result)
 
-    assert "Error processing fstab" in str(exc_info.value)
+    assert "fstab failed" in str(exc_info.value)
 
 
 def test_fstab_base64_with_comments(filter_module: FilterModule) -> None:
@@ -766,7 +788,8 @@ def test_fstab_base64_with_comments(filter_module: FilterModule) -> None:
     # Create dict with 'content' key
     slurp_result = {"content": encoded_content, "encoding": "base64"}
 
-    result = filter_module.fstab(slurp_result)
+    fstab_filter = filter_module.filters()["fstab"]
+    result = fstab_filter(slurp_result)
 
     expected = [
         {
@@ -803,7 +826,8 @@ def test_fstab_base64_empty_content(filter_module: FilterModule) -> None:
     # Create dict with 'content' key
     slurp_result = {"content": encoded_content, "encoding": "base64"}
 
-    result = filter_module.fstab(slurp_result)
+    fstab_filter = filter_module.filters()["fstab"]
+    result = fstab_filter(slurp_result)
 
     assert result == []
 
@@ -815,12 +839,13 @@ def test_fstab_stdout_vs_content_keys(filter_module: FilterModule) -> None:
     # Test with stdout key (no base64 detection)
     stdout_result = {"stdout": fstab_text, "rc": 0}
 
-    result_stdout = filter_module.fstab(stdout_result)
+    fstab_filter = filter_module.filters()["fstab"]
+    result_stdout = fstab_filter(stdout_result)
 
     # Test with content key (base64 detection enabled)
     content_result = {"content": fstab_text}
 
-    result_content = filter_module.fstab(content_result)
+    result_content = fstab_filter(content_result)
 
     # Both should parse correctly
     expected = [

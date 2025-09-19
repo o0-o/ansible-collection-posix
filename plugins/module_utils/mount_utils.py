@@ -15,15 +15,9 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Union
 
-from ansible_collections.o0_o.posix.plugins.module_utils.filter_utils import (
-    process_registered_result,
+from ansible_collections.o0_o.posix.plugins.module_utils.jc_utils import (
+    jc_parse,
 )
-
-try:
-    import jc
-    HAS_JC = True
-except ImportError:
-    HAS_JC = False
 
 
 def parse_mount_entry(entry: Dict[str, Any]) -> Dict[str, Any]:
@@ -97,12 +91,9 @@ def parse_mount(content: str) -> List[Dict[str, Any]]:
     :raises ValueError: If parsing fails
     :raises ImportError: If jc is not available
     """
-    if not HAS_JC:
-        raise ImportError("jc library is required for mount parsing")
-
-    # Parse with jc
+    # Parse with jc_parse
     try:
-        parsed = jc.parse("mount", content)
+        parsed = jc_parse("mount", content)
     except Exception as e:
         raise ValueError(f"Failed to parse mount output: {e}") from e
 
@@ -136,15 +127,17 @@ def mount(config: Union[str, Dict[str, Any]]) -> List[Dict[str, Any]]:
     :raises ValueError: If parsing fails
     :raises ImportError: If jc is not available
     """
-    # Handle dict input (e.g., from command module or slurp)
-    if isinstance(config, dict):
-        if "stdout" in config or "content" in config:
-            # Use shared utility for registered result processing
-            return process_registered_result(config, parse_mount)
-        else:
-            raise ValueError(
-                "Dict input must have 'stdout' or 'content' key for parsing"
-            )
+    # Parse with jc_parse (handles both string and dict inputs)
+    parsed = jc_parse("mount", config)
 
-    # Parse mount output string
-    return parse_mount(config)
+    # Normalize each entry
+    normalized = []
+    for entry in parsed:
+        try:
+            norm_entry = parse_mount_entry(entry)
+            normalized.append(norm_entry)
+        except ValueError:
+            # Skip invalid entries
+            continue
+
+    return normalized

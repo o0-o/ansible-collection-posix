@@ -14,14 +14,8 @@ from __future__ import annotations
 from typing import Any, Dict, List, Union
 
 from ansible.errors import AnsibleFilterError
-from ansible_collections.o0_o.posix.plugins.module_utils import JCBase
-
-try:
-    from ansible_collections.o0_o.utils.plugins.filter import HostnameFilter
-
-    HAS_HOSTNAME_FILTER = True
-except ImportError:
-    HAS_HOSTNAME_FILTER = False
+from ansible.module_utils.common.text.converters import to_native
+from ansible_collections.o0_o.posix.plugins.module_utils import uname
 
 DOCUMENTATION = r"""
 ---
@@ -30,9 +24,7 @@ short_description: Parse uname command output
 version_added: "1.1.0"
 description:
   - Parse output from the uname command into structured data using jc
-  - Can return either raw jc format or simplified facts structure
-  - When used with facts=True, returns kernel, architecture, and
-    hostname information
+  - Returns normalized structure with kernel, architecture, and hostname information
 options:
   _input:
     description:
@@ -40,13 +32,6 @@ options:
         command result dict
     type: raw
     required: true
-  facts:
-    description:
-      - If True, format output for direct merge into Ansible facts
-      - Returns simplified structure with kernel, architecture, and
-        hostname keys
-    type: bool
-    default: false
 requirements:
   - jc (Python library)
   - dnspython (Python library - required for hostname parsing when facts=True)
@@ -71,45 +56,12 @@ EXAMPLES = r"""
   ansible.builtin.debug:
     msg: "{{ uname_result.stdout | o0_o.posix.uname }}"
 
-# Use facts format for simplified structure
-- name: Parse for facts
-  ansible.builtin.set_fact:
-    system_info: "{{ uname_result.stdout | o0_o.posix.uname(facts=true) }}"
-
 - name: Display kernel name
   ansible.builtin.debug:
-    msg: "Running {{ system_info.kernel.name }} kernel"
+    msg: "System: {{ uname_result.stdout | o0_o.posix.uname }}"
 """
 
 RETURN = r"""
-# When facts=False (default)
-kernel_name:
-  description: Operating system kernel name
-  type: str
-  returned: always
-  sample: Linux
-node_name:
-  description: Network node hostname
-  type: str
-  returned: always
-  sample: webserver.example.com
-kernel_release:
-  description: Kernel release version
-  type: str
-  returned: always
-  sample: 5.15.0-91-generic
-kernel_version:
-  description: Kernel version details
-  type: str
-  returned: when available
-  sample: "#101-Ubuntu SMP Tue Nov 14 13:30:08 UTC 2023"
-machine:
-  description: Machine hardware name
-  type: str
-  returned: always
-  sample: x86_64
-
-# When facts=True
 kernel:
   description: Kernel information
   type: dict
@@ -153,104 +105,33 @@ hostname:
 """
 
 
-class FilterModule(JCBase):
-    """Filter for parsing uname command output using jc."""
+class FilterModule:
+    """Filter for parsing uname command output."""
 
     def filters(self) -> Dict[str, Any]:
         """Return the filter functions."""
         return {
-            "uname": self.uname,
+            "uname": self.uname_filter,
         }
 
-    def _format_as_facts(self, parsed: Dict[str, Any]) -> Dict[str, Any]:
-        """Format parsed uname data for Ansible facts structure.
-
-        Converts jc's raw uname parsing into a simplified facts
-        structure suitable for direct merge into Ansible facts, with
-        kernel, architecture, and hostname information.
-
-        :param parsed: Parsed uname data from jc
-        :returns: Facts structure with kernel, arch, hostname
-        """
-        facts_data = {}
-
-        # Kernel information
-        if "kernel_name" in parsed:
-            kernel = {
-                "pretty": parsed["kernel_name"],
-                "name": parsed["kernel_name"].lower().replace(" ", "_"),
-            }
-            if "kernel_release" in parsed:
-                kernel["version"] = {"id": parsed["kernel_release"]}
-            facts_data["kernel"] = kernel
-
-        # Architecture
-        if "machine" in parsed:
-            facts_data["architecture"] = parsed["machine"]
-        elif "processor" in parsed and parsed["processor"] != "unknown":
-            facts_data["architecture"] = parsed["processor"]
-        elif (
-            "hardware_platform" in parsed
-            and parsed["hardware_platform"] != "unknown"
-        ):
-            facts_data["architecture"] = parsed["hardware_platform"]
-
-        # Hostname - use short and long (if present)
-        if "node_name" in parsed:
-            if not HAS_HOSTNAME_FILTER:
-                # If hostname filter is not available, raise error
-                # Should have been caught in uname() but check here
-                raise AnsibleFilterError(
-                    "The 'facts' mode requires the o0_o.utils collection. "
-                    "Please install it with: "
-                    "ansible-galaxy collection install o0_o.utils"
-                )
-
-            hostname_filter = HostnameFilter()
-            hostname_data = hostname_filter.hostname(parsed["node_name"])
-
-            # Always include short
-            hostname_facts = {"short": hostname_data.get("short", "")}
-
-            # Include long only if it's present (FQDN)
-            if "long" in hostname_data:
-                hostname_facts["long"] = hostname_data["long"]
-
-            facts_data["hostname"] = hostname_facts
-
-        return facts_data
-
-    def uname(
+    def uname_filter(
         self,
-        data: Union[str, List[str], Dict[str, Any]],
-        facts: bool = False,
+        config: Union[str, Dict[str, Any]],
     ) -> Dict[str, Any]:
-        """Parse uname output into structured data using jc.
+        """Parse uname output into structured data.
 
-        .. note::
-            Requires uname to be run with -a flag for complete parsing.
-            jc will raise an error if output is incomplete.
+        Parses uname -a command output into normalized structure with:
+        - kernel: dict with name, pretty, and version fields
+        - architecture: system architecture string
+        - hostname: dict with short and optionally long (FQDN)
 
-        :param data: Command output from 'uname -a'
-        :param facts: If True, format for direct merge into Ansible
-            facts
-        :returns: Parsed uname data, or facts structure with kernel,
-            arch, hostname
+        :param config: Command output from 'uname -a' as string or dict
+        :returns: Normalized uname data structure
+        :raises AnsibleFilterError: If parsing fails
         """
-        # Get parsed data from jc
-        parsed = self.parse_command(data, "uname")
-
-        if not facts:
-            # Return jc's parsed format directly
-            return parsed
-
-        # Check for hostname filter dependency when facts=True
-        if not HAS_HOSTNAME_FILTER:
+        try:
+            return uname(config)
+        except (ValueError, ImportError) as e:
             raise AnsibleFilterError(
-                "The 'facts' mode requires the o0_o.utils collection. "
-                "Please install it with: "
-                "ansible-galaxy collection install o0_o.utils"
-            )
-
-        # Format for facts module using separate method
-        return self._format_as_facts(parsed)
+                f"uname failed: {type(e).__name__}: {to_native(e)}"
+            ) from e

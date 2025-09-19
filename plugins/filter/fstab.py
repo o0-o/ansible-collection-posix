@@ -14,7 +14,8 @@ from __future__ import annotations
 from typing import Any, Dict, List, Union
 
 from ansible.errors import AnsibleFilterError
-from ansible_collections.o0_o.posix.plugins.module_utils import fstab as _fstab
+from ansible.module_utils.common.text.converters import to_native
+from ansible_collections.o0_o.posix.plugins.module_utils import fstab
 
 DOCUMENTATION = r"""
 ---
@@ -133,9 +134,9 @@ class FilterModule:
 
     def filters(self) -> Dict[str, Any]:
         """Return the filter functions."""
-        return {"fstab": self.fstab}
+        return {"fstab": self.fstab_filter}
 
-    def fstab(
+    def fstab_filter(
         self,
         config: Union[str, Dict[str, Any], List[Dict[str, Any]]],
     ) -> Union[List[Dict[str, Any]], str]:
@@ -167,6 +168,8 @@ class FilterModule:
         :raises AnsibleFilterError: If parsing or generation fails
         """
         try:
-            return _fstab(config)
+            return fstab(config)
         except (ValueError, ImportError) as e:
-            raise AnsibleFilterError(f"Error processing fstab: {e}") from e
+            raise AnsibleFilterError(
+                f"fstab failed: {type(e).__name__}: {to_native(e)}"
+            ) from e

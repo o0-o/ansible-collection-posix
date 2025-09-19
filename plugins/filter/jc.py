@@ -14,7 +14,8 @@ from __future__ import annotations
 from typing import Any, Dict, Union, List
 
 from ansible.errors import AnsibleFilterError
-from ansible_collections.o0_o.posix.plugins.module_utils import JCBase
+from ansible.module_utils.common.text.converters import to_native
+from ansible_collections.o0_o.posix.plugins.module_utils import jc_parse
 
 DOCUMENTATION = r"""
 name: jc
@@ -106,7 +107,7 @@ _output:
 """
 
 
-class FilterModule(JCBase):
+class FilterModule:
     """Generic filter for parsing command output using jc."""
 
     def filters(self) -> Dict[str, Any]:
@@ -122,8 +123,27 @@ class FilterModule(JCBase):
         raw: bool = False,
         quiet: bool = False,
     ) -> Union[List[Dict[str, Any]], Dict[str, Any]]:
-        """Wrapper that converts exceptions to AnsibleFilterError."""
+        """Parse command output using jc library.
+
+        :param data: Output from command - string, list of lines,
+            or command result
+        :param parser: Name of the jc parser to use (e.g., 'mount',
+            'df', 'ps')
+        :param raw: If True, return raw parsed output without
+            post-processing
+        :param quiet: If True, suppress jc parsing warnings
+        :returns: Parsed data structure (list or dict depending on
+            parser)
+        :raises AnsibleFilterError: If jc is not available or parsing
+            fails
+        """
+        # Handle list input by joining into string
+        if isinstance(data, list):
+            data = "\n".join(data)
+
         try:
-            return self.jc(data, parser, raw, quiet)
-        except Exception as e:
-            raise AnsibleFilterError(str(e)) from e
+            return jc_parse(parser, data, quiet, raw)
+        except (ValueError, ImportError) as e:
+            raise AnsibleFilterError(
+                f"jc failed: {type(e).__name__}: {to_native(e)}"
+            ) from e

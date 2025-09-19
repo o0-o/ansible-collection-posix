@@ -15,20 +15,14 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Union
 
-from ansible_collections.o0_o.posix.plugins.module_utils.filter_utils import (
-    process_registered_result,
+from ansible_collections.o0_o.posix.plugins.module_utils.jc_utils import (
+    jc_parse,
 )
 
 from ansible_collections.o0_o.utils.plugins.module_utils import (
     string2items,
     wantlist,
 )
-
-try:
-    import jc
-    HAS_JC = True
-except ImportError:
-    HAS_JC = False
 
 
 def parse_fstab_entry(entry: Dict[str, Any]) -> Dict[str, Any]:
@@ -215,12 +209,9 @@ def parse_fstab(content: str) -> List[Dict[str, Any]]:
     :raises ValueError: If parsing fails
     :raises ImportError: If jc is not available
     """
-    if not HAS_JC:
-        raise ImportError("jc library is required for fstab parsing")
-
-    # Parse with jc
+    # Parse with jc_parse
     try:
-        parsed = jc.parse("fstab", content)
+        parsed = jc_parse("fstab", content)
     except Exception as e:
         raise ValueError(f"Failed to parse fstab content: {e}") from e
 
@@ -311,18 +302,23 @@ def fstab(
 
     # Handle dict input (e.g., from command module)
     if isinstance(config, dict):
-        if "stdout" in config or "content" in config:
-            # Use shared utility for registered result processing
-            return process_registered_result(config, parse_fstab)
-        else:
-            # Single entry dict - treat as generation
-            if "source" in config and "mount" in config:
-                return generate_fstab([config])
-            else:
-                raise ValueError(
-                    "Dict input must have 'stdout' or 'content' key for "
-                    "parsing, or 'source' and 'mount' keys for generation"
-                )
+        # Single entry dict for generation
+        if "source" in config and "mount" in config:
+            return generate_fstab([config])
+        # Otherwise try to parse as command result
+        # jc_parse will handle stdout/content extraction
 
-    # Parse fstab content
-    return parse_fstab(config)
+    # Parse with jc_parse (handles both string and dict inputs)
+    parsed = jc_parse("fstab", config)
+
+    # Normalize each entry
+    normalized = []
+    for entry in parsed:
+        try:
+            norm_entry = parse_fstab_entry(entry)
+            normalized.append(norm_entry)
+        except ValueError:
+            # Skip invalid entries
+            continue
+
+    return normalized

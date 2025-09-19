@@ -11,8 +11,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict, List
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 from ansible.errors import AnsibleFilterError
@@ -31,7 +30,8 @@ def test_mount_parse_linux_output(filter_module):
 proc on /proc type proc (rw,nosuid,nodev,noexec,relatime)
 tmpfs on /dev/shm type tmpfs (rw,nosuid,nodev)"""
 
-    result = filter_module.mount(mount_output)
+    mount_filter = filter_module.filters()["mount"]
+    result = mount_filter(mount_output)
 
     # Verify the result structure matches our expected format
     assert len(result) == 3
@@ -62,7 +62,8 @@ def test_mount_parse_macos_output(filter_module):
     # macOS style output where filesystem type is the first option
     mount_output = "/dev/disk3s1s1 on / (apfs, local, journaled)"
 
-    result = filter_module.mount(mount_output)
+    mount_filter = filter_module.filters()["mount"]
+    result = mount_filter(mount_output)
 
     assert len(result) == 1
     assert result[0]["source"] == "/dev/disk3s1s1"
@@ -81,7 +82,8 @@ def test_mount_parse_with_command_dict(filter_module):
         "rc": 0,
     }
 
-    result = filter_module.mount(command_result)
+    mount_filter = filter_module.filters()["mount"]
+    result = mount_filter(command_result)
 
     assert len(result) == 1
     assert result[0]["source"] == "/dev/sda1"
@@ -103,7 +105,8 @@ def test_mount_parse_with_slurp_dict(filter_module):
         "encoding": "base64",
     }
 
-    result = filter_module.mount(slurp_result)
+    mount_filter = filter_module.filters()["mount"]
+    result = mount_filter(slurp_result)
 
     # Should decode base64 and parse
     assert len(result) == 1
@@ -117,7 +120,8 @@ def test_mount_parse_multiline_string(filter_module):
     mount_output = """/dev/sda1 on / type ext4 (rw)
 proc on /proc type proc (rw,nosuid,nodev,noexec)"""
 
-    result = filter_module.mount(mount_output)
+    mount_filter = filter_module.filters()["mount"]
+    result = mount_filter(mount_output)
 
     assert len(result) == 2
     assert result[0]["source"] == "/dev/sda1"
@@ -126,20 +130,22 @@ proc on /proc type proc (rw,nosuid,nodev,noexec)"""
 
 def test_mount_parse_error_handling(filter_module):
     """Test error handling when parsing fails."""
+    mount_filter = filter_module.filters()["mount"]
     with pytest.raises(AnsibleFilterError) as exc_info:
         # Invalid mount output that jc can't parse
-        filter_module.mount("this is not valid mount output")
+        mount_filter("this is not valid mount output")
 
-    assert "Error processing mount" in str(exc_info.value)
+    assert "mount failed" in str(exc_info.value)
 
 
 def test_mount_parse_import_error(filter_module):
     """Test error handling when jc is not available."""
+    mount_filter = filter_module.filters()["mount"]
     with patch(
-        "ansible_collections.o0_o.posix.plugins.module_utils.mount_utils.HAS_JC", False
+        "ansible_collections.o0_o.posix.plugins.module_utils.jc_utils.HAS_JC", False
     ):
         with pytest.raises(AnsibleFilterError) as exc_info:
-            filter_module.mount("mount output")
+            mount_filter("mount output")
 
         assert "jc library is required" in str(exc_info.value)
 
@@ -147,7 +153,8 @@ def test_mount_parse_import_error(filter_module):
 def test_mount_options_parsing(filter_module):
     """Test parsing of various mount option formats."""
     mount_output = "/dev/sda1 on /mnt type ext4 (rw,uid=1000,gid=1000,umask=0022)"
-    result = filter_module.mount(mount_output)
+    mount_filter = filter_module.filters()["mount"]
+    result = mount_filter(mount_output)
 
     assert len(result) == 1
     assert {"rw": True} in result[0]["options"]
@@ -159,7 +166,8 @@ def test_mount_options_parsing(filter_module):
 def test_mount_network_filesystem(filter_module):
     """Test parsing network filesystem mounts."""
     mount_output = "server:/export on /mnt/nfs type nfs (rw,vers=4.2,rsize=1048576,wsize=1048576)"
-    result = filter_module.mount(mount_output)
+    mount_filter = filter_module.filters()["mount"]
+    result = mount_filter(mount_output)
 
     assert len(result) == 1
     assert result[0]["source"] == "server:/export"
@@ -172,7 +180,8 @@ def test_mount_network_filesystem(filter_module):
 def test_mount_virtual_filesystem(filter_module):
     """Test parsing virtual filesystem mounts."""
     mount_output = "tmpfs on /dev/shm type tmpfs (rw,nosuid,nodev)"
-    result = filter_module.mount(mount_output)
+    mount_filter = filter_module.filters()["mount"]
+    result = mount_filter(mount_output)
 
     assert len(result) == 1
     assert result[0]["source"] == "tmpfs"
@@ -185,7 +194,8 @@ def test_mount_virtual_filesystem(filter_module):
 def test_mount_empty_options(filter_module):
     """Test mount entries with no options."""
     mount_output = "/dev/sda1 on / type ext4 ()"
-    result = filter_module.mount(mount_output)
+    mount_filter = filter_module.filters()["mount"]
+    result = mount_filter(mount_output)
 
     assert len(result) == 1
     assert result[0]["options"] == []
@@ -197,7 +207,8 @@ def test_mount_multiple_entries(filter_module):
 /dev/sda2 on /home type ext4 (rw,relatime,noatime)
 proc on /proc type proc (rw,nosuid,nodev,noexec)"""
 
-    result = filter_module.mount(mount_output)
+    mount_filter = filter_module.filters()["mount"]
+    result = mount_filter(mount_output)
 
     assert len(result) == 3
     # Verify each entry has required fields

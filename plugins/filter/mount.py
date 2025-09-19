@@ -14,7 +14,8 @@ from __future__ import annotations
 from typing import Any, Dict, List, Union
 
 from ansible.errors import AnsibleFilterError
-from ansible_collections.o0_o.posix.plugins.module_utils import mount as _mount
+from ansible.module_utils.common.text.converters import to_native
+from ansible_collections.o0_o.posix.plugins.module_utils import mount
 
 DOCUMENTATION = r"""
 ---
@@ -98,9 +99,9 @@ class FilterModule:
 
     def filters(self) -> Dict[str, Any]:
         """Return the filter functions."""
-        return {"mount": self.mount}
+        return {"mount": self.mount_filter}
 
-    def mount(
+    def mount_filter(
         self,
         config: Union[str, Dict[str, Any]],
     ) -> List[Dict[str, Any]]:
@@ -118,6 +119,8 @@ class FilterModule:
         :raises AnsibleFilterError: If parsing fails
         """
         try:
-            return _mount(config)
+            return mount(config)
         except (ValueError, ImportError) as e:
-            raise AnsibleFilterError(f"Error processing mount: {e}") from e
+            raise AnsibleFilterError(
+                f"mount failed: {type(e).__name__}: {to_native(e)}"
+            ) from e

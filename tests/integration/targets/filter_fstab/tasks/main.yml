@@ -103,12 +103,13 @@
 
     - name: Find swap entry in parsed fstab
       ansible.builtin.set_fact:
-        swap_mount: "{{ fstab_parsed | selectattr('mount', 'equalto', 'none') | selectattr('type', 'equalto', 'swap') | first }}"
+        swap_mount: "{{ fstab_parsed | selectattr('type', 'equalto', 'swap') | first }}"
 
     - name: Assert swap entry
       ansible.builtin.assert:
         that:
           - swap_mount['source'] == '/dev/sda3'
+          - swap_mount['mount'] is none  # mount should be None for swap
           - swap_mount['type'] == 'swap'
           - swap_mount['options'][0]['sw'] == true
 
@@ -144,6 +145,92 @@
           # Check for lowerdir and upperdir in options
           - overlay_mount['options'] | selectattr('lowerdir', 'defined') | list | length > 0
           - overlay_mount['options'] | selectattr('upperdir', 'defined') | list | length > 0
+
+- name: Test bidirectional conversion
+  block:
+    - name: Parse fstab and store entries
+      ansible.builtin.set_fact:
+        parsed_entries: "{{ fstab_content_reg.content | b64decode | o0_o.posix.fstab }}"
+
+    - name: Generate fstab from parsed entries
+      ansible.builtin.set_fact:
+        regenerated_fstab: "{{ parsed_entries | o0_o.posix.fstab }}"
+
+    - name: Display regenerated fstab
+      ansible.builtin.debug:
+        msg: "{{ regenerated_fstab }}"
+
+    - name: Parse the regenerated fstab
+      ansible.builtin.set_fact:
+        reparsed_entries: "{{ regenerated_fstab | o0_o.posix.fstab }}"
+
+    - name: Assert entries remain consistent after round-trip
+      ansible.builtin.assert:
+        that:
+          - parsed_entries == reparsed_entries
+          - regenerated_fstab is string
+          - regenerated_fstab | length > 0
+
+- name: Test generation from custom entries
+  block:
+    - name: Define custom mount entries
+      ansible.builtin.set_fact:
+        custom_entries:
+          - source: /dev/vda1
+            mount: /
+            type: xfs
+            options:
+              - defaults: true
+              - noatime: true
+            dump: 0
+            pass: 1
+          - source: UUID=test-uuid
+            mount: /data
+            type: ext4
+            options:
+              - defaults: true
+              - noexec: true
+              - nosuid: true
+            dump: 1
+            pass: 2
+          - source: tmpfs
+            mount: /run
+            type: tmpfs
+            options:
+              - defaults: true
+              - size: "50%"
+            dump: 0
+            pass: 0
+
+    - name: Generate fstab from custom entries
+      ansible.builtin.set_fact:
+        custom_fstab: "{{ custom_entries | o0_o.posix.fstab }}"
+
+    - name: Assert generated fstab contains expected content
+      ansible.builtin.assert:
+        that:
+          - custom_fstab is string
+          - '"/dev/vda1" in custom_fstab'
+          - '"xfs" in custom_fstab'
+          - '"defaults,noatime" in custom_fstab'
+          - '"UUID=test-uuid" in custom_fstab'
+          - '"defaults,noexec,nosuid" in custom_fstab'
+          - '"tmpfs" in custom_fstab'
+          - '"size=50%" in custom_fstab'
+
+    - name: Parse generated fstab back to entries
+      ansible.builtin.set_fact:
+        parsed_custom: "{{ custom_fstab | o0_o.posix.fstab }}"
+
+    - name: Assert parsed entries match original
+      ansible.builtin.assert:
+        that:
+          - parsed_custom | length == 3
+          - parsed_custom[0]['source'] == '/dev/vda1'
+          - parsed_custom[0]['type'] == 'xfs'
+          - parsed_custom[1]['source'] == 'UUID=test-uuid'
+          - parsed_custom[1]['mount'] == '/data'
+          - parsed_custom[2]['type'] == 'tmpfs'
 
 - name: Test with command output format
   block:
@@ -199,7 +286,7 @@
         comment_only_fstab: |
           # This is a comment
           # Another comment
-          
+
           # Yet another comment
 
     - name: Parse comment-only fstab
@@ -210,3 +297,71 @@
       ansible.builtin.assert:
         that:
           - comment_result == []
+
+- name: Test base64 encoded content from slurp
+  block:
+    - name: Create a test fstab file
+      ansible.builtin.copy:
+        content: |
+          /dev/sda1   /       ext4    defaults,noatime   0   1
+          /dev/sda2   /home   ext4    defaults           0   2
+          tmpfs       /tmp    tmpfs   defaults,size=2G   0   0
+        dest: /tmp/test_fstab_for_slurp
+        mode: '0644'
+
+    - name: Slurp the test fstab file
+      ansible.builtin.slurp:
+        src: /tmp/test_fstab_for_slurp
+      register: slurped_fstab_reg
+
+    - name: Parse base64 encoded content from slurp
+      ansible.builtin.set_fact:
+        parsed_from_slurp: "{{ slurped_fstab_reg | o0_o.posix.fstab }}"
+
+    - name: Assert base64 content was properly decoded and parsed
+      ansible.builtin.assert:
+        that:
+          - parsed_from_slurp is sequence
+          - parsed_from_slurp | length == 3
+          - parsed_from_slurp[0]['source'] == '/dev/sda1'
+          - parsed_from_slurp[0]['mount'] == '/'
+          - parsed_from_slurp[0]['type'] == 'ext4'
+          - parsed_from_slurp[1]['source'] == '/dev/sda2'
+          - parsed_from_slurp[1]['mount'] == '/home'
+          - parsed_from_slurp[2]['source'] == 'tmpfs'
+          - parsed_from_slurp[2]['mount'] == '/tmp'
+          - parsed_from_slurp[2]['type'] == 'tmpfs'
+
+    - name: Also test direct content key in dict format
+      ansible.builtin.set_fact:
+        content_dict:
+          content: "{{ slurped_fstab_reg.content }}"
+          encoding: base64
+
+    - name: Parse content dict
+      ansible.builtin.set_fact:
+        parsed_content_dict: "{{ content_dict | o0_o.posix.fstab }}"
+
+    - name: Assert content dict parsing works
+      ansible.builtin.assert:
+        that:
+          - parsed_content_dict == parsed_from_slurp
+
+    - name: Test plain text content string (should be decoded by slurp already)
+      ansible.builtin.set_fact:
+        decoded_content: "{{ slurped_fstab_reg.content | b64decode }}"
+
+    - name: Parse decoded content directly
+      ansible.builtin.set_fact:
+        parsed_decoded: "{{ decoded_content | o0_o.posix.fstab }}"
+
+    - name: Assert decoded parsing works
+      ansible.builtin.assert:
+        that:
+          - parsed_decoded == parsed_from_slurp
+
+  always:
+    - name: Clean up test file
+      ansible.builtin.file:
+        path: /tmp/test_fstab_for_slurp
+        state: absent

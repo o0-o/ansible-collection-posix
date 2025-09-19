@@ -443,9 +443,7 @@ class PosixActionBase:
         )
 
         if result["rc"] != 0:
-            raise RuntimeError(
-                f"Backup failed: {result.get('stderr', '')}"
-            )
+            raise RuntimeError(f"Backup failed: {result.get('stderr', '')}")
 
         return backup_path
 
@@ -683,9 +681,7 @@ class PosixActionBase:
             if not all(
                 isinstance(line, (str, int, float)) for line in content
             ):
-                raise RuntimeError(
-                    "_write_file() requires strings or numbers"
-                )
+                raise RuntimeError("_write_file() requires strings or numbers")
             lines = [str(line) for line in content]
             normalized = "\n".join(lines) + "\n"
         else:
@@ -881,9 +877,7 @@ class PosixActionBase:
                         )
                         changed = True
                 except Exception as e:
-                    raise RuntimeError(
-                        f"Invalid mode: {perms['mode']}: {e}"
-                    )
+                    raise RuntimeError(f"Invalid mode: {perms['mode']}: {e}")
 
         self._display.vvv(f"Comparison result: changed is {changed}")
 

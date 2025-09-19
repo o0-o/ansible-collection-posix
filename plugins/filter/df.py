@@ -11,14 +11,11 @@
 
 from __future__ import annotations
 
-import re
 from typing import Any, Dict, List, Union
 
 from ansible.errors import AnsibleFilterError
-from ansible_collections.o0_o.posix.plugins.module_utils import (
-    JCBase,
-    StorageBase,
-)
+from ansible.module_utils.common.text.converters import to_native
+from ansible_collections.o0_o.posix.plugins.module_utils import df
 
 
 DOCUMENTATION = r"""
@@ -29,24 +26,21 @@ version_added: "1.4.0"
 description:
   - Parse output from the df command into structured data using jc
   - Returns a list of mount entries with structured capacity information
-    and filesystem classification
-  - Automatically classifies filesystem types and formats capacity data
+  - Automatically formats capacity data with bytes and human-readable values
 options:
   _input:
     description:
-      - Command output from 'df' as string, list of lines, or
-        command result dict
+      - Command output from 'df' as string or command result dict
     type: raw
     required: true
 requirements:
   - jc (Python library)
-  - o0_o.utils collection (required for facts=True)
+  - o0_o.utils collection (for capacity formatting)
 notes:
   - The jc library handles various df output formats (df, df -h, df -k, etc.)
   - Field names vary based on block size (1024_blocks, 512_blocks, size)
-  - Returns a list structure matching other storage filters
   - Capacity values are provided in both bytes and human-readable format
-  - Filesystem types are automatically classified (regular, virtual, network, overlay)
+  - Returns same base structure as mount filter plus capacity field
 author:
   - oØ.o (@o0-o)
 """
@@ -66,10 +60,12 @@ EXAMPLES = r"""
   ansible.builtin.debug:
     msg: >-
       Root uses {{ (fs_info | selectattr('mount', 'equalto', '/') | first).capacity.used.pretty }}
+      of {{ (fs_info | selectattr('mount', 'equalto', '/') | first).capacity.total.pretty }}
+      ({{ (fs_info | selectattr('mount', 'equalto', '/') | first).capacity.used.percent }}%)
 """
 
 RETURN = r"""
-_output:
+_value:
   description: List of mount entries with structured capacity data
   type: list
   elements: dict
@@ -77,9 +73,6 @@ _output:
   sample:
     - mount: /
       source: /dev/disk1s1
-      type: regular
-      driver: ext4
-      fuse: false
       capacity:
         total:
           bytes: 499963174912
@@ -87,11 +80,9 @@ _output:
         used:
           bytes: 313155427328
           pretty: "291.6 GiB"
+          percent: 62.6
     - mount: /System/Volumes/VM
       source: /dev/disk1s4
-      type: regular
-      driver: apfs
-      fuse: false
       capacity:
         total:
           bytes: 499963174912
@@ -99,79 +90,35 @@ _output:
         used:
           bytes: 5498036224
           pretty: "5.1 GiB"
+          percent: 1.1
 """
 
 
-class FilterModule(JCBase, StorageBase):
-    """Filter for parsing df command output using jc."""
+class FilterModule:
+    """Filter for parsing df command output."""
 
     def filters(self) -> Dict[str, Any]:
         """Return the filter functions."""
-        return {
-            "df": self.df,
-        }
+        return {"df": self.df_filter}
 
-
-    def df(
+    def df_filter(
         self,
-        data: Union[str, List[str], Dict[str, Any]],
+        config: Union[str, Dict[str, Any]],
     ) -> List[Dict[str, Any]]:
-        """Parse df output into structured data with filesystem classification.
+        """Parse df output into structured data.
 
-        Converts JC's df parser output to standardized format with:
-        - mounted_on -> mount
-        - filesystem -> source (when it's a device/path)
-        - Extracts block_size from field names like 1024_blocks
-        - Normalizes capacity data to total, used fields
-        - Classifies filesystem types
-        - Formats capacity with bytes and human-readable values
+        Parses df command output into normalized list of entries with:
+        - filesystem → source
+        - mounted_on → mount
+        - capacity structure with total/used (bytes, pretty, percent)
 
-        :param data: Output from df command - string, list of lines, or
-            command result
-        :returns: List of mount entries with standardized structure
+        :param config: Df command output as string or dict
+        :returns: List of df entries with standardized structure
+        :raises AnsibleFilterError: If parsing fails
         """
-        # Get parsed data from jc
-        parsed = self.parse_command(data, "df")
-        
-        # Normalize to standard format
-        normalized = []
-        for entry in parsed:
-            norm_entry = {"class": "filesystem"}
-
-            if "mounted_on" in entry:
-                norm_entry["mount"] = entry["mounted_on"]
-
-            if "filesystem" in entry:
-                norm_entry["source"] = entry["filesystem"]
-
-            # Find block size from field names like 1024_blocks, 512_blocks
-            for key in entry.keys():
-                if key.endswith("_blocks"):
-                    # Total is the value in this blocks field
-                    norm_entry["total"] = entry[key]
-                    # Extract the block size
-                    block_size = key.replace("_blocks", "")
-                    if block_size.isdigit():
-                        norm_entry["block_size"] = f"{block_size}B"
-                    elif re.match(r"^(\d+)([a-zA-Z]+)$", block_size):
-                        # Handle formats like 1k_blocks, 1M_blocks
-                        norm_entry["block_size"] = str(block_size)
-                    del block_size
-                    break
-
-            # Handle size field (alternative to blocks)
-            if "size" in entry and "total" not in norm_entry:
-                # size field already has units
-                norm_entry["total"] = entry["size"]
-
-            # Handle used field
-            if "used" in entry:
-                norm_entry["used"] = entry["used"]
-
-            normalized.append(norm_entry)
-
-        # Format with filesystem classification and capacity formatting
         try:
-            return self.format_storage_as_facts(normalized)
-        except Exception as e:
-            raise AnsibleFilterError(str(e)) from e
+            return df(config)
+        except (ValueError, ImportError) as e:
+            raise AnsibleFilterError(
+                f"df failed: {type(e).__name__}: {to_native(e)}"
+            ) from e
