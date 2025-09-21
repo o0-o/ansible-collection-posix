@@ -49,7 +49,9 @@
     - name: Find root filesystem in list
       ansible.builtin.set_fact:
         root_mount: >-
-          {{ parsed_string | selectattr('mount', 'equalto', '/') | first | default({}) }}
+          {{ parsed_string
+             | selectattr('mount', 'equalto', '/')
+             | first | default({}) }}
 
     - name: Verify root filesystem is present
       ansible.builtin.assert:
@@ -76,7 +78,8 @@
           - root_mount['capacity']['used']['percent'] >= 0
           - root_mount['capacity']['used']['percent'] <= 100
         fail_msg: >-
-          Capacity structure should have total/used with bytes, pretty, and percent
+          Capacity structure should have total/used with
+          bytes, pretty, and percent
 
 - name: Test with multiple filesystems
   block:
@@ -150,7 +153,9 @@
   block:
     - name: Load basic df output from file
       ansible.builtin.set_fact:
-        mock_df_output: "{{ lookup('file', playbook_dir + '/targets/filter_df/files/df_basic.txt') }}"
+        mock_df_output: >-
+          {{ lookup('file',
+                    playbook_dir + '/targets/filter_df/files/df_basic.txt') }}
 
     - name: Parse mock output
       ansible.builtin.set_fact:
@@ -196,7 +201,9 @@
   block:
     - name: Load df output with mismatched percent from file
       ansible.builtin.set_fact:
-        mock_df_mismatch: "{{ lookup('file', playbook_dir + '/targets/filter_df/files/df_mismatch_percent.txt') }}"
+        mock_df_mismatch: >-
+          {{ lookup('file', playbook_dir +
+                    '/targets/filter_df/files/df_mismatch_percent.txt') }}
 
     - name: Parse mock output with mismatched percent
       ansible.builtin.set_fact:
@@ -228,7 +235,9 @@
   block:
     - name: Load df output with 512-byte blocks from file
       ansible.builtin.set_fact:
-        mock_512_output: "{{ lookup('file', playbook_dir + '/targets/filter_df/files/df_512blocks.txt') }}"
+        mock_512_output: >-
+          {{ lookup('file', playbook_dir +
+                    '/targets/filter_df/files/df_512blocks.txt') }}
 
     - name: Parse 512-block output
       ansible.builtin.set_fact:
@@ -249,6 +258,10 @@
       when: parsed_string[0]['capacity'] is defined
       ansible.builtin.assert:
         that:
-          - parsed_string[0]['capacity']['total']['pretty'] is regex('^[0-9.]+ [KMGTPE]i?B$')
-          - parsed_string[0]['capacity']['used']['pretty'] is regex('^[0-9.]+ [KMGTPE]i?B$')
+          - >-
+            parsed_string[0]['capacity']['total']['pretty']
+            is regex('^[0-9.]+ [KMGTPE]i?B$')
+          - >-
+            parsed_string[0]['capacity']['used']['pretty']
+            is regex('^[0-9.]+ [KMGTPE]i?B$')
         fail_msg: "Pretty format should be human-readable with units"

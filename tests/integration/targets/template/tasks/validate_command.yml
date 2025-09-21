@@ -34,7 +34,7 @@
   ansible.builtin.stat:
     path: "{{ tmpl_test_dir }}/good.txt"
   register: file_stat_reg
-  failed_when: file_stat_reg.stat.exists
+  failed_when: file_stat_reg['stat']['exists']
   when: ansible_check_mode
 
 - name: Not check mode
@@ -49,7 +49,7 @@
     - name: Assert that content rendered properly
       assert:
         that:
-          - template_content_reg.content | trim == "Hello world"
+          - template_content_reg['content'] | trim == "Hello world"
 
 - name: Try template with failing validate command
   block:

@@ -38,7 +38,7 @@
 - name: Assert template metadata vars rendered
   assert:
     that:
-      - meta_slurp.content is defined
-      - "'template_path: ' + 'meta_vars.j2' in meta_slurp.content"
-      - "'template_destpath: ' + tmpl_test_dir in meta_slurp.content"
+      - meta_slurp['content'] is defined
+      - "'template_path: ' + 'meta_vars.j2' in meta_slurp['content']"
+      - "'template_destpath: ' + tmpl_test_dir in meta_slurp['content']"
   when: not ansible_check_mode

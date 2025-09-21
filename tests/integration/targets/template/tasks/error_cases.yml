@@ -28,8 +28,8 @@
     - name: Assert failure for missing src
       ansible.builtin.assert:
         that:
-          - "\"'src' is required\" in ansible_failed_result.msg
-            or 'missing required arguments: src' in ansible_failed_result.msg"
+          - "\"'src' is required\" in ansible_failed_result['msg']
+            or 'missing required arguments: src' in ansible_failed_result['msg']"
 
 - name: 'Fail: Nonexistent template file'
   block:
@@ -45,7 +45,7 @@
     - name: Assert failure for missing file
       ansible.builtin.assert:
         that:
-          - "\"'no_such_template.j2'\" in ansible_failed_result.msg"
+          - "\"'no_such_template.j2'\" in ansible_failed_result['msg']"
 
 - name: Create directory to test directory-as-template error
   ansible.builtin.file:
@@ -67,7 +67,7 @@
     - name: Assert failure when src is a directory
       ansible.builtin.assert:
         that:
-          - "'is a directory' in ansible_failed_result.msg | lower"
+          - "'is a directory' in ansible_failed_result['msg'] | lower"
 
 - name: Create unreadable template file
   ansible.builtin.copy:
@@ -89,8 +89,8 @@
     - name: Assert failure for unreadable file
       ansible.builtin.assert:
         that:
-          - "'Permission denied' in ansible_failed_result.msg
-            or 'unreadable' in ansible_failed_result.msg"
+          - "'Permission denied' in ansible_failed_result['msg']
+            or 'unreadable' in ansible_failed_result['msg']"
 
   when: ansible_user_id != 'root'
 
@@ -114,9 +114,9 @@
     - name: Assert failure for Jinja syntax error
       ansible.builtin.assert:
         that:
-          - "'unexpected end of template' in ansible_failed_result.msg
-            or 'unclosed variable' in ansible_failed_result.msg
-            or 'template syntax' in ansible_failed_result.msg"
+          - "'unexpected end of template' in ansible_failed_result['msg']
+            or 'unclosed variable' in ansible_failed_result['msg']
+            or 'template syntax' in ansible_failed_result['msg']"
 
 - name: 'Fail: Validate command fails explicitly'
   block:
@@ -134,6 +134,6 @@
     - name: Assert failure for failing validate command
       ansible.builtin.assert:
         that:
-          - "'validat' in ansible_failed_result.msg | lower
-            or 'exit code' in ansible_failed_result.msg
-            or 'non-zero' in ansible_failed_result.msg"
+          - "'validat' in ansible_failed_result['msg'] | lower
+            or 'exit code' in ansible_failed_result['msg']
+            or 'non-zero' in ansible_failed_result['msg']"

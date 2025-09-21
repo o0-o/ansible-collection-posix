@@ -46,7 +46,7 @@
         - name: Assert failure due to missing directory
           ansible.builtin.assert:
             that:
-              - "'Unable to change directory' in ansible_failed_result.msg"
+              - "'Unable to change directory' in ansible_failed_result['msg']"
 
 - name: 'Fail: Multiple command variants (cmd + argv)'
   block:
@@ -95,6 +95,6 @@
     - name: 'Assert false command returned rc>0 and failed'
       ansible.builtin.assert:
         that:
-          - ansible_failed_result.rc > 0
+          - ansible_failed_result['rc'] > 0
           - ansible_failed_result.stdout == ''
           - ansible_failed_result.stderr == ''

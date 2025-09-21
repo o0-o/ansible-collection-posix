@@ -86,5 +86,5 @@
       ansible.builtin.assert:
         that:
           - lineinfile_replace_reg is changed
-          - "'log_level=info' in slurp_before_reg.content_lines"
-          - "'log_level=debug' not in slurp_before_reg.content_lines"
+          - "'log_level=info' in slurp_before_reg['content_lines']"
+          - "'log_level=debug' not in slurp_before_reg['content_lines']"

@@ -37,7 +37,7 @@
     - name: Count matches
       ansible.builtin.set_fact:
         count_literal: >-
-          {{  slurp_literal.content_lines
+          {{  slurp_literal['content_lines']
               | select('equalto', 'path=/usr/local/bin')
               | list
               | length }}
@@ -75,7 +75,7 @@
     - name: Count matches
       ansible.builtin.set_fact:
         count_search: >-
-          {{  slurp_search.content_lines
+          {{  slurp_search['content_lines']
               | select('equalto', 'path=/usr/local/bin')
               | list
               | length }}
@@ -113,7 +113,7 @@
     - name: Count matches
       ansible.builtin.set_fact:
         count_regex: >-
-          {{  slurp_regex.content_lines
+          {{  slurp_regex['content_lines']
               | select('match', '^path=.*')
               | list
               | length }}
@@ -150,7 +150,7 @@
     - name: Count matches
       ansible.builtin.set_fact:
         count_nodedupe: >-
-          {{  slurp_nodedupe.content_lines
+          {{  slurp_nodedupe['content_lines']
               | select('equalto', 'path=/usr/local/bin')
               | list
               | length }}

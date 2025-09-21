@@ -18,7 +18,10 @@
   block:
     - name: Parse fstab content
       ansible.builtin.set_fact:
-        fstab_parsed: "{{ fstab_content_reg.content | b64decode | o0_o.posix.fstab }}"
+        fstab_parsed: >-
+          {{ fstab_content_reg['content']
+             | b64decode
+             | o0_o.posix.fstab }}
 
     - name: Assert parsing results
       ansible.builtin.assert:
@@ -37,7 +40,10 @@
   block:
     - name: Find root filesystem in parsed fstab
       ansible.builtin.set_fact:
-        root_mount: "{{ fstab_parsed | selectattr('mount', 'equalto', '/') | first }}"
+        root_mount: >-
+          {{ fstab_parsed
+             | selectattr('mount', 'equalto', '/')
+             | first }}
 
     - name: Assert root filesystem details
       ansible.builtin.assert:
@@ -51,7 +57,10 @@
 
     - name: Find boot filesystem in parsed fstab
       ansible.builtin.set_fact:
-        boot_mount: "{{ fstab_parsed | selectattr('mount', 'equalto', '/boot') | first }}"
+        boot_mount: >-
+          {{ fstab_parsed
+             | selectattr('mount', 'equalto', '/boot')
+             | first }}
 
     - name: Assert boot filesystem with UUID
       ansible.builtin.assert:
@@ -63,7 +72,10 @@
 
     - name: Find tmpfs in parsed fstab
       ansible.builtin.set_fact:
-        tmp_mount: "{{ fstab_parsed | selectattr('mount', 'equalto', '/tmp') | first }}"
+        tmp_mount: >-
+          {{ fstab_parsed
+             | selectattr('mount', 'equalto', '/tmp')
+             | first }}
 
     - name: Assert virtual filesystem (tmpfs)
       ansible.builtin.assert:
@@ -73,7 +85,10 @@
 
     - name: Find proc filesystem in parsed fstab
       ansible.builtin.set_fact:
-        proc_mount: "{{ fstab_parsed | selectattr('mount', 'equalto', '/proc') | first }}"
+        proc_mount: >-
+          {{ fstab_parsed
+             | selectattr('mount', 'equalto', '/proc')
+             | first }}
 
     - name: Assert pseudo filesystem (proc)
       ansible.builtin.assert:
@@ -83,7 +98,10 @@
 
     - name: Find NFS mount in parsed fstab
       ansible.builtin.set_fact:
-        nfs_mount: "{{ fstab_parsed | selectattr('mount', 'equalto', '/mnt/nfs') | first }}"
+        nfs_mount: >-
+          {{ fstab_parsed
+             | selectattr('mount', 'equalto', '/mnt/nfs')
+             | first }}
 
     - name: Assert network filesystem (NFS)
       ansible.builtin.assert:
@@ -93,7 +111,10 @@
 
     - name: Find CIFS mount in parsed fstab
       ansible.builtin.set_fact:
-        smb_mount: "{{ fstab_parsed | selectattr('mount', 'equalto', '/mnt/smb') | first }}"
+        smb_mount: >-
+          {{ fstab_parsed
+             | selectattr('mount', 'equalto', '/mnt/smb')
+             | first }}
 
     - name: Assert network filesystem (CIFS/SMB)
       ansible.builtin.assert:
@@ -103,7 +124,10 @@
 
     - name: Find swap entry in parsed fstab
       ansible.builtin.set_fact:
-        swap_mount: "{{ fstab_parsed | selectattr('type', 'equalto', 'swap') | first }}"
+        swap_mount: >-
+          {{ fstab_parsed
+             | selectattr('type', 'equalto', 'swap')
+             | first }}
 
     - name: Assert swap entry
       ansible.builtin.assert:
@@ -115,7 +139,10 @@
 
     - name: Find bind mount in parsed fstab
       ansible.builtin.set_fact:
-        bind_mount: "{{ fstab_parsed | selectattr('mount', 'equalto', '/newdir') | first }}"
+        bind_mount: >-
+          {{ fstab_parsed
+             | selectattr('mount', 'equalto', '/newdir')
+             | first }}
 
     - name: Assert bind mount
       ansible.builtin.assert:
@@ -126,7 +153,10 @@
 
     - name: Find FUSE filesystem in parsed fstab
       ansible.builtin.set_fact:
-        sshfs_mount: "{{ fstab_parsed | selectattr('mount', 'equalto', '/mnt/ssh') | first }}"
+        sshfs_mount: >-
+          {{ fstab_parsed
+             | selectattr('mount', 'equalto', '/mnt/ssh')
+             | first }}
 
     - name: Assert FUSE filesystem (sshfs)
       ansible.builtin.assert:
@@ -136,21 +166,33 @@
 
     - name: Find overlay filesystem in parsed fstab
       ansible.builtin.set_fact:
-        overlay_mount: "{{ fstab_parsed | selectattr('mount', 'equalto', '/var/docker') | first }}"
+        overlay_mount: >-
+          {{ fstab_parsed
+             | selectattr('mount', 'equalto', '/var/docker')
+             | first }}
 
     - name: Assert overlay filesystem
       ansible.builtin.assert:
         that:
           - overlay_mount['type'] == 'overlay'
           # Check for lowerdir and upperdir in options
-          - overlay_mount['options'] | selectattr('lowerdir', 'defined') | list | length > 0
-          - overlay_mount['options'] | selectattr('upperdir', 'defined') | list | length > 0
+          - >-
+            {{ overlay_mount['options']
+               | selectattr('lowerdir', 'defined')
+               | list | length > 0 }}
+          - >-
+            {{ overlay_mount['options']
+               | selectattr('upperdir', 'defined')
+               | list | length > 0 }}
 
 - name: Test bidirectional conversion
   block:
     - name: Parse fstab and store entries
       ansible.builtin.set_fact:
-        parsed_entries: "{{ fstab_content_reg.content | b64decode | o0_o.posix.fstab }}"
+        parsed_entries: >-
+          {{ fstab_content_reg['content']
+             | b64decode
+             | o0_o.posix.fstab }}
 
     - name: Generate fstab from parsed entries
       ansible.builtin.set_fact:
@@ -237,7 +279,7 @@
     - name: Parse fstab as command output
       ansible.builtin.set_fact:
         fstab_cmd_result:
-          stdout: "{{ fstab_content_reg.content | b64decode }}"
+          stdout: "{{ fstab_content_reg['content'] | b64decode }}"
           rc: 0
 
     - name: Parse command output
@@ -254,19 +296,18 @@
 
 - name: Test with list input format
   block:
-    - name: Parse fstab as list of lines
+    - name: Parse fstab content directly (without splitting)
       ansible.builtin.set_fact:
-        fstab_lines: "{{ (fstab_content_reg.content | b64decode).split('\n') }}"
+        fstab_from_string: >-
+          {{ fstab_content_reg['content']
+             | b64decode
+             | o0_o.posix.fstab }}
 
-    - name: Parse list input
-      ansible.builtin.set_fact:
-        fstab_from_list: "{{ fstab_lines | o0_o.posix.fstab }}"
-
-    - name: Assert list input parsing
+    - name: Assert parsing results
       ansible.builtin.assert:
         that:
-          - fstab_from_list is sequence
-          - fstab_from_list | length == 13
+          - fstab_from_string is sequence
+          - fstab_from_string | length == 13
 
 - name: Test empty fstab
   block:
@@ -335,7 +376,7 @@
     - name: Also test direct content key in dict format
       ansible.builtin.set_fact:
         content_dict:
-          content: "{{ slurped_fstab_reg.content }}"
+          content: "{{ slurped_fstab_reg['content'] }}"
           encoding: base64
 
     - name: Parse content dict
@@ -349,7 +390,7 @@
 
     - name: Test plain text content string (should be decoded by slurp already)
       ansible.builtin.set_fact:
-        decoded_content: "{{ slurped_fstab_reg.content | b64decode }}"
+        decoded_content: "{{ slurped_fstab_reg['content'] | b64decode }}"
 
     - name: Parse decoded content directly
       ansible.builtin.set_fact:
