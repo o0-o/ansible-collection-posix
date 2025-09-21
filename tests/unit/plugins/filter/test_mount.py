@@ -20,7 +20,10 @@ from ansible.errors import AnsibleFilterError
 @pytest.fixture
 def filter_module():
     """Create a FilterModule instance for testing."""
-    from ansible_collections.o0_o.posix.plugins.filter.mount import FilterModule
+    from ansible_collections.o0_o.posix.plugins.filter.mount import (
+        FilterModule,
+    )
+
     return FilterModule()
 
 
@@ -40,16 +43,16 @@ tmpfs on /dev/shm type tmpfs (rw,nosuid,nodev)"""
     assert result[0]["source"] == "/dev/sda1"
     assert result[0]["mount"] == "/"
     assert result[0]["type"] == "ext4"
-    assert {"rw": True} in result[0]["options"]
-    assert {"relatime": True} in result[0]["options"]
-    assert {"errors": "remount-ro"} in result[0]["options"]
+    assert result[0]["options"]["rw"] is True
+    assert result[0]["options"]["relatime"] is True
+    assert result[0]["options"]["errors"] == "remount-ro"
 
     # Check proc filesystem
     assert result[1]["source"] == "proc"
     assert result[1]["mount"] == "/proc"
     assert result[1]["type"] == "proc"
-    assert {"rw": True} in result[1]["options"]
-    assert {"nosuid": True} in result[1]["options"]
+    assert result[1]["options"]["rw"] is True
+    assert result[1]["options"]["nosuid"] is True
 
     # Check tmpfs
     assert result[2]["source"] == "tmpfs"
@@ -69,8 +72,8 @@ def test_mount_parse_macos_output(filter_module):
     assert result[0]["source"] == "/dev/disk3s1s1"
     assert result[0]["mount"] == "/"
     assert result[0]["type"] == "apfs"  # Extracted from first option
-    assert {"local": True} in result[0]["options"]
-    assert {"journaled": True} in result[0]["options"]
+    assert result[0]["options"]["local"] is True
+    assert result[0]["options"]["journaled"] is True
 
 
 def test_mount_parse_with_command_dict(filter_module):
@@ -89,7 +92,7 @@ def test_mount_parse_with_command_dict(filter_module):
     assert result[0]["source"] == "/dev/sda1"
     assert result[0]["mount"] == "/"
     assert result[0]["type"] == "ext4"
-    assert {"rw": True} in result[0]["options"]
+    assert result[0]["options"]["rw"] is True
 
 
 def test_mount_parse_with_slurp_dict(filter_module):
@@ -142,7 +145,8 @@ def test_mount_parse_import_error(filter_module):
     """Test error handling when jc is not available."""
     mount_filter = filter_module.filters()["mount"]
     with patch(
-        "ansible_collections.o0_o.posix.plugins.module_utils.jc_utils.HAS_JC", False
+        "ansible_collections.o0_o.posix.plugins.module_utils.jc_utils.HAS_JC",
+        False,
     ):
         with pytest.raises(AnsibleFilterError) as exc_info:
             mount_filter("mount output")
@@ -152,20 +156,25 @@ def test_mount_parse_import_error(filter_module):
 
 def test_mount_options_parsing(filter_module):
     """Test parsing of various mount option formats."""
-    mount_output = "/dev/sda1 on /mnt type ext4 (rw,uid=1000,gid=1000,umask=0022)"
+    mount_output = (
+        "/dev/sda1 on /mnt type ext4 (rw,uid=1000,gid=1000,umask=0022)"
+    )
     mount_filter = filter_module.filters()["mount"]
     result = mount_filter(mount_output)
 
     assert len(result) == 1
-    assert {"rw": True} in result[0]["options"]
-    assert {"uid": "1000"} in result[0]["options"]
-    assert {"gid": "1000"} in result[0]["options"]
-    assert {"umask": "0022"} in result[0]["options"]
+    assert result[0]["options"]["rw"] is True
+    assert result[0]["options"]["uid"] == "1000"
+    assert result[0]["options"]["gid"] == "1000"
+    assert result[0]["options"]["umask"] == "0022"
 
 
 def test_mount_network_filesystem(filter_module):
     """Test parsing network filesystem mounts."""
-    mount_output = "server:/export on /mnt/nfs type nfs (rw,vers=4.2,rsize=1048576,wsize=1048576)"
+    mount_output = (
+        "server:/export on /mnt/nfs type nfs "
+        "(rw,vers=4.2,rsize=1048576,wsize=1048576)"
+    )
     mount_filter = filter_module.filters()["mount"]
     result = mount_filter(mount_output)
 
@@ -173,8 +182,8 @@ def test_mount_network_filesystem(filter_module):
     assert result[0]["source"] == "server:/export"
     assert result[0]["mount"] == "/mnt/nfs"
     assert result[0]["type"] == "nfs"
-    assert {"vers": "4.2"} in result[0]["options"]
-    assert {"rsize": "1048576"} in result[0]["options"]
+    assert result[0]["options"]["vers"] == "4.2"
+    assert result[0]["options"]["rsize"] == "1048576"
 
 
 def test_mount_virtual_filesystem(filter_module):
@@ -187,8 +196,8 @@ def test_mount_virtual_filesystem(filter_module):
     assert result[0]["source"] == "tmpfs"
     assert result[0]["mount"] == "/dev/shm"
     assert result[0]["type"] == "tmpfs"
-    assert {"rw": True} in result[0]["options"]
-    assert {"nosuid": True} in result[0]["options"]
+    assert result[0]["options"]["rw"] is True
+    assert result[0]["options"]["nosuid"] is True
 
 
 def test_mount_empty_options(filter_module):
@@ -198,7 +207,7 @@ def test_mount_empty_options(filter_module):
     result = mount_filter(mount_output)
 
     assert len(result) == 1
-    assert result[0]["options"] == []
+    assert result[0]["options"] == {}
 
 
 def test_mount_multiple_entries(filter_module):
@@ -217,4 +226,4 @@ proc on /proc type proc (rw,nosuid,nodev,noexec)"""
         assert "mount" in entry
         assert "type" in entry
         assert "options" in entry
-        assert isinstance(entry["options"], list)
+        assert isinstance(entry["options"], dict)

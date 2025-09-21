@@ -35,25 +35,25 @@
     - name: Assert root filesystem has required fields
       ansible.builtin.assert:
         that:
+          # Source field (from df/mount)
+          - mount_result_reg['mounts']['/']['source'] is defined
           - >-
-            mount_result_reg['mounts']['/']['source'] is not defined or
             mount_result_reg['mounts']['/']['source'] is string or
             mount_result_reg['mounts']['/']['source'] is none
-          - mount_result_reg['mounts']['/']['filesystem'] is defined
-          - mount_result_reg['mounts']['/']['filesystem'] is string
+          # Type field (filesystem type like ext4, xfs, apfs, etc.)
           - mount_result_reg['mounts']['/']['type'] is defined
           - mount_result_reg['mounts']['/']['type'] is string
-          - mount_result_reg['mounts']['/']['fuse'] is defined
-          - mount_result_reg['mounts']['/']['fuse'] is boolean
-          - mount_result_reg['mounts']['/']['options'] is defined
-          - mount_result_reg['mounts']['/']['options'] is mapping
+          # Options field (merged dict from mount) - may not be present
+          - >-
+            mount_result_reg['mounts']['/']['options'] is not defined or
+            mount_result_reg['mounts']['/']['options'] is mapping
         fail_msg: 'Root filesystem missing required fields'
 
     - name: Check if capacity information is available
       ansible.builtin.debug:
         msg: |
-          Root filesystem: {{ mount_result_reg['mounts']['/']['filesystem'] }}
           Source: {{ mount_result_reg['mounts']['/'].get('source', 'N/A') }}
+          Type: {{ mount_result_reg['mounts']['/']['type'] }}
           {% if mount_result_reg['mounts']['/']['capacity'] is defined %}
           Total: {{ mount_result_reg['mounts']['/']
                     ['capacity']['total']['pretty'] }}
@@ -63,6 +63,8 @@
                    ['capacity']['used']['pretty'] }}
                 ({{ mount_result_reg['mounts']['/']
                     ['capacity']['used']['bytes'] }} bytes)
+          Percent: {{ mount_result_reg['mounts']['/']
+                      ['capacity']['used']['percent'] }}%
           {% else %}
           Capacity information not available
           {% endif %}
@@ -70,13 +72,20 @@
 - name: Test with virtual option
   o0_o.posix.mounts:
     virtual: true
-  register: all_mounts_reg
+  register: virtual_mounts_reg
+
+- name: Test with network option
+  o0_o.posix.mounts:
+    network: true
+  register: network_mounts_reg
 
 - name: Compare mount counts
   ansible.builtin.debug:
     msg: |
-      Without virtual: {{ mount_result_reg['mounts'] | length }} mount(s)
-      With virtual: {{ all_mounts_reg['mounts'] | length }} mount(s)
+      Default (no virtual/network):
+      {{ mount_result_reg['mounts'] | length }} mount(s)
+      With virtual: {{ virtual_mounts_reg['mounts'] | length }} mount(s)
+      With network: {{ network_mounts_reg['mounts'] | length }} mount(s)
 
 - name: Test in check mode
   o0_o.posix.mounts:
@@ -104,43 +113,35 @@
 - name: Check mount point structure for all mounts
   ansible.builtin.assert:
     that:
-      - >
-        item.value['source'] is defined or
-        item.value['type'] == 'virtual' or
-        item.value['type'] == 'overlay'
-      - >
+      # Source field - should always be defined (can be null)
+      - item.value['source'] is defined
+      - >-
         item.value['source'] is not defined or
         item.value['source'] is none or
         item.value['source'] is string
-      - >
-        item.value['filesystem'] is defined or
-        (item.value['fuse'] is defined and item.value['fuse'] == true)
-      - >
-        item.value['filesystem'] is not defined or
-        item.value['filesystem'] is string
-      - item.value['type'] is defined
-      - item.value['type'] in ['device', 'network', 'virtual', 'overlay']
-      - item.value['fuse'] is defined
-      - item.value['fuse'] is boolean
-      - >
+      # Type field - filesystem type string
+      # (may not be present if mount didn't provide it)
+      - >-
+        item.value['type'] is not defined or
+        item.value['type'] is string
+      # Options field - optional dict
+      - >-
         item.value['options'] is not defined or
         item.value['options'] is mapping
-      - >
-        item.value['pseudo'] is not defined or
-        (item.value['type'] == 'virtual' and
-        item.value['pseudo'] is boolean)
-      - >
+      # Capacity field - optional
+      - >-
         item.value['capacity'] is not defined or
         item.value['capacity'] is mapping
     fail_msg: |
-      Mount point {{ item.key }} has invalid structure
+      Mount point {{ item.key }} has invalid structure:
+      {{ item.value | to_nice_yaml }}
   loop: "{{ mount_result_reg['mounts'] | dict2items }}"
   loop_control:
     label: "{{ item.key }}"
 
 - name: Find mounts with capacity information
   ansible.builtin.set_fact:
-    mounts_with_capacity: |
+    mounts_with_capacity: >-
       {{ mount_result_reg['mounts'] | dict2items |
          selectattr('value.capacity', 'defined') |
          map(attribute='key') | list }}
@@ -149,6 +150,7 @@
   ansible.builtin.debug:
     msg: |
       Mounts with capacity info: {{ mounts_with_capacity | default([]) }}
+      Count: {{ mounts_with_capacity | default([]) | length }}
 
 - name: Validate capacity structure if present
   ansible.builtin.assert:
@@ -159,11 +161,14 @@
       - item.value['capacity']['used'] is defined
       - item.value['capacity']['used']['bytes'] is number
       - item.value['capacity']['used']['pretty'] is string
+      - item.value['capacity']['used']['percent'] is number
+      - item.value['capacity']['used']['percent'] >= 0
+      - item.value['capacity']['used']['percent'] <= 100
     fail_msg: |
-      Mount {{ item.key }} has invalid capacity structure
+      Mount {{ item.key }} has invalid capacity structure:
+      {{ item.value['capacity'] | to_nice_yaml }}
   loop: "{{ mount_result_reg['mounts'] | dict2items }}"
   when:
-    - mounts_with_capacity | default([]) | length > 0
     - item.value['capacity'] is defined
   loop_control:
     label: "{{ item.key }}"
@@ -182,3 +187,42 @@
         second_mount_reg['mounts'].keys() | list
     fail_msg: |
       Mounts module returned inconsistent results on multiple invocations
+
+- name: Verify virtual filesystem filtering
+  when: >-
+    virtual_mounts_reg['mounts'] | length >
+    mount_result_reg['mounts'] | length
+  block:
+    - name: Find virtual-only mounts
+      ansible.builtin.set_fact:
+        virtual_only: >-
+          {{ virtual_mounts_reg['mounts'].keys() | list |
+             difference(mount_result_reg['mounts'].keys() | list) }}
+
+    - name: Display virtual-only mount types
+      ansible.builtin.debug:
+        msg: |
+          Virtual mount {{ item }} has type:
+          {{ virtual_mounts_reg['mounts'][item]['type'] }}
+      loop: "{{ virtual_only }}"
+      when: virtual_only | length > 0
+
+- name: Check options field format
+  ansible.builtin.assert:
+    that:
+      # Options should be a dict, not a list
+      - >-
+        item.value['options'] is not defined or
+        item.value['options'] is mapping
+      # Option values should be strings or booleans
+      - >-
+        item.value['options'] is not defined or
+        (item.value['options'].values() | map('type_debug') |
+         unique | difference(['bool', 'str']) | length == 0)
+    fail_msg: |
+      Mount {{ item.key }} has invalid options format:
+      {{ item.value['options'] | to_nice_yaml }}
+  loop: "{{ mount_result_reg['mounts'] | dict2items }}"
+  when: item.value['options'] is defined
+  loop_control:
+    label: "{{ item.key }}"

@@ -27,11 +27,12 @@ def parse_mount_entry(entry: Dict[str, Any]) -> Dict[str, Any]:
     - filesystem → source
     - mount_point → mount
     - type → type (extracted from type field or first option)
-    - options → options (as list of dicts)
+    - options → options (as merged dict, unlike fstab's list of dicts)
 
     :param entry: Single mount entry from jc parser
     :returns: Normalized entry dict
     :raises ValueError: If required fields are missing
+    :raises TypeError: If options are not strings
     """
     if not entry:
         raise ValueError("Empty mount entry")
@@ -61,24 +62,26 @@ def parse_mount_entry(entry: Dict[str, Any]) -> Dict[str, Any]:
         # No type information available
         norm_entry["type"] = None
 
-    # Parse mount options into list of dicts (matching fstab structure)
-    norm_entry["options"] = []
+    # Parse mount options into a merged dict (unlike fstab which uses
+    # list of dicts)
+    norm_entry["options"] = {}
     if "options" in entry and entry["options"]:
         for opt in entry["options"]:
-            if isinstance(opt, str):
-                # Skip empty strings
-                if not opt:
-                    continue
-                if "=" in opt:
-                    # Split on first = only
-                    key, value = opt.split("=", 1)
-                    norm_entry["options"].append({key: value})
-                else:
-                    # Treat as boolean flag
-                    norm_entry["options"].append({opt: True})
+            if not isinstance(opt, str):
+                raise TypeError(
+                    f"Expected string option, got "
+                    f"{type(opt).__name__}: {opt}"
+                )
+            # Skip empty strings
+            if not opt:
+                continue
+            if "=" in opt:
+                # Split on first = only
+                key, value = opt.split("=", 1)
+                norm_entry["options"][key] = value
             else:
-                # Already structured (shouldn't happen with jc)
-                norm_entry["options"].append({str(opt): True})
+                # Treat as boolean flag
+                norm_entry["options"][opt] = True
 
     return norm_entry
 
@@ -114,13 +117,18 @@ def mount(config: Union[str, Dict[str, Any]]) -> List[Dict[str, Any]]:
     """Process mount data - parse command output into structured format.
 
     Mount is unidirectional - only parses mount output.
-    Returns data structure matching fstab format:
+    Returns data structure with these fields:
     - source: device or filesystem source
     - mount: mount point path
     - type: filesystem type (string, never a list)
-    - options: list of dicts with mount options
+    - options: merged dict with mount options (unlike fstab's list
+               of dicts)
 
-    Note: Unlike fstab, mount doesn't have dump or pass fields.
+    Note: Unlike fstab, mount doesn't have dump or pass fields, and
+    options
+    are returned as a single merged dict since mount doesn't support
+    duplicate
+    option keys like fstab does.
 
     :param config: Mount command output as string or dict
     :returns: List of normalized mount entries

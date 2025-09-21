@@ -29,51 +29,60 @@
       - mount_parsed[0].source == '/dev/sda1'
       - mount_parsed[0].mount == '/'
       - mount_parsed[0].type == 'ext4'
-      - mount_parsed[0].options is sequence
+      - mount_parsed[0].options is mapping
     fail_msg: >-
       Mount parsed structure incorrect:
       {{ mount_parsed }}
 
 - name: Verify root filesystem entry
   vars:
-    root_mount: "{{ mount_parsed | selectattr('mount', 'equalto', '/') | first }}"
+    root_mount: >-
+      {{ mount_parsed
+         | selectattr('mount', 'equalto', '/')
+         | first }}
   ansible.builtin.assert:
     that:
       - root_mount.source == '/dev/sda1'
       - root_mount.type == 'ext4'
-      - "{'rw': true} in root_mount.options"
-      - "{'relatime': true} in root_mount.options"
-      - "{'errors': 'remount-ro'} in root_mount.options"
+      - root_mount.options.rw == true
+      - root_mount.options.relatime == true
+      - root_mount.options.errors == 'remount-ro'
     fail_msg: >-
       Root mount incorrect:
       {{ root_mount }}
 
 - name: Verify proc filesystem entry
   vars:
-    proc_mount: "{{ mount_parsed | selectattr('mount', 'equalto', '/proc') | first }}"
+    proc_mount: >-
+      {{ mount_parsed
+         | selectattr('mount', 'equalto', '/proc')
+         | first }}
   ansible.builtin.assert:
     that:
       - proc_mount.source == 'proc'
       - proc_mount.type == 'proc'
-      - "{'rw': true} in proc_mount.options"
-      - "{'nosuid': true} in proc_mount.options"
-      - "{'nodev': true} in proc_mount.options"
-      - "{'noexec': true} in proc_mount.options"
+      - proc_mount.options.rw == true
+      - proc_mount.options.nosuid == true
+      - proc_mount.options.nodev == true
+      - proc_mount.options.noexec == true
     fail_msg: >-
       Proc mount incorrect:
       {{ proc_mount }}
 
 - name: Verify NFS mount entry
   vars:
-    nfs_mount: "{{ mount_parsed | selectattr('mount', 'equalto', '/mnt/nfs') | first }}"
+    nfs_mount: >-
+      {{ mount_parsed
+         | selectattr('mount', 'equalto', '/mnt/nfs')
+         | first }}
   ansible.builtin.assert:
     that:
       - nfs_mount.source == 'server:/export'
       - nfs_mount.type == 'nfs'
-      - "{'rw': true} in nfs_mount.options"
-      - "{'vers': '4.2'} in nfs_mount.options"
-      - "{'rsize': '1048576'} in nfs_mount.options"
-      - "{'wsize': '1048576'} in nfs_mount.options"
+      - nfs_mount.options.rw == true
+      - nfs_mount.options.vers == '4.2'
+      - nfs_mount.options.rsize == '1048576'
+      - nfs_mount.options.wsize == '1048576'
     fail_msg: >-
       NFS mount incorrect:
       {{ nfs_mount }}
@@ -133,12 +142,12 @@
   ansible.builtin.set_fact:
     mount_empty_opts: "{{ empty_opts_output | o0_o.posix.mount }}"
 
-- name: Verify empty options become empty list
+- name: Verify empty options become empty dict
   ansible.builtin.assert:
     that:
-      - mount_empty_opts[0].options == []
+      - mount_empty_opts[0].options == {}
     fail_msg: >-
-      Empty options should be empty list, got:
+      Empty options should be empty dict, got:
       {{ mount_empty_opts[0].options }}
 
 - name: Test macOS-style mount output (type in options)
@@ -153,8 +162,8 @@
       - mount_macos[0].source == '/dev/disk3s1s1'
       - mount_macos[0].mount == '/'
       - mount_macos[0].type == 'apfs'
-      - "{'local': true} in mount_macos[0].options"
-      - "{'journaled': true} in mount_macos[0].options"
+      - mount_macos[0].options.local == true
+      - mount_macos[0].options.journaled == true
     fail_msg: >-
       macOS-style mount incorrect:
       {{ mount_macos[0] }}
