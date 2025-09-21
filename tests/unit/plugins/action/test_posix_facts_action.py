@@ -16,6 +16,7 @@ from typing import Generator
 import pytest
 
 from ansible.errors import AnsibleConnectionFailure
+from tests.utils import boom
 from ansible_collections.o0_o.posix.plugins.action.facts import ActionModule
 
 
@@ -64,9 +65,7 @@ def test_get_kernel_and_hardware_connection_failure(
     monkeypatch.setattr(
         plugin,
         "_cmd",
-        lambda *args, **kwargs: (x for x in ()).throw(
-            AnsibleConnectionFailure("connection lost")
-        ),
+        boom(AnsibleConnectionFailure("connection lost")),
     )
 
     with pytest.raises(AnsibleConnectionFailure):
@@ -75,13 +74,7 @@ def test_get_kernel_and_hardware_connection_failure(
 
 def test_run_skips_on_non_posix(monkeypatch, plugin) -> None:
     """Test graceful handling of non-POSIX systems."""
-    monkeypatch.setattr(
-        plugin,
-        "_cmd",
-        lambda *args, **kwargs: (x for x in ()).throw(
-            RuntimeError("not POSIX")
-        ),
-    )
+    monkeypatch.setattr(plugin, "_cmd", boom(RuntimeError("not POSIX")))
 
     result = plugin.run(tmp=None, task_vars={})
 
