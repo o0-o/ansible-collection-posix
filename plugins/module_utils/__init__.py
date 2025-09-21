@@ -19,6 +19,7 @@ from ansible_collections.o0_o.posix.plugins.module_utils.df_utils import (
     parse_df_entry,
 )
 from ansible_collections.o0_o.posix.plugins.module_utils.filter_utils import (
+    normalize_source,
     process_registered_result,
 )
 from ansible_collections.o0_o.posix.plugins.module_utils.fstab_utils import (
@@ -57,6 +58,7 @@ __all__ = [
     "mount",
     "parse_mount",
     "parse_mount_entry",
+    "normalize_source",
     "process_registered_result",
     "uname",
 ]

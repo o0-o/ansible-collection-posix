@@ -136,9 +136,8 @@
     - name: Check for network filesystems
       ansible.builtin.set_fact:
         network_fs: >-
-          {{ parsed_string | selectattr('source', 'defined') |
-             selectattr('source', 'match', '.*:.*') |
-             list }}
+          {{ parsed_string | selectattr('source.address', 'defined') | list +
+             parsed_string | selectattr('source.map', 'defined') | list }}
 
     - name: Verify network filesystem parsing if present
       when: network_fs | length > 0
@@ -146,7 +145,8 @@
         that:
           - network_fs[0]['mount'] is defined
           - network_fs[0]['source'] is defined
-          - "':' in network_fs[0]['source']"
+          - network_fs[0]['source'] is mapping
+          - network_fs[0]['source']['address'] is defined or network_fs[0]['source']['map'] is defined
         fail_msg: "Network filesystems should be properly parsed"
 
 - name: Test filter with mock df output
@@ -170,11 +170,11 @@
         that:
           - mock_parsed | length == 3
           - mock_parsed[0]['mount'] == '/'
-          - mock_parsed[0]['source'] == '/dev/sda1'
+          - mock_parsed[0]['source']['path'] == '/dev/sda1'
           - mock_parsed[1]['mount'] == '/home'
-          - mock_parsed[1]['source'] == '/dev/sda2'
+          - mock_parsed[1]['source']['path'] == '/dev/sda2'
           - mock_parsed[2]['mount'] == '/dev/shm'
-          - mock_parsed[2]['source'] == 'tmpfs'
+          - mock_parsed[2]['source']['name'] == 'tmpfs'
         fail_msg: "Should correctly parse mock df output"
 
     - name: Verify capacity calculation for mock data

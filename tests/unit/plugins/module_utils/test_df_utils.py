@@ -39,7 +39,7 @@ def test_parse_df_entry_builds_capacity(sample_entry: Dict[str, Any]) -> None:
     result = df_utils.parse_df_entry(sample_entry)
 
     assert result["mount"] == "/"
-    assert result["source"] == "/dev/sda1"
+    assert result["source"] == {"path": "/dev/sda1"}
     total = result["capacity"]["total"]
     used = result["capacity"]["used"]
     assert total["bytes"] == 2048 * 1024
@@ -117,4 +117,4 @@ def test_df_skips_invalid_entries() -> None:
         result = df_utils.df("ignored")
 
     assert len(result) == 1
-    assert result[0]["source"] == "root"
+    assert result[0]["source"] == {"name": "root"}

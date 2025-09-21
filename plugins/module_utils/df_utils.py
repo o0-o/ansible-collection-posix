@@ -15,6 +15,9 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Union
 
+from ansible_collections.o0_o.posix.plugins.module_utils.filter_utils import (
+    normalize_source,
+)
 from ansible_collections.o0_o.posix.plugins.module_utils.jc_utils import (
     jc_parse,
 )
@@ -53,7 +56,7 @@ def parse_df_entry(entry: Dict[str, Any]) -> Dict[str, Any]:
 
     # Source (filesystem)
     if "filesystem" in entry:
-        norm_entry["source"] = entry["filesystem"]
+        norm_entry["source"] = normalize_source(entry["filesystem"])
 
     # Build capacity structure if we have parse_si
     if HAS_PARSE_SI and parse_si:

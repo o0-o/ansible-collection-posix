@@ -13,7 +13,8 @@
 
 from __future__ import annotations
 
-from typing import Any, Callable, Dict, Union
+import re
+from typing import Any, Callable, Dict, Optional, Union
 
 
 def process_registered_result(
@@ -55,3 +56,76 @@ def process_registered_result(
         raise ValueError(
             "Dict input must have 'stdout' or 'content' key for parsing"
         )
+
+
+def normalize_source(source: str) -> Dict[str, Any]:
+    """Normalize a mount/df source into a structured dictionary.
+
+    Parses various source formats into a consistent structure:
+    - Device paths: /dev/sda1, /dev/disk3s1s1
+    - Network paths: server:/export, //server/share
+    - UUID: UUID=abc-123, PARTUUID=def-456
+    - Labels: LABEL=root, PARTLABEL=system
+    - Special filesystems: proc, sysfs, tmpfs, devpts
+    - Automounter maps: map auto_home, map -hosts
+
+    :param source: The source string from mount or df output
+    :returns: Dict with structured source information
+
+    Return dict contains applicable fields:
+    - path: Local device path (e.g., /dev/sda1)
+    - address: Network address (e.g., server:/export)
+    - map: Automounter map name
+    - name: Special filesystem name (e.g., proc, tmpfs)
+    - uuid: UUID value
+    - label: Label value
+    - partition: Boolean indicating if UUID/LABEL is partition-specific
+    """
+    result: Dict[str, Any] = {}
+
+    # Check for UUID formats
+    uuid_match = re.match(r'^(PART)?(UUID)=(.+)$', source, re.IGNORECASE)
+    if uuid_match:
+        result["uuid"] = uuid_match.group(3)
+        result["partition"] = bool(uuid_match.group(1))
+        return result
+
+    # Check for LABEL formats
+    label_match = re.match(r'^(PART)?(LABEL)=(.+)$', source, re.IGNORECASE)
+    if label_match:
+        result["label"] = label_match.group(3)
+        result["partition"] = bool(label_match.group(1))
+        return result
+
+    # Check for automounter maps
+    if source.startswith('map '):
+        result["map"] = source[4:]  # Remove 'map ' prefix
+        return result
+
+    # Check for network paths (NFS, SMB/CIFS)
+    # NFS: server:/path or server.domain:/path
+    # SMB: //server/share
+    if ':' in source and '/' in source:
+        # NFS style: host:/path
+        if not source.startswith('//'):
+            result["address"] = source
+            return result
+    elif source.startswith('//'):
+        # SMB/CIFS style: //server/share
+        result["address"] = source
+        return result
+
+    # Check for device paths
+    if source.startswith('/dev/'):
+        result["path"] = source
+        return result
+
+    # Check for other absolute paths (bind mounts, etc.)
+    if source.startswith('/'):
+        result["path"] = source
+        return result
+
+    # Everything else is likely a special filesystem name
+    # (proc, sysfs, tmpfs, devpts, etc.)
+    result["name"] = source
+    return result

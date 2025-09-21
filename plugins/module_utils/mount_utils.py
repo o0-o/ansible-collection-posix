@@ -15,6 +15,9 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Union
 
+from ansible_collections.o0_o.posix.plugins.module_utils.filter_utils import (
+    normalize_source,
+)
 from ansible_collections.o0_o.posix.plugins.module_utils.jc_utils import (
     jc_parse,
 )
@@ -135,7 +138,7 @@ def parse_mount_entry(entry: Dict[str, Any]) -> Dict[str, Any]:
     if "mount_point" not in entry:
         raise ValueError("Missing mount_point in mount entry")
 
-    norm_entry["source"] = entry["filesystem"]
+    norm_entry["source"] = normalize_source(entry["filesystem"])
     norm_entry["mount"] = entry["mount_point"]
 
     # Parse filesystem type

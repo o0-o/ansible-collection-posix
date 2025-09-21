@@ -64,3 +64,97 @@ def test_process_registered_result_missing_keys() -> None:
 
     with pytest.raises(ValueError, match="stdout"):
         filter_utils.process_registered_result({}, lambda value: value)
+
+
+@pytest.mark.parametrize(
+    "source,expected",
+    [
+        # Device paths
+        ("/dev/sda1", {"path": "/dev/sda1"}),
+        ("/dev/disk3s1s1", {"path": "/dev/disk3s1s1"}),
+        ("/dev/mapper/vg-lv", {"path": "/dev/mapper/vg-lv"}),
+        # UUID formats
+        ("UUID=abc-123-def", {"uuid": "abc-123-def", "partition": False}),
+        ("PARTUUID=xyz-456", {"uuid": "xyz-456", "partition": True}),
+        ("uuid=lowercase", {"uuid": "lowercase", "partition": False}),
+        # Label formats
+        ("LABEL=root", {"label": "root", "partition": False}),
+        ("PARTLABEL=system", {"label": "system", "partition": True}),
+        ("label=MyDisk", {"label": "MyDisk", "partition": False}),
+        # Network paths (NFS)
+        ("server:/export", {"address": "server:/export"}),
+        (
+            "server.domain:/path/to/share",
+            {"address": "server.domain:/path/to/share"},
+        ),
+        ("192.168.1.1:/nfs", {"address": "192.168.1.1:/nfs"}),
+        # Network paths (SMB/CIFS)
+        ("//server/share", {"address": "//server/share"}),
+        ("//192.168.1.1/share", {"address": "//192.168.1.1/share"}),
+        # Automounter maps
+        ("map auto_home", {"map": "auto_home"}),
+        ("map -hosts", {"map": "-hosts"}),
+        # Special filesystems
+        ("proc", {"name": "proc"}),
+        ("sysfs", {"name": "sysfs"}),
+        ("tmpfs", {"name": "tmpfs"}),
+        ("devpts", {"name": "devpts"}),
+        ("none", {"name": "none"}),
+        # Bind mounts and other paths
+        ("/home", {"path": "/home"}),
+        ("/mnt/data", {"path": "/mnt/data"}),
+        ("/", {"path": "/"}),
+    ],
+)
+def test_normalize_source(source: str, expected: dict) -> None:
+    """Test source normalization for various formats."""
+    result = filter_utils.normalize_source(source)
+    assert result == expected
+
+
+def test_normalize_source_uuid_case_insensitive() -> None:
+    """Test that UUID matching is case-insensitive."""
+    assert filter_utils.normalize_source("UUID=test") == {
+        "uuid": "test",
+        "partition": False,
+    }
+    assert filter_utils.normalize_source("uuid=test") == {
+        "uuid": "test",
+        "partition": False,
+    }
+    assert filter_utils.normalize_source("Uuid=test") == {
+        "uuid": "test",
+        "partition": False,
+    }
+    assert filter_utils.normalize_source("PARTUUID=test") == {
+        "uuid": "test",
+        "partition": True,
+    }
+    assert filter_utils.normalize_source("partuuid=test") == {
+        "uuid": "test",
+        "partition": True,
+    }
+
+
+def test_normalize_source_label_case_insensitive() -> None:
+    """Test that LABEL matching is case-insensitive."""
+    assert filter_utils.normalize_source("LABEL=test") == {
+        "label": "test",
+        "partition": False,
+    }
+    assert filter_utils.normalize_source("label=test") == {
+        "label": "test",
+        "partition": False,
+    }
+    assert filter_utils.normalize_source("Label=test") == {
+        "label": "test",
+        "partition": False,
+    }
+    assert filter_utils.normalize_source("PARTLABEL=test") == {
+        "label": "test",
+        "partition": True,
+    }
+    assert filter_utils.normalize_source("partlabel=test") == {
+        "label": "test",
+        "partition": True,
+    }

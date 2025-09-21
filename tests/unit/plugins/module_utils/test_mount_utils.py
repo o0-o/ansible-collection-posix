@@ -99,7 +99,7 @@ def test_parse_mount_entry_linux() -> None:
     result = mount_utils.parse_mount_entry(entry)
 
     assert result == {
-        "source": "/dev/sda1",
+        "source": {"path": "/dev/sda1"},
         "mount": "/",
         "type": "ext4",
         "options": {

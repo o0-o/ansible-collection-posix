@@ -83,7 +83,7 @@ tmpfs on /tmp type tmpfs (rw,nosuid,nodev)""",
 
     # Check root mount details
     root = mounts["/"]
-    assert root["source"] == "/dev/sda1"
+    assert root["source"] == {"path": "/dev/sda1"}
     assert root["type"] == "ext4"
     assert "capacity" in root
     assert root["capacity"]["total"]["bytes"] == 1024000 * 1024
@@ -93,7 +93,7 @@ tmpfs on /tmp type tmpfs (rw,nosuid,nodev)""",
 
     # Check boot mount details
     boot = mounts["/boot"]
-    assert boot["source"] == "/dev/sda2"
+    assert boot["source"] == {"path": "/dev/sda2"}
     assert boot["type"] == "ext4"
     assert "capacity" in boot
     assert boot["capacity"]["total"]["bytes"] == 512000 * 1024
@@ -136,7 +136,7 @@ tmpfs on /tmp type tmpfs (rw,nosuid,nodev)""",
 
     # Check tmpfs mount
     tmp = mounts["/tmp"]
-    assert tmp["source"] == "tmpfs"
+    assert tmp["source"] == {"name": "tmpfs"}
     assert tmp["type"] == "tmpfs"
     assert "capacity" in tmp
 
@@ -172,7 +172,7 @@ def test_get_mounts_with_spaces(monkeypatch, plugin) -> None:
     # JC should handle escaped spaces in mount paths
     assert "/mnt/my folder" in mounts
     mount = mounts["/mnt/my folder"]
-    assert mount["source"] == "/dev/sda1"
+    assert mount["source"] == {"path": "/dev/sda1"}
 
 
 def test_get_mounts_macos_format(monkeypatch, plugin) -> None:
@@ -202,7 +202,7 @@ def test_get_mounts_macos_format(monkeypatch, plugin) -> None:
 
     assert "/" in mounts
     root = mounts["/"]
-    assert root["source"] == "/dev/disk3s1s1"
+    assert root["source"] == {"path": "/dev/disk3s1s1"}
     assert root["type"] == "apfs"  # First option in macOS format
     assert root["options"]["local"] is True
     assert root["options"]["journaled"] is True
@@ -334,7 +334,7 @@ def test_get_mounts_network_fs(monkeypatch, plugin) -> None:
     assert "/mnt/nfs" in mounts
 
     nfs_mount = mounts["/mnt/nfs"]
-    assert nfs_mount["source"] == "server:/export"
+    assert nfs_mount["source"] == {"address": "server:/export"}
     assert nfs_mount["type"] == "nfs"
     assert nfs_mount["options"]["vers"] == "4.2"
 
@@ -374,4 +374,4 @@ def test_run_method(monkeypatch, plugin) -> None:
     assert "mounts" in result
     assert isinstance(result["mounts"], dict)
     assert "/" in result["mounts"]
-    assert result["mounts"]["/"]["source"] == "/dev/sda1"
+    assert result["mounts"]["/"]["source"] == {"path": "/dev/sda1"}
