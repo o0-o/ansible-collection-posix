@@ -18,6 +18,9 @@ html_title = "o0_o.posix documentation"
 html_short_title = "o0_o.posix"
 html_baseurl = "https://o0-o.github.io/ansible-collection-posix/"
 
+root_doc = "generated/index"
+master_doc = root_doc
+
 extensions = [
     "sphinx.ext.autodoc",
     "sphinx.ext.intersphinx",
@@ -47,4 +50,5 @@ nitpicky = True
 exclude_patterns = [
     "_build",
     "build",
+    "index.rst",
 ]

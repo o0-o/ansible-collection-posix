@@ -1,0 +1,5 @@
+# vim: ts=2:sw=2:sts=2:et:ft=yaml.ansible
+# -*- mode: yaml; yaml-indent-offset: 2; indent-tabs-mode: nil; -*-
+---
+major_changes:
+  - 'Added ``jc`` filter to leverage the jc library for parsing common command output into JSON-like structures.'

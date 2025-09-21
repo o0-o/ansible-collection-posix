@@ -118,6 +118,17 @@ These exist to support `ansible-doc` and collection metadata. Do not use directl
     line: "enabled=true"
     insertafter: '^# Feature toggles'
     create: true
+
+## Development & Testing
+
+```
+ansible-test sanity --venv
+ansible-test units --venv
+ansible-test integration --venv
+```
+
+CI runs `black`, `flake8`, and `yamllint` before building; any lint failures
+will fail the workflow, so keep sources formatted locally.
 ```
 
 ### `template`
