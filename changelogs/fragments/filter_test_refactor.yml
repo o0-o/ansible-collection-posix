@@ -1,0 +1,9 @@
+# vim: ts=2:sw=2:sts=2:et:ft=yaml.ansible
+# -*- mode: yaml; yaml-indent-offset: 2; indent-tabs-mode: nil; -*-
+---
+minor_changes:
+  - 'Shifted detailed parsing coverage for df/mount/fstab/uname utilities into
+    dedicated module_utils unit tests and trimmed filter suites to delegation
+    smoke checks for consistency with the utils collection.'
+  - 'Covered shared filter utility helper ``process_registered_result`` to lock
+    in base64 decoding behaviour across filters.'

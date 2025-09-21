@@ -44,7 +44,7 @@
     that:
       - root_mount.source == '/dev/sda1'
       - root_mount.type == 'ext4'
-      - root_mount.options.rw == true
+      - root_mount.options.writable == true  # rw normalized
       - root_mount.options.relatime == true
       - root_mount.options.errors == 'remount-ro'
     fail_msg: >-
@@ -61,10 +61,10 @@
     that:
       - proc_mount.source == 'proc'
       - proc_mount.type == 'proc'
-      - proc_mount.options.rw == true
-      - proc_mount.options.nosuid == true
-      - proc_mount.options.nodev == true
-      - proc_mount.options.noexec == true
+      - proc_mount.options.writable == true  # rw normalized
+      - proc_mount.options.suid == false      # nosuid normalized
+      - proc_mount.options.dev == false       # nodev normalized
+      - proc_mount.options.exec == false      # noexec normalized
     fail_msg: >-
       Proc mount incorrect:
       {{ proc_mount }}
@@ -79,7 +79,7 @@
     that:
       - nfs_mount.source == 'server:/export'
       - nfs_mount.type == 'nfs'
-      - nfs_mount.options.rw == true
+      - nfs_mount.options.writable == true   # rw normalized
       - nfs_mount.options.vers == '4.2'
       - nfs_mount.options.rsize == '1048576'
       - nfs_mount.options.wsize == '1048576'

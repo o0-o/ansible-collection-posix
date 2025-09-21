@@ -298,9 +298,7 @@ tmpfs on /run type tmpfs (rw,nosuid,nodev)""",
     assert "/run" in mounts  # tmpfs included
 
 
-def test_get_mounts_network_fs(
-    monkeypatch, plugin
-) -> None:
+def test_get_mounts_network_fs(monkeypatch, plugin) -> None:
     """Test handling of network filesystems."""
 
     def mock_cmd(cmd, task_vars=None, **kwargs):

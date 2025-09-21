@@ -19,6 +19,81 @@ from ansible_collections.o0_o.posix.plugins.module_utils.jc_utils import (
     jc_parse,
 )
 
+# Mount option normalization mappings
+# These options have no/no* prefixes that should be normalized to
+# booleans
+BOOLEAN_OPTION_PAIRS = {
+    # Standard POSIX options
+    "exec": "noexec",
+    "suid": "nosuid",
+    "dev": "nodev",
+    "atime": "noatime",
+    "diratime": "nodiratime",
+    "relatime": "norelatime",
+    "strictatime": "nostrictatime",
+    "user": "nouser",
+    "mand": "nomand",
+    # Extended attributes and ACLs
+    "acl": "noacl",
+    "user_xattr": "nouser_xattr",
+    # Filesystem features
+    "quota": "noquota",
+    "iversion": "noiversion",
+    # NFS-specific options
+    "intr": "nointr",
+    "cto": "nocto",
+    "lock": "nolock",
+    "rdirplus": "nordirplus",
+    # Ext* filesystem options
+    "journal_async_commit": "nojournal_async_commit",
+}
+
+# Special mappings that don't follow the no* pattern
+SPECIAL_MAPPINGS = {
+    "rw": ("writable", True),
+    "ro": ("writable", False),
+    "sync": ("sync", True),
+    "async": ("sync", False),
+    "hard": ("hard", True),  # NFS
+    "soft": ("hard", False),  # NFS
+}
+
+
+def normalize_mount_options(options: Dict[str, Any]) -> Dict[str, Any]:
+    """Normalize mount options to use consistent boolean format.
+
+    Converts options like noexec to exec=False, ro to writable=False,
+    etc.
+    Any option not in our mappings is treated as a boolean True flag.
+
+    :param options: Raw options dict from parsing
+    :returns: Normalized options dict with consistent boolean values
+    """
+    normalized = {}
+
+    # Create reverse mapping for no* options
+    reverse_boolean = {v: k for k, v in BOOLEAN_OPTION_PAIRS.items()}
+
+    for opt, value in options.items():
+        # Check special mappings first (rw/ro, sync/async, etc.)
+        if opt in SPECIAL_MAPPINGS:
+            key, bool_value = SPECIAL_MAPPINGS[opt]
+            normalized[key] = bool_value
+        # Check if it's a positive option (exec, dev, suid, etc.)
+        elif opt in BOOLEAN_OPTION_PAIRS:
+            normalized[opt] = True
+        # Check if it's a negative option (noexec, nodev, nosuid, etc.)
+        elif opt in reverse_boolean:
+            normalized[reverse_boolean[opt]] = False
+        # Options with values stay as-is
+        elif value is not True:
+            normalized[opt] = value
+        # Any other option defaults to boolean True
+        else:
+            normalized[opt] = True
+
+    return normalized
+
 
 def parse_mount_entry(entry: Dict[str, Any]) -> Dict[str, Any]:
     """Parse a single mount entry from jc output to normalized format.
@@ -64,7 +139,7 @@ def parse_mount_entry(entry: Dict[str, Any]) -> Dict[str, Any]:
 
     # Parse mount options into a merged dict (unlike fstab which uses
     # list of dicts)
-    norm_entry["options"] = {}
+    raw_options = {}
     if "options" in entry and entry["options"]:
         for opt in entry["options"]:
             if not isinstance(opt, str):
@@ -78,10 +153,13 @@ def parse_mount_entry(entry: Dict[str, Any]) -> Dict[str, Any]:
             if "=" in opt:
                 # Split on first = only
                 key, value = opt.split("=", 1)
-                norm_entry["options"][key] = value
+                raw_options[key] = value
             else:
                 # Treat as boolean flag
-                norm_entry["options"][opt] = True
+                raw_options[opt] = True
+
+    # Normalize the options to consistent boolean format
+    norm_entry["options"] = normalize_mount_options(raw_options)
 
     return norm_entry
 
