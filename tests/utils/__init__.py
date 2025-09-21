@@ -21,6 +21,9 @@ from .mounts import (
     assert_mount_has_fields,
     convert_dict_mounts_to_list,
 )
+from .exc import (
+    boom,
+)
 
 __all__ = [
     "real_cmd",
@@ -31,4 +34,5 @@ __all__ = [
     "find_mount_by_target",
     "assert_mount_has_fields",
     "convert_dict_mounts_to_list",
+    "boom",
 ]

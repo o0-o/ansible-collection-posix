@@ -19,6 +19,7 @@ import pytest
 from ansible.errors import AnsibleFilterError
 
 from ansible_collections.o0_o.posix.plugins.filter.df import FilterModule
+from tests.utils import boom
 
 
 @pytest.fixture
@@ -53,13 +54,15 @@ def test_df_filter_delegates_to_helper(filter_module: FilterModule) -> None:
     "exception", [ValueError("bad"), ImportError("missing")]
 )
 def test_df_filter_wraps_exceptions(
-    filter_module: FilterModule, exception: Exception
+    filter_module: FilterModule,
+    exception: Exception,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """ValueError/ImportError from helper become AnsibleFilterError."""
 
-    with patch(
+    monkeypatch.setattr(
         "ansible_collections.o0_o.posix.plugins.filter.df.df",
-        side_effect=exception,
-    ):
-        with pytest.raises(AnsibleFilterError, match="df failed"):
-            filter_module.filters()["df"]("broken")
+        boom(exception),
+    )
+    with pytest.raises(AnsibleFilterError, match="df failed"):
+        filter_module.filters()["df"]("broken")

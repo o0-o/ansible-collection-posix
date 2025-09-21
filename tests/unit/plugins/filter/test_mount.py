@@ -19,6 +19,7 @@ import pytest
 from ansible.errors import AnsibleFilterError
 
 from ansible_collections.o0_o.posix.plugins.filter.mount import FilterModule
+from tests.utils import boom
 
 
 @pytest.fixture
@@ -53,13 +54,15 @@ def test_mount_filter_delegates_to_helper(filter_module: FilterModule) -> None:
     "exception", [ValueError("bad"), ImportError("missing")]
 )
 def test_mount_filter_wraps_exceptions(
-    filter_module: FilterModule, exception: Exception
+    filter_module: FilterModule,
+    exception: Exception,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """ValueError/ImportError from helper become AnsibleFilterError."""
 
-    with patch(
+    monkeypatch.setattr(
         "ansible_collections.o0_o.posix.plugins.filter.mount.mount",
-        side_effect=exception,
-    ):
-        with pytest.raises(AnsibleFilterError, match="mount failed"):
-            filter_module.filters()["mount"]("broken")
+        boom(exception),
+    )
+    with pytest.raises(AnsibleFilterError, match="mount failed"):
+        filter_module.filters()["mount"]("broken")
