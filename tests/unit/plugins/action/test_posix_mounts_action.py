@@ -88,8 +88,8 @@ tmpfs on /tmp type tmpfs (rw,nosuid,nodev)""",
     assert "capacity" in root
     assert root["capacity"]["total"]["bytes"] == 1024000 * 1024
     assert root["capacity"]["used"]["bytes"] == 512000 * 1024
-    assert root["options"]["rw"] is True
-    assert root["options"]["relatime"] is True
+    assert root["options"]["writable"] is True
+    assert root["options"]["atime"] == "relative"
 
     # Check boot mount details
     boot = mounts["/boot"]

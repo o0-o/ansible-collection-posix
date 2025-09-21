@@ -27,10 +27,7 @@ BOOLEAN_OPTION_PAIRS = {
     "exec": "noexec",
     "suid": "nosuid",
     "dev": "nodev",
-    "atime": "noatime",
     "diratime": "nodiratime",
-    "relatime": "norelatime",
-    "strictatime": "nostrictatime",
     "user": "nouser",
     "mand": "nomand",
     # Extended attributes and ACLs
@@ -58,25 +55,40 @@ SPECIAL_MAPPINGS = {
     "soft": ("hard", False),  # NFS
 }
 
+# Atime options get special handling as an enum
+# Values: True (normal atime), False (noatime), "relative", "strict"
+ATIME_OPTIONS = {
+    "atime": True,         # Normal access time updates
+    "noatime": False,      # No access time updates
+    "relatime": "relative",  # Update atime relative to mtime/ctime
+    "strictatime": "strict",  # Always update atime (kernel default)
+}
+
 
 def normalize_mount_options(options: Dict[str, Any]) -> Dict[str, Any]:
     """Normalize mount options to use consistent boolean format.
 
     Converts options like noexec to exec=False, ro to writable=False,
-    etc.
+    etc. Atime options are normalized to an enum: True, False,
+    "relative", or "strict".
     Any option not in our mappings is treated as a boolean True flag.
 
     :param options: Raw options dict from parsing
     :returns: Normalized options dict with consistent boolean values
     """
     normalized = {}
+    atime_seen = False
 
     # Create reverse mapping for no* options
     reverse_boolean = {v: k for k, v in BOOLEAN_OPTION_PAIRS.items()}
 
     for opt, value in options.items():
-        # Check special mappings first (rw/ro, sync/async, etc.)
-        if opt in SPECIAL_MAPPINGS:
+        # Check atime options first (they override each other)
+        if opt in ATIME_OPTIONS:
+            normalized["atime"] = ATIME_OPTIONS[opt]
+            atime_seen = True
+        # Check special mappings (rw/ro, sync/async, etc.)
+        elif opt in SPECIAL_MAPPINGS:
             key, bool_value = SPECIAL_MAPPINGS[opt]
             normalized[key] = bool_value
         # Check if it's a positive option (exec, dev, suid, etc.)
@@ -91,6 +103,9 @@ def normalize_mount_options(options: Dict[str, Any]) -> Dict[str, Any]:
         # Any other option defaults to boolean True
         else:
             normalized[opt] = True
+
+    # If no atime option was seen, don't set a default
+    # (let the system use its default behavior)
 
     return normalized
 

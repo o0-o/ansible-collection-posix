@@ -31,7 +31,6 @@ from ansible_collections.o0_o.posix.plugins.module_utils.mount_utils import (
         ({"noexec": True}, {"exec": False}),
         ({"nosuid": True}, {"suid": False}),
         ({"nodev": True}, {"dev": False}),
-        ({"noatime": True}, {"atime": False}),
         # Positive options become boolean True
         ({"exec": True}, {"exec": True}),
         ({"suid": True}, {"suid": True}),
@@ -48,6 +47,11 @@ from ansible_collections.o0_o.posix.plugins.module_utils.mount_utils import (
         # Options with values stay as-is
         ({"errors": "remount-ro"}, {"errors": "remount-ro"}),
         ({"uid": "1000"}, {"uid": "1000"}),
+        # Atime options become enum values
+        ({"noatime": True}, {"atime": False}),
+        ({"atime": True}, {"atime": True}),
+        ({"relatime": True}, {"atime": "relative"}),
+        ({"strictatime": True}, {"atime": "strict"}),
         # Unknown options default to boolean True
         ({"wsync": True}, {"wsync": True}),
         ({"journaled": True}, {"journaled": True}),
@@ -63,9 +67,14 @@ from ansible_collections.o0_o.posix.plugins.module_utils.mount_utils import (
             {
                 "writable": True,
                 "exec": False,
-                "relatime": True,
+                "atime": "relative",
                 "errors": "remount-ro",
             },
+        ),
+        # Multiple atime options - last one wins
+        (
+            {"noatime": True, "relatime": True},
+            {"atime": "relative"},  # relatime overrides noatime
         ),
     ],
 )
@@ -95,7 +104,7 @@ def test_parse_mount_entry_linux() -> None:
         "type": "ext4",
         "options": {
             "writable": True,  # rw normalized to writable=True
-            "relatime": True,
+            "atime": "relative",  # relatime normalized to atime="relative"
             "errors": "remount-ro",
         },
     }
