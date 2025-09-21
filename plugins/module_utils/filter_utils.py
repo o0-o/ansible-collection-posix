@@ -58,7 +58,7 @@ def process_registered_result(
         )
 
 
-def normalize_source(source: str) -> Dict[str, Any]:
+def normalize_source(source: str) -> Optional[Dict[str, Any]]:
     """Normalize a mount/df source into a structured dictionary.
 
     Parses various source formats into a consistent structure:
@@ -68,9 +68,10 @@ def normalize_source(source: str) -> Dict[str, Any]:
     - Labels: LABEL=root, PARTLABEL=system
     - Special filesystems: proc, sysfs, tmpfs, devpts
     - Automounter maps: map auto_home, map -hosts
+    - Special cases: "none" or "-" return None
 
     :param source: The source string from mount or df output
-    :returns: Dict with structured source information
+    :returns: Dict with structured source information, or None
 
     Return dict contains applicable fields:
     - path: Local device path (e.g., /dev/sda1)
@@ -81,6 +82,10 @@ def normalize_source(source: str) -> Dict[str, Any]:
     - label: Label value
     - partition: Boolean indicating if UUID/LABEL is partition-specific
     """
+    # Handle special cases that should return None
+    if source in ("none", "-"):
+        return None
+
     result: Dict[str, Any] = {}
 
     # Check for UUID formats

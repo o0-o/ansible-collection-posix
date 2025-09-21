@@ -99,11 +99,13 @@ def test_process_registered_result_missing_keys() -> None:
         ("sysfs", {"name": "sysfs"}),
         ("tmpfs", {"name": "tmpfs"}),
         ("devpts", {"name": "devpts"}),
-        ("none", {"name": "none"}),
         # Bind mounts and other paths
         ("/home", {"path": "/home"}),
         ("/mnt/data", {"path": "/mnt/data"}),
         ("/", {"path": "/"}),
+        # Special cases that return None
+        ("none", None),
+        ("-", None),
     ],
 )
 def test_normalize_source(source: str, expected: dict) -> None:
@@ -134,6 +136,15 @@ def test_normalize_source_uuid_case_insensitive() -> None:
         "uuid": "test",
         "partition": True,
     }
+
+
+def test_normalize_source_none_cases() -> None:
+    """Test that 'none' and '-' return None."""
+    assert filter_utils.normalize_source("none") is None
+    assert filter_utils.normalize_source("-") is None
+    # But other strings starting with these should not
+    assert filter_utils.normalize_source("none-device") == {"name": "none-device"}
+    assert filter_utils.normalize_source("-device") == {"name": "-device"}
 
 
 def test_normalize_source_label_case_insensitive() -> None:

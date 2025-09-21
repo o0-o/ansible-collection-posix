@@ -1,0 +1,93 @@
+# vim: ts=2:sw=2:sts=2:et:ft=yaml
+# -*- mode: yaml; yaml-indent-offset: 2; indent-tabs-mode: nil; -*-
+---
+# GNU General Public License v3.0+
+# SPDX-License-Identifier: GPL-3.0-or-later
+# (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
+#
+# Copyright (c) 2025 oØ.o (@o0-o)
+#
+# This file is part of the o0_o.posix Ansible Collection.
+
+name: Docs
+
+'on':
+  push:
+    branches:
+      - main
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+env:
+  DOCS_SOURCE: docs/source
+  DOCS_OUTPUT: site
+  DOCS_PREBUILD: docs/tools/prebuild.sh
+  DOCS_REQUIREMENTS: docs/requirements.txt
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build documentation
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install documentation dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install ansible-core
+          pip install -r ${DOCS_REQUIREMENTS}
+
+      - name: Prepare output directory
+        run: |
+          rm -rf "${DOCS_OUTPUT}"
+          mkdir -p "${DOCS_OUTPUT}"
+
+      - name: Generate documentation sources
+        run: ${DOCS_PREBUILD}
+
+      - name: Build documentation
+        run: |
+          sphinx-build \
+            -b html \
+            "${DOCS_SOURCE}" \
+            "${DOCS_OUTPUT}"
+
+      - name: Upload GitHub Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: ${{ env.DOCS_OUTPUT }}
+
+  deploy:
+    name: Deploy documentation
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+    steps:
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@v5
+        with:
+          enablement: true
+
+      - name: Deploy
+        id: deployment
+        uses: actions/deploy-pages@v4

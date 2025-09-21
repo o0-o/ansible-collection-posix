@@ -16,3 +16,8 @@ tests/output
 tests/integration/inventory
 tests/**/.ansible/
 o0_o-*.tar.gz
+# Docs build artifacts (antsibull-docs + Sphinx)
+docs/_build/
+docs/source/generated/
+docs/source/_build/
+site/
