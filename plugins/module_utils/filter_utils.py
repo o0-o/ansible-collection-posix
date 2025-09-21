@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import re
 from typing import Any, Callable, Dict, Optional, Union
+import base64
 
 
 def process_registered_result(
@@ -32,8 +33,6 @@ def process_registered_result(
     :returns: Result from parser function
     :raises ValueError: If dict doesn't have required keys or fails
     """
-    import base64
-
     if "stdout" in config:
         content = config["stdout"]
         # stdout is never base64 encoded

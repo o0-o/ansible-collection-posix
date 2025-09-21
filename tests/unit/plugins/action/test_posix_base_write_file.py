@@ -23,6 +23,7 @@ from ansible_collections.o0_o.posix.tests.utils import (
     cleanup_path,
     check_path_mode,
     check_path_ownership,
+    real_cmd,
 )
 
 
@@ -54,8 +55,6 @@ def test_write_file_basic_write(base) -> None:
 
 def test_write_file_backup_and_validate(base) -> None:
     """Test _write_file backup and validation features."""
-    from ansible_collections.o0_o.posix.tests.utils import real_cmd
-
     tmp_path = generate_temp_path()
     with open(tmp_path, "w") as f:
         f.write("existing")
