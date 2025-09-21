@@ -28,8 +28,10 @@
     - name: Assert failure for missing src
       ansible.builtin.assert:
         that:
-          - "\"'src' is required\" in ansible_failed_result['msg']
-            or 'missing required arguments: src' in ansible_failed_result['msg']"
+          - >-
+            "'src' is required" in ansible_failed_result['msg'] or
+            'missing required arguments: src'
+            in ansible_failed_result['msg']
 
 - name: 'Fail: Nonexistent template file'
   block:

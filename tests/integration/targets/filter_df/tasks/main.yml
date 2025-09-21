@@ -146,7 +146,9 @@
           - network_fs[0]['mount'] is defined
           - network_fs[0]['source'] is defined
           - network_fs[0]['source'] is mapping
-          - network_fs[0]['source']['address'] is defined or network_fs[0]['source']['map'] is defined
+          - >-
+            network_fs[0]['source']['address'] is defined or
+            network_fs[0]['source']['map'] is defined
         fail_msg: "Network filesystems should be properly parsed"
 
 - name: Test filter with mock df output

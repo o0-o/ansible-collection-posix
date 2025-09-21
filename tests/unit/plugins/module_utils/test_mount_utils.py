@@ -111,7 +111,7 @@ def test_parse_mount_entry_linux() -> None:
 
 
 def test_parse_mount_entry_macos_type_from_options() -> None:
-    """First option becomes filesystem type when type field is missing."""
+    """First option is the type when type field is missing."""
 
     entry = {
         "filesystem": "/dev/disk1",
@@ -127,7 +127,7 @@ def test_parse_mount_entry_macos_type_from_options() -> None:
 
 
 def test_parse_mount_entry_rejects_non_string_options() -> None:
-    """Non-string options trigger a TypeError to guard unexpected data."""
+    """Non-string options raise TypeError to guard unexpected data."""
 
     entry = {
         "filesystem": "proc",

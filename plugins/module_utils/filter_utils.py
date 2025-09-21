@@ -89,44 +89,44 @@ def normalize_source(source: str) -> Optional[Dict[str, Any]]:
     result: Dict[str, Any] = {}
 
     # Check for UUID formats
-    uuid_match = re.match(r'^(PART)?(UUID)=(.+)$', source, re.IGNORECASE)
+    uuid_match = re.match(r"^(PART)?(UUID)=(.+)$", source, re.IGNORECASE)
     if uuid_match:
         result["uuid"] = uuid_match.group(3)
         result["partition"] = bool(uuid_match.group(1))
         return result
 
     # Check for LABEL formats
-    label_match = re.match(r'^(PART)?(LABEL)=(.+)$', source, re.IGNORECASE)
+    label_match = re.match(r"^(PART)?(LABEL)=(.+)$", source, re.IGNORECASE)
     if label_match:
         result["label"] = label_match.group(3)
         result["partition"] = bool(label_match.group(1))
         return result
 
     # Check for automounter maps
-    if source.startswith('map '):
+    if source.startswith("map "):
         result["map"] = source[4:]  # Remove 'map ' prefix
         return result
 
     # Check for network paths (NFS, SMB/CIFS)
     # NFS: server:/path or server.domain:/path
     # SMB: //server/share
-    if ':' in source and '/' in source:
+    if ":" in source and "/" in source:
         # NFS style: host:/path
-        if not source.startswith('//'):
+        if not source.startswith("//"):
             result["address"] = source
             return result
-    elif source.startswith('//'):
+    elif source.startswith("//"):
         # SMB/CIFS style: //server/share
         result["address"] = source
         return result
 
     # Check for device paths
-    if source.startswith('/dev/'):
+    if source.startswith("/dev/"):
         result["path"] = source
         return result
 
     # Check for other absolute paths (bind mounts, etc.)
-    if source.startswith('/'):
+    if source.startswith("/"):
         result["path"] = source
         return result
 

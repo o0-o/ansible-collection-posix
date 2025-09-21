@@ -39,7 +39,7 @@ def test_process_registered_result_with_stdout() -> None:
 
 
 def test_process_registered_result_with_base64_content() -> None:
-    """Content payloads attempt plain parse then fall back to base64 decode."""
+    """Try plain parse, then fall back to base64 decode."""
 
     text = "Filesystem     1024-blocks"
     encoded = base64.b64encode(text.encode()).decode()
@@ -143,7 +143,9 @@ def test_normalize_source_none_cases() -> None:
     assert filter_utils.normalize_source("none") is None
     assert filter_utils.normalize_source("-") is None
     # But other strings starting with these should not
-    assert filter_utils.normalize_source("none-device") == {"name": "none-device"}
+    assert filter_utils.normalize_source("none-device") == {
+        "name": "none-device"
+    }
     assert filter_utils.normalize_source("-device") == {"name": "-device"}
 
 

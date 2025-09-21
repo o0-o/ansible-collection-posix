@@ -61,8 +61,8 @@ SPECIAL_MAPPINGS = {
 # Atime options get special handling as an enum
 # Values: True (normal atime), False (noatime), "relative", "strict"
 ATIME_OPTIONS = {
-    "atime": True,         # Normal access time updates
-    "noatime": False,      # No access time updates
+    "atime": True,  # Normal access time updates
+    "noatime": False,  # No access time updates
     "relatime": "relative",  # Update atime relative to mtime/ctime
     "strictatime": "strict",  # Always update atime (kernel default)
 }
@@ -80,7 +80,6 @@ def normalize_mount_options(options: Dict[str, Any]) -> Dict[str, Any]:
     :returns: Normalized options dict with consistent boolean values
     """
     normalized = {}
-    atime_seen = False
 
     # Create reverse mapping for no* options
     reverse_boolean = {v: k for k, v in BOOLEAN_OPTION_PAIRS.items()}
@@ -89,7 +88,6 @@ def normalize_mount_options(options: Dict[str, Any]) -> Dict[str, Any]:
         # Check atime options first (they override each other)
         if opt in ATIME_OPTIONS:
             normalized["atime"] = ATIME_OPTIONS[opt]
-            atime_seen = True
         # Check special mappings (rw/ro, sync/async, etc.)
         elif opt in SPECIAL_MAPPINGS:
             key, bool_value = SPECIAL_MAPPINGS[opt]

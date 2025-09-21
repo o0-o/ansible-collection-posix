@@ -34,7 +34,7 @@ def sample_entry() -> Dict[str, Any]:
 
 
 def test_parse_df_entry_builds_capacity(sample_entry: Dict[str, Any]) -> None:
-    """Parse a jc df entry into normalized structure with capacity info."""
+    """Parse a jc df entry and compute capacity fields."""
 
     result = df_utils.parse_df_entry(sample_entry)
 

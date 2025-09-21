@@ -10,6 +10,9 @@ rules:
     allow-non-breakable-inline-mappings: true
 ignore: |
   changelogs/changelog.yml
+  changelogs/changelog.yaml
+  changelogs/.plugin-cache.yaml
+  changelogs/fragments/*
   tests/output/*
   *.wip
   *.wip/*

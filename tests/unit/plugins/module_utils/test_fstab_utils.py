@@ -59,7 +59,7 @@ def test_parse_fstab_entry_requires_fields(entry: Dict[str, Any]) -> None:
 
 
 def test_generate_fstab_entry_defaults_for_root() -> None:
-    """Root filesystem defaults to pass=1 and dump=0 when unspecified."""
+    """Root defaults: pass=1 and dump=0 when unspecified."""
 
     entry = {
         "source": "/dev/sda1",
@@ -122,7 +122,7 @@ def test_generate_fstab_joins_lines() -> None:
 
 
 def test_fstab_switches_between_parse_and_generate() -> None:
-    """Top level helper chooses parsing or generation based on input type."""
+    """Choose parse or generate based on input type."""
 
     entry = {"source": "/dev/sda1", "mount": "/"}
     generated = fstab_utils.fstab([entry])

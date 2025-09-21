@@ -53,7 +53,7 @@ def test_parse_uname_entry_builds_kernel_arch_and_hostname(
 
 
 def test_parse_uname_entry_architecture_fallbacks(hostname_patch) -> None:
-    """processor and hardware_platform fall back when machine missing."""
+    """Use processor/hardware_platform when machine is missing."""
 
     entry = {"processor": "amd64"}
     result = uname_utils.parse_uname_entry(entry)
@@ -65,7 +65,7 @@ def test_parse_uname_entry_architecture_fallbacks(hostname_patch) -> None:
 
 
 def test_parse_uname_entry_requires_utils_collection() -> None:
-    """If utils collection missing, ValueError is raised for hostname parsing."""
+    """Missing utils collection raises ValueError for hostname."""
 
     entry = {"node_name": "web"}
     with patch.object(uname_utils, "HAS_PARSE_HOSTNAME", False):
@@ -74,7 +74,7 @@ def test_parse_uname_entry_requires_utils_collection() -> None:
 
 
 def test_uname_uses_jc_parse() -> None:
-    """Top-level uname helper delegates to jc_parse and normalizes entry."""
+    """uname helper delegates to jc_parse and normalizes entry."""
 
     jc_result = {
         "kernel_name": "Linux",
