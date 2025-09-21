@@ -123,10 +123,11 @@ class ActionModule(PosixActionBase, ActionBase):
 
         # Warn if executable is set without shell=True
         if not shell and executable:
+            host = "UNKNOWN"
             self._display.warning(
-                "As of Ansible 2.4, the parameter 'executable' is no "
-                "longer supported with the 'command' module. Not using "
-                f"'{executable}'."
+                f"[{host}] As of Ansible 2.4, the parameter 'executable' "
+                "is no longer supported with the 'command' module. "
+                f"Not using '{executable}'."
             )
             executable = None
 
@@ -355,9 +356,9 @@ class ActionModule(PosixActionBase, ActionBase):
                 result.update(ansible_cmd_mod)
                 result["raw"] = False
             else:
+                host = task_vars.get("inventory_hostname", "UNKNOWN")
                 self._display.warning(
-                    "Ansible command module failed on host "
-                    f"{task_vars.get('inventory_hostname', 'UNKOWN')}, "
+                    f"[{host}] Ansible command module failed; "
                     "falling back to raw command."
                 )
                 self.force_raw = True

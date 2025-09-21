@@ -186,8 +186,9 @@ class ActionModule(PosixActionBase, ActionBase):
             }
             result["is_posix"] = True
         elif posix1_version not in ["undefined", "", "-1"]:
+            host = task_vars.get("inventory_hostname", "UNKNOWN")
             self._display.warning(
-                f"Unrecognized POSIX.1 version: {posix1_version}. "
+                f"[{host}] Unrecognized POSIX.1 version: {posix1_version}. "
                 f"Known versions: {', '.join(self.POSIX_VERSIONS.keys())}"
             )
 
@@ -257,9 +258,9 @@ class ActionModule(PosixActionBase, ActionBase):
 
             result["is_posix"] = True
         elif posix2_version not in ["undefined", "", "-1"]:
+            host = task_vars.get("inventory_hostname", "UNKNOWN")
             self._display.warning(
-                f"Unrecognized POSIX.2 version: "
-                f"{posix2_version}. "
+                f"[{host}] Unrecognized POSIX.2 version: {posix2_version}. "
                 f"Known versions: {', '.join(self.POSIX_VERSIONS.keys())}"
             )
 
@@ -304,14 +305,18 @@ class ActionModule(PosixActionBase, ActionBase):
                 compliance["sus"]["getconf"] = {"_XOPEN_UNIX": xopen_support}
                 result["is_posix"] = True
             elif xopen_version not in ["undefined", "", "-1"]:
+                host = task_vars.get("inventory_hostname", "UNKNOWN")
                 self._display.warning(
-                    f"Unrecognized X/Open version: {xopen_version}. "
+                    f"[{host}] Unrecognized X/Open version: {xopen_version}. "
                     f"Known versions: {', '.join(self.XOPEN_VERSIONS.keys())}"
                 )
         except AnsibleConnectionFailure:
             raise
         except Exception as e:
-            self._display.warning(f"Failed to process X/Open compliance: {e}")
+            host = task_vars.get("inventory_hostname", "UNKNOWN")
+            self._display.warning(
+                f"[{host}] Failed to process X/Open compliance: {e}"
+            )
 
         # Set final message
         if result.get("is_posix", False):

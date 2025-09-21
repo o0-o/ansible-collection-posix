@@ -316,7 +316,8 @@ class ActionModule(PosixActionBase, ActionBase):
                     " If this is desired, use '^' to match every line in the "
                     "file and avoid this warning."
                 )
-            self._display.warning(msg % param_name)
+            host = (task_vars or {}).get("inventory_hostname", "UNKNOWN")
+            self._display.warning(f"[{host}] " + (msg % param_name))
 
         # Fileysystem state
         self.stat = self._pseudo_stat(self.path, task_vars=task_vars)

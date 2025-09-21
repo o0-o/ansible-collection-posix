@@ -774,9 +774,10 @@ class PosixActionBase:
                 )
 
         if not semanage_path:
+            host = (task_vars or {}).get("inventory_hostname", "UNKNOWN")
             self._display.warning(
-                "chcon is available but semanage is not — SELinux context "
-                "changes may not persist"
+                f"[{host}] chcon is available but semanage is not — "
+                "SELinux context changes may not persist"
             )
 
         return True
