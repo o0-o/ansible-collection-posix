@@ -59,9 +59,12 @@ EXAMPLES = r"""
 - name: Display root filesystem usage
   ansible.builtin.debug:
     msg: >-
-      Root uses {{ (fs_info | selectattr('mount', 'equalto', '/') | first).capacity.used.pretty }}
-      of {{ (fs_info | selectattr('mount', 'equalto', '/') | first).capacity.total.pretty }}
-      ({{ (fs_info | selectattr('mount', 'equalto', '/') | first).capacity.used.percent }}%)
+      Root uses {{ (fs_info | selectattr('mount', 'equalto', '/')
+                   | first).capacity.used.pretty }}
+      of {{ (fs_info | selectattr('mount', 'equalto', '/')
+            | first).capacity.total.pretty }}
+      ({{ (fs_info | selectattr('mount', 'equalto', '/')
+          | first).capacity.used.percent }}%)
 """
 
 RETURN = r"""

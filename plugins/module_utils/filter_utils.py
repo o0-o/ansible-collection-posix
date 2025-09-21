@@ -17,8 +17,7 @@ from typing import Any, Callable, Dict, Union
 
 
 def process_registered_result(
-    config: Dict[str, Any],
-    parser: Callable[[Union[str, list]], Any]
+    config: Dict[str, Any], parser: Callable[[Union[str, list]], Any]
 ) -> Any:
     """Process registered result dict with automatic base64 detection.
 

@@ -13,8 +13,6 @@ from __future__ import annotations
 
 import pytest
 
-from ansible.errors import AnsibleActionFail
-
 
 def test_validate_file_noop_for_none(base) -> None:
     """Test _validate_file no-op when validate_cmd is None."""
@@ -54,5 +52,5 @@ def test_validate_file_failure_raises(monkeypatch, base) -> None:
     base._cmd = mock_cmd
     base._quote = lambda s: s  # No quoting for this test
 
-    with pytest.raises(AnsibleActionFail, match="Validation failed:"):
+    with pytest.raises(RuntimeError, match="Validation failed:"):
         base._validate_file("/etc/foo", "validate %s")

@@ -17,7 +17,6 @@ import pytest
 from ansible.errors import AnsibleFilterError
 
 from ansible_collections.o0_o.posix.plugins.filter.df import FilterModule
-from ansible_collections.o0_o.posix.plugins.module_utils.df_utils import parse_df_entry
 
 
 @pytest.fixture
@@ -36,7 +35,7 @@ def test_df_filter_with_string_input(filter_module: FilterModule) -> None:
             "used": 5242880,
             "available": 15728640,
             "use_percent": 25,
-            "mounted_on": "/"
+            "mounted_on": "/",
         },
         {
             "filesystem": "/dev/sda2",
@@ -44,16 +43,22 @@ def test_df_filter_with_string_input(filter_module: FilterModule) -> None:
             "used": 52428800,
             "available": 52428800,
             "use_percent": 50,
-            "mounted_on": "/home"
-        }
+            "mounted_on": "/home",
+        },
     ]
 
-    df_output = """Filesystem     1024-blocks     Used Available Use% Mounted on
-/dev/sda1        20971520  5242880  15728640  25% /
-/dev/sda2       104857600 52428800  52428800  50% /home"""
+    df_output = (
+        "Filesystem     1024-blocks     Used Available Use% Mounted on\n"
+        "/dev/sda1        20971520  5242880  15728640  25% /\n"
+        "/dev/sda2       104857600 52428800  52428800  50% /home"
+    )
 
     df_filter = filter_module.filters()["df"]
-    with patch('ansible_collections.o0_o.posix.plugins.module_utils.jc_utils.jc.parse', return_value=mock_jc_data):
+    with patch(
+        "ansible_collections.o0_o.posix.plugins.module_utils.jc_utils."
+        "jc.parse",
+        return_value=mock_jc_data,
+    ):
         result = df_filter(df_output)
 
     assert isinstance(result, list)
@@ -99,19 +104,26 @@ def test_df_filter_with_dict_input(filter_module: FilterModule) -> None:
             "filesystem": "/dev/sda1",
             "1024_blocks": 20971520,
             "used": 5242880,
-            "mounted_on": "/"
+            "mounted_on": "/",
         }
     ]
 
     command_result = {
-        "stdout": """Filesystem     1024-blocks     Used Available Use% Mounted on
-/dev/sda1        20971520  5242880  15728640  25% /""",
+        "stdout": (
+            "Filesystem     1024-blocks     Used Available Use% "
+            "Mounted on\n"
+            "/dev/sda1        20971520  5242880  15728640  25% /"
+        ),
         "stderr": "",
-        "rc": 0
+        "rc": 0,
     }
 
     df_filter = filter_module.filters()["df"]
-    with patch('ansible_collections.o0_o.posix.plugins.module_utils.jc_utils.jc.parse', return_value=mock_jc_data):
+    with patch(
+        "ansible_collections.o0_o.posix.plugins.module_utils.jc_utils."
+        "jc.parse",
+        return_value=mock_jc_data,
+    ):
         result = df_filter(command_result)
 
     assert isinstance(result, list)
@@ -127,16 +139,23 @@ def test_df_filter_with_content_key(filter_module: FilterModule) -> None:
             "filesystem": "tmpfs",
             "1024_blocks": 1048576,
             "used": 0,
-            "mounted_on": "/tmp"
+            "mounted_on": "/tmp",
         }
     ]
 
     slurp_result = {
-        "content": "Filesystem     1024-blocks  Used Available Use% Mounted on\ntmpfs           1048576     0   1048576   0% /tmp"
+        "content": (
+            "Filesystem     1024-blocks  Used Available Use% Mounted on\n"
+            "tmpfs           1048576     0   1048576   0% /tmp"
+        )
     }
 
     df_filter = filter_module.filters()["df"]
-    with patch('ansible_collections.o0_o.posix.plugins.module_utils.jc_utils.jc.parse', return_value=mock_jc_data):
+    with patch(
+        "ansible_collections.o0_o.posix.plugins.module_utils.jc_utils."
+        "jc.parse",
+        return_value=mock_jc_data,
+    ):
         result = df_filter(slurp_result)
 
     assert isinstance(result, list)
@@ -147,7 +166,11 @@ def test_df_filter_with_content_key(filter_module: FilterModule) -> None:
 def test_df_filter_without_jc(filter_module: FilterModule) -> None:
     """Test df filter raises error without jc."""
     df_filter = filter_module.filters()["df"]
-    with patch('ansible_collections.o0_o.posix.plugins.module_utils.jc_utils.HAS_JC', False):
+    with patch(
+        "ansible_collections.o0_o.posix.plugins.module_utils."
+        "jc_utils.HAS_JC",
+        False,
+    ):
         with pytest.raises(AnsibleFilterError, match="jc library"):
             df_filter("some output")
 
@@ -168,12 +191,16 @@ def test_df_filter_zero_total_bytes(filter_module: FilterModule) -> None:
             "filesystem": "devtmpfs",
             "1024_blocks": 0,
             "used": 0,
-            "mounted_on": "/dev"
+            "mounted_on": "/dev",
         }
     ]
 
     df_filter = filter_module.filters()["df"]
-    with patch('ansible_collections.o0_o.posix.plugins.module_utils.jc_utils.jc.parse', return_value=mock_jc_data):
+    with patch(
+        "ansible_collections.o0_o.posix.plugins.module_utils.jc_utils."
+        "jc.parse",
+        return_value=mock_jc_data,
+    ):
         result = df_filter("dummy")
 
     assert len(result) == 1
@@ -185,39 +212,41 @@ def test_df_filter_zero_total_bytes(filter_module: FilterModule) -> None:
 def test_df_filter_missing_filesystem(filter_module: FilterModule) -> None:
     """Test df filter handles missing filesystem field."""
     mock_jc_data = [
-        {
-            "1024_blocks": 100000,
-            "used": 50000,
-            "mounted_on": "/mnt/test"
-        }
+        {"1024_blocks": 100000, "used": 50000, "mounted_on": "/mnt/test"}
     ]
 
     df_filter = filter_module.filters()["df"]
-    with patch('ansible_collections.o0_o.posix.plugins.module_utils.jc_utils.jc.parse', return_value=mock_jc_data):
+    with patch(
+        "ansible_collections.o0_o.posix.plugins.module_utils.jc_utils."
+        "jc.parse",
+        return_value=mock_jc_data,
+    ):
         result = df_filter("dummy")
 
     assert len(result) == 1
     assert result[0]["mount"] == "/mnt/test"
-    assert "source" not in result[0]  # No source field when filesystem is missing
+    assert (
+        "source" not in result[0]
+    )  # No source field when filesystem is missing
 
 
 def test_df_filter_skip_invalid_entries(filter_module: FilterModule) -> None:
     """Test df filter skips entries without mounted_on."""
     mock_jc_data = [
-        {
-            "filesystem": "/dev/sda1",
-            "1024_blocks": 100000,
-            "mounted_on": "/"
-        },
+        {"filesystem": "/dev/sda1", "1024_blocks": 100000, "mounted_on": "/"},
         {
             "filesystem": "/dev/sda2",
             "1024_blocks": 200000,
             # Missing mounted_on - should be skipped
-        }
+        },
     ]
 
     df_filter = filter_module.filters()["df"]
-    with patch('ansible_collections.o0_o.posix.plugins.module_utils.jc_utils.jc.parse', return_value=mock_jc_data):
+    with patch(
+        "ansible_collections.o0_o.posix.plugins.module_utils.jc_utils."
+        "jc.parse",
+        return_value=mock_jc_data,
+    ):
         result = df_filter("dummy")
 
     assert len(result) == 1
@@ -231,12 +260,16 @@ def test_df_filter_with_512_blocks(filter_module: FilterModule) -> None:
             "filesystem": "/dev/vda1",
             "512_blocks": 41943040,  # 20GB in 512-byte blocks
             "used": 10485760,  # 5GB in 512-byte blocks
-            "mounted_on": "/data"
+            "mounted_on": "/data",
         }
     ]
 
     df_filter = filter_module.filters()["df"]
-    with patch('ansible_collections.o0_o.posix.plugins.module_utils.jc_utils.jc.parse', return_value=mock_jc_data):
+    with patch(
+        "ansible_collections.o0_o.posix.plugins.module_utils.jc_utils."
+        "jc.parse",
+        return_value=mock_jc_data,
+    ):
         result = df_filter("dummy")
 
     assert len(result) == 1
@@ -255,12 +288,16 @@ def test_df_filter_with_size_field(filter_module: FilterModule) -> None:
             "size": "100G",
             "used": "25G",
             "available": "75G",
-            "mounted_on": "/storage"
+            "mounted_on": "/storage",
         }
     ]
 
     df_filter = filter_module.filters()["df"]
-    with patch('ansible_collections.o0_o.posix.plugins.module_utils.jc_utils.jc.parse', return_value=mock_jc_data):
+    with patch(
+        "ansible_collections.o0_o.posix.plugins.module_utils.jc_utils."
+        "jc.parse",
+        return_value=mock_jc_data,
+    ):
         result = df_filter("dummy")
 
     assert len(result) == 1
@@ -269,23 +306,27 @@ def test_df_filter_with_size_field(filter_module: FilterModule) -> None:
 
     # parse_si should convert "100G" and "25G" properly
     assert capacity["total"]["bytes"] == 100 * 1024**3  # 100GB in bytes
-    assert capacity["used"]["bytes"] == 25 * 1024**3   # 25GB in bytes
+    assert capacity["used"]["bytes"] == 25 * 1024**3  # 25GB in bytes
     assert capacity["used"]["percent"] == 25.0
 
 
 def test_df_filter_without_parse_si(filter_module: FilterModule) -> None:
     """Test df filter works without parse_si (no capacity field)."""
     mock_jc_data = [
-        {
-            "filesystem": "/dev/sda1",
-            "1024_blocks": 100000,
-            "mounted_on": "/"
-        }
+        {"filesystem": "/dev/sda1", "1024_blocks": 100000, "mounted_on": "/"}
     ]
 
     df_filter = filter_module.filters()["df"]
-    with patch('ansible_collections.o0_o.posix.plugins.module_utils.df_utils.HAS_PARSE_SI', False):
-        with patch('ansible_collections.o0_o.posix.plugins.module_utils.jc_utils.jc.parse', return_value=mock_jc_data):
+    with patch(
+        "ansible_collections.o0_o.posix.plugins.module_utils."
+        "df_utils.HAS_PARSE_SI",
+        False,
+    ):
+        with patch(
+            "ansible_collections.o0_o.posix.plugins.module_utils.jc_utils."
+            "jc.parse",
+            return_value=mock_jc_data,
+        ):
             result = df_filter("dummy")
 
     assert len(result) == 1
@@ -295,19 +336,25 @@ def test_df_filter_without_parse_si(filter_module: FilterModule) -> None:
 
 
 def test_df_filter_percent_calculation(filter_module: FilterModule) -> None:
-    """Test that percent is calculated correctly and not taken from df."""
+    """Test that percent is calculated correctly and not taken from
+    df.
+    """
     mock_jc_data = [
         {
             "filesystem": "/dev/sda1",
             "1024_blocks": 1000000,
             "used": 333333,  # Exactly 33.3333%
             "use_percent": 34,  # df rounds to 34%
-            "mounted_on": "/test"
+            "mounted_on": "/test",
         }
     ]
 
     df_filter = filter_module.filters()["df"]
-    with patch('ansible_collections.o0_o.posix.plugins.module_utils.jc_utils.jc.parse', return_value=mock_jc_data):
+    with patch(
+        "ansible_collections.o0_o.posix.plugins.module_utils.jc_utils."
+        "jc.parse",
+        return_value=mock_jc_data,
+    ):
         result = df_filter("dummy")
 
     assert len(result) == 1
@@ -321,6 +368,10 @@ def test_df_filter_percent_calculation(filter_module: FilterModule) -> None:
 def test_df_filter_parse_error(filter_module: FilterModule) -> None:
     """Test df filter handles jc parse errors."""
     df_filter = filter_module.filters()["df"]
-    with patch('ansible_collections.o0_o.posix.plugins.module_utils.jc_utils.jc.parse', side_effect=Exception("Parse error")):
+    with patch(
+        "ansible_collections.o0_o.posix.plugins.module_utils.jc_utils."
+        "jc.parse",
+        side_effect=Exception("Parse error"),
+    ):
         with pytest.raises(AnsibleFilterError, match="df failed"):
             df_filter("invalid df output")

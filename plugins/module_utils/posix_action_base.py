@@ -53,7 +53,8 @@ class PosixActionBase:
 
     Usage:
         from ansible.plugins.action import ActionBase
-        from ansible_collections.o0_o.posix.plugins.module_utils import PosixActionBase
+        from ansible_collections.o0_o.posix.plugins.module_utils \
+            import PosixActionBase
 
         class ActionModule(PosixActionBase, ActionBase):
             def run(self, tmp=None, task_vars=None):

@@ -174,11 +174,35 @@ def generate_fstab_entry(entry: Dict[str, Any]) -> str:
         # Determine sensible default for pass
         # Filesystem types that should not be checked
         no_fsck_types = {
-            "swap", "tmpfs", "proc", "sysfs", "devpts", "devtmpfs",
-            "cgroup", "cgroup2", "debugfs", "securityfs", "pstore",
-            "configfs", "fusectl", "mqueue", "hugetlbfs", "rpc_pipefs",
-            "nfs", "nfs4", "cifs", "smb", "smbfs", "autofs", "fuse",
-            "binfmt_misc", "ramfs", "vfat", "ntfs", "iso9660", "udf"
+            "swap",
+            "tmpfs",
+            "proc",
+            "sysfs",
+            "devpts",
+            "devtmpfs",
+            "cgroup",
+            "cgroup2",
+            "debugfs",
+            "securityfs",
+            "pstore",
+            "configfs",
+            "fusectl",
+            "mqueue",
+            "hugetlbfs",
+            "rpc_pipefs",
+            "nfs",
+            "nfs4",
+            "cifs",
+            "smb",
+            "smbfs",
+            "autofs",
+            "fuse",
+            "binfmt_misc",
+            "ramfs",
+            "vfat",
+            "ntfs",
+            "iso9660",
+            "udf",
         }
 
         # Check if this is a virtual/network/special filesystem
@@ -253,7 +277,7 @@ def generate_fstab(entries: List[Dict[str, Any]]) -> str:
 
 
 def fstab(
-    config: Union[str, Dict[str, Any], List[Dict[str, Any]]]
+    config: Union[str, Dict[str, Any], List[Dict[str, Any]]],
 ) -> Union[List[Dict[str, Any]], str]:
     """Process fstab data - parse or generate based on input type.
 

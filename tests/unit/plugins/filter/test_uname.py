@@ -169,7 +169,10 @@ class TestUnameUtils:
         expected: Dict[str, Any],
     ) -> None:
         """Test parse_uname_entry with various input scenarios."""
-        from ansible_collections.o0_o.posix.plugins.module_utils.uname_utils import parse_uname_entry
+        from ansible_collections.o0_o.posix.plugins.module_utils import (
+            uname_utils
+        )
+        parse_uname_entry = uname_utils.parse_uname_entry
 
         # Mock parse_hostname to return what we expect
         if "hostname" in expected:
@@ -189,7 +192,11 @@ class TestUnameUtils:
         """Test architecture falls back to processor field."""
         parsed = {"processor": "amd64"}
 
-        from ansible_collections.o0_o.posix.plugins.module_utils.uname_utils import parse_uname_entry
+        from ansible_collections.o0_o.posix.plugins.module_utils import (
+            uname_utils
+        )
+        parse_uname_entry = uname_utils.parse_uname_entry
+
         result = parse_uname_entry(parsed)
 
         assert result["architecture"] == "amd64"
@@ -198,7 +205,11 @@ class TestUnameUtils:
         """Test architecture falls back to hardware_platform field."""
         parsed = {"hardware_platform": "x86_64"}
 
-        from ansible_collections.o0_o.posix.plugins.module_utils.uname_utils import parse_uname_entry
+        from ansible_collections.o0_o.posix.plugins.module_utils import (
+            uname_utils
+        )
+        parse_uname_entry = uname_utils.parse_uname_entry
+
         result = parse_uname_entry(parsed)
 
         assert result["architecture"] == "x86_64"
@@ -207,7 +218,11 @@ class TestUnameUtils:
         """Test architecture skips 'unknown' values."""
         parsed = {"processor": "unknown", "hardware_platform": "x86_64"}
 
-        from ansible_collections.o0_o.posix.plugins.module_utils.uname_utils import parse_uname_entry
+        from ansible_collections.o0_o.posix.plugins.module_utils import (
+            uname_utils
+        )
+        parse_uname_entry = uname_utils.parse_uname_entry
+
         result = parse_uname_entry(parsed)
 
         assert result["architecture"] == "x86_64"

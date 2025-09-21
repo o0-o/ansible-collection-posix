@@ -13,8 +13,6 @@ from __future__ import annotations
 
 import pytest
 
-from ansible.errors import AnsibleActionFail
-
 
 def test_selinux_not_requested(base) -> None:
     """
@@ -30,7 +28,7 @@ def test_selinux_tools_missing_both(base, monkeypatch) -> None:
     """
     monkeypatch.setattr(base, "_which", lambda tool, task_vars=None: None)
 
-    with pytest.raises(AnsibleActionFail, match="both 'chcon' and 'semanage'"):
+    with pytest.raises(RuntimeError, match="both 'chcon' and 'semanage'"):
         base._check_selinux_tools(
             perms={"setype": "something"},
             task_vars={},
@@ -45,7 +43,7 @@ def test_selinux_chcon_missing_only(base, monkeypatch) -> None:
 
     monkeypatch.setattr(base, "_which", fake_which)
 
-    with pytest.raises(AnsibleActionFail, match="requires 'chcon'"):
+    with pytest.raises(RuntimeError, match="requires 'chcon'"):
         base._check_selinux_tools(
             perms={"setype": "something"},
             task_vars={},

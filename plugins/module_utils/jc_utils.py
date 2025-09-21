@@ -21,6 +21,7 @@ from ansible_collections.o0_o.posix.plugins.module_utils.filter_utils import (
 
 try:
     import jc
+
     HAS_JC = True
 except ImportError:
     HAS_JC = False
@@ -40,8 +41,10 @@ def jc_parse(
     :param parser: Name of the jc parser to use
     :param data: Command output as string or dict
     :param quiet: If True, suppress jc parsing warnings
-    :param raw: If True, return raw parsed output without post-processing
-    :returns: Parsed data structure (list or dict depending on parser)
+    :param raw: If True, return raw parsed output without
+                post-processing
+    :returns: Parsed data structure (list or dict depending on
+              parser)
     :raises ValueError: If parsing fails
     :raises ImportError: If jc is not available
     """
@@ -60,7 +63,9 @@ def jc_parse(
         )
 
     # Define the parsing function
-    def parse_content(content: str) -> Union[List[Dict[str, Any]], Dict[str, Any]]:
+    def parse_content(
+        content: str,
+    ) -> Union[List[Dict[str, Any]], Dict[str, Any]]:
         try:
             # Parse using jc library
             return jc.parse(parser, content, raw=raw, quiet=quiet)

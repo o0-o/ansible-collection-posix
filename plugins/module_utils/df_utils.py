@@ -21,6 +21,7 @@ from ansible_collections.o0_o.posix.plugins.module_utils.jc_utils import (
 
 try:
     from ansible_collections.o0_o.utils.plugins.module_utils import parse_si
+
     HAS_PARSE_SI = True
 except ImportError:
     parse_si = None
@@ -56,7 +57,8 @@ def parse_df_entry(entry: Dict[str, Any]) -> Dict[str, Any]:
 
     # Build capacity structure if we have parse_si
     if HAS_PARSE_SI and parse_si:
-        # Find block size and total from field names like 1024_blocks, 512_blocks
+        # Find block size and total from field names like 1024_blocks,
+        # 512_blocks
         block_size = None
         total_blocks = None
         for key in entry.keys():
@@ -78,14 +80,14 @@ def parse_df_entry(entry: Dict[str, Any]) -> Dict[str, Any]:
             si_result = parse_si(f"{total_bytes}B", binary=True)
             capacity["total"] = {
                 "bytes": si_result.get("bytes", total_bytes),
-                "pretty": si_result.get("pretty", f"{total_bytes}B")
+                "pretty": si_result.get("pretty", f"{total_bytes}B"),
             }
         elif "size" in entry:
             # Size field already has units
             si_result = parse_si(str(entry["size"]), binary=True)
             capacity["total"] = {
                 "bytes": si_result.get("bytes", 0),
-                "pretty": si_result.get("pretty", str(entry["size"]))
+                "pretty": si_result.get("pretty", str(entry["size"])),
             }
 
         # Process used
@@ -96,14 +98,14 @@ def parse_df_entry(entry: Dict[str, Any]) -> Dict[str, Any]:
                 si_result = parse_si(f"{used_bytes}B", binary=True)
                 capacity["used"] = {
                     "bytes": si_result.get("bytes", used_bytes),
-                    "pretty": si_result.get("pretty", f"{used_bytes}B")
+                    "pretty": si_result.get("pretty", f"{used_bytes}B"),
                 }
             else:
                 # Used already has units
                 si_result = parse_si(str(entry["used"]), binary=True)
                 capacity["used"] = {
                     "bytes": si_result.get("bytes", 0),
-                    "pretty": si_result.get("pretty", str(entry["used"]))
+                    "pretty": si_result.get("pretty", str(entry["used"])),
                 }
 
         # Calculate percentage if we have both total and used

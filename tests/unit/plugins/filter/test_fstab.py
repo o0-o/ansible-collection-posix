@@ -13,7 +13,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Union
+from typing import Any, Dict, Union
 
 import pytest
 
@@ -556,8 +556,12 @@ def test_fstab_generation_nfs(filter_module: FilterModule) -> None:
 
 def test_fstab_generation_empty_list(filter_module: FilterModule) -> None:
     """Test generating fstab from empty list."""
-    # Use generate_fstab directly since fstab() no longer accepts empty lists
-    from ansible_collections.o0_o.posix.plugins.module_utils import generate_fstab
+    # Use generate_fstab directly since fstab() no longer accepts
+    # empty lists
+    from ansible_collections.o0_o.posix.plugins.module_utils import (
+        generate_fstab,
+    )
+
     result = generate_fstab([])
     assert result == ""  # Empty list generates empty string
 

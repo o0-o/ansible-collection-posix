@@ -13,8 +13,6 @@ from __future__ import annotations
 
 import pytest
 
-from ansible.errors import AnsibleActionFail
-
 
 @pytest.mark.parametrize(
     "input_str, expected_lines, expected_content",
@@ -65,5 +63,5 @@ def test_normalize_content_rejects_invalid_input(
     base, invalid_content
 ) -> None:
     """Test _normalize_content rejects invalid input types."""
-    with pytest.raises(AnsibleActionFail, match="_write_file.*"):
+    with pytest.raises(RuntimeError, match="_write_file.*"):
         base._normalize_content(invalid_content)

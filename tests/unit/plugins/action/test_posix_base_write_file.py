@@ -18,7 +18,6 @@ import pwd
 
 import pytest
 
-from ansible.errors import AnsibleActionFail
 from ansible_collections.o0_o.posix.tests.utils import (
     generate_temp_path,
     cleanup_path,
@@ -32,7 +31,7 @@ def test_write_file_rejects_invalid_content(base) -> None:
     tmp_path = generate_temp_path()
     try:
         for invalid in [None, 123, [object()], ["foo", object()]]:
-            with pytest.raises(AnsibleActionFail):
+            with pytest.raises(RuntimeError):
                 base._write_file(content=invalid, dest=tmp_path, task_vars={})
     finally:
         cleanup_path(tmp_path)
@@ -152,7 +151,7 @@ def test_write_file_selinux_tools_missing(base) -> None:
     base._display = MagicMock()
     tmp_path = generate_temp_path()
     try:
-        with pytest.raises(AnsibleActionFail, match="requires 'chcon'"):
+        with pytest.raises(RuntimeError, match="requires 'chcon'"):
             base._write_file(
                 content="foo",
                 dest=tmp_path,

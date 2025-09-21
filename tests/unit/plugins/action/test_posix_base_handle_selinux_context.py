@@ -13,7 +13,6 @@ from __future__ import annotations
 
 import pytest
 
-from ansible.errors import AnsibleActionFail
 from ansible_collections.o0_o.posix.tests.utils import generate_temp_path
 
 
@@ -126,7 +125,7 @@ def test_handle_selinux_context_logic(
     base._cmd = mock_cmd
 
     if expected_error:
-        with pytest.raises(AnsibleActionFail, match=expected_error):
+        with pytest.raises(RuntimeError, match=expected_error):
             base._handle_selinux_context(dest, perms)
     else:
         base._handle_selinux_context(dest, perms)

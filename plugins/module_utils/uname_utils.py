@@ -13,7 +13,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict, Union
+from typing import Any, Dict, List, Union
 
 from ansible_collections.o0_o.posix.plugins.module_utils.jc_utils import (
     jc_parse,
@@ -23,6 +23,7 @@ try:
     from ansible_collections.o0_o.utils.plugins.module_utils import (
         parse_hostname,
     )
+
     HAS_PARSE_HOSTNAME = True
 except ImportError:
     HAS_PARSE_HOSTNAME = False
@@ -69,7 +70,7 @@ def parse_uname_entry(entry: Dict[str, Any]) -> Dict[str, Any]:
         if not HAS_PARSE_HOSTNAME:
             # If hostname filter is not available, raise error
             raise ValueError(
-                "The 'facts' mode requires the o0_o.utils collection. "
+                "Hostname parsing requires the o0_o.utils collection. "
                 "Please install it with: "
                 "ansible-galaxy collection install o0_o.utils"
             )
@@ -93,7 +94,7 @@ def parse_uname_entry(entry: Dict[str, Any]) -> Dict[str, Any]:
     return norm_entry
 
 
-def uname(config: Union[str, Dict[str, Any]]) -> Dict[str, Any]:
+def uname(config: Union[str, List[str], Dict[str, Any]]) -> Dict[str, Any]:
     """Process uname data - parse command output into structured format.
 
     Returns data structure with:
@@ -101,11 +102,16 @@ def uname(config: Union[str, Dict[str, Any]]) -> Dict[str, Any]:
     - architecture: system architecture string
     - hostname: dict with short and optionally long (FQDN)
 
-    :param config: Uname command output as string or dict
+    :param config: Uname command output as string, list of lines, or
+                   dict
     :returns: Normalized uname data structure
     :raises ValueError: If parsing fails
     :raises ImportError: If jc is not available
     """
+    # Handle list input (e.g., stdout_lines from command module)
+    if isinstance(config, list):
+        config = "\n".join(config)
+
     # Parse with jc_parse (handles both string and dict inputs)
     parsed = jc_parse("uname", config)
 

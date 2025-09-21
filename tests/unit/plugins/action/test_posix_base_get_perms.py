@@ -13,8 +13,6 @@ from __future__ import annotations
 
 import pytest
 
-from ansible.errors import AnsibleActionFail
-
 
 @pytest.mark.parametrize(
     "cmd_output, selinux, expected",
@@ -74,14 +72,14 @@ def test_get_perms_valid(base, cmd_output, selinux, expected) -> None:
 
 def test_get_perms_fails_on_error(base) -> None:
     """
-    Test _get_perms raises AnsibleActionFail when ls command fails.
+    Test _get_perms raises RuntimeError when ls command fails.
     """
     base._cmd = lambda *args, **kwargs: {
         "rc": 1,
         "stderr": "ls: cannot access",
     }
 
-    with pytest.raises(AnsibleActionFail, match="Could not stat"):
+    with pytest.raises(RuntimeError, match="Could not stat"):
         base._get_perms("/fake/file", selinux=False)
 
 
@@ -93,5 +91,5 @@ def test_get_perms_raises_on_malformed_selinux_output(base) -> None:
         "stdout_lines": ["badselinux -rw-r--r-- user group"],
     }
 
-    with pytest.raises(AnsibleActionFail, match="Unexpected SELinux output"):
+    with pytest.raises(RuntimeError, match="Unexpected SELinux output"):
         base._get_perms("/fake/file", selinux=True)

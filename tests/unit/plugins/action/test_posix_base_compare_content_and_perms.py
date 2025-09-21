@@ -13,8 +13,6 @@ from __future__ import annotations
 
 import pytest
 
-from ansible.errors import AnsibleActionFail
-
 
 @pytest.mark.parametrize(
     "old_stat, old_content, old_perms, content, perms, selinux, expect_change",
@@ -128,7 +126,7 @@ def test_compare_content_and_perms(
     base._get_perms = lambda path, selinux=False, task_vars=None: old_perms
 
     if expect_change == "error":
-        with pytest.raises(AnsibleActionFail):
+        with pytest.raises(RuntimeError):
             base._compare_content_and_perms(
                 lines=content.splitlines(),
                 dest=dest,

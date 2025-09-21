@@ -36,7 +36,7 @@ from ansible_collections.o0_o.posix.plugins.module_utils.mount_utils import (
 from ansible_collections.o0_o.posix.plugins.module_utils.jc_utils import (
     jc_parse,
 )
-from ansible_collections.o0_o.posix.plugins.module_utils.posix_action_base import (
+from ansible_collections.o0_o.posix.plugins.module_utils.posix_action_base import (  # noqa: E501
     PosixActionBase,
 )
 from ansible_collections.o0_o.posix.plugins.module_utils.uname_utils import (

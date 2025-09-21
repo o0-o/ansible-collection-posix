@@ -24,7 +24,8 @@ short_description: Parse uname command output
 version_added: "1.1.0"
 description:
   - Parse output from the uname command into structured data using jc
-  - Returns normalized structure with kernel, architecture, and hostname information
+  - Returns normalized structure with kernel, architecture, and hostname
+    information
 options:
   _input:
     description:
@@ -34,13 +35,13 @@ options:
     required: true
 requirements:
   - jc (Python library)
-  - dnspython (Python library - required for hostname parsing when facts=True)
-  - idna (Python library - required for hostname parsing when facts=True)
-  - tldextract (Python library - required for hostname parsing when facts=True)
+  - dnspython (Python library - required for hostname parsing)
+  - idna (Python library - required for hostname parsing)
+  - tldextract (Python library - required for hostname parsing)
 notes:
   - Requires uname to be run with -a flag for complete parsing
   - The jc library will raise an error if output is incomplete
-  - When facts=True, hostname information includes short and long (FQDN) forms
+  - Hostname information includes short and long (FQDN) forms when available
 author:
   - oØ.o (@o0-o)
 """
@@ -116,7 +117,7 @@ class FilterModule:
 
     def uname_filter(
         self,
-        config: Union[str, Dict[str, Any]],
+        config: Union[str, List[str], Dict[str, Any]],
     ) -> Dict[str, Any]:
         """Parse uname output into structured data.
 

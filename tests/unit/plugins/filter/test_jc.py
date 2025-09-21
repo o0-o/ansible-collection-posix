@@ -28,7 +28,7 @@ class TestJCFilter:
         """Create a FilterModule instance for testing."""
         return FilterModule()
 
-    @patch('ansible_collections.o0_o.posix.plugins.filter.jc.jc_parse')
+    @patch("ansible_collections.o0_o.posix.plugins.filter.jc.jc_parse")
     def test_jc_filter_with_string_input(self, mock_jc_parse, filter_module):
         """Test jc_filter with string input."""
         mock_jc_parse.return_value = [{"user": "root", "pid": 1}]
@@ -38,27 +38,31 @@ class TestJCFilter:
         mock_jc_parse.assert_called_once_with("ps", "ps output", False, False)
         assert result == [{"user": "root", "pid": 1}]
 
-    @patch('ansible_collections.o0_o.posix.plugins.filter.jc.jc_parse')
+    @patch("ansible_collections.o0_o.posix.plugins.filter.jc.jc_parse")
     def test_jc_filter_with_list_input(self, mock_jc_parse, filter_module):
         """Test jc_filter with list input (joined with newlines)."""
         mock_jc_parse.return_value = [{"filesystem": "/dev/sda1"}]
 
         result = filter_module.jc_filter(["line1", "line2"], "df")
 
-        mock_jc_parse.assert_called_once_with("df", "line1\nline2", False, False)
+        mock_jc_parse.assert_called_once_with(
+            "df", "line1\nline2", False, False
+        )
         assert result == [{"filesystem": "/dev/sda1"}]
 
-    @patch('ansible_collections.o0_o.posix.plugins.filter.jc.jc_parse')
+    @patch("ansible_collections.o0_o.posix.plugins.filter.jc.jc_parse")
     def test_jc_filter_with_dict_input(self, mock_jc_parse, filter_module):
         """Test jc_filter with dict input (command result)."""
         mock_jc_parse.return_value = [{"mount_point": "/"}]
 
         result = filter_module.jc_filter({"stdout": "mount output"}, "mount")
 
-        mock_jc_parse.assert_called_once_with("mount", {"stdout": "mount output"}, False, False)
+        mock_jc_parse.assert_called_once_with(
+            "mount", {"stdout": "mount output"}, False, False
+        )
         assert result == [{"mount_point": "/"}]
 
-    @patch('ansible_collections.o0_o.posix.plugins.filter.jc.jc_parse')
+    @patch("ansible_collections.o0_o.posix.plugins.filter.jc.jc_parse")
     def test_jc_filter_with_raw_option(self, mock_jc_parse, filter_module):
         """Test jc_filter with raw=True option."""
         mock_jc_parse.return_value = [{"raw": "data"}]
@@ -68,7 +72,7 @@ class TestJCFilter:
         mock_jc_parse.assert_called_once_with("uname", "input", False, True)
         assert result == [{"raw": "data"}]
 
-    @patch('ansible_collections.o0_o.posix.plugins.filter.jc.jc_parse')
+    @patch("ansible_collections.o0_o.posix.plugins.filter.jc.jc_parse")
     def test_jc_filter_with_quiet_option(self, mock_jc_parse, filter_module):
         """Test jc_filter with quiet=True option."""
         mock_jc_parse.return_value = {"kernel": "Linux"}
@@ -78,20 +82,25 @@ class TestJCFilter:
         mock_jc_parse.assert_called_once_with("uname", "input", True, False)
         assert result == {"kernel": "Linux"}
 
-    @patch('ansible_collections.o0_o.posix.plugins.filter.jc.jc_parse')
+    @patch("ansible_collections.o0_o.posix.plugins.filter.jc.jc_parse")
     def test_jc_filter_error_handling(self, mock_jc_parse, filter_module):
         """Test jc_filter error handling."""
         mock_jc_parse.side_effect = ValueError("Parser not found")
 
-        with pytest.raises(AnsibleFilterError, match="jc failed: ValueError: Parser not found"):
+        with pytest.raises(
+            AnsibleFilterError, match="jc failed: ValueError: Parser not found"
+        ):
             filter_module.jc_filter("input", "invalid_parser")
 
-    @patch('ansible_collections.o0_o.posix.plugins.filter.jc.jc_parse')
+    @patch("ansible_collections.o0_o.posix.plugins.filter.jc.jc_parse")
     def test_jc_filter_import_error(self, mock_jc_parse, filter_module):
         """Test jc_filter handles ImportError."""
         mock_jc_parse.side_effect = ImportError("jc not installed")
 
-        with pytest.raises(AnsibleFilterError, match="jc failed: ImportError: jc not installed"):
+        with pytest.raises(
+            AnsibleFilterError,
+            match="jc failed: ImportError: jc not installed",
+        ):
             filter_module.jc_filter("input", "ps")
 
     def test_filters_method(self, filter_module):
