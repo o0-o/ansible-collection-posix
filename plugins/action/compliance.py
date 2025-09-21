@@ -186,7 +186,7 @@ class ActionModule(PosixActionBase, ActionBase):
             }
             result["is_posix"] = True
         elif posix1_version not in ["undefined", "", "-1"]:
-            host = task_vars.get("inventory_hostname", "UNKNOWN")
+            host = self._get_inventory_hostname(task_vars)
             self._display.warning(
                 f"[{host}] Unrecognized POSIX.1 version: {posix1_version}. "
                 f"Known versions: {', '.join(self.POSIX_VERSIONS.keys())}"
@@ -258,7 +258,7 @@ class ActionModule(PosixActionBase, ActionBase):
 
             result["is_posix"] = True
         elif posix2_version not in ["undefined", "", "-1"]:
-            host = task_vars.get("inventory_hostname", "UNKNOWN")
+            host = self._get_inventory_hostname(task_vars)
             self._display.warning(
                 f"[{host}] Unrecognized POSIX.2 version: {posix2_version}. "
                 f"Known versions: {', '.join(self.POSIX_VERSIONS.keys())}"
@@ -305,7 +305,7 @@ class ActionModule(PosixActionBase, ActionBase):
                 compliance["sus"]["getconf"] = {"_XOPEN_UNIX": xopen_support}
                 result["is_posix"] = True
             elif xopen_version not in ["undefined", "", "-1"]:
-                host = task_vars.get("inventory_hostname", "UNKNOWN")
+                host = self._get_inventory_hostname(task_vars)
                 self._display.warning(
                     f"[{host}] Unrecognized X/Open version: {xopen_version}. "
                     f"Known versions: {', '.join(self.XOPEN_VERSIONS.keys())}"
@@ -313,7 +313,7 @@ class ActionModule(PosixActionBase, ActionBase):
         except AnsibleConnectionFailure:
             raise
         except Exception as e:
-            host = task_vars.get("inventory_hostname", "UNKNOWN")
+            host = self._get_inventory_hostname(task_vars)
             self._display.warning(
                 f"[{host}] Failed to process X/Open compliance: {e}"
             )

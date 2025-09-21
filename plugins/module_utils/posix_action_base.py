@@ -93,6 +93,34 @@ class PosixActionBase:
 
         return False
 
+    def _get_inventory_hostname(
+        self, task_vars: Optional[Dict[str, Any]] = None
+    ) -> str:
+        """Return the inventory hostname for log/warning messages.
+
+        Prefers the value from ``task_vars`` when provided, then falls
+        back to the task's vars mapping. Defaults to ``localhost`` when
+        no value can be determined (e.g., local actions).
+
+        :param task_vars: Optional task vars mapping
+        :returns: Hostname string suitable for log prefixes
+        """
+        if isinstance(task_vars, dict):
+            host = task_vars.get("inventory_hostname")
+            if host:
+                return str(host)
+
+        try:
+            mapping = getattr(self._task, "vars", None)
+            if isinstance(mapping, dict):
+                host = mapping.get("inventory_hostname")
+                if host:
+                    return str(host)
+        except Exception:
+            pass
+
+        return "localhost"
+
     def _run_action(
         self,
         plugin_name: str,
@@ -774,7 +802,7 @@ class PosixActionBase:
                 )
 
         if not semanage_path:
-            host = (task_vars or {}).get("inventory_hostname", "UNKNOWN")
+            host = self._get_inventory_hostname(task_vars)
             self._display.warning(
                 f"[{host}] chcon is available but semanage is not — "
                 "SELinux context changes may not persist"

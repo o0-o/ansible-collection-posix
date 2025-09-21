@@ -117,7 +117,7 @@ class ActionModule(PosixActionBase, ActionBase):
                 ansible_slurp_mod.pop("invocation")
                 result["raw"] = False
             except Exception as e:
-                host = task_vars.get("inventory_hostname", "UNKNOWN")
+                host = self._get_inventory_hostname(task_vars)
                 self._display.warning(
                     f"[{host}] Error calling ansible.builtin.slurp: {str(e)}"
                 )
@@ -158,7 +158,7 @@ class ActionModule(PosixActionBase, ActionBase):
                         )
 
                 else:
-                    host = task_vars.get("inventory_hostname", "UNKNOWN")
+                    host = self._get_inventory_hostname(task_vars)
                     self._display.warning(
                         f"[{host}] slurp64: builtin slurp did not return "
                         "'content'"
