@@ -26,9 +26,9 @@ ansible-galaxy collection install o0_o.posix
 
 - Keep code formatted with black and passing flake8/yamllint.
 - Run `ansible-test sanity`, `units`, and `integration` before submitting PRs.
-- See AGENTS.md for contributor standards and testing guidance.
+- See the central AGENTS guide for contributor standards and testing guidance:
+  https://github.com/o0-o/ansible-collections/blob/main/AGENTS.md
 
 ## License
 
 GPL-3.0-or-later. See LICENSE.md for details.
-
