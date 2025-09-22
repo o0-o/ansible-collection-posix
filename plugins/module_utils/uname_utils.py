@@ -112,9 +112,34 @@ def uname(config: Union[str, List[str], Dict[str, Any]]) -> Dict[str, Any]:
     if isinstance(config, list):
         config = "\n".join(config)
 
-    # Parse with jc_parse (handles both string and dict inputs)
-    parsed = jc_parse("uname", config)
+    # Try jc first (handles both string and dict inputs)
+    try:
+        parsed = jc_parse("uname", config)
+        return parse_uname_entry(parsed)
+    except ValueError:
+        # Fallback parsing for platforms where jc fails (e.g., OpenBSD)
+        # Extract raw text and construct an entry compatible with
+        # parse_uname_entry.
+        if isinstance(config, dict):
+            text = config.get("stdout") or ""
+        else:
+            text = str(config)
 
-    # uname returns a single dict, not a list
-    # Normalize and return directly
-    return parse_uname_entry(parsed)
+        text = text.strip()
+        if not text:
+            raise
+
+        tokens = text.split()
+        entry: Dict[str, Any] = {}
+
+        # OpenBSD format:
+        # OpenBSD <node> <release> <build> <arch>
+        if tokens[0] == "OpenBSD" and len(tokens) >= 5:
+            entry["kernel_name"] = tokens[0]
+            entry["node_name"] = tokens[1]
+            entry["kernel_release"] = tokens[2]
+            entry["machine"] = tokens[-1]
+            return parse_uname_entry(entry)
+
+        # If we cannot confidently parse, re-raise the original error
+        raise

@@ -93,3 +93,24 @@ def test_uname_uses_jc_parse() -> None:
 
     mock_parse.assert_called_once_with("uname", "uname -a output")
     assert result["hostname"]["short"] == "host"
+
+
+def test_uname_fallback_openbsd() -> None:
+    """Fallback parsing handles OpenBSD uname when jc fails."""
+
+    obsd = (
+        "OpenBSD openbsd.home.johnandlaurel.com 7.6 "
+        "GENERIC.MP#196 arm64"
+    )
+
+    with patch.object(
+        uname_utils, "jc_parse", side_effect=ValueError("pop from empty list")
+    ):
+        with patch.object(
+            uname_utils, "parse_hostname", return_value={"short": "openbsd"}
+        ):
+            result = uname_utils.uname(obsd)
+
+    assert result["kernel"]["name"] == "openbsd"
+    assert result["kernel"]["version"]["id"] == "7.6"
+    assert result["architecture"] == "arm64"
