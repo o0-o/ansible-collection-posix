@@ -8,12 +8,12 @@ POSIX-focused Ansible plugins with raw fallback support for minimal systems.
 
 ## Documentation
 
-Full, versioned documentation (modules, filters, usage, and examples) is
-published via GitHub Pages:
+Full documentation (modules, filters, usage, and examples) is published via
+GitHub Pages (not versioned):
 
 - https://o0-o.github.io/ansible-collection-posix/
 
-The docs are generated with antsibull-docs and updated by CI on releases.
+The docs are generated with antsibull-docs and published continuously by CI.
 Refer there for the complete list of plugins and options.
 
 ## Installation
