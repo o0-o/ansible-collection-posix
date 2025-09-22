@@ -85,7 +85,8 @@ def normalize_mount_options(options: Dict[str, Any]) -> Dict[str, Any]:
     reverse_boolean = {v: k for k, v in BOOLEAN_OPTION_PAIRS.items()}
 
     for opt, value in options.items():
-        # Trim whitespace (OpenBSD may print tokens like " nosuid").
+        # Trim whitespace. Some platforms (e.g., OpenBSD) may print
+        # tokens with a leading space, like " nosuid".
         opt = opt.strip()
         if not opt:
             continue

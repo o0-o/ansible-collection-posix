@@ -125,6 +125,7 @@ def test_parse_mount_entry_macos_type_from_options() -> None:
     assert result["options"]["local"] is True
     assert result["options"]["journaled"] is True
 
+
 def test_parse_mount_entry_trims_option_whitespace() -> None:
     """Options with leading spaces are trimmed and normalized."""
 
@@ -142,6 +143,7 @@ def test_parse_mount_entry_trims_option_whitespace() -> None:
     assert result["options"]["dev"] is False
     assert result["options"]["suid"] is False
     assert result["options"]["local"] is True
+
 
 def test_parse_mount_entry_rejects_non_string_options() -> None:
     """Non-string options raise TypeError to guard unexpected data."""
