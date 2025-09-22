@@ -125,6 +125,23 @@ def test_parse_mount_entry_macos_type_from_options() -> None:
     assert result["options"]["local"] is True
     assert result["options"]["journaled"] is True
 
+def test_parse_mount_entry_trims_option_whitespace() -> None:
+    """Options with leading spaces are trimmed and normalized."""
+
+    entry = {
+        "filesystem": "/dev/sda1",
+        "mount_point": "/",
+        # No explicit type; first option is the type
+        "options": ["ext4", " nodev", " nosuid", "local"],
+    }
+
+    result = mount_utils.parse_mount_entry(entry)
+
+    assert result["type"] == "ext4"
+    # nodev/nosuid should be recognized after trimming
+    assert result["options"]["dev"] is False
+    assert result["options"]["suid"] is False
+    assert result["options"]["local"] is True
 
 def test_parse_mount_entry_rejects_non_string_options() -> None:
     """Non-string options raise TypeError to guard unexpected data."""

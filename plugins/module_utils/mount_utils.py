@@ -85,6 +85,10 @@ def normalize_mount_options(options: Dict[str, Any]) -> Dict[str, Any]:
     reverse_boolean = {v: k for k, v in BOOLEAN_OPTION_PAIRS.items()}
 
     for opt, value in options.items():
+        # Trim whitespace (OpenBSD may print tokens like " nosuid").
+        opt = opt.strip()
+        if not opt:
+            continue
         # Check atime options first (they override each other)
         if opt in ATIME_OPTIONS:
             normalized["atime"] = ATIME_OPTIONS[opt]
@@ -166,10 +170,14 @@ def parse_mount_entry(entry: Dict[str, Any]) -> Dict[str, Any]:
             # Skip empty strings
             if not opt:
                 continue
+            # Normalize whitespace around the token
+            opt = opt.strip()
+            if not opt:
+                continue
             if "=" in opt:
                 # Split on first = only
                 key, value = opt.split("=", 1)
-                raw_options[key] = value
+                raw_options[key.strip()] = value
             else:
                 # Treat as boolean flag
                 raw_options[opt] = True
