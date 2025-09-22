@@ -1,0 +1,8 @@
+# vim: ts=2:sw=2:sts=2:et:ft=yaml.ansible
+# -*- mode: yaml; yaml-indent-offset: 2; indent-tabs-mode: nil; -*-
+---
+bugfixes:
+  - uname filter (module_utils) now falls back to a safe OpenBSD parser
+    when ``jc`` fails to parse ``uname -a`` output (e.g., ``ValueError: pop
+    from empty list``). This restores functionality on OpenBSD by extracting
+    kernel, hostname, version, and architecture directly.
