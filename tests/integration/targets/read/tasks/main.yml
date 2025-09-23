@@ -1,0 +1,87 @@
+# vim: ts=2:sw=2:sts=2:et:ft=yaml.ansible
+# -*- mode: yaml; yaml-indent-offset: 2; indent-tabs-mode: nil; -*-
+---
+# GNU General Public License v3.0+
+# SPDX-License-Identifier: GPL-3.0-or-later
+# (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
+# Copyright (c) 2025 oØ.o (@o0-o)
+#
+# This file is part of the o0_o.posix Ansible Collection.
+
+- name: Create temporary directory for read integration tests
+  ansible.builtin.tempfile:
+    state: directory
+    suffix: read
+  register: read_tempdir_reg
+
+- name: Define test paths
+  ansible.builtin.set_fact:
+    read_dir_path: "{{ read_tempdir_reg['path'] }}"
+    read_regular_path: "{{ read_tempdir_reg['path'] }}/regular.txt"
+    read_hardlink_path: "{{ read_tempdir_reg['path'] }}/regular.hard"
+    read_symlink_path: "{{ read_tempdir_reg['path'] }}/regular.link"
+    read_binary_path: "{{ read_tempdir_reg['path'] }}/binary.bin"
+    read_directory_path: "{{ read_tempdir_reg['path'] }}/subdir"
+    read_fifo_path: "{{ read_tempdir_reg['path'] }}/special.fifo"
+
+- name: Create regular file with known content
+  ansible.builtin.copy:
+    dest: "{{ read_regular_path }}"
+    content: |-
+      The quick brown fox
+      jumps over the lazy dog
+    mode: '0640'
+
+- name: Create hard link to regular file
+  ansible.builtin.command:
+    argv:
+      - ln
+      - "{{ read_regular_path }}"
+      - "{{ read_hardlink_path }}"
+
+- name: Create symbolic link to regular file
+  ansible.builtin.file:
+    state: link
+    src: "{{ read_regular_path }}"
+    path: "{{ read_symlink_path }}"
+
+- name: Create directory entry
+  ansible.builtin.file:
+    state: directory
+    path: "{{ read_directory_path }}"
+    mode: '0750'
+
+- name: Create FIFO entry
+  ansible.builtin.command:
+    argv:
+      - mkfifo
+      - "{{ read_fifo_path }}"
+
+- name: Create binary file with non-text content
+  ansible.builtin.command:
+    argv:
+      - dd
+      - if=/dev/zero
+      - "of={{ read_binary_path }}"
+      - bs=1
+      - count=3
+  changed_when: true
+  register: _dd_reg
+
+- name: Try
+  block:
+
+    - name: Execute read module scenarios
+      ansible.builtin.include_tasks: read.yml
+      loop: "{{ [true, false] }}"
+      loop_control:
+        loop_var: read_check_mode
+      vars:
+        ansible_check_mode: "{{ read_check_mode }}"
+
+  always:
+
+    - name: Remove temporary directory tree
+      ansible.builtin.file:
+        path: "{{ read_dir_path }}"
+        state: absent

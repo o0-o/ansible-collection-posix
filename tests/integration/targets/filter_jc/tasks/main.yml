@@ -98,7 +98,7 @@
       ansible.builtin.assert:
         that:
           - ansible_failed_result is defined
-          - "'invalid_parser_xyz' in ansible_failed_result.msg"
+          - "'invalid_parser_xyz' in ansible_failed_result['msg']"
 
 - name: 'Fail: Test JC filter with wrong variable type'
   block:

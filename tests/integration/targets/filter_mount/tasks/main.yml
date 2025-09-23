@@ -26,10 +26,10 @@
     that:
       - mount_parsed is sequence
       - mount_parsed | length == 6
-      - mount_parsed[0].source.path == '/dev/sda1'
-      - mount_parsed[0].mount == '/'
-      - mount_parsed[0].type == 'ext4'
-      - mount_parsed[0].options is mapping
+      - mount_parsed[0]['source']['path'] == '/dev/sda1'
+      - mount_parsed[0]['mount'] == '/'
+      - mount_parsed[0]['type'] == 'ext4'
+      - mount_parsed[0]['options'] is mapping
     fail_msg: >-
       Mount parsed structure incorrect:
       {{ mount_parsed }}
@@ -42,11 +42,13 @@
          | first }}
   ansible.builtin.assert:
     that:
-      - root_mount.source.path == '/dev/sda1'
-      - root_mount.type == 'ext4'
-      - root_mount.options.writable == true  # rw normalized
-      - root_mount.options.atime == 'relative'  # relatime normalized to enum
-      - root_mount.options.errors == 'remount-ro'
+      - root_mount['source']['path'] == '/dev/sda1'
+      - root_mount['type'] == 'ext4'
+      - root_mount['options']['writable'] == true  # rw normalized
+      - >-
+        root_mount['options']['atime'] == 'relative'
+        # relatime normalized to enum
+      - root_mount['options']['errors'] == 'remount-ro'
     fail_msg: >-
       Root mount incorrect:
       {{ root_mount }}
@@ -59,12 +61,12 @@
          | first }}
   ansible.builtin.assert:
     that:
-      - proc_mount.source.name == 'proc'
-      - proc_mount.type == 'proc'
-      - proc_mount.options.writable == true  # rw normalized
-      - proc_mount.options.suid == false      # nosuid normalized
-      - proc_mount.options.dev == false       # nodev normalized
-      - proc_mount.options.exec == false      # noexec normalized
+      - proc_mount['source']['name'] == 'proc'
+      - proc_mount['type'] == 'proc'
+      - proc_mount['options']['writable'] == true  # rw normalized
+      - proc_mount['options']['suid'] == false      # nosuid normalized
+      - proc_mount['options']['dev'] == false       # nodev normalized
+      - proc_mount['options']['exec'] == false      # noexec normalized
     fail_msg: >-
       Proc mount incorrect:
       {{ proc_mount }}
@@ -77,12 +79,12 @@
          | first }}
   ansible.builtin.assert:
     that:
-      - nfs_mount.source.address == 'server:/export'
-      - nfs_mount.type == 'nfs'
-      - nfs_mount.options.writable == true   # rw normalized
-      - nfs_mount.options.vers == '4.2'
-      - nfs_mount.options.rsize == '1048576'
-      - nfs_mount.options.wsize == '1048576'
+      - nfs_mount['source']['address'] == 'server:/export'
+      - nfs_mount['type'] == 'nfs'
+      - nfs_mount['options']['writable'] == true   # rw normalized
+      - nfs_mount['options']['vers'] == '4.2'
+      - nfs_mount['options']['rsize'] == '1048576'
+      - nfs_mount['options']['wsize'] == '1048576'
     fail_msg: >-
       NFS mount incorrect:
       {{ nfs_mount }}
@@ -100,8 +102,8 @@
     that:
       - mount_from_multiline is sequence
       - mount_from_multiline | length == 2
-      - mount_from_multiline[0].source.path == '/dev/sda1'
-      - mount_from_multiline[1].source.name == 'proc'
+      - mount_from_multiline[0]['source']['path'] == '/dev/sda1'
+      - mount_from_multiline[1]['source']['name'] == 'proc'
 
 - name: Test with command result dict
   vars:
@@ -117,8 +119,8 @@
     that:
       - mount_from_dict is sequence
       - mount_from_dict | length == 1
-      - mount_from_dict[0].source.path == '/dev/sda1'
-      - mount_from_dict[0].mount == '/'
+      - mount_from_dict[0]['source']['path'] == '/dev/sda1'
+      - mount_from_dict[0]['mount'] == '/'
 
 - name: Test with base64 encoded content (slurp result)
   vars:
@@ -134,7 +136,7 @@
     that:
       - mount_from_slurp is sequence
       - mount_from_slurp | length == 1
-      - mount_from_slurp[0].source.path == '/dev/sda1'
+      - mount_from_slurp[0]['source']['path'] == '/dev/sda1'
 
 - name: Test empty options handling
   vars:
@@ -145,10 +147,10 @@
 - name: Verify empty options become empty dict
   ansible.builtin.assert:
     that:
-      - mount_empty_opts[0].options == {}
+      - mount_empty_opts[0]['options'] == {}
     fail_msg: >-
       Empty options should be empty dict, got:
-      {{ mount_empty_opts[0].options }}
+      {{ mount_empty_opts[0]['options'] }}
 
 - name: Test macOS-style mount output (type in options)
   vars:
@@ -159,11 +161,11 @@
 - name: Verify macOS-style parsing
   ansible.builtin.assert:
     that:
-      - mount_macos[0].source.path == '/dev/disk3s1s1'
-      - mount_macos[0].mount == '/'
-      - mount_macos[0].type == 'apfs'
-      - mount_macos[0].options.local == true
-      - mount_macos[0].options.journaled == true
+      - mount_macos[0]['source']['path'] == '/dev/disk3s1s1'
+      - mount_macos[0]['mount'] == '/'
+      - mount_macos[0]['type'] == 'apfs'
+      - mount_macos[0]['options']['local'] == true
+      - mount_macos[0]['options']['journaled'] == true
     fail_msg: >-
       macOS-style mount incorrect:
       {{ mount_macos[0] }}

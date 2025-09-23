@@ -162,8 +162,8 @@
         that:
           - ansible_failed_result is defined
           - >-
-            'jc' in ansible_failed_result.msg or
-            'parse' in ansible_failed_result.msg
+            'jc' in ansible_failed_result['msg'] or
+            'parse' in ansible_failed_result['msg']
         fail_msg: "Should fail when parsing incomplete uname output"
 
 - name: Test hostname filter dependency

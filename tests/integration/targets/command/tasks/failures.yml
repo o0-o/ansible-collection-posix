@@ -96,5 +96,5 @@
       ansible.builtin.assert:
         that:
           - ansible_failed_result['rc'] > 0
-          - ansible_failed_result.stdout == ''
-          - ansible_failed_result.stderr == ''
+          - ansible_failed_result['stdout'] == ''
+          - ansible_failed_result['stderr'] == ''

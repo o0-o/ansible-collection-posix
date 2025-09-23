@@ -39,9 +39,9 @@
 - name: 'Assert outcome for force=true'
   ansible.builtin.assert:
     that:
-      - (not ansible_check_mode and overwrite_default.changed) or
-        (ansible_check_mode and overwrite_default.changed)
-      - overwrite_default.raw == _force_raw
+      - (not ansible_check_mode and overwrite_default['changed']) or
+        (ansible_check_mode and overwrite_default['changed'])
+      - overwrite_default['raw'] == _force_raw
 
 - name: 'Reset file before force=false test'
   ansible.builtin.copy:
@@ -62,8 +62,8 @@
 - name: 'Assert outcome for force=false'
   ansible.builtin.assert:
     that:
-      - not overwrite_protect.changed
-      - overwrite_protect.raw == _force_raw
+      - not overwrite_protect['changed']
+      - overwrite_protect['raw'] == _force_raw
 
 - name: 'Setup file for check mode force=false test'
   ansible.builtin.copy:
@@ -85,5 +85,5 @@
 - name: 'Assert check mode result with force=false'
   ansible.builtin.assert:
     that:
-      - not check_protect.changed
-      - check_protect.raw == _force_raw
+      - not check_protect['changed']
+      - check_protect['raw'] == _force_raw

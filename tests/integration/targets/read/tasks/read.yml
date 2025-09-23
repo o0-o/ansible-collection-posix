@@ -1,0 +1,157 @@
+# vim: ts=2:sw=2:sts=2:et:ft=yaml.ansible
+# -*- mode: yaml; yaml-indent-offset: 2; indent-tabs-mode: nil; -*-
+---
+# GNU General Public License v3.0+
+# SPDX-License-Identifier: GPL-3.0-or-later
+# (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
+# Copyright (c) 2025 oØ.o (@o0-o)
+#
+# This file is part of the o0_o.posix Ansible Collection.
+
+- name: Read regular file with content
+  o0_o.posix.read:
+    path: "{{ read_regular_path }}"
+    content: true
+  register: read_regular_content_reg
+
+- name: Assert regular file metadata with content
+  ansible.builtin.assert:
+    that:
+      - read_regular_content_reg is not changed
+      - >-
+        read_regular_content_reg['file'][read_regular_path]['type']
+        == 'regular'
+      - read_regular_content_reg['file'][read_regular_path]['mode'] == '0640'
+      - read_regular_content_reg['file'][read_regular_path]['owner'] is defined
+      - read_regular_content_reg['file'][read_regular_path]['group'] is defined
+      - >-
+        read_regular_content_reg['file'][read_regular_path]['encoding']
+        is defined
+      - >-
+        'quick brown fox' in
+        read_regular_content_reg['file'][read_regular_path]['content']
+      - >-
+        read_regular_content_reg['file'][read_regular_path]['hard']
+        == [read_hardlink_path]
+
+- name: Read regular file without content
+  o0_o.posix.read:
+    path: "{{ read_regular_path }}"
+    content: false
+  register: read_regular_meta_reg
+
+- name: Assert regular file metadata without content
+  ansible.builtin.assert:
+    that:
+      - read_regular_meta_reg is not changed
+      - read_regular_meta_reg['file'][read_regular_path]['type'] == 'regular'
+      - "'content' not in read_regular_meta_reg['file'][read_regular_path]"
+      - "'encoding' not in read_regular_meta_reg['file'][read_regular_path]"
+
+- name: Read binary file with content enabled
+  o0_o.posix.read:
+    path: "{{ read_binary_path }}"
+    content: true
+  register: read_binary_reg
+
+- name: Assert binary file avoids content
+  ansible.builtin.assert:
+    that:
+      - read_binary_reg is not changed
+      - read_binary_reg['file'][read_binary_path]['type'] == 'regular'
+      - "'content' not in read_binary_reg['file'][read_binary_path]"
+      - "'encoding' not in read_binary_reg['file'][read_binary_path]"
+
+- name: Read symbolic link metadata
+  o0_o.posix.read:
+    path: "{{ read_symlink_path }}"
+  register: read_symlink_reg
+
+- name: Assert symbolic link target recorded
+  ansible.builtin.assert:
+    that:
+      - read_symlink_reg is not changed
+      - read_symlink_reg['file'][read_symlink_path]['type'] == 'link'
+      - >-
+        read_symlink_reg['file'][read_symlink_path]['link']
+        == read_regular_path
+      - "'content' not in read_symlink_reg['file'][read_symlink_path]"
+
+- name: Read directory metadata
+  o0_o.posix.read:
+    path: "{{ read_directory_path }}"
+  register: read_directory_reg
+
+- name: Assert directory type detected
+  ansible.builtin.assert:
+    that:
+      - read_directory_reg is not changed
+      - read_directory_reg['file'][read_directory_path]['type'] == 'directory'
+
+- name: Read FIFO metadata
+  o0_o.posix.read:
+    path: "{{ read_fifo_path }}"
+  register: read_fifo_reg
+
+- name: Assert FIFO type detected
+  ansible.builtin.assert:
+    that:
+      - read_fifo_reg is not changed
+      - read_fifo_reg['file'][read_fifo_path]['type'] == 'fifo'
+
+- name: Read symbolic link recursively
+  o0_o.posix.read:
+    path: "{{ read_symlink_path }}"
+    recursive: true
+    content: true
+  register: read_symlink_recursive_reg
+
+- name: Assert recursive link expansion
+  ansible.builtin.assert:
+    that:
+      - >-
+        read_symlink_recursive_reg['file'][read_symlink_path]['type']
+        == 'link'
+      - >-
+        read_symlink_recursive_reg['file'][read_symlink_path]['link']
+        [read_regular_path]['type'] == 'regular'
+      - >-
+        'quick brown fox' in read_symlink_recursive_reg['file']
+        [read_symlink_path]['link'][read_regular_path]['content']
+
+- name: Read regular file with recursive hard links
+  o0_o.posix.read:
+    path: "{{ read_regular_path }}"
+    recursive: true
+  register: read_regular_recursive_reg
+
+- name: Assert recursive hard link expansion
+  ansible.builtin.assert:
+    that:
+      - >-
+        read_regular_recursive_reg['file'][read_regular_path]['hard']
+        [read_hardlink_path]['type'] == 'regular'
+
+- name: Read missing path returns none
+  o0_o.posix.read:
+    path: /does/not/exist
+  register: read_missing_reg
+
+- name: Assert missing path yields null result
+  ansible.builtin.assert:
+    that:
+      - read_missing_reg is not changed
+      - read_missing_reg['file']['/does/not/exist'] is none
+
+- name: Read multiple paths in single call
+  o0_o.posix.read:
+    paths:
+      - "{{ read_regular_path }}"
+      - "{{ read_symlink_path }}"
+  register: read_multiple_reg
+
+- name: Assert multiple path results available
+  ansible.builtin.assert:
+    that:
+      - read_multiple_reg['file'][read_regular_path]['type'] == 'regular'
+      - read_multiple_reg['file'][read_symlink_path]['type'] == 'link'

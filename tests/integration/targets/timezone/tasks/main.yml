@@ -17,10 +17,9 @@
   ansible.builtin.assert:
     that:
       - tz_reg is defined
-      - tz_reg.changed == false
-      - tz_reg.timezone is defined
-      - tz_reg.timezone is mapping
-      - tz_reg.timezone.get('name', '') is string
-      - tz_reg.timezone.get('abbr', '') is string
+      - tz_reg['changed'] == false
+      - tz_reg['timezone'] is defined
+      - tz_reg['timezone'] is mapping
+      - tz_reg['timezone'].get('name', '') is string
+      - tz_reg['timezone'].get('abbr', '') is string
     fail_msg: 'Timezone module did not return expected structure'
-
