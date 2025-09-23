@@ -45,9 +45,7 @@
       - root_mount['source']['path'] == '/dev/sda1'
       - root_mount['type'] == 'ext4'
       - root_mount['options']['writable'] == true  # rw normalized
-      - >-
-        root_mount['options']['atime'] == 'relative'
-        # relatime normalized to enum
+      - root_mount['options']['atime'] == 'relative'  # relatime normalized
       - root_mount['options']['errors'] == 'remount-ro'
     fail_msg: >-
       Root mount incorrect:
