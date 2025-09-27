@@ -16,23 +16,20 @@ __metaclass__ = type
 DOCUMENTATION = r"""
 ---
 module: timezone
-short_description: Detect the system timezone (IANA name) on POSIX hosts
+short_description: Detect the system timezone details on POSIX hosts
 version_added: "1.4.0"
 description:
-  - Detects the system timezone on POSIX systems using portable methods.
-  - Works across Linux distributions, macOS, FreeBSD, and OpenBSD.
-  - Attempts multiple strategies including C(/etc/timezone), the
-    C(/etc/localtime) symlink target, macOS C(systemsetup -gettimezone), and
-    systemd C(timedatectl) where available.
-  - Falls back to returning the timezone abbreviation from C(date +%Z) when a
-    full IANA timezone cannot be determined.
+  - Detects timezone information on POSIX systems.
+  - Discovers the tzdb zone when available, parses the POSIX TZ
+    definition from the zoneinfo file, and captures the active
+    abbreviation and offset from the C(date) command.
 options: {}
 author:
   - oØ.o (@o0-o)
 notes:
   - This module is implemented as an action plugin and supports raw fallback.
 seealso:
-  - name: o0_o.posix.facts
+  - module: o0_o.posix.facts
     description: Minimal POSIX facts gathering
 """
 
@@ -53,28 +50,102 @@ timezone:
   type: dict
   contains:
     name:
-      description: IANA timezone name (Region/City) when available
+      description: TZ database identifier when detected
       type: str
-      returned: when determinable
-      sample: America/Los_Angeles
-    abbr:
-      description: Timezone abbreviation when IANA name is unavailable
+      returned: when available
+      sample: America/New_York
+    zone:
+      description: Deprecated alias of C(name) retained for compatibility
       type: str
-      returned: when fallback used
-      sample: PDT
+      returned: when available
     config:
-      description: Detection configuration details
+      description: Mapping of examined timezone configuration files
       type: dict
-      returned: always
+      returned: when available
+      sample:
+        /etc/localtime:
+          link: /var/db/timezone/zoneinfo/America/New_York
       contains:
-        path:
-          description: Path of configuration file used (if applicable)
+        /etc/localtime:
+          description: Entry for the active localtime reference
+          type: dict
+          contains:
+            link:
+              description: Symlink target or resolved zoneinfo file
+              type: str
+              returned: when available
+              sample: /var/db/timezone/zoneinfo/America/New_York
+    posix:
+      description: Raw POSIX TZ string parsed from the zoneinfo file
+      type: str
+      returned: when available
+      sample: EST5EDT,M3.2.0,M11.1.0
+    standard:
+      description: Standard time definition
+      type: dict
+      returned: when available
+      contains:
+        abbr:
+          description: Standard time abbreviation
           type: str
-          returned: when detected from filesystem
-          sample: /etc/localtime
-        command:
-          description: Command used to determine timezone (if applicable)
+          sample: EST
+        offset:
+          description: Standard offset formatted +/-HH:MM[:SS]
           type: str
-          returned: when detected via command
-          sample: systemsetup -gettimezone
+          sample: -05:00
+    daylight:
+      description: Daylight saving definition when present
+      type: dict
+      returned: when available
+      contains:
+        abbr:
+          description: Daylight time abbreviation
+          type: str
+          sample: EDT
+        offset:
+          description: Daylight offset formatted +/-HH:MM[:SS]
+          type: str
+          sample: -04:00
+        start:
+          description: Daylight saving start components
+          type: dict
+          contains:
+            month:
+              description: Month index (1-12)
+              type: int
+            week:
+              description: Week number (1-4, 5=last)
+              type: int
+            weekday:
+              description: Day of week (0=Sunday)
+              type: int
+            time:
+              description: Transition time (HH:MM[:SS])
+              type: str
+        end:
+          description: Daylight saving end components
+          type: dict
+          contains:
+            month:
+              description: Month index (1-12)
+              type: int
+            week:
+              description: Week number (1-4, 5=last)
+              type: int
+            weekday:
+              description: Day of week (0=Sunday)
+              type: int
+            time:
+              description: Transition time (HH:MM[:SS])
+              type: str
+    abbr:
+      description: Active timezone abbreviation from C(date +%Z)
+      type: str
+      returned: when available
+      sample: EDT
+    offset:
+      description: Active numeric offset from C(date +%z)
+      type: str
+      returned: when available
+      sample: -0400
 """
