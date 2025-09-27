@@ -1,0 +1,6 @@
+# vim: ts=2:sw=2:sts=2:et:ft=yaml.ansible
+# -*- mode: yaml; yaml-indent-offset: 2; indent-tabs-mode: nil; -*-
+---
+minor_changes:
+  - 'posix_action_base - Added fallback to module execution when action plugin lookup returns None.'
+  - 'posix_action_base - Use safer .get() method to check for raw key in result dictionary to prevent KeyError.'

@@ -167,12 +167,19 @@ class PosixActionBase:
             shared_loader_obj=self._shared_loader_obj,
         )
 
+        if plugin is None:
+            return self._execute_module(
+                module_name=plugin_name,
+                module_args=plugin_args,
+                task_vars=task_vars,
+            )
+
         if check_mode is not None:
             plugin._task.check_mode = check_mode
 
         result = plugin.run(task_vars=task_vars)
 
-        if result["raw"]:
+        if result.get("raw"):
             self.force_raw = True
 
         return result
