@@ -1,0 +1,5 @@
+# vim: ts=2:sw=2:sts=2:et:ft=yaml.ansible
+# -*- mode: yaml; yaml-indent-offset: 2; indent-tabs-mode: nil; -*-
+---
+major_changes:
+  - 'Added ``timezone`` module to detect system timezone configuration across POSIX systems, including tzdb zone name, POSIX TZ string parsing for DST details, and active time information.'
