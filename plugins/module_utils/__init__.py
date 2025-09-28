@@ -29,13 +29,22 @@ from ansible_collections.o0_o.posix.plugins.module_utils.fstab_utils import (
     generate_fstab,
     generate_fstab_entry,
 )
+from ansible_collections.o0_o.posix.plugins.module_utils.jc_utils import (
+    jc_parse,
+)
+from ansible_collections.o0_o.posix.plugins.module_utils.id_utils import (
+    id_info,
+)
+from ansible_collections.o0_o.posix.plugins.module_utils.group_utils import (
+    group_info,
+)
 from ansible_collections.o0_o.posix.plugins.module_utils.mount_utils import (
     mount,
     parse_mount,
     parse_mount_entry,
 )
-from ansible_collections.o0_o.posix.plugins.module_utils.jc_utils import (
-    jc_parse,
+from ansible_collections.o0_o.posix.plugins.module_utils.stat_utils import (
+    stat,
 )
 from ansible_collections.o0_o.posix.plugins.module_utils.posix_action_base import (  # noqa: E501
     PosixActionBase,
@@ -55,9 +64,12 @@ __all__ = [
     "generate_fstab",
     "generate_fstab_entry",
     "jc_parse",
+    "id_info",
+    "group_info",
     "mount",
     "parse_mount",
     "parse_mount_entry",
+    "stat",
     "normalize_source",
     "process_registered_result",
     "uname",
