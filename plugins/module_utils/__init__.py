@@ -38,6 +38,9 @@ from ansible_collections.o0_o.posix.plugins.module_utils.id_utils import (
 from ansible_collections.o0_o.posix.plugins.module_utils.group_utils import (
     group_info,
 )
+from ansible_collections.o0_o.posix.plugins.module_utils.passwd_utils import (
+    passwd_info,
+)
 from ansible_collections.o0_o.posix.plugins.module_utils.mount_utils import (
     mount,
     parse_mount,
@@ -66,6 +69,7 @@ __all__ = [
     "jc_parse",
     "id_info",
     "group_info",
+    "passwd_info",
     "mount",
     "parse_mount",
     "parse_mount_entry",
