@@ -59,10 +59,12 @@ class ActionModule(PosixActionBase, ActionBase):
             )
             raise AnsibleActionFail(f"Failed to detect timezone: {e}")
 
-        result.update({
-            "changed": False,
-            "timezone": tz,
-        })
+        result.update(
+            {
+                "changed": False,
+                "timezone": tz,
+            }
+        )
         return result
 
     def _get_timezone(
@@ -105,7 +107,9 @@ class ActionModule(PosixActionBase, ActionBase):
             fallback = self._from_date_abbr(task_vars)
             self._merge_config(config, fallback)
             if fallback:
-                info.update({k: v for k, v in fallback.items() if k != "config"})
+                info.update(
+                    {k: v for k, v in fallback.items() if k != "config"}
+                )
                 if config:
                     info["config"] = config
                 return info
@@ -140,9 +144,7 @@ class ActionModule(PosixActionBase, ActionBase):
         )
         if st.get("rc") != 0:
             return None
-        cat = self._cmd(
-            ["cat", path], task_vars=task_vars, check_mode=False
-        )
+        cat = self._cmd(["cat", path], task_vars=task_vars, check_mode=False)
         if cat.get("rc") != 0:
             return None
         return (cat.get("stdout") or "").strip()

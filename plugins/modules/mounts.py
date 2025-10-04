@@ -226,3 +226,27 @@ changed:
   type: bool
   sample: false
 """
+
+from ansible.module_utils.basic import AnsibleModule
+
+
+def main() -> None:
+    """Fail if this module is run directly without the action plugin."""
+
+    argument_spec = {
+        "device": {"type": "bool", "default": True},
+        "virtual": {"type": "bool", "default": False},
+        "network": {"type": "bool", "default": True},
+        "pseudo": {"type": "bool", "default": None},
+        "overlay": {"type": "bool", "default": True},
+        "fuse": {"type": "bool", "default": True},
+    }
+
+    module = AnsibleModule(
+        argument_spec=argument_spec, supports_check_mode=True
+    )
+    module.fail_json(msg="This module must be run via its action plugin.")
+
+
+if __name__ == "__main__":
+    main()
