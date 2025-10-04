@@ -60,7 +60,12 @@ class ActionModule(PosixActionBase, ActionBase):
         result = super().run(tmp, task_vars)
 
         argument_spec = {
-            "paths": {"type": "list", "required": True, "elements": "str", "aliases": ["path"]},
+            "paths": {
+                "type": "list",
+                "required": True,
+                "elements": "str",
+                "aliases": ["path"],
+            },
             "content": {"type": "bool", "default": False},
             "encoding": {"type": "str"},
             "parents": {"type": "raw", "default": False},
@@ -114,7 +119,9 @@ class ActionModule(PosixActionBase, ActionBase):
         if parent_limit is None:
             parent_paths_iter = self._collect_parent_paths(current_path, None)
         elif parent_limit > 0:
-            parent_paths_iter = self._collect_parent_paths(current_path, parent_limit)
+            parent_paths_iter = self._collect_parent_paths(
+                current_path, parent_limit
+            )
         else:
             parent_paths_iter = []
 
@@ -209,7 +216,9 @@ class ActionModule(PosixActionBase, ActionBase):
         if normalized_path == posixpath.sep:
             info["name"] = posixpath.sep
         else:
-            info["name"] = posixpath.basename(normalized_path) or normalized_path
+            info["name"] = (
+                posixpath.basename(normalized_path) or normalized_path
+            )
             parent_dir = posixpath.dirname(normalized_path) or posixpath.sep
             info["parent"] = parent_dir
 
@@ -275,7 +284,9 @@ class ActionModule(PosixActionBase, ActionBase):
         target_inode_value = None
         if find_symlinks:
             follow_stat = self._stat_follow(path, task_vars)
-            follow_stat_data = follow_stat.get("stat", {}) if follow_stat else {}
+            follow_stat_data = (
+                follow_stat.get("stat", {}) if follow_stat else {}
+            )
             target_inode_value = self._extract_inode(follow_stat_data)
             if target_inode_value is not None:
                 reference_inodes.add(target_inode_value)
@@ -359,12 +370,7 @@ class ActionModule(PosixActionBase, ActionBase):
                 extra_paths.update(nested_extra)
                 extra_paths[symlink_path] = symlink_info
 
-        if (
-            find_symlinks
-            and link_target
-            and not parents
-            and find_hardlinks
-        ):
+        if find_symlinks and link_target and not parents and find_hardlinks:
             extra_paths.update(
                 self._collect_symlink_refs(
                     target=link_target,
@@ -613,7 +619,11 @@ class ActionModule(PosixActionBase, ActionBase):
         if not include_hardlinks and not include_symlinks:
             return [], []
 
-        if include_hardlinks and expected_total is not None and expected_total <= 1:
+        if (
+            include_hardlinks
+            and expected_total is not None
+            and expected_total <= 1
+        ):
             include_hardlinks = False
 
         if include_hardlinks and inode is None:
@@ -698,7 +708,7 @@ class ActionModule(PosixActionBase, ActionBase):
                         "-exec",
                         "sh",
                         "-c",
-                        "'printf \"H:%s\\n\" \"$1\"'",
+                        '\'printf "H:%s\\n" "$1"\'',
                         "sh",
                         "{}",
                         r"\;",
@@ -714,7 +724,7 @@ class ActionModule(PosixActionBase, ActionBase):
                     "-exec",
                     "sh",
                     "-c",
-                    "'printf \"S:%s\\n\" \"$1\"'",
+                    '\'printf "S:%s\\n" "$1"\'',
                     "sh",
                     "{}",
                     r"\;",
@@ -726,7 +736,9 @@ class ActionModule(PosixActionBase, ActionBase):
                 if len(expressions) == 1:
                     find_parts.append(expressions[0])
                 else:
-                    find_parts.append(r"\( " + " -o ".join(expressions) + r" \)")
+                    find_parts.append(
+                        r"\( " + " -o ".join(expressions) + r" \)"
+                    )
 
             find_str = " ".join(find_parts)
             if include_hardlinks:
@@ -754,7 +766,11 @@ class ActionModule(PosixActionBase, ActionBase):
         ]
 
         for root, limit, restrict_dev, max_depth, label in search_plans:
-            if include_hardlinks and max_links is not None and len(hard_results) >= max_links:
+            if (
+                include_hardlinks
+                and max_links is not None
+                and len(hard_results) >= max_links
+            ):
                 break
 
             command = build_command(
@@ -802,7 +818,9 @@ class ActionModule(PosixActionBase, ActionBase):
                     display_candidate = candidate
                     if is_same_path(candidate_dir, path_dir):
                         display_candidate = posixpath.normpath(
-                            posixpath.join(path_dir, posixpath.basename(candidate))
+                            posixpath.join(
+                                path_dir, posixpath.basename(candidate)
+                            )
                         )
                     display_normalized = posixpath.normpath(display_candidate)
                     if display_normalized == normalized_path:
@@ -814,7 +832,11 @@ class ActionModule(PosixActionBase, ActionBase):
                     ):
                         break
 
-            if include_hardlinks and max_links is not None and len(hard_results) >= max_links:
+            if (
+                include_hardlinks
+                and max_links is not None
+                and len(hard_results) >= max_links
+            ):
                 break
 
         return hard_results, symlink_results
@@ -1183,10 +1205,7 @@ class ActionModule(PosixActionBase, ActionBase):
                     continue
                 if "=" in stripped:
                     key, raw_val = stripped.split("=", 1)
-                    handle(
-                        key,
-                        raw_val.strip().strip('"').strip("'")
-                    )
+                    handle(key, raw_val.strip().strip('"').strip("'"))
                     continue
                 handle(stripped, None)
         elif source is not None:
@@ -1236,7 +1255,10 @@ class ActionModule(PosixActionBase, ActionBase):
         if isinstance(existing, list):
             if entry_type:
                 for idx, item in enumerate(existing):
-                    if isinstance(item, dict) and item.get("type") == entry_type:
+                    if (
+                        isinstance(item, dict)
+                        and item.get("type") == entry_type
+                    ):
                         merged = item.copy()
                         for key, value in entry.items():
                             if key in {"type"}:

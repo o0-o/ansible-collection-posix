@@ -12,6 +12,7 @@
   o0_o.posix.read:
     path: "{{ read_regular_path }}"
     content: true
+    find_hardlinks: true
   register: read_regular_content_reg
 
 - name: Assert regular file metadata with content
@@ -19,20 +20,30 @@
     that:
       - read_regular_content_reg is not changed
       - >-
-        read_regular_content_reg['file'][read_regular_path]['type']
+        read_regular_content_reg['paths'][read_regular_path]['type']
         == 'regular'
-      - read_regular_content_reg['file'][read_regular_path]['mode'] == '0640'
-      - read_regular_content_reg['file'][read_regular_path]['owner'] is defined
-      - read_regular_content_reg['file'][read_regular_path]['group'] is defined
+      - read_regular_content_reg['paths'][read_regular_path]['mode'] == '0640'
       - >-
-        read_regular_content_reg['file'][read_regular_path]['encoding']
+        read_regular_content_reg['paths'][read_regular_path]['owner']
+        is defined
+      - >-
+        read_regular_content_reg['paths'][read_regular_path]['group']
+        is defined
+      - >-
+        read_regular_content_reg['paths'][read_regular_path]['writable']
+        is boolean
+      - >-
+        read_regular_content_reg['paths'][read_regular_path]['encoding']
         is defined
       - >-
         'quick brown fox' in
-        read_regular_content_reg['file'][read_regular_path]['content']
+        read_regular_content_reg['paths'][read_regular_path]['content']
       - >-
-        read_regular_content_reg['file'][read_regular_path]['hard']
-        == [read_hardlink_path]
+        read_regular_content_reg['paths'][read_regular_path]['links']
+        | length == 1
+      - >-
+        read_hardlink_path in
+        read_regular_content_reg['paths'][read_regular_path]['links']
 
 - name: Read regular file without content
   o0_o.posix.read:
@@ -44,9 +55,13 @@
   ansible.builtin.assert:
     that:
       - read_regular_meta_reg is not changed
-      - read_regular_meta_reg['file'][read_regular_path]['type'] == 'regular'
-      - "'content' not in read_regular_meta_reg['file'][read_regular_path]"
-      - "'encoding' not in read_regular_meta_reg['file'][read_regular_path]"
+      - read_regular_meta_reg['paths'][read_regular_path]['type'] == 'regular'
+      - "'content' not in read_regular_meta_reg['paths'][read_regular_path]"
+      - "'encoding' not in read_regular_meta_reg['paths'][read_regular_path]"
+      - read_regular_meta_reg['paths'][read_regular_path]['links'] == 1
+      - >-
+        read_regular_meta_reg['paths'][read_regular_path]['writable']
+        is boolean
 
 - name: Read binary file with content enabled
   o0_o.posix.read:
@@ -58,9 +73,12 @@
   ansible.builtin.assert:
     that:
       - read_binary_reg is not changed
-      - read_binary_reg['file'][read_binary_path]['type'] == 'regular'
-      - "'content' not in read_binary_reg['file'][read_binary_path]"
-      - "'encoding' not in read_binary_reg['file'][read_binary_path]"
+      - read_binary_reg['paths'][read_binary_path]['type'] == 'regular'
+      - "'content' not in read_binary_reg['paths'][read_binary_path]"
+      - "'encoding' not in read_binary_reg['paths'][read_binary_path]"
+      - "'links' not in read_binary_reg['paths'][read_binary_path]"
+      - >-
+        read_binary_reg['paths'][read_binary_path]['writable'] is boolean
 
 - name: Read symbolic link metadata
   o0_o.posix.read:
@@ -71,11 +89,13 @@
   ansible.builtin.assert:
     that:
       - read_symlink_reg is not changed
-      - read_symlink_reg['file'][read_symlink_path]['type'] == 'link'
+      - read_symlink_reg['paths'][read_symlink_path]['type'] == 'link'
       - >-
-        read_symlink_reg['file'][read_symlink_path]['link']
-        == read_regular_path
-      - "'content' not in read_symlink_reg['file'][read_symlink_path]"
+        read_symlink_reg['paths'][read_symlink_path]['links']
+        == [read_regular_path]
+      - "'content' not in read_symlink_reg['paths'][read_symlink_path]"
+      - >-
+        read_symlink_reg['paths'][read_symlink_path]['writable'] is boolean
 
 - name: Read directory metadata
   o0_o.posix.read:
@@ -86,7 +106,11 @@
   ansible.builtin.assert:
     that:
       - read_directory_reg is not changed
-      - read_directory_reg['file'][read_directory_path]['type'] == 'directory'
+      - read_directory_reg['paths'][read_directory_path]['type'] == 'directory'
+      - "'content' not in read_directory_reg['paths'][read_directory_path]"
+      - >-
+        read_directory_reg['paths'][read_directory_path]['writable']
+        is boolean
 
 - name: Read FIFO metadata
   o0_o.posix.read:
@@ -97,40 +121,72 @@
   ansible.builtin.assert:
     that:
       - read_fifo_reg is not changed
-      - read_fifo_reg['file'][read_fifo_path]['type'] == 'fifo'
+      - read_fifo_reg['paths'][read_fifo_path]['type'] == 'pipe'
+      - "'links' not in read_fifo_reg['paths'][read_fifo_path]"
+      - >-
+        read_fifo_reg['paths'][read_fifo_path]['writable'] is boolean
 
 - name: Read symbolic link recursively
   o0_o.posix.read:
     path: "{{ read_symlink_path }}"
-    recursive: true
+    parents: true
     content: true
   register: read_symlink_recursive_reg
+
+- name: Read regular file with symlink discovery
+  o0_o.posix.read:
+    path: "{{ read_regular_path }}"
+    find_hardlinks: true
+    find_symlinks: true
+  register: read_regular_symlinks_reg
+
+- name: Assert symlink discovery reports linked paths
+  ansible.builtin.assert:
+    that:
+      - read_symlink_path in read_regular_symlinks_reg['paths']
+      - read_regular_symlinks_reg['paths'][read_symlink_path]['type'] == 'link'
+      - >-
+        read_regular_symlinks_reg['paths'][read_regular_path]['links']
+        == [read_hardlink_path]
+      - >-
+        read_regular_symlinks_reg['paths'][read_symlink_path]['links']
+        == [read_hardlink_path]
+      - >-
+        read_regular_symlinks_reg['paths'][read_regular_path]['writable']
+        is boolean
 
 - name: Assert recursive link expansion
   ansible.builtin.assert:
     that:
       - >-
-        read_symlink_recursive_reg['file'][read_symlink_path]['type']
+        read_symlink_recursive_reg['paths'][read_symlink_path]['type']
         == 'link'
       - >-
-        read_symlink_recursive_reg['file'][read_symlink_path]['link']
-        [read_regular_path]['type'] == 'regular'
+        read_symlink_recursive_reg['paths'][read_symlink_path]['links']
+        == [read_regular_path]
       - >-
-        'quick brown fox' in read_symlink_recursive_reg['file']
-        [read_symlink_path]['link'][read_regular_path]['content']
+        read_symlink_recursive_reg['paths'][read_regular_path]['type']
+        == 'regular'
+      - >-
+        'quick brown fox' in read_symlink_recursive_reg['paths']
+        [read_regular_path]['content']
+      - >-
+        read_symlink_recursive_reg['paths'][read_regular_path]['writable']
+        is boolean
 
 - name: Read regular file with recursive hard links
   o0_o.posix.read:
     path: "{{ read_regular_path }}"
-    recursive: true
+    parents: true
+    find_hardlinks: true
   register: read_regular_recursive_reg
 
 - name: Assert recursive hard link expansion
   ansible.builtin.assert:
     that:
       - >-
-        read_regular_recursive_reg['file'][read_regular_path]['hard']
-        [read_hardlink_path]['type'] == 'regular'
+        read_regular_recursive_reg['paths'][read_regular_path]['links']
+        == [read_hardlink_path]
 
 - name: Read missing path returns none
   o0_o.posix.read:
@@ -141,7 +197,7 @@
   ansible.builtin.assert:
     that:
       - read_missing_reg is not changed
-      - read_missing_reg['file']['/does/not/exist'] is none
+      - read_missing_reg['paths']['/does/not/exist'] is none
 
 - name: Read multiple paths in single call
   o0_o.posix.read:
@@ -153,5 +209,5 @@
 - name: Assert multiple path results available
   ansible.builtin.assert:
     that:
-      - read_multiple_reg['file'][read_regular_path]['type'] == 'regular'
-      - read_multiple_reg['file'][read_symlink_path]['type'] == 'link'
+      - read_multiple_reg['paths'][read_regular_path]['type'] == 'regular'
+      - read_multiple_reg['paths'][read_symlink_path]['type'] == 'link'
