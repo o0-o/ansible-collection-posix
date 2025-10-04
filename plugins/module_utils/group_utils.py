@@ -15,12 +15,16 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Union
 
-from ansible_collections.o0_o.posix.plugins.module_utils.jc_utils import jc_parse
+from ansible_collections.o0_o.posix.plugins.module_utils.jc_utils import (
+    jc_parse,
+)
 
 VALID_KEYS = {"id", "name"}
 
 
-def group_info(config: Union[str, Dict[str, Any], List[Dict[str, Any]]], key: str = "id") -> Dict[str, Dict[str, Any]]:
+def group_info(
+    config: Union[str, Dict[str, Any], List[Dict[str, Any]]], key: str = "id"
+) -> Dict[str, Dict[str, Any]]:
     """Normalize /etc/group data into lookup dictionaries."""
 
     if key not in VALID_KEYS:
@@ -30,18 +34,22 @@ def group_info(config: Union[str, Dict[str, Any], List[Dict[str, Any]]], key: st
 
     if isinstance(config, dict):
         if "stdout" in config or "content" in config:
-            parsed = jc_parse("etc_group", config)
+            parsed = jc_parse("group", config)
         elif "gid" in config or "name" in config:
             parsed = [config]
         else:
             return {}
     elif isinstance(config, list):
-        if config and isinstance(config[0], dict) and ("gid" in config[0] or "name" in config[0]):
+        if (
+            config
+            and isinstance(config[0], dict)
+            and ("gid" in config[0] or "name" in config[0])
+        ):
             parsed = config
         else:
-            parsed = jc_parse("etc_group", config)
+            parsed = jc_parse("group", config)
     else:
-        parsed = jc_parse("etc_group", config)
+        parsed = jc_parse("group", config)
 
     if not parsed:
         return {}
@@ -51,17 +59,25 @@ def group_info(config: Union[str, Dict[str, Any], List[Dict[str, Any]]], key: st
     result: Dict[str, Dict[str, Any]] = {}
     for entry in entries:
         name = entry.get("name")
+        if not name:
+            name = entry.get("group_name") or entry.get("group")
+
         gid = _to_int(entry.get("gid"))
+
+        members = entry.get("members")
+        if members is None:
+            members = entry.get("users")
+        members_list = normalize_group_members(members)
 
         if key == "id":
             if gid is None:
                 continue
-            result[str(gid)] = {"name": name}
+            result[str(gid)] = {"name": name, "members": members_list}
         else:
             if name:
-                result[name] = {"id": gid}
+                result[name] = {"id": gid, "members": members_list}
             elif gid is not None:
-                result[str(gid)] = {"id": gid}
+                result[str(gid)] = {"id": gid, "members": members_list}
 
     return result
 
@@ -75,4 +91,22 @@ def _to_int(value: Any) -> int | None:
         return None
 
 
-__all__ = ["group_info"]
+def normalize_group_members(value: Any) -> List[str]:
+    if value in (None, ""):
+        return []
+
+    if isinstance(value, str):
+        return [
+            member.strip() for member in value.split(",") if member.strip()
+        ]
+
+    if isinstance(value, (tuple, set)):
+        return [str(member) for member in value if member not in (None, "")]
+
+    if isinstance(value, list):
+        return [str(member) for member in value if member not in (None, "")]
+
+    return [str(value)]
+
+
+__all__ = ["group_info", "normalize_group_members"]

@@ -20,14 +20,16 @@ import pytest
 from ansible_collections.o0_o.posix.plugins.module_utils import group_info
 
 SAMPLE_GROUPS = [
-    {"name": "staff", "gid": 20, "users": ["root"]},
-    {"name": "access_bpf", "gid": 101, "users": []},
-    {"name": None, "gid": 61, "users": []},
+    {"group_name": "staff", "gid": 20, "members": ["root"]},
+    {"group_name": "access_bpf", "gid": 101, "members": []},
+    {"group_name": None, "gid": 61, "members": []},
 ]
 
 
 @pytest.mark.parametrize("config", [SAMPLE_GROUPS, {"stdout": ""}])
-def test_group_info_key_id(config: Any, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_group_info_key_id(
+    config: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """Numeric keyed result mirrors id filter group structure."""
 
     if isinstance(config, dict):
@@ -39,9 +41,9 @@ def test_group_info_key_id(config: Any, monkeypatch: pytest.MonkeyPatch) -> None
     result = group_info(config, key="id")
 
     assert result == {
-        "20": {"name": "staff"},
-        "101": {"name": "access_bpf"},
-        "61": {"name": None},
+        "20": {"name": "staff", "members": ["root"]},
+        "101": {"name": "access_bpf", "members": []},
+        "61": {"name": None, "members": []},
     }
 
 
@@ -55,9 +57,9 @@ def test_group_info_key_name(monkeypatch: pytest.MonkeyPatch) -> None:
 
     result = group_info("/etc/group contents", key="name")
 
-    assert result["staff"] == {"id": 20}
-    assert result["access_bpf"] == {"id": 101}
-    assert result["61"] == {"id": 61}
+    assert result["staff"] == {"id": 20, "members": ["root"]}
+    assert result["access_bpf"] == {"id": 101, "members": []}
+    assert result["61"] == {"id": 61, "members": []}
 
 
 def test_group_info_invalid_key() -> None:
@@ -76,3 +78,31 @@ def test_group_info_handles_empty(monkeypatch: pytest.MonkeyPatch) -> None:
     )
 
     assert group_info({"stdout": ""}) == {}
+
+
+def test_group_info_normalizes_string_members(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """String-based member fields are split and trimmed."""
+
+    sample_groups = [
+        {"group_name": "docker", "gid": 202, "members": "root,o0-o"},
+        {"group_name": "mock", "gid": 203, "members": None, "users": ""},
+        {
+            "group_name": "build",
+            "gid": 204,
+            "members": None,
+            "users": "ci,build",
+        },
+    ]
+
+    monkeypatch.setattr(
+        "ansible_collections.o0_o.posix.plugins.module_utils.group_utils.jc_parse",
+        lambda parser, data: sample_groups,
+    )
+
+    result = group_info("/etc/group", key="id")
+
+    assert result["202"]["members"] == ["root", "o0-o"]
+    assert result["203"]["members"] == []
+    assert result["204"]["members"] == ["ci", "build"]

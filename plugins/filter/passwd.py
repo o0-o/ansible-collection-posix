@@ -59,11 +59,12 @@ class FilterModule:
     def filters(self) -> Dict[str, Any]:
         return {"passwd": self.passwd_filter}
 
-    def passwd_filter(self, config: Any, key: str = "id") -> Dict[str, Dict[str, Any]]:
+    def passwd_filter(
+        self, config: Any, key: str = "id"
+    ) -> Dict[str, Dict[str, Any]]:
         try:
             return passwd_info(config, key=key)
         except (ValueError, ImportError) as exc:
             raise AnsibleFilterError(
                 f"passwd failed: {type(exc).__name__}: {to_native(exc)}"
             ) from exc
-

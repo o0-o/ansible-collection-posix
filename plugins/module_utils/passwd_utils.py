@@ -15,7 +15,9 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Union
 
-from ansible_collections.o0_o.posix.plugins.module_utils.jc_utils import jc_parse
+from ansible_collections.o0_o.posix.plugins.module_utils.jc_utils import (
+    jc_parse,
+)
 
 VALID_KEYS = {"id", "name"}
 
@@ -31,20 +33,22 @@ def passwd_info(
 
     if isinstance(config, dict):
         if "stdout" in config or "content" in config:
-            entries = jc_parse("etc_passwd", config)
+            entries = jc_parse("passwd", config)
         elif "uid" in config or "name" in config:
             entries = [config]
         else:
             return {}
     elif isinstance(config, list):
-        if config and isinstance(config[0], dict) and (
-            "uid" in config[0] or "name" in config[0]
+        if (
+            config
+            and isinstance(config[0], dict)
+            and ("uid" in config[0] or "name" in config[0])
         ):
             entries = config
         else:
-            entries = jc_parse("etc_passwd", config)
+            entries = jc_parse("passwd", config)
     else:
-        entries = jc_parse("etc_passwd", config)
+        entries = jc_parse("passwd", config)
 
     if not entries:
         return {}
@@ -52,11 +56,17 @@ def passwd_info(
     result: Dict[str, Dict[str, Any]] = {}
     for entry in entries:
         name = entry.get("name")
+        if not name:
+            name = entry.get("username") or entry.get("user")
+
         uid = _to_int(entry.get("uid"))
         gid = _to_int(entry.get("gid"))
         home = entry.get("home")
         shell = entry.get("shell")
+
         gecos = entry.get("gecos")
+        if not gecos:
+            gecos = entry.get("comment")
 
         payload = {
             "gid": gid,

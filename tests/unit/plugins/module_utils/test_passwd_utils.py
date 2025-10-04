@@ -21,18 +21,18 @@ from ansible_collections.o0_o.posix.plugins.module_utils import passwd_info
 
 SAMPLE_PASSWD = [
     {
-        "name": "root",
+        "username": "root",
         "uid": 0,
         "gid": 0,
-        "gecos": "System Administrator",
+        "comment": "System Administrator",
         "home": "/var/root",
         "shell": "/bin/sh",
     },
     {
-        "name": "o0-o",
+        "username": "o0-o",
         "uid": 1000,
         "gid": 20,
-        "gecos": "o0-o",
+        "comment": "o0-o",
         "home": "/Users/o0-o",
         "shell": "/bin/zsh",
     },
@@ -56,6 +56,7 @@ def test_passwd_info_key_id(
     assert result["1000"]["name"] == "o0-o"
     assert result["1000"]["gid"] == 20
     assert result["1000"]["home"] == "/Users/o0-o"
+    assert result["1000"]["gecos"] == "o0-o"
     assert result["0"]["shell"] == "/bin/sh"
 
 
@@ -72,6 +73,7 @@ def test_passwd_info_key_name(monkeypatch: pytest.MonkeyPatch) -> None:
     assert result["o0-o"]["id"] == 1000
     assert result["o0-o"]["gid"] == 20
     assert result["o0-o"]["shell"] == "/bin/zsh"
+    assert result["o0-o"]["gecos"] == "o0-o"
 
 
 def test_passwd_info_invalid_key() -> None:

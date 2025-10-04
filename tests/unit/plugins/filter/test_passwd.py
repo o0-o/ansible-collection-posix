@@ -61,4 +61,3 @@ def test_passwd_filter_wraps_errors(
     )
     with pytest.raises(AnsibleFilterError, match="passwd failed"):
         filter_module.filters()["passwd"]("broken")
-

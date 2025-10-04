@@ -18,6 +18,9 @@ from ansible_collections.o0_o.posix.plugins.module_utils.df_utils import (
     parse_df,
     parse_df_entry,
 )
+from ansible_collections.o0_o.posix.plugins.module_utils.dmidecode_utils import (
+    dmidecode,
+)
 from ansible_collections.o0_o.posix.plugins.module_utils.filter_utils import (
     normalize_source,
     process_registered_result,
@@ -37,6 +40,7 @@ from ansible_collections.o0_o.posix.plugins.module_utils.id_utils import (
 )
 from ansible_collections.o0_o.posix.plugins.module_utils.group_utils import (
     group_info,
+    normalize_group_members,
 )
 from ansible_collections.o0_o.posix.plugins.module_utils.passwd_utils import (
     passwd_info,
@@ -61,6 +65,7 @@ __all__ = [
     "df",
     "parse_df",
     "parse_df_entry",
+    "dmidecode",
     "fstab",
     "parse_fstab",
     "parse_fstab_entry",
@@ -69,6 +74,7 @@ __all__ = [
     "jc_parse",
     "id_info",
     "group_info",
+    "normalize_group_members",
     "passwd_info",
     "mount",
     "parse_mount",

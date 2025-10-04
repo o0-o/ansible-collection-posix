@@ -81,10 +81,34 @@ users:
       group: 20
       groups: [20, 101]
 groups:
-  description: Mapping of groups keyed according to the I(key) option
+  description: Mapping of groups keyed according to the I(key) option.
+    Each entry includes the group name when available and the group members.
   returned: always
   type: dict
   sample:
     "20":
       name: staff
+      members:
+        - root
+        - o0-o
 """
+from ansible.module_utils.basic import AnsibleModule
+
+
+def main() -> None:
+    """Fail if this module is run directly without the action plugin."""
+
+    argument_spec = {
+        "key": {"type": "str", "choices": ["id", "name"], "default": "id"},
+        "passwd_path": {"type": "str", "default": "/etc/passwd"},
+        "group_path": {"type": "str", "default": "/etc/group"},
+    }
+
+    module = AnsibleModule(
+        argument_spec=argument_spec, supports_check_mode=True
+    )
+    module.fail_json(msg="This module must be run via its action plugin.")
+
+
+if __name__ == "__main__":
+    main()

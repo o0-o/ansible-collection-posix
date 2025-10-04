@@ -53,21 +53,21 @@ PASSWD_NAME = {
 }
 
 GROUP_ID = {
-    "0": {"name": "root"},
-    "20": {"name": "staff"},
-    "101": {"name": "access_bpf"},
+    "0": {"name": "root", "members": []},
+    "20": {"name": "staff", "members": []},
+    "101": {"name": "access_bpf", "members": []},
 }
 
 GROUP_NAME = {
-    "root": {"id": 0},
-    "staff": {"id": 20},
-    "access_bpf": {"id": 101},
+    "root": {"id": 0, "members": []},
+    "staff": {"id": 20, "members": []},
+    "access_bpf": {"id": 101, "members": []},
 }
 
 GROUP_ENTRIES = [
-    {"name": "root", "gid": 0, "users": ["root"]},
-    {"name": "staff", "gid": 20, "users": ["o0-o"]},
-    {"name": "access_bpf", "gid": 101, "users": ["o0-o"]},
+    {"group_name": "root", "gid": 0, "members": ""},
+    {"group_name": "staff", "gid": 20, "members": "", "users": ""},
+    {"group_name": "access_bpf", "gid": 101, "members": "o0-o"},
 ]
 
 
@@ -89,7 +89,9 @@ def plugin(base) -> Generator[ActionModule, None, None]:
     yield plugin
 
 
-def test_users_action_by_id(monkeypatch: pytest.MonkeyPatch, plugin: ActionModule) -> None:
+def test_users_action_by_id(
+    monkeypatch: pytest.MonkeyPatch, plugin: ActionModule
+) -> None:
     """Users keyed by id include primary and supplementary groups."""
 
     def mock_cmd(cmd, task_vars=None, **kwargs):
@@ -117,10 +119,14 @@ def test_users_action_by_id(monkeypatch: pytest.MonkeyPatch, plugin: ActionModul
 
     assert result["users"]["1000"]["group"] == 20
     assert sorted(result["users"]["1000"]["groups"]) == [20, 101]
+    assert result["groups"]["0"]["members"] == ["root"]
     assert result["groups"]["20"]["name"] == "staff"
+    assert result["groups"]["20"]["members"] == ["o0-o"]
 
 
-def test_users_action_by_name(monkeypatch: pytest.MonkeyPatch, plugin: ActionModule) -> None:
+def test_users_action_by_name(
+    monkeypatch: pytest.MonkeyPatch, plugin: ActionModule
+) -> None:
     """Users keyed by name expose textual groups."""
 
     plugin._task.args = {"key": "name"}
@@ -151,4 +157,6 @@ def test_users_action_by_name(monkeypatch: pytest.MonkeyPatch, plugin: ActionMod
     user_entry = result["users"]["o0-o"]
     assert user_entry["group"] == "staff"
     assert sorted(user_entry["groups"]) == ["access_bpf", "staff"]
+    assert result["groups"]["root"]["members"] == ["root"]
     assert result["groups"]["staff"]["id"] == 20
+    assert result["groups"]["staff"]["members"] == ["o0-o"]

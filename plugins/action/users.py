@@ -20,6 +20,7 @@ from ansible_collections.o0_o.posix.plugins.module_utils import (
     PosixActionBase,
     group_info,
     jc_parse,
+    normalize_group_members,
     passwd_info,
 )
 
@@ -70,10 +71,10 @@ class ActionModule(PosixActionBase, ActionBase):
         result.update({"changed": False, "users": users, "groups": groups})
         return result
 
-    def _read_text_file(
-        self, path: str, task_vars: Dict[str, Any]
-    ) -> str:
-        cmd_result = self._cmd(["cat", path], task_vars=task_vars, check_mode=False)
+    def _read_text_file(self, path: str, task_vars: Dict[str, Any]) -> str:
+        cmd_result = self._cmd(
+            ["cat", path], task_vars=task_vars, check_mode=False
+        )
         if cmd_result.get("rc") != 0:
             raise AnsibleActionFail(
                 f"Failed to read {path}: {cmd_result.get('stderr') or cmd_result.get('stdout')}"
@@ -92,7 +93,12 @@ class ActionModule(PosixActionBase, ActionBase):
         groups_by_id = group_info(group_content, key="id")
         groups_by_name = group_info(group_content, key="name")
 
-        self._initialize_user_groups(users_by_id, users_by_name, groups_by_id)
+        self._initialize_user_groups(
+            users_by_id=users_by_id,
+            users_by_name=users_by_name,
+            groups_by_id=groups_by_id,
+            groups_by_name=groups_by_name,
+        )
         self._augment_membership(
             passwd_by_name=users_by_name,
             users_by_id=users_by_id,
@@ -111,13 +117,29 @@ class ActionModule(PosixActionBase, ActionBase):
         users_by_id: Dict[str, Dict[str, Any]],
         users_by_name: Dict[str, Dict[str, Any]],
         groups_by_id: Dict[str, Dict[str, Any]],
+        groups_by_name: Dict[str, Dict[str, Any]],
     ) -> None:
+        self._normalize_group_member_lists(groups_by_id, groups_by_name)
+
         for uid_str, entry in users_by_id.items():
             groups: List[int] = []
             primary_gid = entry.get("gid")
             if primary_gid is not None:
                 groups.append(primary_gid)
                 entry["group"] = primary_gid
+                username = entry.get("name")
+                if isinstance(username, str) and username:
+                    gid_str = str(primary_gid)
+                    label = (
+                        groups_by_id.get(gid_str, {}).get("name") or gid_str
+                    )
+                    self._add_group_member(
+                        groups_by_id,
+                        groups_by_name,
+                        primary_gid,
+                        label,
+                        username,
+                    )
             else:
                 entry["group"] = None
             entry["groups"] = groups
@@ -132,6 +154,13 @@ class ActionModule(PosixActionBase, ActionBase):
                     group_label = gid_str
                 entry["group"] = group_label
                 groups.append(group_label)
+                self._add_group_member(
+                    groups_by_id,
+                    groups_by_name,
+                    primary_gid,
+                    group_label,
+                    name,
+                )
             else:
                 entry["group"] = None
             entry["groups"] = groups
@@ -145,7 +174,7 @@ class ActionModule(PosixActionBase, ActionBase):
         groups_by_id: Dict[str, Dict[str, Any]],
         groups_by_name: Dict[str, Dict[str, Any]],
     ) -> None:
-        group_entries = jc_parse("etc_group", group_content) or []
+        group_entries = jc_parse("group", group_content) or []
 
         name_to_uid: Dict[str, int] = {}
         for username, data in passwd_by_name.items():
@@ -155,12 +184,19 @@ class ActionModule(PosixActionBase, ActionBase):
 
         for group_entry in group_entries:
             gid = _to_int(group_entry.get("gid"))
-            group_name = group_entry.get("name")
-            members = group_entry.get("users") or []
+            group_name = (
+                group_entry.get("name")
+                or group_entry.get("group_name")
+                or group_entry.get("group")
+            )
+            members = group_entry.get("members")
+            if members is None:
+                members = group_entry.get("users")
+            member_names = normalize_group_members(members)
 
             label_name = group_name or (str(gid) if gid is not None else None)
 
-            for member in members:
+            for member in member_names:
                 uid = name_to_uid.get(member)
                 if uid is None:
                     continue
@@ -174,6 +210,57 @@ class ActionModule(PosixActionBase, ActionBase):
                 if user_name_entry is not None and label_name:
                     if label_name not in user_name_entry["groups"]:
                         user_name_entry["groups"].append(label_name)
+
+                self._add_group_member(
+                    groups_by_id,
+                    groups_by_name,
+                    gid,
+                    label_name,
+                    member,
+                )
+
+    def _normalize_group_member_lists(
+        self,
+        groups_by_id: Dict[str, Dict[str, Any]],
+        groups_by_name: Dict[str, Dict[str, Any]],
+    ) -> None:
+        for entry in groups_by_id.values():
+            entry["members"] = normalize_group_members(entry.get("members"))
+
+        for entry in groups_by_name.values():
+            entry["members"] = normalize_group_members(entry.get("members"))
+
+    def _add_group_member(
+        self,
+        groups_by_id: Dict[str, Dict[str, Any]],
+        groups_by_name: Dict[str, Dict[str, Any]],
+        gid: Optional[int],
+        label: Optional[str],
+        member: str,
+    ) -> None:
+        if not member:
+            return
+
+        if gid is not None:
+            gid_str = str(gid)
+            group_entry = groups_by_id.setdefault(gid_str, {})
+            members = group_entry.get("members")
+            if not isinstance(members, list):
+                members = normalize_group_members(members)
+                group_entry["members"] = members
+            if member not in members:
+                members.append(member)
+
+        if label:
+            group_entry = groups_by_name.setdefault(label, {})
+            if gid is not None and "id" not in group_entry:
+                group_entry["id"] = gid
+            members = group_entry.get("members")
+            if not isinstance(members, list):
+                members = normalize_group_members(members)
+                group_entry["members"] = members
+            if member not in members:
+                members.append(member)
 
 
 def _to_int(value: Any) -> Optional[int]:

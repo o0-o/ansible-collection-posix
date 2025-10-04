@@ -61,4 +61,3 @@ def test_group_filter_wraps_errors(
     )
     with pytest.raises(AnsibleFilterError, match="group failed"):
         filter_module.filters()["group"]("broken")
-

@@ -59,11 +59,12 @@ class FilterModule:
     def filters(self) -> Dict[str, Any]:
         return {"group": self.group_filter}
 
-    def group_filter(self, config: Any, key: str = "id") -> Dict[str, Dict[str, Any]]:
+    def group_filter(
+        self, config: Any, key: str = "id"
+    ) -> Dict[str, Dict[str, Any]]:
         try:
             return group_info(config, key=key)
         except (ValueError, ImportError) as exc:
             raise AnsibleFilterError(
                 f"group failed: {type(exc).__name__}: {to_native(exc)}"
             ) from exc
-
