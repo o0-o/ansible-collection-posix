@@ -63,9 +63,7 @@ def test_which_not_found(monkeypatch, plugin) -> None:
 def test_which_builtin(monkeypatch, plugin) -> None:
     """Return found False for shell built-ins like echo."""
 
-    monkeypatch.setattr(
-        plugin, "_which", lambda name, task_vars=None: "echo"
-    )
+    monkeypatch.setattr(plugin, "_which", lambda name, task_vars=None: "echo")
     plugin._task.args = {"name": "echo"}
     result = plugin.run(task_vars={})
     assert result["which"]["found"] is True

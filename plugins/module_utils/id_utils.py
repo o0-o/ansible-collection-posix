@@ -15,18 +15,21 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Union
 
-from ansible_collections.o0_o.posix.plugins.module_utils.jc_utils import jc_parse
+from ansible_collections.o0_o.posix.plugins.module_utils.jc_utils import (
+    jc_parse,
+)
 
 VALID_KEYS = {"id", "name"}
 
 
-def id_info(config: Union[str, Dict[str, Any]], key: str = "id") -> Dict[str, Any]:
+def id_info(
+    config: Union[str, Dict[str, Any]], key: str = "id"
+) -> Dict[str, Any]:
     """Normalize ``id`` command output for user/group lookups."""
 
     if key not in VALID_KEYS:
         raise ValueError(f"Unsupported key '{key}', expected 'id' or 'name'")
 
-    
     parsed: Dict[str, Any] | List[Dict[str, Any]] | Dict[str, Any]
     if isinstance(config, dict):
         if "stdout" in config or "content" in config:
@@ -36,8 +39,10 @@ def id_info(config: Union[str, Dict[str, Any]], key: str = "id") -> Dict[str, An
         else:
             return {"users": {}, "groups": {}}
     elif isinstance(config, list):
-        if config and isinstance(config[0], dict) and any(
-            key in config[0] for key in ("uid", "gid", "groups")
+        if (
+            config
+            and isinstance(config[0], dict)
+            and any(key in config[0] for key in ("uid", "gid", "groups"))
         ):
             parsed = config
         else:
@@ -85,14 +90,22 @@ def id_info(config: Union[str, Dict[str, Any]], key: str = "id") -> Dict[str, An
         if primary_name:
             users[primary_name] = {
                 "id": primary_id,
-                "group": primary_gid_name
-                if primary_gid_name
-                else (_stringify(primary_gid_id) if primary_gid_id is not None else None),
+                "group": (
+                    primary_gid_name
+                    if primary_gid_name
+                    else (
+                        _stringify(primary_gid_id)
+                        if primary_gid_id is not None
+                        else None
+                    )
+                ),
                 "groups": _unique_str_list(
                     [
-                        group.get("name")
-                        if group.get("name")
-                        else _stringify(_to_int(group.get("id")))
+                        (
+                            group.get("name")
+                            if group.get("name")
+                            else _stringify(_to_int(group.get("id")))
+                        )
                         for group in group_list
                     ]
                 ),

@@ -202,7 +202,9 @@ def _extract_mode(entry: Dict[str, Any]) -> Optional[str]:
     return f"0{''.join(octal_digits)}"
 
 
-def _populate_time_fields(entry: Dict[str, Any], result: Dict[str, Any]) -> None:
+def _populate_time_fields(
+    entry: Dict[str, Any], result: Dict[str, Any]
+) -> None:
     """Populate epoch and ISO8601 timestamps."""
 
     time_fields = {

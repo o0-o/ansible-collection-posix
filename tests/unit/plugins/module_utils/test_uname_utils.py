@@ -98,10 +98,7 @@ def test_uname_uses_jc_parse() -> None:
 def test_uname_fallback_openbsd() -> None:
     """Fallback parsing handles OpenBSD uname when jc fails."""
 
-    obsd = (
-        "OpenBSD openbsd.home.johnandlaurel.com 7.6 "
-        "GENERIC.MP#196 arm64"
-    )
+    obsd = "OpenBSD openbsd.home.johnandlaurel.com 7.6 " "GENERIC.MP#196 arm64"
 
     with patch.object(
         uname_utils, "jc_parse", side_effect=ValueError("pop from empty list")
