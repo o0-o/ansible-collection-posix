@@ -27,7 +27,7 @@ DOCUMENTATION = r"""
 ---
 name: stat
 short_description: Parse stat command output
-version_added: "1.5.0"
+version_added: "1.4.0"
 description:
   - Parse output from the C(stat) command into a structure compatible
     with what C(ansible.builtin.stat) returns.

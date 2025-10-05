@@ -364,7 +364,9 @@ def test_parents_includes_parent_directories(monkeypatch, plugin) -> None:
 
     monkeypatch.setattr(plugin, "_run_action", mock_run_action)
     monkeypatch.setattr(plugin, "_discover_links", lambda **kwargs: ([], []))
-    monkeypatch.setattr(plugin, "_cmd", lambda *args, **kwargs: {"rc": 1, "stdout": ""})
+    monkeypatch.setattr(
+        plugin, "_cmd", lambda *args, **kwargs: {"rc": 1, "stdout": ""}
+    )
 
     plugin._task.args = {"path": "/foo/bar/baz", "parents": True}
     result = plugin.run(task_vars={})
@@ -435,7 +437,9 @@ def test_parents_limit(monkeypatch, plugin) -> None:
 
     monkeypatch.setattr(plugin, "_run_action", mock_run_action)
     monkeypatch.setattr(plugin, "_discover_links", lambda **kwargs: ([], []))
-    monkeypatch.setattr(plugin, "_cmd", lambda *args, **kwargs: {"rc": 1, "stdout": ""})
+    monkeypatch.setattr(
+        plugin, "_cmd", lambda *args, **kwargs: {"rc": 1, "stdout": ""}
+    )
 
     plugin._task.args = {"path": "/foo/bar/baz", "parents": 1}
     result = plugin.run(task_vars={})

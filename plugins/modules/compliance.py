@@ -23,9 +23,9 @@ version_added: "1.4.0"
 description:
   - Tests whether the target system is POSIX-compliant by checking for
     POSIX and X/Open compliance using getconf commands.
-  - Returns success with C(is_posix=true) if the system appears to be
-    POSIX-compliant, or C(is_posix=false) if it doesn't.
-  - Can be used to conditionally execute other POSIX-dependent tasks.
+  - Returns detailed compliance information in the C(compliance) key.
+  - Use the C(posix) Jinja2 test to check if the system is
+    POSIX-compliant based on the returned compliance data.
   - Does not require Python on the target host.
 author:
   - oØ.o (@o0-o)
@@ -54,14 +54,18 @@ EXAMPLES = r"""
   o0_o.posix.compliance:
   register: posix_compliance
 
+- name: Set compliance facts
+  ansible.builtin.set_fact:
+    compliance: "{{ posix_compliance.compliance }}"
+
 - name: Display POSIX compliance status
   ansible.builtin.debug:
-    msg: "System is POSIX-compliant: {{ posix_compliance.is_posix }}"
+    msg: "System is POSIX-compliant: {{ ansible_facts is posix }}"
 
 - name: Run POSIX-specific task only if compliant
   o0_o.posix.command:
     argv: [grep, -E, "pattern", /etc/passwd]
-  when: posix_compliance.is_posix
+  when: ansible_facts is posix
 
 - name: Skip tasks on non-POSIX systems
   block:
@@ -71,15 +75,10 @@ EXAMPLES = r"""
     - name: Run POSIX commands
       o0_o.posix.command:
         cmd: find /var -name "*.log"
-  when: posix_compliance.is_posix
+  when: ansible_facts is posix
 """
 
 RETURN = r"""
-is_posix:
-  description: Whether the system is POSIX-compliant
-  returned: always
-  type: bool
-  sample: true
 compliance:
   description: Dictionary of compliance standards detected
   returned: always

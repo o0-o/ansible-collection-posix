@@ -21,21 +21,23 @@ import yaml
 from ansible_collections.o0_o.posix.plugins.module_utils import (
     PosixActionBase,
 )
+from ansible_collections.o0_o.posix.plugins.module_utils.compliance_utils import (  # noqa: E501
+    is_posix as check_is_posix,
+)
 
 
 class ActionModule(PosixActionBase, ActionBase):
-    """
-    Check POSIX and UNIX standards compliance of the target host.
+    """Check POSIX and UNIX standards compliance of the target host.
 
     This action plugin checks the standards compliance of the target
     system by querying POSIX, X/Open, and SUS compliance information
     using getconf commands. It gracefully handles systems that may not
     have getconf or may not be standards-compliant.
 
-    The module returns success with is_posix=true if the system
-    appears to be POSIX-compliant, along with detailed compliance
-    information for POSIX (XSH/XCU), SUS, and XSI when available.
-    Returns is_posix=false if the system is not POSIX-compliant.
+    The module returns detailed compliance information for POSIX
+    (XSH/XCU), SUS, and XSI when available. Use the 'posix' Jinja2 test
+    to check if the system is POSIX-compliant based on the returned
+    compliance data.
     """
 
     TRANSFERS_FILES = False
@@ -110,17 +112,12 @@ class ActionModule(PosixActionBase, ActionBase):
         Tests if the target system is POSIX-compliant by checking for
         POSIX version information using getconf commands.
 
-        :param Optional[str] tmp: Temporary directory path (unused
-            in modern Ansible)
+        :param Optional[str] tmp: Temporary directory path (unused in
+            modern Ansible)
         :param Optional[Dict[str, Any]] task_vars: Task variables
             dictionary
-        :returns Dict[str, Any]: Standard Ansible result dictionary
-            with is_posix boolean and compliance information
-
-        .. note::
-           The module tries multiple getconf commands to determine
-           POSIX compliance, falling back gracefully if commands
-           fail.
+        :returns Dict[str, Any]: Standard Ansible result dictionary with
+            compliance information
         """
         task_vars = task_vars or {}
         tmp = None  # unused in modern Ansible
@@ -128,7 +125,6 @@ class ActionModule(PosixActionBase, ActionBase):
         result = super().run(tmp, task_vars)
 
         # Initialize result defaults
-        result["is_posix"] = False
         result["compliance"] = {}
 
         # Test commands to check POSIX compliance - we try multiple
@@ -184,7 +180,6 @@ class ActionModule(PosixActionBase, ActionBase):
             compliance["posix"]["components"]["xsh"]["version"]["getconf"] = {
                 "_POSIX_VERSION": posix1_version
             }
-            result["is_posix"] = True
         elif posix1_version not in ["undefined", "", "-1"]:
             host = self._get_inventory_hostname(task_vars)
             self._display.warning(
@@ -255,8 +250,6 @@ class ActionModule(PosixActionBase, ActionBase):
             compliance["posix"]["components"]["xcu"]["version"][
                 "getconf"
             ] = getconf_xcu
-
-            result["is_posix"] = True
         elif posix2_version not in ["undefined", "", "-1"]:
             host = self._get_inventory_hostname(task_vars)
             self._display.warning(
@@ -303,7 +296,6 @@ class ActionModule(PosixActionBase, ActionBase):
                     "_XOPEN_VERSION": xopen_version
                 }
                 compliance["sus"]["getconf"] = {"_XOPEN_UNIX": xopen_support}
-                result["is_posix"] = True
             elif xopen_version not in ["undefined", "", "-1"]:
                 host = self._get_inventory_hostname(task_vars)
                 self._display.warning(
@@ -318,8 +310,9 @@ class ActionModule(PosixActionBase, ActionBase):
                 f"[{host}] Failed to process X/Open compliance: {e}"
             )
 
-        # Set final message
-        if result.get("is_posix", False):
+        # Set final message based on compliance check
+        posix_compliant = check_is_posix({"compliance": compliance})
+        if posix_compliant is True:
             if "sus" in compliance:
                 # If SUS compliant, just mention SUS (it includes POSIX)
                 result["msg"] = (
@@ -341,8 +334,10 @@ class ActionModule(PosixActionBase, ActionBase):
                     result["msg"] = "System is POSIX-compliant"
             else:
                 result["msg"] = "System is POSIX-compliant"
+        elif posix_compliant is False:
+            result["msg"] = "System is not POSIX-compliant"
         else:
-            result["msg"] = "The system is not POSIX compliant"
+            result["msg"] = "Cannot determine POSIX compliance"
 
         # Add compliance to result
         result["compliance"] = compliance

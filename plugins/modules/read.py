@@ -243,10 +243,11 @@ def main() -> None:
         "find_symlinks": {"type": "bool", "default": False},
     }
 
-    module = AnsibleModule(argument_spec=argument_spec, supports_check_mode=True)
+    module = AnsibleModule(
+        argument_spec=argument_spec, supports_check_mode=True
+    )
     module.fail_json(msg="This module must be run via its action plugin.")
 
 
 if __name__ == "__main__":
     main()
-

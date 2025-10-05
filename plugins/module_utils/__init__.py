@@ -35,6 +35,9 @@ from ansible_collections.o0_o.posix.plugins.module_utils.fstab_utils import (
 from ansible_collections.o0_o.posix.plugins.module_utils.jc_utils import (
     jc_parse,
 )
+from ansible_collections.o0_o.posix.plugins.module_utils.compliance_utils import (  # noqa: E501
+    is_posix,
+)
 from ansible_collections.o0_o.posix.plugins.module_utils.id_utils import (
     id_info,
 )
@@ -72,6 +75,7 @@ __all__ = [
     "generate_fstab",
     "generate_fstab_entry",
     "jc_parse",
+    "is_posix",
     "id_info",
     "group_info",
     "normalize_group_members",

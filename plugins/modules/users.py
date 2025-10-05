@@ -17,7 +17,7 @@ DOCUMENTATION = r"""
 ---
 module: users
 short_description: Gather POSIX user and group information
-version_added: "1.5.0"
+version_added: "1.4.0"
 description:
   - Collects user and group information from C(/etc/passwd) and
     C(/etc/group) on POSIX hosts.
