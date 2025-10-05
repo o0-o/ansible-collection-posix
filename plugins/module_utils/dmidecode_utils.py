@@ -20,15 +20,9 @@ from typing import Any, Dict, List, Optional, Union
 from ansible_collections.o0_o.posix.plugins.module_utils.jc_utils import (
     jc_parse,
 )
-
-try:
-    from ansible_collections.o0_o.utils.plugins.module_utils.si_utils import (
-        parse_si,
-    )
-
-    HAS_SI_UTILS = True
-except ImportError:
-    HAS_SI_UTILS = False
+from ansible_collections.o0_o.utils.plugins.module_utils.si_utils import (
+    parse_si,
+)
 
 
 def _parse_date_to_epoch(date_str: str) -> Optional[int]:
@@ -632,12 +626,12 @@ def _process_memory_array(
     total_capacity = 0
     for entry in array_entries:
         capacity_str = entry.get("values", {}).get("maximum_capacity")
-        if capacity_str and HAS_SI_UTILS:
+        if capacity_str:
             parsed = parse_si(capacity_str, binary=True)
             if parsed and "bytes" in parsed:
                 total_capacity += parsed["bytes"]
 
-    if total_capacity > 0 and HAS_SI_UTILS:
+    if total_capacity > 0:
         # Re-parse to get optimized pretty format
         memory_info["capacity"] = {
             "bytes": total_capacity,
@@ -769,19 +763,12 @@ def _process_psus(
             # Model
             psu["model"] = model
 
-            # Capacity (parse with SI utils if available)
+            # Capacity
             capacity_str = values.get("max_power_capacity")
             if capacity_str and not _is_meaningless_value(capacity_str):
-                if HAS_SI_UTILS:
-                    parsed = parse_si(capacity_str)
-                    if parsed and "watts" in parsed:
-                        psu["capacity"] = {
-                            "watts": parsed["watts"],
-                            "pretty": parsed.get("pretty", capacity_str),
-                        }
-                else:
-                    # Fallback: just store the raw string
-                    psu["capacity"] = {"pretty": capacity_str}
+                parsed = parse_si(capacity_str)
+                if parsed:
+                    psu["capacity"] = parsed
 
             # Type (e.g., "Switching")
             psu_type = values.get("type")
@@ -945,65 +932,31 @@ def _process_memory_modules(
                     module["ecc"] = False
 
             # Capacity
-            if size_str and HAS_SI_UTILS:
+            if size_str:
                 parsed = parse_si(size_str, binary=True)
-                if parsed and "bytes" in parsed:
-                    module["capacity"] = {
-                        "bytes": parsed["bytes"],
-                        "pretty": parsed.get("pretty", size_str),
-                    }
+                if parsed:
+                    module["capacity"] = parsed
 
             # Speed (rated, as speed.max in module spec)
             speed_str = values.get("speed")
             if speed_str and not _is_meaningless_value(speed_str):
-                speed_dict = {}
-                if HAS_SI_UTILS:
-                    parsed = parse_si(speed_str)
-                    if parsed:
-                        # Try various possible keys from SI parser
-                        if "transfers_per_second" in parsed:
-                            speed_dict["t/s"] = parsed["transfers_per_second"]
-                        elif "megatransfers_per_second" in parsed:
-                            speed_dict["t/s"] = (
-                                parsed["megatransfers_per_second"] * 1000000
-                            )
-                        elif "gigatransfers_per_second" in parsed:
-                            speed_dict["t/s"] = int(
-                                parsed["gigatransfers_per_second"] * 1000000000
-                            )
-                        speed_dict["pretty"] = parsed.get("pretty", speed_str)
-                # If SI didn't provide t/s, parse manually
-                if "pretty" in speed_dict and "t/s" not in speed_dict:
-                    if "MT/s" in speed_str:
-                        try:
-                            value = float(speed_str.split()[0])
-                            speed_dict["t/s"] = int(value * 1000000)
-                        except (ValueError, IndexError):
-                            pass
-                if speed_dict:
-                    module["speed"] = {"max": speed_dict}
+                parsed = parse_si(speed_str)
+                if parsed:
+                    module["speed"] = {"max": parsed}
 
             # Voltage (minimum and maximum)
             voltage = {}
             min_voltage = values.get("minimum_voltage")
             if min_voltage and not _is_meaningless_value(min_voltage):
-                if HAS_SI_UTILS:
-                    parsed = parse_si(min_voltage)
-                    if parsed and "volts" in parsed:
-                        voltage["minimum"] = {
-                            "volts": parsed["volts"],
-                            "pretty": parsed.get("pretty", min_voltage),
-                        }
+                parsed = parse_si(min_voltage)
+                if parsed:
+                    voltage["minimum"] = parsed
 
             max_voltage = values.get("maximum_voltage")
             if max_voltage and not _is_meaningless_value(max_voltage):
-                if HAS_SI_UTILS:
-                    parsed = parse_si(max_voltage)
-                    if parsed and "volts" in parsed:
-                        voltage["maximum"] = {
-                            "volts": parsed["volts"],
-                            "pretty": parsed.get("pretty", max_voltage),
-                        }
+                parsed = parse_si(max_voltage)
+                if parsed:
+                    voltage["maximum"] = parsed
 
             if voltage:
                 module["voltage"] = voltage
@@ -1036,47 +989,18 @@ def _process_memory_modules(
         # Configured Speed (can differ from rated speed)
         configured_speed = values.get("configured_memory_speed")
         if configured_speed and not _is_meaningless_value(configured_speed):
-            speed_dict = {}
-            if HAS_SI_UTILS:
-                parsed = parse_si(configured_speed)
-                if parsed:
-                    # Try various possible keys from SI parser
-                    if "transfers_per_second" in parsed:
-                        speed_dict["t/s"] = parsed["transfers_per_second"]
-                    elif "megatransfers_per_second" in parsed:
-                        speed_dict["t/s"] = (
-                            parsed["megatransfers_per_second"] * 1000000
-                        )
-                    elif "gigatransfers_per_second" in parsed:
-                        speed_dict["t/s"] = int(
-                            parsed["gigatransfers_per_second"] * 1000000000
-                        )
-                    speed_dict["pretty"] = parsed.get(
-                        "pretty", configured_speed
-                    )
-            # If SI didn't provide t/s, parse manually
-            if "pretty" in speed_dict and "t/s" not in speed_dict:
-                if "MT/s" in configured_speed:
-                    try:
-                        value = float(configured_speed.split()[0])
-                        speed_dict["t/s"] = int(value * 1000000)
-                    except (ValueError, IndexError):
-                        pass
-            if speed_dict:
-                location["speed"] = speed_dict
+            parsed = parse_si(configured_speed)
+            if parsed:
+                location["speed"] = parsed
 
         # Configured Voltage
         configured_voltage = values.get("configured_voltage")
         if configured_voltage and not _is_meaningless_value(
             configured_voltage
         ):
-            if HAS_SI_UTILS:
-                parsed = parse_si(configured_voltage)
-                if parsed and "volts" in parsed:
-                    location["voltage"] = {
-                        "volts": parsed["volts"],
-                        "pretty": parsed.get("pretty", configured_voltage),
-                    }
+            parsed = parse_si(configured_voltage)
+            if parsed:
+                location["voltage"] = parsed
 
         # Asset Tag
         asset_tag = values.get("asset_tag")
@@ -1260,13 +1184,9 @@ def _process_cache(
         # Installed Size (capacity)
         installed_size = values.get("installed_size")
         if installed_size and not _is_meaningless_value(installed_size):
-            if HAS_SI_UTILS:
-                parsed = parse_si(installed_size)
-                if parsed and "bytes" in parsed:
-                    cache_info["capacity"] = {
-                        "bytes": parsed["bytes"],
-                        "pretty": parsed.get("pretty", installed_size),
-                    }
+            parsed = parse_si(installed_size)
+            if parsed:
+                cache_info["capacity"] = parsed
 
         # System Type (exclude "Other")
         system_type = values.get("system_type")
@@ -1496,57 +1416,23 @@ def _process_processors(
             # Speed (max)
             max_speed = values.get("max_speed")
             if max_speed and not _is_meaningless_value(max_speed):
-                speed_dict = {}
-                if HAS_SI_UTILS:
-                    parsed = parse_si(max_speed)
-                    if parsed and "hertz" in parsed:
-                        speed_dict["hz"] = parsed["hertz"]
-                        speed_dict["pretty"] = parsed.get("pretty", max_speed)
-                if not speed_dict and "MHz" in max_speed:
-                    # Fallback: parse manually
-                    try:
-                        value = float(max_speed.split()[0])
-                        speed_dict = {
-                            "hz": int(value * 1000000),
-                            "pretty": max_speed,
-                        }
-                    except (ValueError, IndexError):
-                        pass
-                if speed_dict:
-                    processor["speed"] = {"max": speed_dict}
+                parsed = parse_si(max_speed)
+                if parsed:
+                    processor["speed"] = {"max": parsed}
 
             # Voltage
             voltage_str = values.get("voltage")
             if voltage_str and not _is_meaningless_value(voltage_str):
-                if HAS_SI_UTILS:
-                    parsed = parse_si(voltage_str)
-                    if parsed and "volts" in parsed:
-                        processor["voltage"] = {
-                            "volts": parsed["volts"],
-                            "pretty": parsed.get("pretty", voltage_str),
-                        }
+                parsed = parse_si(voltage_str)
+                if parsed:
+                    processor["voltage"] = parsed
 
             # External Clock (flattened to just clock)
             ext_clock = values.get("external_clock")
             if ext_clock and not _is_meaningless_value(ext_clock):
-                clock_dict = {}
-                if HAS_SI_UTILS:
-                    parsed = parse_si(ext_clock)
-                    if parsed and "hertz" in parsed:
-                        clock_dict["hz"] = parsed["hertz"]
-                        clock_dict["pretty"] = parsed.get("pretty", ext_clock)
-                if not clock_dict and "MHz" in ext_clock:
-                    # Fallback: parse manually
-                    try:
-                        value = float(ext_clock.split()[0])
-                        clock_dict = {
-                            "hz": int(value * 1000000),
-                            "pretty": ext_clock,
-                        }
-                    except (ValueError, IndexError):
-                        pass
-                if clock_dict:
-                    processor["clock"] = clock_dict
+                parsed = parse_si(ext_clock)
+                if parsed:
+                    processor["clock"] = parsed
 
             # Features (flags as abbreviation: description dict)
             flags = values.get("flags")
@@ -1617,24 +1503,9 @@ def _process_processors(
         # Current speed (per-socket, flattened)
         current_speed = values.get("current_speed")
         if current_speed and not _is_meaningless_value(current_speed):
-            speed_dict = {}
-            if HAS_SI_UTILS:
-                parsed = parse_si(current_speed)
-                if parsed and "hertz" in parsed:
-                    speed_dict["hz"] = parsed["hertz"]
-                    speed_dict["pretty"] = parsed.get("pretty", current_speed)
-            if not speed_dict and "MHz" in current_speed:
-                # Fallback: parse manually
-                try:
-                    value = float(current_speed.split()[0])
-                    speed_dict = {
-                        "hz": int(value * 1000000),
-                        "pretty": current_speed,
-                    }
-                except (ValueError, IndexError):
-                    pass
-            if speed_dict:
-                location["speed"] = speed_dict
+            parsed = parse_si(current_speed)
+            if parsed:
+                location["speed"] = parsed
 
         # Serial Number
         serial = values.get("serial_number")

@@ -152,7 +152,7 @@ def test_dmidecode_parses_real_output(
     assert module["capacity"]["pretty"] == "32 GiB"
     assert "speed" in module
     assert "max" in module["speed"]
-    assert module["speed"]["max"]["t/s"] == 2133000000
+    assert module["speed"]["max"]["transfers/s"] == 2133000000
     assert module["speed"]["max"]["pretty"] == "2.13 GT/s"  # SI normalized
     assert module["rank"] == 4
     assert "locations" in module
@@ -161,7 +161,7 @@ def test_dmidecode_parses_real_output(
     location = module["locations"]["p2-dimme1"]
     assert location["serial"] == "MEM001SERIAL003"
     assert "speed" in location
-    assert location["speed"]["t/s"] == 1866000000
+    assert location["speed"]["transfers/s"] == 1866000000
     assert location["speed"]["pretty"] == "1.87 GT/s"  # SI normalized
     assert location["tag"] == "P2-DIMME1_AssetTag (date:15/18)"
 
@@ -261,15 +261,15 @@ def test_dmidecode_parses_real_output(
     assert "threads" not in proc
     # Check speed
     assert "speed" in proc
-    assert proc["speed"]["max"]["hz"] == 4000000000
+    assert proc["speed"]["max"]["hertz"] == 4000000000
     assert proc["speed"]["max"]["pretty"] == "4 GHz"
     # Check voltage (only present if SI utils parses it)
     if "voltage" in proc:
-        assert "volts" in proc["voltage"]
+        assert "v" in proc["voltage"]
         assert "pretty" in proc["voltage"]
     # Check external clock (flattened)
     assert "clock" in proc
-    assert proc["clock"]["hz"] == 100000000
+    assert proc["clock"]["hertz"] == 100000000
     assert proc["clock"]["pretty"] == "100 MHz"
     # Check features as dict with abbreviation: description
     assert "features" in proc
@@ -298,7 +298,7 @@ def test_dmidecode_parses_real_output(
     assert cpu1["signature"]["stepping"] == 2
     assert cpu1["cores"]["enabled"] == 6
     assert "speed" in cpu1
-    assert cpu1["speed"]["hz"] == 2400000000
+    assert cpu1["speed"]["hertz"] == 2400000000
     assert cpu1["speed"]["pretty"] == "2.4 GHz"
     # Check cache (internal caches now in individual locations)
     assert "cache" in cpu1

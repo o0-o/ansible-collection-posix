@@ -11,7 +11,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict, Union
+from typing import Any, Dict, List, Union
 
 from ansible.errors import AnsibleFilterError
 from ansible.module_utils.common.text.converters import to_native
@@ -21,15 +21,15 @@ DOCUMENTATION = r"""
 ---
 name: dmidecode
 short_description: Parse dmidecode command output
-version_added: "1.5.0"
+version_added: "1.4.0"
 description:
   - Parse output from the dmidecode command into structured hardware
     information using jc
-  - Returns a hierarchical dict structure reflecting physical hardware
-    reality
-  - Currently implements baseboard section including BIOS and interface
-    information
-  - Additional sections will be added in future versions
+  - Produce a consolidated view of chassis, baseboard, system,
+    processors, memory, power supplies, IPMI, slot layout, and related
+    inventory details keyed by normalized identifiers
+  - Clean placeholder strings and normalize feature data so downstream
+    automation receives stable values suitable for comparisons
 options:
   _input:
     description:
@@ -39,10 +39,13 @@ options:
     required: true
 requirements:
   - jc (Python library)
+  - ansible_collections.o0_o.utils (required for SI unit parsing)
 notes:
   - The jc library parses dmidecode output which is then transformed
-    into structured data
-  - Output structure organizes hardware by physical hierarchy
+    into structured data organized by physical hierarchy
+  - The o0_o.utils collection provides required SI parsing helpers that
+    power the capacity, speed, and voltage normalization in the return
+    data
   - dmidecode typically requires root/sudo privileges on the target
     system
   - Feature strings are cleaned up (e.g., "is/are supported" removed)
@@ -464,7 +467,7 @@ class FilterModule:
 
     def dmidecode_filter(
         self,
-        config: Union[str, Dict[str, Any]],
+        config: Union[str, List[str], Dict[str, Any]],
     ) -> Dict[str, Any]:
         """Parse dmidecode output into structured hardware data.
 
