@@ -76,6 +76,7 @@ class ActionModule(PosixActionBase, ActionBase):
         # Define the expected input parameters
         argument_spec = {
             "src": {"type": "str", "required": True},
+            "encoding": {"type": "str", "default": "utf-8"},
             "_force_raw": {"type": "bool", "default": False},
         }
 
@@ -84,6 +85,7 @@ class ActionModule(PosixActionBase, ActionBase):
             argument_spec=argument_spec
         )
         src = new_module_args.get("src")
+        encoding = new_module_args.get("encoding")
         self.force_raw = new_module_args.pop("_force_raw")
 
         self._display.vvv(
@@ -144,17 +146,19 @@ class ActionModule(PosixActionBase, ActionBase):
                 result["raw"] = True
             else:
                 if "content" in ansible_slurp_mod:
-                    self._display.vvv("slurp64: decoding slurp content")
+                    self._display.vvv(
+                        f"slurp64: decoding slurp content with {encoding}"
+                    )
                     try:
                         ansible_slurp_mod.pop("encoding", None)
                         ansible_slurp_mod["content"] = b64decode(
                             ansible_slurp_mod["content"]
-                        ).decode("utf-8")
+                        ).decode(encoding)
                         self._display.vvv("slurp64: decode succeeded")
                     except Exception as decode_error:
                         raise AnsibleActionFail(
-                            f"Failed to base64 decode slurp content: "
-                            f"{decode_error}"
+                            f"Failed to decode slurp content using "
+                            f"encoding '{encoding}': {decode_error}"
                         )
 
                 else:

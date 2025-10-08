@@ -26,8 +26,8 @@ description:
   - Attempts to use C(ansible.builtin.slurp) when a Python interpreter is
     available.
   - Falls back to a raw C(cat) command if Python is missing.
-  - Content is always automatically base64-decoded and UTF-8 decoded
-    before being returned, regardless of execution.
+  - Content is automatically base64-decoded and character-decoded before
+    being returned, regardless of execution method.
   - Designed for compatibility with minimal or bootstrapping environments.
 options:
   src:
@@ -35,6 +35,15 @@ options:
       - Full path to the file to read on the remote system.
     required: true
     type: str
+  encoding:
+    description:
+      - Character encoding to use when decoding file content.
+      - When using C(ansible.builtin.slurp), this encoding is used to
+        decode the base64 content.
+      - When using raw C(cat) fallback, content encoding depends on the
+        connection plugin (typically UTF-8).
+    type: str
+    default: utf-8
 extends_documentation_fragment:
   - action_common_attributes
   - o0_o.posix.raw_fallback
@@ -80,11 +89,11 @@ EXAMPLES = r"""
 
 RETURN = r"""
 content:
-  description: UTF-8-decoded content of the file.
+  description: Decoded content of the file.
   type: str
   returned: success
 content_lines:
-  description: Content as a list of lines
+  description: Content as a list of lines.
   type: list
   returned: success
 raw:
@@ -105,6 +114,7 @@ def main():
     module = AnsibleModule(
         argument_spec={
             "src": {"type": "str", "required": True},
+            "encoding": {"type": "str", "default": "utf-8"},
             "_force_raw": {"type": "bool", "default": False},
         },
         supports_check_mode=True,
