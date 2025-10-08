@@ -1,0 +1,11 @@
+# vim: ts=2:sw=2:sts=2:et:ft=yaml.ansible
+# -*- mode: yaml; yaml-indent-offset: 2; indent-tabs-mode: nil; -*-
+---
+bugfixes:
+  - fstab filter (fstab_utils) now parses entries line-by-line with fallback
+    logic for malformed entries. This fixes OpenBSD fstab parsing failures
+    caused by swap entries that omit dump and pass fields (e.g.,
+    "e0cb35ae99f8f89d.b none swap sw").
+  - fstab filter (fstab_utils) now generates OpenBSD-style 4-field entries
+    when both dump and pass are explicitly set to None, preserving the
+    original format during round-trip parse and generate operations.
