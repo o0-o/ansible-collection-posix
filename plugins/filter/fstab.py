@@ -43,6 +43,10 @@ notes:
   - For generation, returns formatted fstab text
   - Options are stored as list of dicts for flexible manipulation
   - Supports all standard fstab fields including dump and pass
+  - Parses entries line-by-line with fallback for malformed entries
+  - Handles OpenBSD-style entries without dump/pass fields (e.g., swap)
+  - Setting dump and pass to None generates 4-field format (OpenBSD style)
+  - Omitting dump and pass fields generates 6-field format with defaults
 author:
   - oØ.o (@o0-o)
 """
@@ -94,6 +98,23 @@ EXAMPLES = r"""
     content: "{{ new_fstab }}"
     dest: /etc/fstab.new
     backup: true
+
+# Generate OpenBSD-style 4-field swap entry
+- name: Define OpenBSD swap entry (omit dump/pass)
+  ansible.builtin.set_fact:
+    openbsd_swap:
+      - source: e0cb35ae99f8f89d.b
+        mount: null
+        type: swap
+        options:
+          - sw: true
+        dump: null
+        pass: null
+
+- name: Generate 4-field fstab line
+  ansible.builtin.debug:
+    msg: "{{ openbsd_swap | o0_o.posix.fstab }}"
+  # Output: e0cb35ae99f8f89d.b  none  swap  sw
 """
 
 RETURN = r"""

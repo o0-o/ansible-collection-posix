@@ -47,7 +47,7 @@ options:
     description:
       - If True, suppress jc parsing warnings
     type: bool
-    default: false
+    default: true
 requirements:
   - jc (Python library)
 author:
