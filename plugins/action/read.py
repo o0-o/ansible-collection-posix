@@ -11,7 +11,6 @@
 
 from __future__ import annotations
 
-import base64
 import os
 import posixpath
 import shlex
@@ -67,10 +66,24 @@ class ActionModule(PosixActionBase, ActionBase):
                 "aliases": ["path"],
             },
             "content": {"type": "bool", "default": False},
+            "metadata": {"type": "bool", "default": True},
             "encoding": {"type": "str"},
             "parents": {"type": "raw", "default": False},
             "find_hardlinks": {"type": "bool", "default": False},
             "find_symlinks": {"type": "bool", "default": False},
+            # Individual field inclusion (used when metadata=false)
+            "type": {"type": "bool", "default": False},
+            "name": {"type": "bool", "default": False},
+            "parent": {"type": "bool", "default": False},
+            "mode": {"type": "bool", "default": False},
+            "owner": {"type": "bool", "default": False},
+            "group": {"type": "bool", "default": False},
+            "writable": {"type": "bool", "default": False},
+            "links": {"type": "bool", "default": False},
+            "acl": {"type": "bool", "default": False},
+            "xattrs": {"type": "bool", "default": False},
+            "flags": {"type": "bool", "default": False},
+            "selinux": {"type": "bool", "default": False},
         }
         validation_result, new_args = self.validate_argument_spec(
             argument_spec=argument_spec
@@ -79,6 +92,7 @@ class ActionModule(PosixActionBase, ActionBase):
         path_list = new_args["paths"]
 
         include_content = new_args["content"]
+        include_metadata = new_args["metadata"]
         preferred_encoding = new_args.get("encoding")
         parents_option = truthy_or_integer(
             new_args["parents"], zero_is_false=True, only_positive=True
@@ -96,6 +110,22 @@ class ActionModule(PosixActionBase, ActionBase):
         find_hardlinks = new_args.get("find_hardlinks", False)
         find_symlinks = new_args.get("find_symlinks", False)
 
+        # Field inclusion options (when metadata=false)
+        field_options = {
+            "type": new_args.get("type", False),
+            "name": new_args.get("name", False),
+            "parent": new_args.get("parent", False),
+            "mode": new_args.get("mode", False),
+            "owner": new_args.get("owner", False),
+            "group": new_args.get("group", False),
+            "writable": new_args.get("writable", False),
+            "links": new_args.get("links", False),
+            "acl": new_args.get("acl", False),
+            "xattrs": new_args.get("xattrs", False),
+            "flags": new_args.get("flags", False),
+            "selinux": new_args.get("selinux", False),
+        }
+
         files: Dict[str, Optional[Dict[str, Any]]] = {}
         for current_path in path_list:
             visited_paths: set[str] = set()
@@ -103,6 +133,8 @@ class ActionModule(PosixActionBase, ActionBase):
             info, extra_entries = self._gather_file_info(
                 path=current_path,
                 include_content=include_content,
+                include_metadata=include_metadata,
+                field_options=field_options,
                 preferred_encoding=preferred_encoding,
                 task_vars=task_vars,
                 parents=parents,
@@ -131,6 +163,8 @@ class ActionModule(PosixActionBase, ActionBase):
             parent_info, parent_extra = self._gather_file_info(
                 path=parent_path,
                 include_content=False,
+                include_metadata=include_metadata,
+                field_options=field_options,
                 preferred_encoding=None,
                 task_vars=task_vars,
                 parents=False,
@@ -156,6 +190,8 @@ class ActionModule(PosixActionBase, ActionBase):
         self,
         path: str,
         include_content: bool,
+        include_metadata: bool,
+        field_options: Dict[str, bool],
         preferred_encoding: Optional[str],
         task_vars: Optional[Dict[str, Any]],
         parents: bool,
@@ -167,22 +203,27 @@ class ActionModule(PosixActionBase, ActionBase):
 
         :param str path: Path to inspect
         :param bool include_content: Whether to read file content
+        :param bool include_metadata: Whether to include all metadata
+            fields
+        :param Dict[str, bool] field_options: Individual field
+            inclusion options (used when include_metadata is False)
         :param Optional[str] preferred_encoding: Override encoding
             detection
         :param Optional[Dict[str, Any]] task_vars: Available Ansible
             variables
-        :param bool parents: Whether to expand related paths discovered
-            while gathering metadata
-        :param bool find_hardlinks: Perform a full filesystem scan to
-            enumerate hard link paths. This is extremely expensive on
-            anything but very small mounts such as /dev.
+        :param bool parents: Whether to expand related paths
+            discovered while gathering metadata
+        :param bool find_hardlinks: Perform a full filesystem scan
+            to enumerate hard link paths. This is extremely expensive
+            on anything but very small mounts such as /dev.
         :param bool find_symlinks: Perform a full filesystem scan to
             discover symbolic links targeting the inspected path.
         :param Optional[set[str]] visited: Paths already visited to
             prevent cycles
-        :returns Tuple[Optional[Dict[str, Any]], Dict[str, Optional[Dict[str, Any]]]]:
-            File metadata (or None when missing) and additional entries
-            to report in the top-level mapping.
+        :returns Tuple[Optional[Dict[str, Any]], Dict[str,
+            Optional[Dict[str, Any]]]]: File metadata (or None when
+            missing) and additional entries to report in the top-level
+            mapping.
         """
         visited = set(visited or set())
         if path in visited:
@@ -207,37 +248,52 @@ class ActionModule(PosixActionBase, ActionBase):
         info: Dict[str, Any] = {}
         extra_paths: Dict[str, Optional[Dict[str, Any]]] = {}
 
+        # Helper to check if a field should be included
+        def should_include(field_name: str) -> bool:
+            return include_metadata or field_options.get(field_name, False)
+
         normalized_path = posixpath.normpath(path)
 
         file_type = self._determine_type(stat_data)
-        if file_type:
+        if file_type and should_include("type"):
             info["type"] = file_type
 
-        if normalized_path == posixpath.sep:
-            info["name"] = posixpath.sep
-        else:
-            info["name"] = (
-                posixpath.basename(normalized_path) or normalized_path
-            )
-            parent_dir = posixpath.dirname(normalized_path) or posixpath.sep
-            info["parent"] = parent_dir
+        if should_include("name"):
+            if normalized_path == posixpath.sep:
+                info["name"] = posixpath.sep
+            else:
+                info["name"] = (
+                    posixpath.basename(normalized_path) or normalized_path
+                )
 
-        mode = stat_data.get("mode")
-        if mode:
-            info["mode"] = mode
+        if should_include("parent"):
+            if normalized_path != posixpath.sep:
+                parent_dir = (
+                    posixpath.dirname(normalized_path) or posixpath.sep
+                )
+                info["parent"] = parent_dir
 
-        owner = stat_data.get("pw_name") or stat_data.get("uid")
-        if owner is not None:
-            info["owner"] = owner
-        group = stat_data.get("gr_name") or stat_data.get("gid")
-        if group is not None:
-            info["group"] = group
+        if should_include("mode"):
+            mode = stat_data.get("mode")
+            if mode:
+                info["mode"] = mode
 
-        writeable = stat_data.get("writeable")
-        if writeable is None:
-            writeable = stat_data.get("writable")
-        if writeable is not None:
-            info["writable"] = bool(writeable)
+        if should_include("owner"):
+            owner = stat_data.get("pw_name") or stat_data.get("uid")
+            if owner is not None:
+                info["owner"] = owner
+
+        if should_include("group"):
+            group = stat_data.get("gr_name") or stat_data.get("gid")
+            if group is not None:
+                info["group"] = group
+
+        if should_include("writable"):
+            writeable = stat_data.get("writeable")
+            if writeable is None:
+                writeable = stat_data.get("writable")
+            if writeable is not None:
+                info["writable"] = bool(writeable)
 
         link_paths: List[str] = []
 
@@ -253,6 +309,8 @@ class ActionModule(PosixActionBase, ActionBase):
             nested_info, nested_extra = self._gather_file_info(
                 path=link_target,
                 include_content=include_content,
+                include_metadata=include_metadata,
+                field_options=field_options,
                 preferred_encoding=preferred_encoding,
                 task_vars=task_vars,
                 parents=parents,
@@ -313,6 +371,8 @@ class ActionModule(PosixActionBase, ActionBase):
                     hard_info, nested_extra = self._gather_file_info(
                         path=hard_path,
                         include_content=include_content,
+                        include_metadata=include_metadata,
+                        field_options=field_options,
                         preferred_encoding=preferred_encoding,
                         task_vars=task_vars,
                         parents=True,
@@ -331,6 +391,8 @@ class ActionModule(PosixActionBase, ActionBase):
                         self._collect_symlink_refs(
                             target=hard_path,
                             include_content=include_content,
+                            include_metadata=include_metadata,
+                            field_options=field_options,
                             preferred_encoding=preferred_encoding,
                             task_vars=task_vars,
                             parents=parents,
@@ -338,14 +400,15 @@ class ActionModule(PosixActionBase, ActionBase):
                         )
                     )
 
-        if link_paths:
-            unique_links: List[str] = []
-            for candidate in link_paths:
-                if candidate not in unique_links:
-                    unique_links.append(candidate)
-            info["links"] = unique_links
-        elif other_link_count > 0:
-            info["links"] = other_link_count
+        if should_include("links"):
+            if link_paths:
+                unique_links: List[str] = []
+                for candidate in link_paths:
+                    if candidate not in unique_links:
+                        unique_links.append(candidate)
+                info["links"] = unique_links
+            elif other_link_count > 0:
+                info["links"] = other_link_count
 
         if find_symlinks and symlink_candidates:
             valid_symlinks = self._filter_symlinks(
@@ -360,6 +423,8 @@ class ActionModule(PosixActionBase, ActionBase):
                 symlink_info, nested_extra = self._gather_file_info(
                     path=symlink_path,
                     include_content=include_content,
+                    include_metadata=include_metadata,
+                    field_options=field_options,
                     preferred_encoding=preferred_encoding,
                     task_vars=task_vars,
                     parents=parents,
@@ -375,6 +440,8 @@ class ActionModule(PosixActionBase, ActionBase):
                 self._collect_symlink_refs(
                     target=link_target,
                     include_content=include_content,
+                    include_metadata=include_metadata,
+                    field_options=field_options,
                     preferred_encoding=preferred_encoding,
                     task_vars=task_vars,
                     parents=parents,
@@ -382,21 +449,28 @@ class ActionModule(PosixActionBase, ActionBase):
                 )
             )
 
-        selinux = stat_data.get("selinux_label")
-        if selinux:
-            info["selinux"] = selinux
+        if should_include("selinux"):
+            selinux = stat_data.get("selinux_label")
+            if selinux:
+                info["selinux"] = selinux
 
-        attr_flags = stat_data.get("attr_flags")
-        if attr_flags:
-            info["flags"] = self._normalize_flags(attr_flags)
+        if should_include("flags"):
+            attr_flags = stat_data.get("attr_flags")
+            if attr_flags:
+                info["flags"] = self._normalize_flags(attr_flags)
 
         xattrs = stat_data.get("xattrs")
         names, acl_entries, selinux_extra = self._process_xattrs(xattrs)
-        if names:
+        if should_include("xattrs") and names:
             info["xattrs"] = names
-        for acl_entry in acl_entries:
-            self._merge_acl(info, acl_entry)
-        if selinux_extra and "selinux" not in info:
+        if should_include("acl"):
+            for acl_entry in acl_entries:
+                self._merge_acl(info, acl_entry)
+        if (
+            should_include("selinux")
+            and selinux_extra
+            and "selinux" not in info
+        ):
             info["selinux"] = selinux_extra
 
         if file_type == "directory" and include_content:
@@ -407,25 +481,31 @@ class ActionModule(PosixActionBase, ActionBase):
         skip_extended_metadata = file_type == "pipe"
 
         if not skip_extended_metadata:
-            acl_data = self._get_acl(path, task_vars)
-            if acl_data:
-                self._merge_acl(info, acl_data)
+            if should_include("acl"):
+                acl_data = self._get_acl(path, task_vars)
+                if acl_data:
+                    self._merge_acl(info, acl_data)
 
-            if "flags" not in info:
+            if should_include("flags") and "flags" not in info:
                 flags = self._get_flags(path, task_vars)
                 if flags:
                     info["flags"] = self._normalize_flags(flags)
 
-            if "xattrs" not in info:
+            if "xattrs" not in info or "selinux" not in info:
                 xattr_fallback = self._get_xattrs(path, task_vars)
                 names_fb, acl_entries_fb, selinux_fb = self._process_xattrs(
                     xattr_fallback
                 )
-                if names_fb:
+                if should_include("xattrs") and names_fb:
                     info["xattrs"] = names_fb
-                for acl_entry in acl_entries_fb:
-                    self._merge_acl(info, acl_entry)
-                if selinux_fb and "selinux" not in info:
+                if should_include("acl"):
+                    for acl_entry in acl_entries_fb:
+                        self._merge_acl(info, acl_entry)
+                if (
+                    should_include("selinux")
+                    and selinux_fb
+                    and "selinux" not in info
+                ):
                     info["selinux"] = selinux_fb
 
         encoding, content_text = self._maybe_get_content(
@@ -947,9 +1027,10 @@ class ActionModule(PosixActionBase, ActionBase):
                 task_vars=task_vars,
                 check_mode=False,
             )
-            if result.get("rc") != 0:
+            rc = result.get("rc")
+            if rc != 0:
                 self._display.vvv(
-                    f"[read] hardlink scan {label} failed rc={result.get('rc')}"
+                    f"[read] hardlink scan {label} failed rc={rc}"
                 )
                 return False
             lines = [
@@ -976,9 +1057,13 @@ class ActionModule(PosixActionBase, ActionBase):
                 if display_normalized == normalized_path:
                     continue
                 append_unique(others, display_normalized)
-                if max_links is not None and len(others) >= max_links:
+                limit_reached = (
+                    max_links is not None and len(others) >= max_links
+                )
+                if limit_reached:
                     self._display.vvv(
-                        f"[read] hardlink scan {label} reached limit with {others}"
+                        f"[read] hardlink scan {label} "
+                        f"reached limit with {others}"
                     )
                     return True
             return False
@@ -1018,12 +1103,14 @@ class ActionModule(PosixActionBase, ActionBase):
         self,
         target: str,
         include_content: bool,
+        include_metadata: bool,
+        field_options: Dict[str, bool],
         preferred_encoding: Optional[str],
         task_vars: Optional[Dict[str, Any]],
         parents: bool,
         visited: set[str],
     ) -> Dict[str, Optional[Dict[str, Any]]]:
-        """Discover symlinks pointing to a target path and gather metadata."""
+        """Discover symlinks pointing to target and gather metadata."""
 
         if target in visited:
             return {}
@@ -1087,6 +1174,8 @@ class ActionModule(PosixActionBase, ActionBase):
             symlink_info, nested_extra = self._gather_file_info(
                 path=symlink_path,
                 include_content=include_content,
+                include_metadata=include_metadata,
+                field_options=field_options,
                 preferred_encoding=preferred_encoding,
                 task_vars=task_vars,
                 parents=parents,
@@ -1476,24 +1565,19 @@ class ActionModule(PosixActionBase, ActionBase):
         if not encoding:
             return None, None
 
-        slurp = self._run_action(
-            "ansible.builtin.slurp",
-            {"src": path},
+        slurp = self._execute_module(
+            module_name="o0_o.posix.slurp64",
+            module_args={"src": path, "encoding": encoding},
             task_vars=task_vars,
         )
+        if slurp.get("failed"):
+            raise AnsibleActionFail(
+                "Failed to read content from '{path}': {error}".format(
+                    path=path,
+                    error=slurp.get("msg", "unknown error"),
+                )
+            )
         content_data = slurp.get("content")
         if not content_data:
             return encoding, None
-        try:
-            decoded = base64.b64decode(content_data)
-            text = decoded.decode(encoding)
-        except Exception as exc:
-            raise AnsibleActionFail(
-                "Failed to decode content from '{path}' using encoding "
-                "'{encoding}': {error}".format(
-                    path=path,
-                    encoding=encoding,
-                    error=exc,
-                )
-            )
-        return encoding, text
+        return encoding, content_data

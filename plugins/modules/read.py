@@ -38,6 +38,88 @@ options:
         encoding can be established.
     type: bool
     default: false
+  metadata:
+    description:
+      - Whether to include all metadata fields in the result.
+      - When C(true) (default), all available metadata fields are included.
+      - When C(false), only fields specified by individual field parameters
+        are included.
+      - This parameter works as a counterpart to I(content), allowing
+        selective field inclusion for performance optimization.
+    type: bool
+    default: true
+  type:
+    description:
+      - Include file type field when I(metadata=false).
+      - Ignored when I(metadata=true).
+    type: bool
+    default: false
+  name:
+    description:
+      - Include file name field when I(metadata=false).
+      - Ignored when I(metadata=true).
+    type: bool
+    default: false
+  parent:
+    description:
+      - Include parent directory field when I(metadata=false).
+      - Ignored when I(metadata=true).
+    type: bool
+    default: false
+  mode:
+    description:
+      - Include file mode/permissions field when I(metadata=false).
+      - Ignored when I(metadata=true).
+    type: bool
+    default: false
+  owner:
+    description:
+      - Include file owner field when I(metadata=false).
+      - Ignored when I(metadata=true).
+    type: bool
+    default: false
+  group:
+    description:
+      - Include file group field when I(metadata=false).
+      - Ignored when I(metadata=true).
+    type: bool
+    default: false
+  writable:
+    description:
+      - Include writable flag when I(metadata=false).
+      - Ignored when I(metadata=true).
+    type: bool
+    default: false
+  links:
+    description:
+      - Include hard link information when I(metadata=false).
+      - Ignored when I(metadata=true).
+    type: bool
+    default: false
+  acl:
+    description:
+      - Include ACL entries when I(metadata=false).
+      - Ignored when I(metadata=true).
+    type: bool
+    default: false
+  xattrs:
+    description:
+      - Include extended attributes when I(metadata=false).
+      - Ignored when I(metadata=true).
+    type: bool
+    default: false
+  flags:
+    description:
+      - Include file flags when I(metadata=false).
+      - Ignored when I(metadata=true).
+    type: bool
+    default: false
+  selinux:
+    description:
+      - Include SELinux context when I(metadata=false).
+      - Ignored when I(metadata=true).
+    type: bool
+    default: false
   encoding:
     description:
       - Override the detected encoding when reading file content.
@@ -127,6 +209,14 @@ EXAMPLES = r"""
       - /etc/motd
       - /etc/localtime
   register: multi_read
+
+- name: Gather only specific fields for performance
+  o0_o.posix.read:
+    path: /etc/localtime
+    metadata: false
+    type: true
+    links: true
+  register: minimal_read
 """
 
 RETURN = r"""

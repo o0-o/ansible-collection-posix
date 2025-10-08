@@ -57,7 +57,7 @@ def test_read_regular_file(monkeypatch, plugin) -> None:
         }
     }
 
-    slurp_content = base64_bytes(b"hello world\n")
+    slurp_content = "hello world\n"
 
     command_calls = []
 
@@ -66,9 +66,14 @@ def test_read_regular_file(monkeypatch, plugin) -> None:
     ):
         if name == "ansible.builtin.stat":
             return stat_result
-        if name == "ansible.builtin.slurp":
-            return {"content": slurp_content}
         raise AssertionError(f"Unexpected action {name}")
+
+    def mock_execute_module(
+        module_name: str, module_args: Dict[str, object], task_vars=None
+    ):
+        if module_name == "o0_o.posix.slurp64":
+            return {"content": slurp_content}
+        raise AssertionError(f"Unexpected module {module_name}")
 
     def mock_cmd(cmd, task_vars=None, check_mode=None):
         command_calls.append(cmd)
@@ -96,6 +101,7 @@ def test_read_regular_file(monkeypatch, plugin) -> None:
         raise AssertionError(f"Unexpected command {cmd}")
 
     monkeypatch.setattr(plugin, "_run_action", mock_run_action)
+    monkeypatch.setattr(plugin, "_execute_module", mock_execute_module)
     monkeypatch.setattr(plugin, "_cmd", mock_cmd)
 
     plugin._task.args = {
@@ -499,9 +505,14 @@ def test_read_parents_symlink(monkeypatch, plugin) -> None:
         if name == "ansible.builtin.stat":
             path = args["path"]
             return {"stat": stat_map[path]}
-        if name == "ansible.builtin.slurp":
-            return {"content": base64_bytes(b"target data")}
         raise AssertionError(f"Unexpected action {name}")
+
+    def mock_execute_module(
+        module_name: str, module_args: Dict[str, object], task_vars=None
+    ):
+        if module_name == "o0_o.posix.slurp64":
+            return {"content": "target data"}
+        raise AssertionError(f"Unexpected module {module_name}")
 
     def mock_cmd(cmd, task_vars=None, check_mode=None):
         if cmd[0] == "sh":
@@ -511,6 +522,7 @@ def test_read_parents_symlink(monkeypatch, plugin) -> None:
         return {"rc": 1, "stdout": ""}
 
     monkeypatch.setattr(plugin, "_run_action", mock_run_action)
+    monkeypatch.setattr(plugin, "_execute_module", mock_execute_module)
     monkeypatch.setattr(plugin, "_cmd", mock_cmd)
 
     plugin._task.args = {
