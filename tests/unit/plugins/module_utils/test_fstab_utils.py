@@ -137,3 +137,24 @@ def test_fstab_switches_between_parse_and_generate() -> None:
 
     mock_parse.assert_called_once_with("fstab", "fstab text")
     assert parsed[0]["mount"] == "/"
+
+
+def test_parse_fstab_fallback_openbsd_swap() -> None:
+    """Test fallback parser handles OpenBSD swap entries without dump/pass."""
+
+    # OpenBSD swap entry with only 4 fields (no dump/pass)
+    openbsd_swap = "e0cb35ae99f8f89d.b none swap sw"
+
+    # Mock jc_parse to fail, triggering fallback parser
+    with patch.object(
+        fstab_utils, "jc_parse", side_effect=Exception("jc parse failed")
+    ):
+        result = fstab_utils.parse_fstab(openbsd_swap)
+
+    assert len(result) == 1
+    assert result[0]["source"] == "e0cb35ae99f8f89d.b"
+    assert result[0]["mount"] is None  # "none" becomes None
+    assert result[0]["type"] == "swap"
+    assert result[0]["options"] == [{"sw": True}]
+    assert result[0]["dump"] is None  # Missing field becomes None
+    assert result[0]["pass"] is None  # Missing field becomes None

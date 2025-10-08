@@ -225,28 +225,80 @@ def generate_fstab_entry(entry: Dict[str, Any]) -> str:
     return f"{source}\t{mount}\t{fs_type}\t{options_str}\t{dump}\t{fsck_pass}"
 
 
+def _parse_fstab_line_fallback(line: str) -> Dict[str, Any]:
+    """Fallback parser for fstab lines that jc cannot parse.
+
+    Handles OpenBSD-style swap entries that omit dump and pass fields:
+    e0cb35ae99f8f89d.b none swap sw
+
+    :param line: Single fstab line
+    :returns: Parsed entry dict in jc format
+    :raises ValueError: If line cannot be parsed
+    """
+    parts = line.split()
+    if len(parts) < 4:
+        raise ValueError(f"Invalid fstab line: {line}")
+
+    # Build jc-style entry
+    entry = {
+        "fs_spec": parts[0],
+        "fs_file": parts[1],
+        "fs_vfstype": parts[2],
+        "fs_mntops": parts[3],
+    }
+
+    # Optional fields (dump and pass)
+    if len(parts) >= 5:
+        entry["fs_freq"] = parts[4]
+    if len(parts) >= 6:
+        entry["fs_passno"] = parts[5]
+
+    return entry
+
+
 def parse_fstab(content: str) -> List[Dict[str, Any]]:
     """Parse fstab content into normalized list of entries.
+
+    Parses each line individually to handle malformed entries gracefully.
+    Falls back to manual parsing for entries jc cannot handle (e.g.,
+    OpenBSD swap entries without dump/pass fields).
 
     :param content: Fstab content as string
     :returns: List of normalized entry dicts
     :raises ValueError: If parsing fails
     :raises ImportError: If jc is not available
     """
-    # Parse with jc_parse
-    try:
-        parsed = jc_parse("fstab", content)
-    except Exception as e:
-        raise ValueError(f"Failed to parse fstab content: {e}") from e
-
-    # Normalize each entry
     normalized = []
-    for entry in parsed:
+
+    # Process each line individually
+    for line in content.splitlines():
+        # Skip empty lines and comments
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+
+        # Try parsing with jc first
+        try:
+            parsed = jc_parse("fstab", line)
+            if parsed and isinstance(parsed, list) and len(parsed) > 0:
+                entry = parsed[0]
+            else:
+                # Empty result, skip
+                continue
+        except Exception:
+            # jc failed, try fallback parser
+            try:
+                entry = _parse_fstab_line_fallback(line)
+            except ValueError:
+                # Fallback also failed, skip this line
+                continue
+
+        # Normalize the entry
         try:
             norm_entry = parse_fstab_entry(entry)
             normalized.append(norm_entry)
         except ValueError:
-            # Skip invalid entries (we can't use display to warn)
+            # Skip invalid entries
             continue
 
     return normalized
@@ -329,20 +381,18 @@ def fstab(
         # Single entry dict for generation
         if "source" in config and "mount" in config:
             return generate_fstab([config])
-        # Otherwise try to parse as command result
-        # jc_parse will handle stdout/content extraction
+        # Otherwise extract content and parse
+        if "content" in config:
+            content = config["content"]
+        elif "stdout" in config:
+            content = config["stdout"]
+        else:
+            raise ValueError(
+                "Dict input must have 'content' or 'stdout' key"
+            )
+    else:
+        # String input
+        content = config
 
-    # Parse with jc_parse (handles both string and dict inputs)
-    parsed = jc_parse("fstab", config)
-
-    # Normalize each entry
-    normalized = []
-    for entry in parsed:
-        try:
-            norm_entry = parse_fstab_entry(entry)
-            normalized.append(norm_entry)
-        except ValueError:
-            # Skip invalid entries
-            continue
-
-    return normalized
+    # Use parse_fstab which handles line-by-line parsing
+    return parse_fstab(content)
