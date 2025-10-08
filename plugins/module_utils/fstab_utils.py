@@ -157,6 +157,16 @@ def generate_fstab_entry(entry: Dict[str, Any]) -> str:
         # No options provided, use defaults
         options_str = "defaults"
 
+    # Check if both dump and pass are explicitly set to None (OpenBSD format)
+    # Only omit if the keys exist AND their values are None
+    dump_is_none = "dump" in entry and entry["dump"] is None
+    pass_is_none = "pass" in entry and entry["pass"] is None
+
+    # If both are explicitly None, omit them (4-field format like OpenBSD swap)
+    if dump_is_none and pass_is_none:
+        return f"{source}\t{mount}\t{fs_type}\t{options_str}"
+
+    # Otherwise, compute dump and pass values (6-field format)
     # Dump defaults to 0 (most modern systems don't use dump)
     if "dump" in entry:
         dump = entry["dump"]

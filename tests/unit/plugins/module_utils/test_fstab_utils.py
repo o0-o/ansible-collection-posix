@@ -158,3 +158,42 @@ def test_parse_fstab_fallback_openbsd_swap() -> None:
     assert result[0]["options"] == [{"sw": True}]
     assert result[0]["dump"] is None  # Missing field becomes None
     assert result[0]["pass"] is None  # Missing field becomes None
+
+
+def test_generate_fstab_entry_omits_none_dump_pass() -> None:
+    """Test generating OpenBSD-style 4-field entries when dump/pass are None."""
+
+    entry = {
+        "source": "e0cb35ae99f8f89d.b",
+        "mount": None,
+        "type": "swap",
+        "options": [{"sw": True}],
+        "dump": None,
+        "pass": None,
+    }
+
+    line = fstab_utils.generate_fstab_entry(entry)
+    fields = line.split("\t")
+
+    # Should only have 4 fields, not 6
+    assert len(fields) == 4
+    assert fields == ["e0cb35ae99f8f89d.b", "none", "swap", "sw"]
+
+
+def test_fstab_roundtrip_openbsd_format() -> None:
+    """Test parse->generate roundtrip preserves OpenBSD 4-field format."""
+
+    original = "e0cb35ae99f8f89d.b none swap sw"
+
+    # Mock jc_parse to fail, triggering fallback parser
+    with patch.object(
+        fstab_utils, "jc_parse", side_effect=Exception("jc parse failed")
+    ):
+        parsed = fstab_utils.parse_fstab(original)
+
+    # Generate back to fstab format
+    regenerated = fstab_utils.generate_fstab(parsed)
+
+    # Should preserve 4-field format (no dump/pass)
+    regenerated_line = regenerated.strip()
+    assert regenerated_line.split("\t") == original.split()
