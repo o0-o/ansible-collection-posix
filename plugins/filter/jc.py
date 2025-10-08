@@ -121,7 +121,7 @@ class FilterModule:
         data: Union[str, List[str], Dict[str, Any]],
         parser: str,
         raw: bool = False,
-        quiet: bool = False,
+        quiet: bool = True,
     ) -> Union[List[Dict[str, Any]], Dict[str, Any]]:
         """Parse command output using jc library.
 
@@ -132,6 +132,7 @@ class FilterModule:
         :param raw: If True, return raw parsed output without
             post-processing
         :param quiet: If True, suppress jc parsing warnings
+            (default: True)
         :returns: Parsed data structure (list or dict depending on
             parser)
         :raises AnsibleFilterError: If jc is not available or parsing

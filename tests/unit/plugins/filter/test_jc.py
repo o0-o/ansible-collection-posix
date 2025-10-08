@@ -35,7 +35,7 @@ class TestJCFilter:
 
         result = filter_module.jc_filter("ps output", "ps")
 
-        mock_jc_parse.assert_called_once_with("ps", "ps output", False, False)
+        mock_jc_parse.assert_called_once_with("ps", "ps output", True, False)
         assert result == [{"user": "root", "pid": 1}]
 
     @patch("ansible_collections.o0_o.posix.plugins.filter.jc.jc_parse")
@@ -46,7 +46,7 @@ class TestJCFilter:
         result = filter_module.jc_filter(["line1", "line2"], "df")
 
         mock_jc_parse.assert_called_once_with(
-            "df", "line1\nline2", False, False
+            "df", "line1\nline2", True, False
         )
         assert result == [{"filesystem": "/dev/sda1"}]
 
@@ -58,7 +58,7 @@ class TestJCFilter:
         result = filter_module.jc_filter({"stdout": "mount output"}, "mount")
 
         mock_jc_parse.assert_called_once_with(
-            "mount", {"stdout": "mount output"}, False, False
+            "mount", {"stdout": "mount output"}, True, False
         )
         assert result == [{"mount_point": "/"}]
 
@@ -69,7 +69,7 @@ class TestJCFilter:
 
         result = filter_module.jc_filter("input", "uname", raw=True)
 
-        mock_jc_parse.assert_called_once_with("uname", "input", False, True)
+        mock_jc_parse.assert_called_once_with("uname", "input", True, True)
         assert result == [{"raw": "data"}]
 
     @patch("ansible_collections.o0_o.posix.plugins.filter.jc.jc_parse")

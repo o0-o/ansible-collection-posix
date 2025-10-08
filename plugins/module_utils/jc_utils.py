@@ -30,7 +30,7 @@ except ImportError:
 def jc_parse(
     parser: str,
     data: Union[str, Dict[str, Any]],
-    quiet: bool = False,
+    quiet: bool = True,
     raw: bool = False,
 ) -> Union[List[Dict[str, Any]], Dict[str, Any]]:
     """Parse command output using jc library.
@@ -40,7 +40,7 @@ def jc_parse(
 
     :param parser: Name of the jc parser to use
     :param data: Command output as string or dict
-    :param quiet: If True, suppress jc parsing warnings
+    :param quiet: If True, suppress jc parsing warnings (default: True)
     :param raw: If True, return raw parsed output without
                 post-processing
     :returns: Parsed data structure (list or dict depending on
