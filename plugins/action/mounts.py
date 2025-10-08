@@ -20,6 +20,9 @@ from ansible_collections.o0_o.posix.plugins.module_utils import (
     df,
     mount,
 )
+from ansible_collections.o0_o.posix.plugins.module_utils.fstab_utils import (
+    parse_fstab,
+)
 
 
 class ActionModule(PosixActionBase, ActionBase):
@@ -99,10 +102,14 @@ class ActionModule(PosixActionBase, ActionBase):
             # Get mount information as a dict keyed by mountpoint
             mounts_dict = self._get_mounts_dict(task_vars)
 
+            # Get fstab information
+            fstab_list = self._get_fstab_list(task_vars)
+
             result.update(
                 {
                     "changed": False,
                     "mounts": mounts_dict,
+                    "fstab": fstab_list,
                 }
             )
         except Exception as e:
@@ -222,6 +229,39 @@ class ActionModule(PosixActionBase, ActionBase):
 
         except Exception as e:
             raise AnsibleActionFail(f"Failed to execute mount command: {e}")
+
+    def _get_fstab_list(
+        self, task_vars: Dict[str, Any]
+    ) -> List[Dict[str, Any]]:
+        """Get fstab content as a list of parsed entries.
+
+        :param task_vars: Task variables dictionary
+        :returns: List of fstab entries
+        """
+        try:
+            # Read /etc/fstab
+            cat_result = self._cmd(
+                "cat /etc/fstab", task_vars=task_vars, check_mode=False
+            )
+
+            # Extract content from command result
+            if isinstance(cat_result, dict):
+                content = cat_result.get("stdout", "")
+            else:
+                content = str(cat_result)
+
+            # Parse using fstab_utils
+            fstab_list = parse_fstab(content)
+
+            return fstab_list
+
+        except Exception as e:
+            # If fstab cannot be read, return empty list
+            # (not all systems have /etc/fstab)
+            self._display.vvv(
+                f"Could not read /etc/fstab: {type(e).__name__}: {e}"
+            )
+            return []
 
     def _should_include_mount(self, mount_info: Dict[str, Any]) -> bool:
         """Check if mount should be included based on filter arguments.

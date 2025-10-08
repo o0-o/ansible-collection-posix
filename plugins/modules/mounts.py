@@ -24,6 +24,7 @@ description:
   - Gathers information about mounted filesystems on the target system.
   - Combines data from the C(mount) and C(df -P) commands to provide
     comprehensive mount point information.
+  - Also parses C(/etc/fstab) to provide configured mount points.
   - Returns device names, filesystem types, and capacity information
     where available.
   - By default, excludes virtual and pseudo filesystems, but includes
@@ -56,8 +57,10 @@ author:
 notes:
   - The module runs the C(mount) command to get mount information.
   - It also runs C(df -P) to get capacity information when available.
+  - It reads and parses C(/etc/fstab) to provide configured mount points.
   - If C(df) is not available, mount information is still returned
     without capacity data.
+  - If C(/etc/fstab) cannot be read, an empty list is returned for fstab.
   - Virtual filesystems (excluded by default) include memory-based and
     special purpose filesystems.
   - Pseudo filesystems (excluded by default) are a subset of virtual
@@ -130,6 +133,20 @@ EXAMPLES = r"""
       {%- endfor -%}
       {{ result }}
   when: mount_info.mounts
+
+- name: Display fstab entries
+  ansible.builtin.debug:
+    msg: "Configured: {{ item.source }} on {{ item.mount }} ({{ item.type }})"
+  loop: "{{ mount_info.fstab }}"
+  when: mount_info.fstab
+
+- name: Find fstab entries not currently mounted
+  ansible.builtin.set_fact:
+    unmounted_fstab: >-
+      {{ mount_info.fstab
+         | selectattr('mount', 'ne', None)
+         | rejectattr('mount', 'in', mount_info.mounts.keys())
+         | list }}
 """
 
 RETURN = r"""
@@ -210,6 +227,55 @@ mounts:
         used:
           value: 21474836480
           unit: "B"
+fstab:
+  description: List of parsed /etc/fstab entries
+  returned: always
+  type: list
+  elements: dict
+  contains:
+    source:
+      description: Device or filesystem source
+      type: str
+      sample: "/dev/sda1"
+    mount:
+      description: Mount point (null for swap)
+      type: str
+      sample: "/"
+    type:
+      description: Filesystem type
+      type: str
+      sample: "ext4"
+    options:
+      description: Mount options as list of dicts
+      type: list
+      elements: dict
+      sample:
+        - defaults: true
+        - noatime: true
+    dump:
+      description: Dump frequency (null if omitted in fstab)
+      type: int
+      sample: 0
+    pass:
+      description: Fsck pass number (null if omitted in fstab)
+      type: int
+      sample: 1
+  sample:
+    - source: "/dev/sda1"
+      mount: "/"
+      type: "ext4"
+      options:
+        - defaults: true
+        - noatime: true
+      dump: 0
+      pass: 1
+    - source: "/dev/sda2"
+      mount: "/home"
+      type: "ext4"
+      options:
+        - defaults: true
+      dump: 0
+      pass: 2
 mount_count:
   description: Number of mounted filesystems found
   returned: always

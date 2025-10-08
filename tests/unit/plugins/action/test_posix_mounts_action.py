@@ -66,6 +66,8 @@ tmpfs on /tmp type tmpfs (rw,nosuid,nodev)""",
                     "1%   /tmp"
                 ),
             }
+        elif cmd == "cat /etc/fstab":
+            return {"rc": 0, "stdout": ""}
         return {"rc": 1}
 
     monkeypatch.setattr(plugin, "_cmd", mock_cmd)
@@ -364,6 +366,14 @@ def test_run_method(monkeypatch, plugin) -> None:
                     "/dev/sda1         1024000  512000    512000     50%   /"
                 ),
             }
+        elif cmd == "cat /etc/fstab":
+            return {
+                "rc": 0,
+                "stdout": (
+                    "/dev/sda1    /    ext4    defaults    0    1\n"
+                    "/dev/sda2    /home    ext4    defaults    0    2"
+                ),
+            }
         return {"rc": 1}
 
     monkeypatch.setattr(plugin, "_cmd", mock_cmd)
@@ -375,3 +385,8 @@ def test_run_method(monkeypatch, plugin) -> None:
     assert isinstance(result["mounts"], dict)
     assert "/" in result["mounts"]
     assert result["mounts"]["/"]["source"] == {"path": "/dev/sda1"}
+    assert "fstab" in result
+    assert isinstance(result["fstab"], list)
+    assert len(result["fstab"]) == 2
+    assert result["fstab"][0]["mount"] == "/"
+    assert result["fstab"][1]["mount"] == "/home"
