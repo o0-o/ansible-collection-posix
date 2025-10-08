@@ -45,6 +45,11 @@ from ansible_collections.o0_o.posix.plugins.module_utils.group_utils import (
     group_info,
     normalize_group_members,
 )
+from ansible_collections.o0_o.posix.plugins.module_utils.hosts_utils import (
+    hosts,
+    parse_hosts_entry,
+    generate_hosts_entry,
+)
 from ansible_collections.o0_o.posix.plugins.module_utils.passwd_utils import (
     passwd_info,
 )
@@ -74,6 +79,9 @@ __all__ = [
     "parse_fstab_entry",
     "generate_fstab",
     "generate_fstab_entry",
+    "hosts",
+    "parse_hosts_entry",
+    "generate_hosts_entry",
     "jc_parse",
     "is_posix",
     "id_info",
