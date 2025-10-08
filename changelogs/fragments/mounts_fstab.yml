@@ -1,0 +1,5 @@
+# vim: ts=2:sw=2:sts=2:et:ft=yaml.ansible
+# -*- mode: yaml; yaml-indent-offset: 2; indent-tabs-mode: nil; -*-
+---
+minor_changes:
+  - 'mounts module now includes parsed /etc/fstab entries in the ``fstab`` return field, allowing comparison between configured and active mount points.'
