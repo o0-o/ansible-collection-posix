@@ -83,9 +83,18 @@ EXAMPLES = r"""
 
 - name: Check authorized keys for all users
   ansible.builtin.debug:
-    msg: "User {{ item.value.name }} has {{ item.value.keys.authorized | length }} authorized_keys files"
+    msg: "User {{ item.value.name }} has {{ item.value.keys.authorized | length }} authorized keys"
   loop: "{{ system_users['users'] | dict2items }}"
   when: item.value.keys is defined and item.value.keys.authorized is defined
+
+- name: Find keys that exist in authorized_keys2
+  ansible.builtin.debug:
+    msg: "Key {{ item.key[:20] }}... is in authorized_keys2"
+  loop: "{{ system_users['users']['1000']['keys']['authorized'] | dict2items }}"
+  when:
+    - system_users['users']['1000']['keys'] is defined
+    - item.value.authorized_keys2 is defined
+    - item.value.authorized_keys2
 """
 
 RETURN = r"""
@@ -131,31 +140,32 @@ users:
         authorized:
           description: >-
             Authorized keys from C(~/.ssh/authorized_keys) and
-            C(~/.ssh/authorized_keys2) files
+            C(~/.ssh/authorized_keys2) files, keyed by SSH key data
           returned: when authorized_keys files are readable
           type: dict
           sample:
-            authorized_keys:
-              - type: ssh-rsa
-                key: AAAAB3NzaC1yc2EAAAADAQABAAABAQ...
-                comment: user@example.com
-            authorized_keys2:
-              - type: ssh-ed25519
-                key: AAAAC3NzaC1lZDI1NTE5AAAAIFq...
-                comment: deploy-key
+            'AAAAB3NzaC1yc2EAAAADAQABAAABAQ...':
+              type: ssh-rsa
+              comment: user@example.com
+            'AAAAC3NzaC1lZDI1NTE5AAAAIFq...':
+              type: ssh-ed25519
+              comment: deploy-key
+              authorized_keys2: true
         public:
-          description: Public key files from C(~/.ssh/*.pub)
+          description: >-
+            Public key files from C(~/.ssh/*.pub), keyed by SSH key
+            data. Only the first line of each .pub file is used.
           returned: when .ssh directory is readable
           type: dict
           sample:
-            id_rsa.pub:
-              - type: ssh-rsa
-                key: AAAAB3NzaC1yc2EAAAADAQABAAABAQ...
-                comment: user@host
-            id_ed25519.pub:
-              - type: ssh-ed25519
-                key: AAAAC3NzaC1lZDI1NTE5AAAAIFq...
-                comment: personal-key
+            'AAAAB3NzaC1yc2EAAAADAQABAAABAQ...':
+              type: ssh-rsa
+              comment: user@host
+              file: id_rsa.pub
+            'AAAAC3NzaC1lZDI1NTE5AAAAIFq...':
+              type: ssh-ed25519
+              comment: personal-key
+              file: id_ed25519.pub
 groups:
   description: >-
     Mapping of groups keyed according to the I(key) option. Each entry

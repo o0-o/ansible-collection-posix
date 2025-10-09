@@ -2,6 +2,7 @@
 # -*- mode: yaml; yaml-indent-offset: 2; indent-tabs-mode: nil; -*-
 ---
 minor_changes:
-  - 'users - Added SSH key gathering functionality that collects authorized keys from ``~/.ssh/authorized_keys`` and ``~/.ssh/authorized_keys2`` files.'
-  - 'users - Added public key file discovery for all ``.pub`` files in user home directories.'
+  - 'users - Added SSH key gathering functionality that collects authorized keys from ``~/.ssh/authorized_keys`` and ``~/.ssh/authorized_keys2`` files, keyed by SSH key data for easy lookups.'
+  - 'users - Added public key file discovery for all ``.pub`` files in user home directories, using only the first line of each file.'
   - 'users - SSH keys are only gathered when the user''s ``.ssh`` directory is readable, with graceful handling of permission issues and warnings for incomplete key information.'
+  - 'users - Keys that appear in ``authorized_keys2`` are marked with an ``authorized_keys2`` field set to true.'

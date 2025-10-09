@@ -338,21 +338,24 @@ class ActionModule(PosixActionBase, ActionBase):
 
     def _gather_authorized_keys(
         self, ssh_dir: str, username: Optional[str], task_vars: Dict[str, Any]
-    ) -> Tuple[Optional[Dict[str, List[Dict[str, Any]]]], Optional[str]]:
+    ) -> Tuple[Optional[Dict[str, Dict[str, Any]]], Optional[str]]:
         """Gather authorized_keys files for a user.
+
+        Returns dict keyed by SSH key data with metadata about which
+        file(s) contain the key.
 
         :param str ssh_dir: Path to .ssh directory
         :param Optional[str] username: Username for warning messages
         :param Dict[str, Any] task_vars: Task variables
         :returns Tuple[Optional[Dict], Optional[str]]: Authorized keys
-            dict and optional warning message
+            dict (keyed by key data) and optional warning message
         """
         auth_files = {
             "authorized_keys": f"{ssh_dir}/authorized_keys",
             "authorized_keys2": f"{ssh_dir}/authorized_keys2",
         }
 
-        found_keys: Dict[str, List[Dict[str, Any]]] = {}
+        found_keys: Dict[str, Dict[str, Any]] = {}
         readable_files: List[str] = []
         unreadable_files: List[str] = []
 
@@ -370,8 +373,34 @@ class ActionModule(PosixActionBase, ActionBase):
                 try:
                     content = self._read_text_file(file_path, task_vars)
                     parsed_keys = authorized_keys(content)
-                    if parsed_keys:
-                        found_keys[key_name] = parsed_keys
+                    for key_entry in parsed_keys:
+                        key_data = key_entry.get("key")
+                        if not key_data:
+                            continue
+
+                        # Use key data as dict key
+                        if key_data in found_keys:
+                            # Key already exists - mark which files it's in
+                            if key_name == "authorized_keys2":
+                                found_keys[key_data][
+                                    "authorized_keys2"
+                                ] = True
+                        else:
+                            # New key - add with metadata
+                            found_keys[key_data] = {
+                                "type": key_entry.get("type"),
+                                "comment": key_entry.get("comment"),
+                            }
+                            if key_name == "authorized_keys2":
+                                found_keys[key_data][
+                                    "authorized_keys2"
+                                ] = True
+                            # Add options if present
+                            if "options" in key_entry:
+                                found_keys[key_data]["options"] = key_entry[
+                                    "options"
+                                ]
+
                 except Exception:
                     # File exists but couldn't read it
                     unreadable_files.append(key_name)
@@ -405,17 +434,29 @@ class ActionModule(PosixActionBase, ActionBase):
 
     def _gather_public_keys(
         self, ssh_dir: str, task_vars: Dict[str, Any]
-    ) -> Optional[Dict[str, List[Dict[str, Any]]]]:
+    ) -> Optional[Dict[str, Dict[str, Any]]]:
         """Gather public key (.pub) files from .ssh directory.
+
+        Returns dict keyed by SSH key data (only first line of each .pub
+        file is used).
 
         :param str ssh_dir: Path to .ssh directory
         :param Dict[str, Any] task_vars: Task variables
-        :returns Optional[Dict]: Dict mapping filenames to parsed keys,
-            or None if .ssh not readable
+        :returns Optional[Dict]: Dict mapping key data to metadata, or
+            None if .ssh not readable
         """
         # Find all .pub files
         find_cmd = self._cmd(
-            ["find", ssh_dir, "-maxdepth", "1", "-type", "f", "-name", "*.pub"],
+            [
+                "find",
+                ssh_dir,
+                "-maxdepth",
+                "1",
+                "-type",
+                "f",
+                "-name",
+                "*.pub",
+            ],
             task_vars=task_vars,
             check_mode=False,
         )
@@ -434,19 +475,34 @@ class ActionModule(PosixActionBase, ActionBase):
             # No .pub files found
             return {}
 
-        pub_keys: Dict[str, List[Dict[str, Any]]] = {}
+        pub_keys: Dict[str, Dict[str, Any]] = {}
         for pub_file in pub_files:
             # Extract filename without path
             import os
 
             filename = os.path.basename(pub_file)
 
-            # Try to read and parse the file
+            # Try to read and parse the file (only first line)
             try:
                 content = self._read_text_file(pub_file, task_vars)
-                parsed_keys = authorized_keys(content)
-                if parsed_keys:
-                    pub_keys[filename] = parsed_keys
+                # Only use first non-empty line after trimming whitespace
+                lines = [
+                    line.strip() for line in content.splitlines() if line.strip()
+                ]
+                if not lines:
+                    continue
+
+                first_line = lines[0]
+                parsed_keys = authorized_keys(first_line)
+                if parsed_keys and len(parsed_keys) > 0:
+                    key_entry = parsed_keys[0]
+                    key_data = key_entry.get("key")
+                    if key_data:
+                        pub_keys[key_data] = {
+                            "type": key_entry.get("type"),
+                            "comment": key_entry.get("comment"),
+                            "file": filename,
+                        }
             except Exception:
                 # Could not read or parse this file, skip it
                 continue
