@@ -1,0 +1,6 @@
+# vim: ts=2:sw=2:sts=2:et:ft=yaml.ansible
+# -*- mode: yaml; yaml-indent-offset: 2; indent-tabs-mode: nil; -*-
+---
+minor_changes:
+  - 'compliance_utils - Enhanced ``is_posix`` function to handle new ``o0_os.compliance`` namespace structure from expanded facts module.'
+  - 'compliance test plugin - Updated documentation to demonstrate usage with new facts module structure and ``ansible_facts`` namespace.'

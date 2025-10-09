@@ -26,9 +26,7 @@ def test_is_posix_with_xsh_component() -> None:
         "compliance": {
             "posix": {
                 "components": {
-                    "xsh": {
-                        "version": {"id": "2008", "name": "POSIX.1-2008"}
-                    }
+                    "xsh": {"version": {"id": "2008", "name": "POSIX.1-2008"}}
                 }
             }
         }
@@ -48,11 +46,7 @@ def test_is_posix_with_xcu_component() -> None:
 
 def test_is_posix_with_sus() -> None:
     """Test is_posix returns True with SUS compliance."""
-    facts = {
-        "compliance": {
-            "sus": {"version": {"id": 4, "name": "SUSv4"}}
-        }
-    }
+    facts = {"compliance": {"sus": {"version": {"id": 4, "name": "SUSv4"}}}}
     assert is_posix(facts) is True
 
 
@@ -144,7 +138,8 @@ def test_is_posix_with_registered_result() -> None:
 
 
 def test_is_posix_with_direct_empty_compliance_dict() -> None:
-    """Test is_posix returns None with empty compliance dict directly."""
+    """Test is_posix returns None with empty compliance dict
+    directly."""
     compliance = {}
     assert is_posix(compliance) is None
 
@@ -153,3 +148,46 @@ def test_is_posix_with_direct_sus_only() -> None:
     """Test is_posix works with SUS in direct compliance dict."""
     compliance = {"sus": {"version": {"id": 4, "name": "SUSv4"}}}
     assert is_posix(compliance) is True
+
+
+def test_is_posix_with_o0_os_structure() -> None:
+    """Test is_posix works with o0_os namespace structure."""
+    facts = {
+        "o0_os": {
+            "compliance": {
+                "posix": {"components": {"xsh": {"version": {"id": "2008"}}}}
+            }
+        }
+    }
+    assert is_posix(facts) is True
+
+
+def test_is_posix_with_o0_os_non_posix() -> None:
+    """Test is_posix returns False with o0_os but no components."""
+    facts = {"o0_os": {"compliance": {"posix": {}}}}
+    assert is_posix(facts) is False
+
+
+def test_is_posix_with_o0_os_no_compliance() -> None:
+    """Test is_posix returns None with o0_os but no compliance."""
+    facts = {"o0_os": {"kernel": {"name": "linux"}}}
+    assert is_posix(facts) is None
+
+
+def test_is_posix_with_full_ansible_facts() -> None:
+    """Test is_posix works with full ansible_facts from facts module."""
+    ansible_facts = {
+        "o0_os": {
+            "kernel": {"name": "linux"},
+            "compliance": {
+                "posix": {
+                    "components": {
+                        "xsh": {"version": {"id": "2008"}},
+                        "xcu": {"version": {"id": "2008"}},
+                    }
+                }
+            },
+        },
+        "o0_hardware": {"baseboard": {"architecture": "x86_64"}},
+    }
+    assert is_posix(ansible_facts) is True

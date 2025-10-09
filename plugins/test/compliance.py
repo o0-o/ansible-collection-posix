@@ -36,8 +36,8 @@ options:
     description:
       - Facts dictionary (C(ansible_facts)), registered result from
         C(o0_o.posix.compliance), or compliance dict directly.
-      - Can be a dict with a C(compliance) key or a compliance dict
-        itself.
+      - Can be a dict with C(o0_os.compliance), C(compliance) key, or a
+        compliance dict itself.
     type: dict
     required: true
 notes:
@@ -51,7 +51,16 @@ notes:
 """
 
 EXAMPLES = r"""
-# Check if current host is POSIX-compliant using registered result
+# Check if current host is POSIX-compliant using facts module
+- name: Gather POSIX facts
+  o0_o.posix.facts:
+
+- name: Run task only on POSIX systems
+  ansible.builtin.debug:
+    msg: "System is POSIX-compliant"
+  when: ansible_facts is posix
+
+# Or use registered result from compliance module
 - name: Gather compliance information
   o0_o.posix.compliance:
   register: compliance_result
@@ -60,15 +69,6 @@ EXAMPLES = r"""
   ansible.builtin.debug:
     msg: "System is POSIX-compliant"
   when: compliance_result is posix
-
-# Or set facts and use ansible_facts
-- name: Set compliance facts
-  ansible.builtin.set_fact:
-    compliance: "{{ compliance_result.compliance }}"
-
-- name: Run task only on POSIX systems
-  ansible.builtin.command: grep -E "pattern" /etc/passwd
-  when: ansible_facts is posix
 
 # Or use the compliance dict directly
 - name: Check with compliance dict

@@ -21,20 +21,39 @@ module: facts
 short_description: Gather POSIX facts from the managed host
 version_added: '1.3.0'
 description:
-  - Collects minimal OS and hardware facts from POSIX-compatible remote hosts.
-  - Uses raw shell commands like C(uname) to gather kernel name, version,
-    and CPU architecture.
+  - Collects comprehensive POSIX facts from remote hosts.
+  - Gathers system information including kernel, mounts, users, locale,
+    timezone, and compliance data.
+  - Uses efficient shell commands and file reads where possible.
   - Does not require Python on the managed host.
 options:
   gather_subset:
     description:
       - List of fact subsets to gather.
       - Use C(all) to gather all available facts.
+      - Use C(min) for minimal facts (uname only).
       - Use C(!subset) to exclude specific subsets.
     type: list
     elements: str
     default: [all]
-    choices: [all, kernel, arch, '!all', '!kernel', '!arch']
+    choices:
+      - all
+      - min
+      - uname
+      - compliance
+      - mounts
+      - fstab
+      - users
+      - locale
+      - timezone
+      - '!all'
+      - '!uname'
+      - '!compliance'
+      - '!mounts'
+      - '!fstab'
+      - '!users'
+      - '!locale'
+      - '!timezone'
 author:
   - oØ.o (@o0-o)
 seealso:
@@ -60,20 +79,31 @@ EXAMPLES = r"""
 - name: Gather all POSIX facts
   o0_o.posix.facts:
 
-- name: Gather only kernel info
+- name: Gather minimal facts (uname, locale, timezone, compliance)
   o0_o.posix.facts:
     gather_subset:
-      - kernel
+      - min
 
-- name: Gather architecture only
+- name: Gather only system info and mounts
   o0_o.posix.facts:
     gather_subset:
-      - arch
+      - uname
+      - mounts
 
-- name: Exclude kernel info
+- name: Gather all except users
   o0_o.posix.facts:
     gather_subset:
-      - '!kernel'
+      - all
+      - '!users'
+
+- name: Use gathered facts with is posix test
+  o0_o.posix.facts:
+  register: posix_facts
+
+- name: Display compliance status
+  ansible.builtin.debug:
+    msg: "System is POSIX: {{ ansible_facts is posix }}"
+  when: ansible_facts is defined
 """
 
 RETURN = r"""
@@ -83,50 +113,151 @@ ansible_facts:
   type: dict
   contains:
     o0_os:
-      description: Basic operating system facts.
+      description: Operating system facts.
       type: dict
-      returned: when subset includes 'kernel'
+      returned: always
       contains:
         kernel:
-          description: Kernel metadata.
+          description: Kernel information from uname.
           type: dict
-          contains:
-            name:
-              type: str
-              description: Lowercase kernel name (e.g. "linux").
-            pretty:
-              type: str
-              description: Original kernel name as returned by uname.
+          returned: when uname subset is gathered
+          sample:
+            name: "linux"
+            pretty: "Linux"
             version:
-              description: Kernel version details.
+              id: "6.1.0-17-amd64"
+        time:
+          description: Current time and timezone information.
+          type: dict
+          returned: when timezone subset is gathered
+          contains:
+            epoch:
+              description: Unix timestamp
+              type: int
+              sample: 1234567890
+            pretty:
+              description: Human-readable datetime
+              type: str
+              sample: "2025-01-15 10:30:00 UTC"
+            zone:
+              description: Timezone details
               type: dict
               contains:
-                id:
+                name:
+                  description: Timezone name abbreviation
                   type: str
-                  description: Kernel version string (e.g. "6.1.0").
+                  sample: "UTC"
+                offset:
+                  description: Timezone offset
+                  type: str
+                  sample: "+0000"
+                config:
+                  description: Timezone configuration files
+                  type: dict
+                  contains:
+                    '/etc/localtime':
+                      description: Timezone file information
+                      type: dict
+                      contains:
+                        type:
+                          description: File type
+                          type: str
+                          sample: "link"
+                        links:
+                          description: Symlink target paths
+                          type: list
+                          elements: str
+                          returned: when type is link
+                          sample: ["/usr/share/zoneinfo/UTC"]
+        locale:
+          description: System locale information.
+          type: dict
+          returned: when locale subset is gathered
+          sample:
+            language: "en_US.UTF-8"
+            all: "en_US.UTF-8"
+        users:
+          description: User accounts from /etc/passwd.
+          type: dict
+          returned: when users subset is gathered
+        groups:
+          description: Groups from /etc/group.
+          type: dict
+          returned: when users subset is gathered
         compliance:
-          description: List of compliance identifiers.
-          type: list
-          elements: dict
-          contains:
-            name:
-              type: str
-              description: Internal compliance ID (e.g. "posix").
-            pretty:
-              type: str
-              description: Human-readable compliance name (e.g. "POSIX").
-    o0_hardware:
-      description: Hardware architecture facts.
+          description: Standards compliance information.
+          type: dict
+          returned: when compliance subset is gathered
+          sample:
+            posix:
+              components:
+                xsh:
+                  version:
+                    name: "POSIX.1-2008"
+    o0_storage:
+      description: Storage and filesystem facts.
       type: dict
-      returned: when subset includes 'arch'
+      returned: when storage subsets are gathered
       contains:
-        cpu:
-          description: CPU metadata.
+        mounts:
+          description: Current mount points.
+          type: list
+          returned: when mounts subset is gathered
+          sample:
+            - source: "/dev/sda1"
+              mount: "/"
+              type: "ext4"
+              options: ["rw", "relatime"]
+        config:
+          description: Storage configuration files.
+          type: dict
+          contains:
+            '/etc/fstab':
+              description: Parsed fstab entries.
+              type: list
+              returned: when fstab subset is gathered
+    o0_network:
+      description: Network facts.
+      type: dict
+      returned: when uname subset is gathered
+      contains:
+        hostname:
+          description: System hostname from uname.
+          type: dict
+          sample:
+            short: "server01"
+            long: "server01.example.com"
+    o0_hardware:
+      description: Hardware facts from dmidecode.
+      type: dict
+      returned: when hardware subset is gathered
+      contains:
+        baseboard:
+          description: Baseboard/motherboard information.
           type: dict
           contains:
             architecture:
+              description: CPU architecture (merged from uname)
               type: str
-              description: CPU architecture (e.g. "x86_64").
+              sample: "x86_64"
+            make:
+              description: Manufacturer
+              type: str
+            model:
+              description: Model name
+              type: str
+        processors:
+          description: Processor information.
+          type: dict
+        memory:
+          description: Memory module information.
+          type: dict
+        chassis:
+          description: Chassis information.
+          type: dict
+        power:
+          description: Power supply information.
+          type: dict
 """
 
 from ansible.module_utils.basic import AnsibleModule
@@ -139,7 +270,25 @@ def main():
             "type": "list",
             "elements": "str",
             "default": ["all"],
-            "choices": ["all", "kernel", "arch", "!all", "!kernel", "!arch"],
+            "choices": [
+                "all",
+                "min",
+                "uname",
+                "compliance",
+                "mounts",
+                "fstab",
+                "users",
+                "locale",
+                "timezone",
+                "!all",
+                "!uname",
+                "!compliance",
+                "!mounts",
+                "!fstab",
+                "!users",
+                "!locale",
+                "!timezone",
+            ],
         }
     }
 

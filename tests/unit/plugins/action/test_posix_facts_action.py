@@ -15,8 +15,7 @@ from typing import Generator
 
 import pytest
 
-from ansible.errors import AnsibleConnectionFailure
-from tests.utils import boom
+from ansible.errors import AnsibleActionFail, AnsibleConnectionFailure
 from ansible_collections.o0_o.posix.plugins.action.facts import ActionModule
 
 
@@ -39,88 +38,68 @@ def plugin(base) -> Generator[ActionModule, None, None]:
     return plugin
 
 
-def test_get_kernel_and_hardware_success(monkeypatch, plugin) -> None:
-    """Test successful gathering of POSIX kernel and hardware facts."""
-    monkeypatch.setattr(
-        plugin,
-        "_cmd",
-        lambda cmd, task_vars=None, **kwargs: {
-            "uname -s": {"stdout_lines": ["Linux"]},
-            "uname -r": {"stdout_lines": ["6.1.0"]},
-            "uname -m": {"stdout_lines": ["x86_64"]},
-        }[" ".join(cmd)],
-    )
-
-    kernel, cpu = plugin._get_kernel_and_hardware(task_vars={})
-
-    assert kernel["name"] == "linux"
-    assert kernel["version"]["id"] == "6.1.0"
-    assert cpu["architecture"] == "x86_64"
+def test_resolve_subsets_all(plugin) -> None:
+    """Test subset resolution for 'all'."""
+    selected = plugin._resolve_subsets(["all"])
+    assert "uname" in selected
+    assert "locale" in selected
+    assert "timezone" in selected
+    assert "hardware" in selected
+    assert "compliance" in selected
 
 
-def test_get_kernel_and_hardware_connection_failure(
-    monkeypatch, plugin
-) -> None:
-    """Test that connection failures are properly propagated."""
-    monkeypatch.setattr(
-        plugin,
-        "_cmd",
-        boom(AnsibleConnectionFailure("connection lost")),
-    )
-
-    with pytest.raises(AnsibleConnectionFailure):
-        plugin._get_kernel_and_hardware(task_vars={})
+def test_resolve_subsets_min(plugin) -> None:
+    """Test subset resolution for 'min'."""
+    selected = plugin._resolve_subsets(["min"])
+    assert selected == {"uname", "locale", "timezone", "compliance"}
 
 
-def test_run_skips_on_non_posix(monkeypatch, plugin) -> None:
-    """Test graceful handling of non-POSIX systems."""
-    monkeypatch.setattr(plugin, "_cmd", boom(RuntimeError("not POSIX")))
+def test_resolve_subsets_storage(plugin) -> None:
+    """Test subset resolution for 'storage' group."""
+    selected = plugin._resolve_subsets(["storage"])
+    assert selected == {"mounts", "fstab"}
 
+
+def test_resolve_subsets_exclusion(plugin) -> None:
+    """Test subset exclusion with !subset."""
+    selected = plugin._resolve_subsets(["all", "!hardware"])
+    assert "uname" in selected
+    assert "hardware" not in selected
+
+
+def test_resolve_subsets_invalid(plugin) -> None:
+    """Test invalid subset raises error."""
+    with pytest.raises(AnsibleActionFail, match="Invalid gather_subset"):
+        plugin._resolve_subsets(["invalid_subset"])
+
+
+def test_run_skips_non_posix(monkeypatch, plugin) -> None:
+    """Test that non-POSIX systems are skipped gracefully."""
+
+    def mock_execute_module(module_name, module_args, task_vars=None):
+        if module_name == "o0_o.posix.compliance":
+            # Return compliance dict with posix key but no components
+            # (indicates non-POSIX system per is_posix logic)
+            return {"compliance": {"posix": {}}}
+        return {}
+
+    # Mock _execute_module to return non-POSIX compliance
+    monkeypatch.setattr(plugin, "_execute_module", mock_execute_module)
+
+    plugin._task.args = {"gather_subset": ["all"]}
     result = plugin.run(tmp=None, task_vars={})
 
     assert result.get("skipped") is True
     assert "POSIX" in result.get("skip_reason", "")
 
 
-@pytest.mark.parametrize(
-    "subset,expect_os,expect_hw",
-    [
-        (["all"], True, True),
-        (["kernel"], True, False),
-        (["arch"], False, True),
-        (["!kernel"], False, True),
-    ],
-)
-def test_run_subset_selection(
-    monkeypatch, plugin, subset, expect_os, expect_hw
-) -> None:
-    """Test gather_subset filtering and fact inclusion logic."""
-    monkeypatch.setattr(
-        plugin,
-        "_cmd",
-        lambda cmd, task_vars=None, **kwargs: {
-            "uname -s": {"stdout_lines": ["Linux"]},
-            "uname -r": {"stdout_lines": ["6.1.0"]},
-            "uname -m": {"stdout_lines": ["x86_64"]},
-        }[" ".join(cmd)],
-    )
+def test_run_connection_failure_propagates(monkeypatch, plugin) -> None:
+    """Test that connection failures are properly propagated."""
 
-    plugin._task.args = {"gather_subset": subset}
-    result = plugin.run(tmp=None, task_vars={})
+    def mock_execute_module(module_name, module_args, task_vars=None):
+        raise AnsibleConnectionFailure("connection lost")
 
-    facts = result.get("ansible_facts", {})
+    monkeypatch.setattr(plugin, "_execute_module", mock_execute_module)
 
-    if expect_os:
-        assert "o0_os" in facts
-        assert facts["o0_os"]["kernel"]["name"] == "linux"
-        assert {"name": "posix", "pretty": "POSIX"} in facts["o0_os"][
-            "compliance"
-        ]
-    else:
-        assert "o0_os" not in facts
-
-    if expect_hw:
-        assert "o0_hardware" in facts
-        assert facts["o0_hardware"]["cpu"]["architecture"] == "x86_64"
-    else:
-        assert "o0_hardware" not in facts
+    with pytest.raises(AnsibleConnectionFailure):
+        plugin.run(tmp=None, task_vars={})

@@ -1,0 +1,7 @@
+# vim: ts=2:sw=2:sts=2:et:ft=yaml.ansible
+# -*- mode: yaml; yaml-indent-offset: 2; indent-tabs-mode: nil; -*-
+---
+major_changes:
+  - 'facts - Expanded from basic kernel/hardware gathering to comprehensive system facts collection including uname, locale, timezone, hardware (dmidecode), compliance, storage (mounts, fstab), and users/groups.'
+  - 'facts - Added new subset system with ``all``, ``min``, and ``storage`` groups plus individual subsets for granular control over fact gathering.'
+  - 'facts - Organized facts into logical namespaces: ``o0_os``, ``o0_hardware``, ``o0_storage``, and ``o0_network`` for better structure and usability.'

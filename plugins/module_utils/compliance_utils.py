@@ -13,7 +13,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict, Optional
+from typing import Any, Optional
 
 
 def is_posix(facts: Any) -> Optional[bool]:
@@ -35,15 +35,23 @@ def is_posix(facts: Any) -> Optional[bool]:
         )
 
     # Try to get compliance dict from facts
-    # First check if there's a 'compliance' key (ansible_facts or
-    # registered result)
-    if "compliance" in facts:
+    # Check multiple possible locations:
+    # 1. o0_os.compliance (new facts structure)
+    # 2. compliance key (registered result or ansible_facts)
+    # 3. Direct compliance dict
+    if "o0_os" in facts and isinstance(facts["o0_os"], dict):
+        compliance = facts["o0_os"].get("compliance")
+        if compliance and isinstance(compliance, dict):
+            pass  # Found it in o0_os
+        else:
+            return None
+    elif "compliance" in facts:
         compliance = facts.get("compliance")
         if not isinstance(compliance, dict):
             return None
     else:
-        # If no 'compliance' key, assume the dict itself is the
-        # compliance dict
+        # If no 'compliance' or 'o0_os' key, assume the dict itself is
+        # the compliance dict
         compliance = facts
 
     # If compliance dict is empty, we cannot determine
