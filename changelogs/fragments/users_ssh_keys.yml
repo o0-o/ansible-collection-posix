@@ -1,0 +1,7 @@
+# vim: ts=2:sw=2:sts=2:et:ft=yaml.ansible
+# -*- mode: yaml; yaml-indent-offset: 2; indent-tabs-mode: nil; -*-
+---
+minor_changes:
+  - 'users - Added SSH key gathering functionality that collects authorized keys from ``~/.ssh/authorized_keys`` and ``~/.ssh/authorized_keys2`` files.'
+  - 'users - Added public key file discovery for all ``.pub`` files in user home directories.'
+  - 'users - SSH keys are only gathered when the user''s ``.ssh`` directory is readable, with graceful handling of permission issues and warnings for incomplete key information.'

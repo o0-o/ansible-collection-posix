@@ -18,6 +18,7 @@ from ansible.plugins.action import ActionBase
 
 from ansible_collections.o0_o.posix.plugins.module_utils import (
     PosixActionBase,
+    authorized_keys,
     group_info,
     jc_parse,
     normalize_group_members,
@@ -46,7 +47,11 @@ class ActionModule(PosixActionBase, ActionBase):
 
         argument_spec = {
             "key": {"type": "str", "choices": ["id", "name"], "default": "id"},
-            "passwd_path": {"type": "str", "default": "/etc/passwd"},
+            "passwd_path": {
+                "type": "str",
+                "default": "/etc/passwd",
+                "no_log": False,
+            },
             "group_path": {"type": "str", "default": "/etc/group"},
         }
 
@@ -67,6 +72,9 @@ class ActionModule(PosixActionBase, ActionBase):
             group_content=group_content,
             key=key,
         )
+
+        # Gather SSH keys for users
+        self._gather_ssh_keys_for_users(users, task_vars)
 
         result.update({"changed": False, "users": users, "groups": groups})
         return result
@@ -261,6 +269,189 @@ class ActionModule(PosixActionBase, ActionBase):
                 group_entry["members"] = members
             if member not in members:
                 members.append(member)
+
+    def _gather_ssh_keys_for_users(
+        self, users: Dict[str, Dict[str, Any]], task_vars: Dict[str, Any]
+    ) -> None:
+        """Gather SSH keys for all users.
+
+        Adds 'keys' dict to each user entry with 'authorized' and
+        'public' keys. Handles permission issues gracefully.
+
+        :param Dict[str, Dict[str, Any]] users: User mapping to augment
+        :param Dict[str, Any] task_vars: Task variables
+        """
+        for user_key, user_data in users.items():
+            home = user_data.get("home")
+            name = user_data.get("name")
+            if not home or not isinstance(home, str):
+                continue
+
+            ssh_dir = f"{home}/.ssh"
+
+            # Check if we can read the .ssh directory
+            can_read_ssh_dir = self._check_directory_readable(
+                ssh_dir, task_vars
+            )
+            if not can_read_ssh_dir:
+                # No read access to .ssh directory - don't add keys at all
+                continue
+
+            # Gather authorized keys
+            auth_keys_data, auth_keys_warning = (
+                self._gather_authorized_keys(ssh_dir, name, task_vars)
+            )
+
+            # Gather public keys
+            pub_keys_data = self._gather_public_keys(ssh_dir, task_vars)
+
+            # Only add keys dict if we have data or empty dicts
+            keys: Dict[str, Any] = {}
+            if auth_keys_data is not None:
+                keys["authorized"] = auth_keys_data
+            if pub_keys_data is not None:
+                keys["public"] = pub_keys_data
+
+            if keys:
+                user_data["keys"] = keys
+
+            # Issue warning if needed
+            if auth_keys_warning:
+                host = self._get_inventory_hostname(task_vars)
+                self._display.warning(f"[{host}] {auth_keys_warning}")
+
+    def _check_directory_readable(
+        self, path: str, task_vars: Dict[str, Any]
+    ) -> bool:
+        """Check if a directory is readable.
+
+        :param str path: Directory path to check
+        :param Dict[str, Any] task_vars: Task variables
+        :returns bool: True if directory is readable
+        """
+        cmd_result = self._cmd(
+            ["test", "-r", path, "-a", "-d", path],
+            task_vars=task_vars,
+            check_mode=False,
+        )
+        return cmd_result.get("rc") == 0
+
+    def _gather_authorized_keys(
+        self, ssh_dir: str, username: Optional[str], task_vars: Dict[str, Any]
+    ) -> Tuple[Optional[Dict[str, List[Dict[str, Any]]]], Optional[str]]:
+        """Gather authorized_keys files for a user.
+
+        :param str ssh_dir: Path to .ssh directory
+        :param Optional[str] username: Username for warning messages
+        :param Dict[str, Any] task_vars: Task variables
+        :returns Tuple[Optional[Dict], Optional[str]]: Authorized keys
+            dict and optional warning message
+        """
+        auth_files = {
+            "authorized_keys": f"{ssh_dir}/authorized_keys",
+            "authorized_keys2": f"{ssh_dir}/authorized_keys2",
+        }
+
+        found_keys: Dict[str, List[Dict[str, Any]]] = {}
+        readable_files: List[str] = []
+        unreadable_files: List[str] = []
+
+        for key_name, file_path in auth_files.items():
+            # Check if file exists and is readable
+            check_cmd = self._cmd(
+                ["test", "-f", file_path, "-a", "-r", file_path],
+                task_vars=task_vars,
+                check_mode=False,
+            )
+
+            if check_cmd.get("rc") == 0:
+                readable_files.append(key_name)
+                # Read and parse the file
+                try:
+                    content = self._read_text_file(file_path, task_vars)
+                    parsed_keys = authorized_keys(content)
+                    if parsed_keys:
+                        found_keys[key_name] = parsed_keys
+                except Exception:
+                    # File exists but couldn't read it
+                    unreadable_files.append(key_name)
+                    readable_files.remove(key_name)
+            else:
+                # Check if file exists but is not readable
+                exists_cmd = self._cmd(
+                    ["test", "-f", file_path],
+                    task_vars=task_vars,
+                    check_mode=False,
+                )
+                if exists_cmd.get("rc") == 0:
+                    unreadable_files.append(key_name)
+
+        # Generate warning if we have mixed permissions
+        warning = None
+        if readable_files and unreadable_files:
+            user_label = username or "user"
+            warning = (
+                f"{user_label}: SSH key information incomplete - "
+                f"could read {', '.join(readable_files)} but not "
+                f"{', '.join(unreadable_files)}"
+            )
+
+        # Return None if we couldn't read any authorized_keys files
+        if not readable_files:
+            return None, warning
+
+        # Return empty dict if no keys found, but files were readable
+        return found_keys or {}, warning
+
+    def _gather_public_keys(
+        self, ssh_dir: str, task_vars: Dict[str, Any]
+    ) -> Optional[Dict[str, List[Dict[str, Any]]]]:
+        """Gather public key (.pub) files from .ssh directory.
+
+        :param str ssh_dir: Path to .ssh directory
+        :param Dict[str, Any] task_vars: Task variables
+        :returns Optional[Dict]: Dict mapping filenames to parsed keys,
+            or None if .ssh not readable
+        """
+        # Find all .pub files
+        find_cmd = self._cmd(
+            ["find", ssh_dir, "-maxdepth", "1", "-type", "f", "-name", "*.pub"],
+            task_vars=task_vars,
+            check_mode=False,
+        )
+
+        if find_cmd.get("rc") != 0:
+            # Could not list directory
+            return None
+
+        pub_files = [
+            f.strip()
+            for f in find_cmd.get("stdout", "").splitlines()
+            if f.strip()
+        ]
+
+        if not pub_files:
+            # No .pub files found
+            return {}
+
+        pub_keys: Dict[str, List[Dict[str, Any]]] = {}
+        for pub_file in pub_files:
+            # Extract filename without path
+            import os
+
+            filename = os.path.basename(pub_file)
+
+            # Try to read and parse the file
+            try:
+                content = self._read_text_file(pub_file, task_vars)
+                parsed_keys = authorized_keys(content)
+                if parsed_keys:
+                    pub_keys[filename] = parsed_keys
+            except Exception:
+                # Could not read or parse this file, skip it
+                continue
+
+        return pub_keys
 
 
 def _to_int(value: Any) -> Optional[int]:
