@@ -389,8 +389,12 @@ class ActionModule(PosixActionBase, ActionBase):
                             # New key - add with metadata
                             found_keys[key_data] = {
                                 "type": key_entry.get("type"),
-                                "comment": key_entry.get("comment"),
                             }
+                            # Only add comment if present
+                            comment = key_entry.get("comment")
+                            if comment:
+                                found_keys[key_data]["comment"] = comment
+
                             if key_name == "authorized_keys2":
                                 found_keys[key_data][
                                     "authorized_keys2"
@@ -500,9 +504,12 @@ class ActionModule(PosixActionBase, ActionBase):
                     if key_data:
                         pub_keys[key_data] = {
                             "type": key_entry.get("type"),
-                            "comment": key_entry.get("comment"),
                             "file": filename,
                         }
+                        # Only add comment if present
+                        comment = key_entry.get("comment")
+                        if comment:
+                            pub_keys[key_data]["comment"] = comment
             except Exception:
                 # Could not read or parse this file, skip it
                 continue

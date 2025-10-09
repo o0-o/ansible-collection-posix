@@ -149,7 +149,6 @@ users:
               comment: user@example.com
             'AAAAC3NzaC1lZDI1NTE5AAAAIFq...':
               type: ssh-ed25519
-              comment: deploy-key
               authorized_keys2: true
         public:
           description: >-
