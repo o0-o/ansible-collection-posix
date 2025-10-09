@@ -13,11 +13,6 @@
 
 from __future__ import annotations
 
-from ansible_collections.o0_o.posix.plugins.module_utils.authorized_keys_utils import (  # noqa: E501
-    authorized_keys,
-    parse_authorized_keys,
-    parse_authorized_keys_entry,
-)
 from ansible_collections.o0_o.posix.plugins.module_utils.df_utils import (
     df,
     parse_df,
@@ -75,9 +70,6 @@ from ansible_collections.o0_o.posix.plugins.module_utils.uname_utils import (
 
 __all__ = [
     "PosixActionBase",
-    "authorized_keys",
-    "parse_authorized_keys",
-    "parse_authorized_keys_entry",
     "df",
     "parse_df",
     "parse_df_entry",

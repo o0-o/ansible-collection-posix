@@ -18,11 +18,13 @@ from ansible.plugins.action import ActionBase
 
 from ansible_collections.o0_o.posix.plugins.module_utils import (
     PosixActionBase,
-    authorized_keys,
     group_info,
     jc_parse,
     normalize_group_members,
     passwd_info,
+)
+from ansible_collections.o0_o.ssh.plugins.module_utils import (
+    authorized_keys,
 )
 
 
