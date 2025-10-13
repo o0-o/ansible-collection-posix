@@ -3,7 +3,8 @@
 # Core dependencies
 jc>=1.25.0                  # Command output parsing
 
-# Dependencies for o0_o.utils.hostname filter (used by uname filter)
-dnspython>=2.0.0            # DNS resolution
-idna>=3.0                   # IDN support
-tldextract>=3.1.0           # TLD extraction
+# Dependencies for o0_o.utils (used by multiple filters)
+python-dateutil>=2.8.0      # Date parsing for dmidecode
+dnspython>=2.0.0            # DNS resolution for hostname
+idna>=3.0                   # IDN support for hostname
+tldextract>=3.1.0           # TLD extraction for hostname

@@ -14,28 +14,15 @@
 from __future__ import annotations
 
 import re
-from datetime import datetime
 from typing import Any, Dict, List, Optional, Union
 
 from ansible_collections.o0_o.posix.plugins.module_utils.jc_utils import (
     jc_parse,
 )
-from ansible_collections.o0_o.utils.plugins.module_utils.si_utils import (
+from ansible_collections.o0_o.utils.plugins.module_utils import (
+    parse_datetime,
     parse_si,
 )
-
-
-def _parse_date_to_epoch(date_str: str) -> Optional[int]:
-    """Parse date string to epoch timestamp.
-
-    :param date_str: Date string in MM/DD/YYYY format
-    :returns: Unix epoch timestamp or None if parsing fails
-    """
-    try:
-        dt = datetime.strptime(date_str, "%m/%d/%Y")
-        return int(dt.timestamp())
-    except (ValueError, AttributeError):
-        return None
 
 
 def _clean_feature(feature: str) -> str:
@@ -107,16 +94,6 @@ def _is_meaningless_value(value: str) -> bool:
         return True
 
     return False
-
-
-def _is_invalid_version(version: str) -> bool:
-    """Check if version string appears to be invalid/placeholder.
-
-    :param version: Version string to check
-    :returns: True if version appears invalid
-    """
-    # Use the general meaningless value check
-    return _is_meaningless_value(version)
 
 
 def _is_all_zeros_uuid(uuid: str) -> bool:
@@ -234,11 +211,12 @@ def _process_bios(bios_entry: Dict[str, Any]) -> Dict[str, Any]:
 
     # Date information
     if "release_date" in values:
-        date_dict = {"pretty": values["release_date"]}
-        epoch = _parse_date_to_epoch(values["release_date"])
-        if epoch is not None:
-            date_dict["epoch"] = epoch
-        bios["date"] = date_dict
+        parsed_date = parse_datetime(values["release_date"])
+        if parsed_date is not None:
+            bios["date"] = parsed_date
+        else:
+            # Fallback if parsing fails
+            bios["date"] = {"pretty": values["release_date"]}
 
     # Features (cleaned)
     if "characteristics" in values:
@@ -292,7 +270,7 @@ def _process_system(system_entry: Dict[str, Any]) -> Dict[str, Any]:
 
     # Only include version if not invalid pattern
     version = values.get("version")
-    if version and not _is_invalid_version(version):
+    if version and not _is_meaningless_value(version):
         system["version"] = {"id": version}
 
     # Only include serial if not meaningless
@@ -337,7 +315,7 @@ def _process_chassis(chassis_entry: Dict[str, Any]) -> Dict[str, Any]:
 
     # Only include version if not invalid pattern
     version = values.get("version")
-    if version and not _is_invalid_version(version):
+    if version and not _is_meaningless_value(version):
         chassis["version"] = {"id": version}
 
     # Only include serial if not meaningless
