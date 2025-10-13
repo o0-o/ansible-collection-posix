@@ -111,7 +111,8 @@ def hosts(
     """
     # Check if this is a list input
     if isinstance(config, list):
-        # Check if list contains dicts (for generation) or strings (for parsing)
+        # Check if list contains dicts (for generation) or strings
+        # (for parsing)
         if config and isinstance(config[0], dict):
             # Generate hosts file from list of entries
             lines = []
@@ -130,9 +131,7 @@ def hosts(
         elif "stdout" in config:
             content = config["stdout"]
         else:
-            raise ValueError(
-                "Dict input must have 'content' or 'stdout' key"
-            )
+            raise ValueError("Dict input must have 'content' or 'stdout' key")
     else:
         # String input
         content = config
@@ -146,7 +145,7 @@ def hosts(
         try:
             norm_entry = parse_hosts_entry(entry)
             normalized.append(norm_entry)
-        except ValueError as e:
+        except ValueError:
             # Skip invalid entries
             continue
 

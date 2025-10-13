@@ -86,9 +86,8 @@ class ActionModule(PosixActionBase, ActionBase):
             ["cat", path], task_vars=task_vars, check_mode=False
         )
         if cmd_result.get("rc") != 0:
-            raise AnsibleActionFail(
-                f"Failed to read {path}: {cmd_result.get('stderr') or cmd_result.get('stdout')}"
-            )
+            error_msg = cmd_result.get("stderr") or cmd_result.get("stdout")
+            raise AnsibleActionFail(f"Failed to read {path}: {error_msg}")
         return cmd_result.get("stdout", "")
 
     def _compose_user_group_maps(
@@ -300,8 +299,8 @@ class ActionModule(PosixActionBase, ActionBase):
                 continue
 
             # Gather authorized keys
-            auth_keys_data, auth_keys_warning = (
-                self._gather_authorized_keys(ssh_dir, name, task_vars)
+            auth_keys_data, auth_keys_warning = self._gather_authorized_keys(
+                ssh_dir, name, task_vars
             )
 
             # Gather public keys
@@ -384,9 +383,7 @@ class ActionModule(PosixActionBase, ActionBase):
                         if key_data in found_keys:
                             # Key already exists - mark which files it's in
                             if key_name == "authorized_keys2":
-                                found_keys[key_data][
-                                    "authorized_keys2"
-                                ] = True
+                                found_keys[key_data]["authorized_keys2"] = True
                         else:
                             # New key - add with metadata
                             found_keys[key_data] = {
@@ -398,9 +395,7 @@ class ActionModule(PosixActionBase, ActionBase):
                                 found_keys[key_data]["comment"] = comment
 
                             if key_name == "authorized_keys2":
-                                found_keys[key_data][
-                                    "authorized_keys2"
-                                ] = True
+                                found_keys[key_data]["authorized_keys2"] = True
                             # Add options if present
                             if "options" in key_entry:
                                 found_keys[key_data]["options"] = key_entry[
@@ -493,7 +488,9 @@ class ActionModule(PosixActionBase, ActionBase):
                 content = self._read_text_file(pub_file, task_vars)
                 # Only use first non-empty line after trimming whitespace
                 lines = [
-                    line.strip() for line in content.splitlines() if line.strip()
+                    line.strip()
+                    for line in content.splitlines()
+                    if line.strip()
                 ]
                 if not lines:
                     continue

@@ -397,9 +397,7 @@ def fstab(
         elif "stdout" in config:
             content = config["stdout"]
         else:
-            raise ValueError(
-                "Dict input must have 'content' or 'stdout' key"
-            )
+            raise ValueError("Dict input must have 'content' or 'stdout' key")
     else:
         # String input
         content = config
