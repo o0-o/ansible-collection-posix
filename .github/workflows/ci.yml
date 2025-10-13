@@ -47,6 +47,45 @@ jobs:
           name: ansible-collection-tarball
           path: ./*.tar.gz
 
+  # Quick smoke test on ubuntu-latest before running full matrix
+  quick-test:
+    name: Quick Test (Ubuntu Latest)
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: ansible-collection-tarball
+          path: ./build
+
+      - name: Install Ansible and collection
+        run: |
+          pip install ansible-core
+          ansible-galaxy collection install ./build/o0_o-posix-*.tar.gz \
+            --force -p ~/.ansible/collections
+
+      - name: Run quick sanity tests
+        run: |
+          cd ~/.ansible/collections/ansible_collections/o0_o/posix
+          ansible-test sanity --venv -v
+
+      - name: Run quick unit tests
+        run: |
+          cd ~/.ansible/collections/ansible_collections/o0_o/posix
+          ansible-test units --venv -v
+
+      - name: Run quick integration tests
+        run: |
+          cd ~/.ansible/collections/ansible_collections/o0_o/posix
+          ansible-test integration --venv -v
+
   # Read the Linux OS and Python version matrices from JSON files
   linux-matrix:
     runs-on: ubuntu-latest
@@ -79,7 +118,7 @@ jobs:
     runs-on: ubuntu-latest
     needs:
       - linux-matrix
-      - build
+      - quick-test
     strategy:
       fail-fast: false
       matrix:
@@ -135,7 +174,7 @@ jobs:
     runs-on: ubuntu-latest
     needs:
       - linux-matrix
-      - build
+      - quick-test
     strategy:
       fail-fast: false
       matrix:
@@ -175,7 +214,7 @@ jobs:
     runs-on: ubuntu-latest
     needs:
       - linux-matrix
-      - build
+      - quick-test
     strategy:
       fail-fast: false
       matrix:
@@ -218,7 +257,7 @@ jobs:
     runs-on: ${{ matrix['os'] }}
     needs:
       - macos-matrix
-      - build
+      - quick-test
     strategy:
       fail-fast: false
       matrix:
@@ -267,7 +306,7 @@ jobs:
     runs-on: ${{ matrix['os'] }}
     needs:
       - macos-matrix
-      - build
+      - quick-test
     strategy:
       fail-fast: false
       matrix:
@@ -316,7 +355,7 @@ jobs:
     runs-on: ${{ matrix['os'] }}
     needs:
       - macos-matrix
-      - build
+      - quick-test
     strategy:
       fail-fast: false
       matrix:
