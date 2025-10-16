@@ -73,11 +73,13 @@ class ActionModule(PosixActionBase, ActionBase):
                 "elements": "str",
                 "aliases": ["executable"],
             },
+            "_force_raw": {"type": "bool", "default": False},
         }
 
         validation_result, new_args = self.validate_argument_spec(
             argument_spec=argument_spec
         )
+        self.force_raw = new_args.pop("_force_raw", False)
 
         # Normalize to lists using wantlist
         pids = wantlist(new_args.get("pids"))
