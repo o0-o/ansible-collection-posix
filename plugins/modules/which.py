@@ -21,11 +21,12 @@ version_added: "1.4.0"
 description:
   - Resolves the full path to a command by clearing aliases and using
     C(command -v) with a fallback to C(which).
+  - Returns command as-is for shell built-ins
   - Always executes in a POSIX shell to guarantee alias removal.
 options:
-  name:
+  command:
     description:
-      - The command name to resolve (e.g. C(ls), C(date)).
+      - The command to resolve (e.g. C(ls), C(date)).
     type: str
     required: true
 author:
@@ -37,29 +38,21 @@ notes:
 EXAMPLES = r"""
 - name: Find the path to date
   o0_o.posix.which:
-    name: date
+    command: date
   register: date_path
 
 - name: Show
   ansible.builtin.debug:
-    var: date_path.which.path
+    var: date_path.path
 """
 
 RETURN = r"""
-which:
-  description: Result of command resolution
-  returned: always
-  type: dict
-  contains:
-    found:
-      description: Whether the command was found in PATH
-      type: bool
-      sample: true
-    path:
-      description: Full path to the command if found
-      type: str
-      returned: when found is true
-      sample: /bin/date
+contains:
+  path:
+    description: Full path to the command if found
+    type: str
+    returned: always
+    sample: /bin/date
 """
 from ansible.module_utils.basic import AnsibleModule
 
@@ -67,7 +60,7 @@ from ansible.module_utils.basic import AnsibleModule
 def main() -> None:
     """Fail if this module is run directly without the action plugin."""
 
-    argument_spec = {"name": {"type": "str", "required": True}}
+    argument_spec = {"command": {"type": "str", "required": True}}
 
     module = AnsibleModule(
         argument_spec=argument_spec, supports_check_mode=True

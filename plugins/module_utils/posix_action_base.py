@@ -78,17 +78,45 @@ class PosixActionBase:
             return False
 
         msg = result.get("msg", "")
-        if not isinstance(msg, str):
-            return False
+        stderr = result.get("stderr", "")
+        module_stderr = result.get("module_stderr", "")
 
+        # Check all text fields for interpreter errors
+        text_to_check = " ".join(
+            [
+                str(msg) if isinstance(msg, str) else "",
+                str(stderr) if isinstance(stderr, str) else "",
+                str(module_stderr) if isinstance(module_stderr, str) else "",
+            ]
+        ).lower()
+
+        # Ansible's standard error message
         canary_str = (
             "The module failed to execute correctly, you probably need to set "
             "the interpreter"
         )
 
-        if canary_str.lower() in msg.lower():
+        # Check for the standard canary or signs of missing Python
+        if canary_str.lower() in text_to_check:
             self.force_raw = True
             self._display.vv("Python not found, proceeding with raw commands")
+            return True
+
+        # Check for shell error indicating Python not found
+        # Examples: "/usr/bin/python3: not found", "python: not found"
+        python_patterns = [
+            "python: not found",
+            "python2: not found",
+            "python3: not found",
+            "/python: not found",  # Catches /usr/bin/python, etc.
+        ]
+
+        if any(pattern in text_to_check for pattern in python_patterns):
+            self.force_raw = True
+            self._display.vv(
+                "Python interpreter not found (shell error), "
+                "proceeding with raw commands"
+            )
             return True
 
         return False
@@ -570,47 +598,54 @@ class PosixActionBase:
             )
 
     def _which(
-        self, binary: str, task_vars: Optional[Dict[str, Any]] = None
+        self, cmd: str, task_vars: Optional[Dict[str, Any]] = None
     ) -> Optional[str]:
         """
-        Locate the full path of a binary using POSIX-compliant methods.
+        Locate the full path of a command using POSIX-compliant methods.
 
         Attempts to resolve the path to an executable by first using the
         POSIX-compliant ``command -v``, and falls back to ``which`` if
-        necessary. If the binary is a shell builtin or function, returns
-        its name.
+        necessary. If the command is a shell builtin or function,
+        returns its name.
 
-        :param str binary: The name of the binary to locate
+        :param str cmd: The name of the command to locate
             (e.g., "chcon")
         :param Optional[dict] task_vars: Ansible task variables passed
             to the ``_cmd`` method
-        :returns Optional[str]: Path to the binary or the name if it's
+        :returns Optional[str]: Path to the command or the name if it's
             a shell builtin
         """
-        # POSIX-compliant check first
-        cmd_result = self._cmd(
-            ["sh", "-c", f"command -v {binary}"], task_vars=task_vars
-        )
+        quoted = shlex.quote(cmd)
+        shell_cmd = f"unalias -a 2>/dev/null; command -v {quoted}"
+        cmd_result = self._cmd(["sh", "-c", shell_cmd], task_vars=task_vars)
         stdout = cmd_result.get("stdout", "").strip()
 
         if cmd_result["rc"] == 0 and stdout:
-            # If stdout is just the binary name (no slash), assume
+            # If stdout is just the command name (no slash), assume
             # builtin
             if "/" not in stdout:
-                return binary
+                return cmd
             return stdout
+        else:
+            self._display.vvv(f"command -v {cmd} failed, trying which")
 
         # Fallback to 'which' if available
-        cmd_result = self._cmd(["which", binary], task_vars=task_vars)
-        stdout = cmd_result.get("stdout", "").strip().lower()
+        cmd_result = self._cmd(["which", cmd], task_vars=task_vars)
+        stdout = cmd_result.get("stdout", "").strip()
+        stdout_lower = stdout.lower()
 
         if cmd_result["rc"] == 0 and stdout:
             # Detect builtin shell descriptions from common formats
-            if "shell built-in command" in stdout or "shell builtin" in stdout:
-                return binary
+            if (
+                "shell built-in command" in stdout_lower
+                or "shell builtin" in stdout_lower
+            ):
+                return cmd
             if stdout and "/" not in stdout:
-                return binary
+                return cmd
             return stdout
+
+        self._display.vvv(f"which failed, {cmd} command not found.")
 
         return None
 

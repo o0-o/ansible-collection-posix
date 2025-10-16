@@ -14,9 +14,7 @@ from typing import Any, Dict, Optional
 
 from ansible.plugins.action import ActionBase
 
-from ansible_collections.o0_o.posix.plugins.module_utils import (
-    PosixActionBase,
-)
+from ansible_collections.o0_o.posix.plugins.module_utils import PosixActionBase
 
 
 class ActionModule(PosixActionBase, ActionBase):
@@ -44,22 +42,14 @@ class ActionModule(PosixActionBase, ActionBase):
 
         # Validate args
         argument_spec = {
-            "name": {"type": "str", "required": True},
+            "command": {"type": "str", "required": True},
         }
         validation_result, new_args = self.validate_argument_spec(
             argument_spec=argument_spec
         )
-        name = new_args["name"]
+        command = new_args["command"]
 
-        path = self._which(name, task_vars=task_vars)
+        path = self._which(command, task_vars=task_vars)
 
-        result.update(
-            {
-                "changed": False,
-                "which": {
-                    "found": bool(path),
-                    "path": path or None,
-                },
-            }
-        )
+        result.update({"changed": False, "path": path or None})
         return result

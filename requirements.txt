@@ -4,6 +4,7 @@
 jc>=1.25.0                  # Command output parsing
 
 # Dependencies for o0_o.utils (used by multiple filters)
+pyparsing                   # Required for strip_comments in utils
 python-dateutil>=2.8.0      # Date parsing for dmidecode
 dnspython>=2.0.0            # DNS resolution for hostname
 idna>=3.0                   # IDN support for hostname
