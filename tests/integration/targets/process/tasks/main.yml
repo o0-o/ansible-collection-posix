@@ -1,0 +1,114 @@
+# vim: ts=2:sw=2:sts=2:et:ft=yaml.ansible
+# -*- mode: yaml; yaml-indent-offset: 2; indent-tabs-mode: nil; -*-
+---
+#
+# GNU General Public License v3.0+
+# SPDX-License-Identifier: GPL-3.0-or-later
+# (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
+#
+# Copyright (c) 2025 oØ.o (@o0-o)
+#
+# This file is part of the o0_o.posix Ansible Collection.
+
+- name: Get all processes (no filters)
+  o0_o.posix.process:
+  register: all_processes_reg
+
+- name: Assert all processes returns list
+  ansible.builtin.assert:
+    that:
+      - all_processes_reg is not failed
+      - all_processes_reg['processes'] is defined
+      - all_processes_reg['processes'] is iterable
+      - all_processes_reg['processes'] | length > 0
+      - all_processes_reg['changed'] is false
+    fail_msg: "Process module should return non-empty process list"
+
+- name: Verify process structure
+  ansible.builtin.assert:
+    that:
+      - item['pid'] is defined
+      - item['pid'] is number
+      - item['command'] is defined
+    fail_msg: "Each process should have pid and command fields"
+  loop: "{{ all_processes_reg['processes'] | default([]) }}"
+  loop_control:
+    label: "PID {{ item['pid'] }}"
+
+- name: Get current shell process by PID
+  o0_o.posix.process:
+    pid: "{{ ansible_pid }}"
+  register: shell_process_reg
+
+- name: Assert shell process found
+  ansible.builtin.assert:
+    that:
+      - shell_process_reg is not failed
+      - shell_process_reg['processes'] | length > 0
+      - shell_process_reg['processes'][0]['pid'] == ansible_pid
+    fail_msg: "Should find current shell process by PID"
+
+- name: Get init process (PID 1)
+  o0_o.posix.process:
+    pid: 1
+  register: init_process_reg
+
+- name: Assert init process found
+  ansible.builtin.assert:
+    that:
+      - init_process_reg is not failed
+      - init_process_reg['processes'] | length > 0
+      - init_process_reg['processes'][0]['pid'] == 1
+    fail_msg: "Should find init process (PID 1)"
+
+- name: Filter by executable basename
+  o0_o.posix.process:
+    executable: sh
+  register: sh_processes_reg
+
+- name: Assert sh processes found
+  ansible.builtin.assert:
+    that:
+      - sh_processes_reg is not failed
+      - sh_processes_reg['processes'] is defined
+    fail_msg: "Should be able to filter by executable"
+
+- name: Verify elapsed_parsed field when present
+  ansible.builtin.assert:
+    that:
+      - item['elapsed_parsed']['seconds'] is defined
+      - item['elapsed_parsed']['seconds'] is number
+      - item['elapsed_parsed']['pretty'] is defined
+      - item['elapsed_parsed']['pretty'] is string
+      - item['elapsed_parsed']['iso8601'] is defined
+      - item['elapsed_parsed']['iso8601'] is string
+      - item['elapsed_parsed']['iso8601'] is match('^P.*')
+    fail_msg: "elapsed_parsed should have correct structure"
+  loop: "{{ all_processes_reg['processes'] | selectattr('elapsed_parsed', 'defined') | list }}"
+  loop_control:
+    label: "PID {{ item['pid'] }}"
+  when: all_processes_reg['processes'] | selectattr('elapsed_parsed', 'defined') | list | length > 0
+
+- name: Test check mode
+  o0_o.posix.process:
+  check_mode: true
+  register: check_mode_reg
+
+- name: Assert check mode returns empty list
+  ansible.builtin.assert:
+    that:
+      - check_mode_reg is not failed
+      - check_mode_reg['processes'] == []
+    fail_msg: "Check mode should return empty processes list"
+
+- name: Test with non-existent PID
+  o0_o.posix.process:
+    pid: 9999999
+  register: no_match_reg
+
+- name: Assert no matches returns empty list
+  ansible.builtin.assert:
+    that:
+      - no_match_reg is not failed
+      - no_match_reg['processes'] == []
+    fail_msg: "Non-existent PID should return empty list"
