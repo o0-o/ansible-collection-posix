@@ -80,6 +80,7 @@ class PosixActionBase:
         msg = result.get("msg", "")
         stderr = result.get("stderr", "")
         module_stderr = result.get("module_stderr", "")
+        module_stdout = result.get("module_stdout", "")
 
         # Check all text fields for interpreter errors
         text_to_check = " ".join(
@@ -87,6 +88,7 @@ class PosixActionBase:
                 str(msg) if isinstance(msg, str) else "",
                 str(stderr) if isinstance(stderr, str) else "",
                 str(module_stderr) if isinstance(module_stderr, str) else "",
+                str(module_stdout) if isinstance(module_stdout, str) else "",
             ]
         ).lower()
 
@@ -108,7 +110,9 @@ class PosixActionBase:
             "python: not found",
             "python2: not found",
             "python3: not found",
-            "/python: not found",  # Catches /usr/bin/python, etc.
+            "/python: not found",  # Catches /usr/bin/python: not found
+            "/python2: not found",  # Catches /usr/bin/python2: not found
+            "/python3: not found",  # Catches /usr/bin/python3: not found
         ]
 
         if any(pattern in text_to_check for pattern in python_patterns):
