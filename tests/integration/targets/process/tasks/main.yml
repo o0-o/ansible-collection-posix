@@ -29,8 +29,8 @@
     that:
       - item['pid'] is defined
       - item['pid'] is number
-      - item['command'] is defined
-    fail_msg: "Each process should have pid and command fields"
+      - item['executable'] is defined
+    fail_msg: "Each process should have pid and executable fields"
   loop: "{{ all_processes_reg['processes'] | default([]) }}"
   loop_control:
     label: "PID {{ item['pid'] }}"
@@ -73,21 +73,25 @@
       - sh_processes_reg['processes'] is defined
     fail_msg: "Should be able to filter by executable"
 
-- name: Verify elapsed_parsed field when present
+- name: Verify time.elapsed field when present
   ansible.builtin.assert:
     that:
-      - item['elapsed_parsed']['seconds'] is defined
-      - item['elapsed_parsed']['seconds'] is number
-      - item['elapsed_parsed']['pretty'] is defined
-      - item['elapsed_parsed']['pretty'] is string
-      - item['elapsed_parsed']['iso8601'] is defined
-      - item['elapsed_parsed']['iso8601'] is string
-      - item['elapsed_parsed']['iso8601'] is match('^P.*')
-    fail_msg: "elapsed_parsed should have correct structure"
-  loop: "{{ all_processes_reg['processes'] | selectattr('elapsed_parsed', 'defined') | list }}"
+      - item['time']['elapsed']['seconds'] is defined
+      - item['time']['elapsed']['seconds'] is number
+      - item['time']['elapsed']['pretty'] is defined
+      - item['time']['elapsed']['pretty'] is string
+      - item['time']['elapsed']['iso8601'] is defined
+      - item['time']['elapsed']['iso8601'] is string
+      - item['time']['elapsed']['iso8601'] is match('^P.*')
+    fail_msg: "time.elapsed should have correct structure"
+  loop: "{{ all_processes_reg['processes'] | selectattr('time', 'defined') | list }}"
   loop_control:
     label: "PID {{ item['pid'] }}"
-  when: all_processes_reg['processes'] | selectattr('elapsed_parsed', 'defined') | list | length > 0
+  when: >-
+    all_processes_reg['processes']
+    | selectattr('time', 'defined')
+    | list
+    | length > 0
 
 - name: Test check mode
   o0_o.posix.process:

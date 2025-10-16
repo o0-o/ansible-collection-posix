@@ -58,6 +58,13 @@ from ansible_collections.o0_o.posix.plugins.module_utils.mount_utils import (
     parse_mount,
     parse_mount_entry,
 )
+from ansible_collections.o0_o.posix.plugins.module_utils.ps_utils import (
+    ps,
+    restructure_process,
+)
+from ansible_collections.o0_o.posix.plugins.module_utils.shells_utils import (
+    parse_shells,
+)
 from ansible_collections.o0_o.posix.plugins.module_utils.stat_utils import (
     stat,
 )
@@ -91,6 +98,9 @@ __all__ = [
     "mount",
     "parse_mount",
     "parse_mount_entry",
+    "parse_shells",
+    "ps",
+    "restructure_process",
     "stat",
     "normalize_source",
     "process_registered_result",

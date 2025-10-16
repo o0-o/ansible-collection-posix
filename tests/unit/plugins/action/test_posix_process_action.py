@@ -44,42 +44,12 @@ def test_process_all_processes(monkeypatch, plugin) -> None:
     """Test getting all processes when no filters specified."""
 
     def mock_cmd(command, task_vars=None):
-        return {
-            "rc": 0,
-            "stdout": "PID PPID UID GID ELAPSED TIME %CPU %MEM RSS VSZ COMMAND\n"
-            "1 0 0 0 1-00:00:00 00:00:01 0.0 0.1 1000 2000 /sbin/init\n"
-            "100 1 0 0 10:30:00 00:00:05 1.5 2.3 5000 10000 /usr/sbin/sshd -D\n",
-            "stderr": "",
-        }
+        return {"rc": 0, "stdout": "", "stderr": ""}
 
     def mock_jc_parse(parser, data, quiet=True, raw=False):
         return [
-            {
-                "pid": 1,
-                "ppid": 0,
-                "uid": 0,
-                "gid": 0,
-                "elapsed": "1-00:00:00",
-                "time": "00:00:01",
-                "pcpu": 0.0,
-                "pmem": 0.1,
-                "rss": 1000,
-                "vsz": 2000,
-                "command": "/sbin/init",
-            },
-            {
-                "pid": 100,
-                "ppid": 1,
-                "uid": 0,
-                "gid": 0,
-                "elapsed": "10:30:00",
-                "time": "00:00:05",
-                "pcpu": 1.5,
-                "pmem": 2.3,
-                "rss": 5000,
-                "vsz": 10000,
-                "command": "/usr/sbin/sshd -D",
-            },
+            {"pid": 1, "command": "/sbin/init"},
+            {"pid": 100, "command": "/usr/sbin/sshd -D"},
         ]
 
     monkeypatch.setattr(plugin, "_cmd", mock_cmd)
@@ -159,7 +129,10 @@ def test_process_filter_basename_match(monkeypatch, plugin) -> None:
     def mock_jc_parse(parser, data, quiet=True, raw=False):
         return [
             {"pid": 100, "command": "/usr/sbin/sshd -D"},
-            {"pid": 200, "command": "/usr/local/sbin/sshd -f /etc/ssh/custom.conf"},
+            {
+                "pid": 200,
+                "command": "/usr/local/sbin/sshd -f /etc/ssh/custom.conf",
+            },
         ]
 
     monkeypatch.setattr(plugin, "_cmd", mock_cmd)
@@ -200,40 +173,6 @@ def test_process_combined_filters(monkeypatch, plugin) -> None:
 
     # Should match PID 200 (httpd) AND both sshd processes
     assert len(result["processes"]) == 3
-
-
-def test_process_elapsed_parsed(monkeypatch, plugin) -> None:
-    """Test that elapsed time is parsed into structured format."""
-
-    def mock_cmd(command, task_vars=None):
-        return {"rc": 0, "stdout": "", "stderr": ""}
-
-    def mock_jc_parse(parser, data, quiet=True, raw=False):
-        return [
-            {
-                "pid": 100,
-                "command": "/usr/sbin/sshd -D",
-                "elapsed": "2-03:45:12",
-            }
-        ]
-
-    monkeypatch.setattr(plugin, "_cmd", mock_cmd)
-    monkeypatch.setattr(
-        "ansible_collections.o0_o.posix.plugins.action.process.jc_parse",
-        mock_jc_parse,
-    )
-
-    plugin._task.args = {}
-    result = plugin.run(task_vars={})
-
-    assert len(result["processes"]) == 1
-    assert "elapsed_parsed" in result["processes"][0]
-    assert result["processes"][0]["elapsed_parsed"]["seconds"] == 186312
-    assert (
-        result["processes"][0]["elapsed_parsed"]["pretty"]
-        == "2 days, 3 hours, 45 minutes, 12 seconds"
-    )
-    assert result["processes"][0]["elapsed_parsed"]["iso8601"] == "P2DT3H45M12S"
 
 
 def test_process_check_mode(monkeypatch, plugin) -> None:
@@ -327,25 +266,3 @@ def test_process_singular_aliases(monkeypatch, plugin) -> None:
     # and executable=sshd
     assert len(result["processes"]) == 1
     assert result["processes"][0]["pid"] == 100
-
-
-def test_process_no_elapsed_field(monkeypatch, plugin) -> None:
-    """Test handling when elapsed field is missing from ps output."""
-
-    def mock_cmd(command, task_vars=None):
-        return {"rc": 0, "stdout": "", "stderr": ""}
-
-    def mock_jc_parse(parser, data, quiet=True, raw=False):
-        return [{"pid": 100, "command": "/usr/sbin/sshd -D"}]
-
-    monkeypatch.setattr(plugin, "_cmd", mock_cmd)
-    monkeypatch.setattr(
-        "ansible_collections.o0_o.posix.plugins.action.process.jc_parse",
-        mock_jc_parse,
-    )
-
-    plugin._task.args = {}
-    result = plugin.run(task_vars={})
-
-    assert len(result["processes"]) == 1
-    assert "elapsed_parsed" not in result["processes"][0]

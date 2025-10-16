@@ -1,0 +1,10 @@
+# vim: ts=2:sw=2:sts=2:et:ft=yaml.ansible
+# -*- mode: yaml; yaml-indent-offset: 2; indent-tabs-mode: nil; -*-
+---
+major_changes:
+  - 'process - New action module for gathering process information from POSIX systems using ps command with jc parsing.'
+  - 'process - Supports filtering by PID or executable name with flexible matching (exact path, basename, or substring).'
+  - 'process - Returns restructured data with nested fields: ``time`` (elapsed, started), ``processor`` (time, percent), ``memory`` (real, virtual) with parsed values.'
+  - 'process - Converts uid/gid to integers, splits command into executable and arguments, parses time fields with ISO 8601 durations, and parses memory with SI units.'
+  - 'ps filter - New filter for parsing ps command output into structured data with the same nested field structure as process module.'
+  - 'ps_utils - New module_utils providing ``ps()`` and ``restructure_process()`` functions for shared process data parsing logic.'

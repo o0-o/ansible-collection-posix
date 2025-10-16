@@ -18,9 +18,9 @@ from ansible.plugins.action import ActionBase
 from ansible_collections.o0_o.posix.plugins.module_utils import (
     PosixActionBase,
     jc_parse,
+    restructure_process,
 )
 from ansible_collections.o0_o.utils.plugins.module_utils import (
-    parse_elapsed_time,
     wantlist,
 )
 
@@ -84,7 +84,7 @@ class ActionModule(PosixActionBase, ActionBase):
         executables = wantlist(new_args.get("executables"))
 
         try:
-            # Build ps command
+            # Build ps command with all fields
             ps_fields = [
                 "pid",
                 "ppid",
@@ -92,6 +92,7 @@ class ActionModule(PosixActionBase, ActionBase):
                 "gid",
                 "etime",
                 "time",
+                "lstart",
                 "pcpu",
                 "pmem",
                 "rss",
@@ -133,14 +134,13 @@ class ActionModule(PosixActionBase, ActionBase):
                 parsed_processes, pids, executables
             )
 
-            # Enhance with parsed elapsed time
+            # Restructure each process with parsed/organized fields
+            restructured_processes = []
             for proc in filtered_processes:
-                if "elapsed" in proc and proc["elapsed"]:
-                    elapsed_data = parse_elapsed_time(proc["elapsed"])
-                    if elapsed_data:
-                        proc["elapsed_parsed"] = elapsed_data
+                restructured = restructure_process(proc)
+                restructured_processes.append(restructured)
 
-            result["processes"] = filtered_processes
+            result["processes"] = restructured_processes
             result["changed"] = False
 
         except AnsibleConnectionFailure:
