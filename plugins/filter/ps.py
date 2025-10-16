@@ -120,14 +120,14 @@ class FilterModule:
     ) -> List[Dict[str, Any]]:
         """Parse ps output into structured data.
 
-        Parses ps command output into normalized list of entries with:
-        - Basic fields: pid, ppid, uid (int), gid (int), executable, arguments
-        - time: dict with elapsed and started (parsed)
-        - processor: dict with time and percent
-        - memory: dict with real and virtual (parsed with SI units)
+        Parses ps output into normalized list of entries with:
+        - Basic: pid, ppid, uid (int), gid (int), executable, args
+        - time: elapsed and started (parsed)
+        - processor: time and percent
+        - memory: real and virtual (SI parsed)
 
-        Only fields available from jc output are included. Unknown fields
-        are quietly excluded.
+        Only fields from jc output included. Unknown fields are
+        quietly excluded.
 
         :param config: ps command output as string or dict
         :returns: List of process entries with standardized structure

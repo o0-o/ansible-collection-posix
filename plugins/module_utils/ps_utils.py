@@ -136,7 +136,7 @@ def restructure_process(proc: Dict[str, Any]) -> Dict[str, Any]:
         rss_data = parse_si(rss_value, binary=True)
         if rss_data:
             real_dict = rss_data.copy()
-            # Add percent to real memory (pmem refers to physical memory)
+            # Add percent to real (pmem = physical memory)
             if "mem_percent" in proc:
                 real_dict["percent"] = proc["mem_percent"]
             elif "pmem" in proc:

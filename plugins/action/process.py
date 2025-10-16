@@ -163,11 +163,11 @@ class ActionModule(PosixActionBase, ActionBase):
         pids: Optional[List[int]],
         executables: Optional[List[str]],
     ) -> List[Dict[str, Any]]:
-        """Filter processes based on PID or executable criteria.
+        """Filter processes by PID or executable criteria.
 
         :param List[Dict[str, Any]] processes: All processes from ps
         :param Optional[List[int]] pids: PIDs to filter for
-        :param Optional[List[str]] executables: Executables to filter for
+        :param Optional[List[str]] executables: Executables to match
         :returns List[Dict[str, Any]]: Filtered processes
         """
         # If no filters, return all
@@ -197,7 +197,7 @@ class ActionModule(PosixActionBase, ActionBase):
                     if basename in executables:
                         filtered.append(proc)
                         continue
-                    # Check if any requested executable is in the full path
+                    # Check if requested executable in full path
                     for req_exec in executables:
                         if req_exec in executable:
                             filtered.append(proc)
