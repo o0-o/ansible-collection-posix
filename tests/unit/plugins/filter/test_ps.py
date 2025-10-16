@@ -46,7 +46,9 @@ def test_ps_filter_delegates_to_helper(filter_module: FilterModule) -> None:
     assert result is expected
 
 
-@pytest.mark.parametrize("exception", [ValueError("bad"), ImportError("missing")])
+@pytest.mark.parametrize(
+    "exception", [ValueError("bad"), ImportError("missing")]
+)
 def test_ps_filter_wraps_exceptions(
     filter_module: FilterModule,
     exception: Exception,

@@ -184,6 +184,11 @@ ansible_facts:
           description: Groups from /etc/group.
           type: dict
           returned: when users subset is gathered
+        shells:
+          description: Login shells listed in C(/etc/shells).
+          type: list
+          elements: str
+          returned: when users subset is gathered
         compliance:
           description: Standards compliance information.
           type: dict

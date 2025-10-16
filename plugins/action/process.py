@@ -107,10 +107,11 @@ class ActionModule(PosixActionBase, ActionBase):
             ps_result = self._cmd(ps_cmd, task_vars=task_vars)
 
             if ps_result["rc"] != 0:
+                stderr = ps_result.get("stderr", "")
                 result.update(
                     {
                         "failed": True,
-                        "msg": f"ps command failed: {ps_result.get('stderr', '')}",
+                        "msg": f"ps command failed: {stderr}",
                         "processes": [],
                     }
                 )

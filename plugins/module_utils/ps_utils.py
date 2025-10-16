@@ -30,7 +30,8 @@ def ps(config: Union[str, Dict[str, Any]]) -> List[Dict[str, Any]]:
     - pid, ppid, uid (int), gid (int), executable, arguments
     - time dict with elapsed and started (parsed)
     - processor dict with time and percent
-    - memory dict with real (bytes, pretty, percent) and virtual (bytes, pretty)
+    - memory dict with real (bytes, pretty, percent) and virtual
+      (bytes, pretty)
 
     :param config: ps command output as string or command result dict
     :returns: List of process dicts with restructured fields

@@ -231,8 +231,9 @@ def test_process_connection_failure_propagates(monkeypatch, plugin) -> None:
     def mock_super_run(tmp, task_vars):
         raise AnsibleConnectionFailure("connection lost")
 
+    base_path = "ansible_collections.o0_o.posix.plugins.module_utils"
     monkeypatch.setattr(
-        "ansible_collections.o0_o.posix.plugins.module_utils.posix_action_base.PosixActionBase.run",
+        f"{base_path}.posix_action_base.PosixActionBase.run",
         mock_super_run,
     )
 
@@ -262,7 +263,7 @@ def test_process_singular_aliases(monkeypatch, plugin) -> None:
     plugin._task.args = {"pid": 100, "executable": "sshd"}
     result = plugin.run(task_vars={})
 
-    # Should match both pid=100 (httpd not matched by executable filter would be excluded)
-    # and executable=sshd
+    # Should match both pid=100 (httpd not matched by executable
+    # filter would be excluded) and executable=sshd
     assert len(result["processes"]) == 1
     assert result["processes"][0]["pid"] == 100

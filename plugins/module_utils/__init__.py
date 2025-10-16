@@ -18,7 +18,7 @@ from ansible_collections.o0_o.posix.plugins.module_utils.df_utils import (
     parse_df,
     parse_df_entry,
 )
-from ansible_collections.o0_o.posix.plugins.module_utils.dmidecode_utils import (
+from ansible_collections.o0_o.posix.plugins.module_utils.dmidecode_utils import (  # noqa: E501
     dmidecode,
 )
 from ansible_collections.o0_o.posix.plugins.module_utils.filter_utils import (

@@ -11,8 +11,6 @@
 
 from __future__ import annotations
 
-import pytest
-
 from ansible_collections.o0_o.posix.plugins.module_utils.ps_utils import (
     restructure_process,
 )

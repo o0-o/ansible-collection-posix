@@ -84,7 +84,10 @@
       - item['time']['elapsed']['iso8601'] is string
       - item['time']['elapsed']['iso8601'] is match('^P.*')
     fail_msg: "time.elapsed should have correct structure"
-  loop: "{{ all_processes_reg['processes'] | selectattr('time', 'defined') | list }}"
+  loop: >-
+    {{ all_processes_reg['processes']
+       | selectattr('time', 'defined')
+       | list }}
   loop_control:
     label: "PID {{ item['pid'] }}"
   when: >-

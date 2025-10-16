@@ -22,6 +22,7 @@ from ansible_collections.o0_o.posix.plugins.module_utils import (
     dmidecode,
     mount,
     fstab,
+    parse_shells,
 )
 
 
@@ -310,6 +311,13 @@ class ActionModule(PosixActionBase, ActionBase):
             task_vars=task_vars,
         )
 
+        # Read /etc/shells
+        shells_slurp = self._execute_module(
+            module_name="ansible.builtin.slurp",
+            module_args={"src": "/etc/shells"},
+            task_vars=task_vars,
+        )
+
         facts = {"o0_os": {}}
 
         # Parse users
@@ -329,6 +337,11 @@ class ActionModule(PosixActionBase, ActionBase):
 
             groups = group_info(group_slurp)
             facts["o0_os"]["groups"] = groups
+
+        # Parse shells
+        if not shells_slurp.get("failed"):
+            shells = parse_shells(shells_slurp)
+            facts["o0_os"]["shells"] = shells
 
         return facts
 
