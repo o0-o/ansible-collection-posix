@@ -73,11 +73,6 @@ class ActionModule(PosixActionBase, ActionBase):
                 "elements": "str",
                 "aliases": ["executable"],
             },
-            "options": {
-                "type": "list",
-                "elements": "str",
-                "default": [],
-            },
         }
 
         validation_result, new_args = self.validate_argument_spec(
@@ -87,10 +82,9 @@ class ActionModule(PosixActionBase, ActionBase):
         # Normalize to lists using wantlist
         pids = wantlist(new_args.get("pids"))
         executables = wantlist(new_args.get("executables"))
-        options = new_args.get("options", [])
 
         try:
-            # Build ps command with requested options
+            # Build ps command
             ps_fields = [
                 "pid",
                 "ppid",
@@ -104,10 +98,6 @@ class ActionModule(PosixActionBase, ActionBase):
                 "vsz",
                 "command",
             ]
-
-            # Add any additional options
-            if options:
-                ps_fields.extend(options)
 
             # Build ps command
             ps_cmd = ["ps", "-ax", "-o", ",".join(ps_fields)]
