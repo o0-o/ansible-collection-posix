@@ -63,8 +63,8 @@ def test_process_all_processes(monkeypatch, plugin) -> None:
 
     assert result["changed"] is False
     assert len(result["processes"]) == 2
-    assert result["processes"][0]["pid"] == 1
-    assert result["processes"][1]["pid"] == 100
+    assert result["processes"][0]["id"] == 1
+    assert result["processes"][1]["id"] == 100
 
 
 def test_process_filter_by_pid(monkeypatch, plugin) -> None:
@@ -90,7 +90,7 @@ def test_process_filter_by_pid(monkeypatch, plugin) -> None:
     result = plugin.run(task_vars={})
 
     assert len(result["processes"]) == 1
-    assert result["processes"][0]["pid"] == 100
+    assert result["processes"][0]["id"] == 100
 
 
 def test_process_filter_by_executable(monkeypatch, plugin) -> None:
@@ -116,8 +116,8 @@ def test_process_filter_by_executable(monkeypatch, plugin) -> None:
     result = plugin.run(task_vars={})
 
     assert len(result["processes"]) == 1
-    assert result["processes"][0]["pid"] == 100
-    assert "sshd" in result["processes"][0]["command"]
+    assert result["processes"][0]["id"] == 100
+    assert "sshd" in result["processes"][0]["title"]
 
 
 def test_process_filter_basename_match(monkeypatch, plugin) -> None:
@@ -145,8 +145,8 @@ def test_process_filter_basename_match(monkeypatch, plugin) -> None:
     result = plugin.run(task_vars={})
 
     assert len(result["processes"]) == 2
-    assert result["processes"][0]["pid"] == 100
-    assert result["processes"][1]["pid"] == 200
+    assert result["processes"][0]["id"] == 100
+    assert result["processes"][1]["id"] == 200
 
 
 def test_process_combined_filters(monkeypatch, plugin) -> None:
@@ -266,4 +266,4 @@ def test_process_singular_aliases(monkeypatch, plugin) -> None:
     # Should match both pid=100 (httpd not matched by executable
     # filter would be excluded) and executable=sshd
     assert len(result["processes"]) == 1
-    assert result["processes"][0]["pid"] == 100
+    assert result["processes"][0]["id"] == 100

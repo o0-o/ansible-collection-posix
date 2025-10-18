@@ -11,6 +11,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Union
 
 from ansible_collections.o0_o.posix.plugins.module_utils import jc_parse
@@ -20,18 +21,96 @@ from ansible_collections.o0_o.utils.plugins.module_utils import (
     parse_si,
 )
 
-__all__ = ["ps", "restructure_process"]
+__all__ = ["ps", "restructure_process", "parse_stat"]
+
+
+def parse_stat(stat_str: str) -> Dict[str, Any]:
+    """Parse ps stat field into structured status information.
+
+    The stat field contains a multi-character code indicating the
+    process state. Format varies between BSD and Linux but generally:
+    - First char: state (R/S/D/T/Z/I/U/E/W/X)
+    - Additional chars: modifiers (s=session leader, +=foreground,
+      <>=priority, L=locked pages, etc.)
+
+    States:
+    - R: Running - executing or runnable (ready to run)
+    - S: Sleeping - waiting for event/interruptible sleep
+    - D: Uninterruptible sleep - waiting on I/O, cannot be signaled
+    - T: Stopped - suspended (SIGSTOP, job control, or traced)
+    - Z: Zombie - terminated, waiting for parent wait()
+    - I: Idle - kernel thread idle (Linux)
+    - U: Uninterruptible (BSD) - equivalent to Linux D
+    - E: Exiting (BSD/macOS) - about to terminate
+    - W: Paging (BSD/macOS) - waiting for paging I/O
+    - X: Dead - defunct/shouldn't appear (rare internal state)
+
+    :param str stat_str: Raw stat field from ps
+    :returns Dict[str, Any]: Structured status information
+    """
+    if not stat_str:
+        return {}
+
+    status = {"id": stat_str}
+
+    # First character is the state
+    state_char = stat_str[0]
+    state_map = {
+        "R": "running",
+        "S": "sleeping",
+        "D": "uninterruptible",
+        "T": "stopped",
+        "Z": "zombie",
+        "I": "idle",
+        "U": "uninterruptible",  # BSD equivalent to D
+        "E": "exiting",  # BSD/macOS
+        "W": "paging",  # BSD/macOS
+        "X": "dead",
+    }
+    status["state"] = state_map.get(state_char, "unknown")
+
+    # Parse modifiers
+    status["leader"] = "s" in stat_str  # Session leader
+    status["multithreaded"] = "l" in stat_str  # Multi-threaded (BSD)
+    status["foreground"] = "+" in stat_str  # Foreground process group
+
+    # Priority
+    if "<" in stat_str:
+        status["priority"] = "high"
+    elif "N" in stat_str:
+        status["priority"] = "low"
+    else:
+        status["priority"] = None
+
+    # Locked pages in memory
+    status["locked"] = "L" in stat_str
+
+    return status
 
 
 def ps(config: Union[str, Dict[str, Any]]) -> List[Dict[str, Any]]:
     """Process ps data - parse command output into structured format.
 
     Parses ps command output and restructures it with:
-    - pid, ppid, uid (int), gid (int), executable, arguments
-    - time dict with elapsed and started (parsed)
+    - id, parent, user (int), group (int), title (full process title)
+    - status dict with:
+        - id: raw stat string
+        - state: running, sleeping, uninterruptible, stopped, zombie,
+          idle, exiting, paging, dead
+        - leader: session leader flag
+        - multithreaded: multi-threaded process flag
+        - foreground: foreground process group flag
+        - priority: high, low, or None
+        - locked: has locked pages in memory
+    - time dict with elapsed (parsed) and started (calculated from
+      elapsed)
     - processor dict with time and percent
     - memory dict with real (bytes, pretty, percent) and virtual
       (bytes, pretty)
+
+    Note: The title field is kept as-is and not split into
+    executable/arguments because processes can modify their process
+    title via setproctitle().
 
     :param config: ps command output as string or command result dict
     :returns: List of process dicts with restructured fields
@@ -57,39 +136,35 @@ def restructure_process(proc: Dict[str, Any]) -> Dict[str, Any]:
     :returns Dict[str, Any]: Restructured process dict
     """
     restructured = {
-        "pid": proc.get("pid"),
-        "ppid": proc.get("ppid"),
+        "id": proc.get("pid"),
+        "parent": proc.get("ppid"),
     }
 
-    # Split command into executable and arguments string
-    command = proc.get("command", "")
-    if command:
-        # Find first space to split executable from arguments
-        space_idx = command.find(" ")
-        if space_idx > 0:
-            restructured["executable"] = command[:space_idx]
-            restructured["arguments"] = command[space_idx + 1 :]
-        else:
-            # No arguments, just executable
-            restructured["executable"] = command
+    # Keep full command as-is (don't try to split into executable/args)
+    # Processes can set this to anything via setproctitle(), so parsing
+    # it into separate fields is unreliable
+    title = proc.get("command", "")
+    if title:
+        restructured["title"] = title
 
     # Convert uid/gid to integers
     if "uid" in proc:
         try:
-            restructured["uid"] = int(proc["uid"])
+            restructured["user"] = int(proc["uid"])
         except (ValueError, TypeError):
-            restructured["uid"] = proc["uid"]
+            restructured["user"] = proc["uid"]
 
     if "gid" in proc:
         try:
-            restructured["gid"] = int(proc["gid"])
+            restructured["group"] = int(proc["gid"])
         except (ValueError, TypeError):
-            restructured["gid"] = proc["gid"]
+            restructured["group"] = proc["gid"]
 
     # Time fields
     time_dict = {}
 
     # time.elapsed from etime/elapsed field
+    elapsed_data = None
     if "elapsed" in proc and proc["elapsed"]:
         elapsed_data = parse_elapsed_time(proc["elapsed"])
         if elapsed_data:
@@ -99,11 +174,17 @@ def restructure_process(proc: Dict[str, Any]) -> Dict[str, Any]:
         if elapsed_data:
             time_dict["elapsed"] = elapsed_data
 
-    # time.started from lstart field
-    if "lstart" in proc and proc["lstart"]:
-        started_data = parse_datetime(proc["lstart"])
-        if started_data:
-            time_dict["started"] = started_data
+    # Calculate started time from elapsed time
+    # (lstart field is no longer used because it contains spaces
+    # which breaks jc parsing of ps output)
+    if elapsed_data and "seconds" in elapsed_data:
+        now = datetime.now(timezone.utc)
+        started_dt = now - timedelta(seconds=elapsed_data["seconds"])
+        # Format as ISO8601 and parse back to get consistent structure
+        started_str = started_dt.isoformat()
+        started_parsed = parse_datetime(started_str)
+        if started_parsed:
+            time_dict["started"] = started_parsed
 
     if time_dict:
         restructured["time"] = time_dict
@@ -153,5 +234,11 @@ def restructure_process(proc: Dict[str, Any]) -> Dict[str, Any]:
 
     if memory_dict:
         restructured["memory"] = memory_dict
+
+    # Parse stat field into status dict
+    if "stat" in proc and proc["stat"]:
+        status = parse_stat(proc["stat"])
+        if status:
+            restructured["status"] = status
 
     return restructured
