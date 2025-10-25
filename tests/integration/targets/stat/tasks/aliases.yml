@@ -1,0 +1,121 @@
+# vim: ts=2:sw=2:sts=2:et:ft=yaml.ansible
+# -*- mode: yaml; yaml-indent-offset: 2; indent-tabs-mode: nil; -*-
+---
+# GNU General Public License v3.0+
+# SPDX-License-Identifier: GPL-3.0-or-later
+# (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
+#
+# Copyright (c) 2025 oØ.o (@o0-o)
+#
+# This file is part of the o0_o.posix Ansible Collection.
+
+- name: Create test file
+  ansible.builtin.copy:
+    src: files/test.txt
+    dest: "{{ stat_test_dir }}/alias_test.txt"
+    mode: '0644'
+  check_mode: false
+
+- name: Test path using dest alias
+  o0_o.posix.stat:
+    dest: "{{ stat_test_dir }}/alias_test.txt"
+    _force_raw: "{{ _force_raw }}"
+  register: stat_dest_reg
+
+- name: Verify dest alias works
+  ansible.builtin.assert:
+    that:
+      - stat_dest_reg['stat']['exists']
+    msg: dest alias should work for path parameter
+
+- name: Test path using name alias
+  o0_o.posix.stat:
+    name: "{{ stat_test_dir }}/alias_test.txt"
+    _force_raw: "{{ _force_raw }}"
+  register: stat_name_reg
+
+- name: Verify name alias works
+  ansible.builtin.assert:
+    that:
+      - stat_name_reg['stat']['exists']
+    msg: name alias should work for path parameter
+
+- name: Test checksum_algorithm using checksum alias
+  o0_o.posix.stat:
+    path: "{{ stat_test_dir }}/alias_test.txt"
+    checksum: sha256
+    _force_raw: "{{ _force_raw }}"
+  register: stat_checksum_alias_reg
+
+- name: Verify checksum alias works
+  ansible.builtin.assert:
+    that:
+      - stat_checksum_alias_reg['stat']['checksum'] is defined
+      - stat_checksum_alias_reg['stat']['checksum'] | length == 64
+    msg: checksum alias should work for checksum_algorithm parameter
+
+- name: Test checksum_algorithm using checksum_algo alias
+  o0_o.posix.stat:
+    path: "{{ stat_test_dir }}/alias_test.txt"
+    checksum_algo: md5
+    _force_raw: "{{ _force_raw }}"
+  register: stat_checksum_algo_reg
+
+- name: Verify checksum_algo alias works
+  ansible.builtin.assert:
+    that:
+      - stat_checksum_algo_reg['stat']['checksum'] is defined
+      - stat_checksum_algo_reg['stat']['checksum'] | length == 32
+    msg: checksum_algo alias should work for checksum_algorithm parameter
+
+- name: Test get_mime using mime alias
+  o0_o.posix.stat:
+    path: "{{ stat_test_dir }}/alias_test.txt"
+    mime: true
+    _force_raw: "{{ _force_raw }}"
+  register: stat_mime_alias_reg
+
+- name: Verify mime alias works
+  ansible.builtin.assert:
+    that:
+      - stat_mime_alias_reg['stat']['mimetype'] is defined
+    msg: mime alias should work for get_mime parameter
+
+- name: Test get_mime using mime_type alias
+  o0_o.posix.stat:
+    path: "{{ stat_test_dir }}/alias_test.txt"
+    mime_type: true
+    _force_raw: "{{ _force_raw }}"
+  register: stat_mime_type_reg
+
+- name: Verify mime_type alias works
+  ansible.builtin.assert:
+    that:
+      - stat_mime_type_reg['stat']['mimetype'] is defined
+    msg: mime_type alias should work for get_mime parameter
+
+- name: Test get_attributes using attr alias
+  o0_o.posix.stat:
+    path: "{{ stat_test_dir }}/alias_test.txt"
+    attr: true
+    _force_raw: "{{ _force_raw }}"
+  register: stat_attr_reg
+
+- name: Verify attr alias works
+  ansible.builtin.assert:
+    that:
+      - stat_attr_reg['stat']['attributes'] is defined
+    msg: attr alias should work for get_attributes parameter
+
+- name: Test get_attributes using attributes alias
+  o0_o.posix.stat:
+    path: "{{ stat_test_dir }}/alias_test.txt"
+    attributes: true
+    _force_raw: "{{ _force_raw }}"
+  register: stat_attributes_reg
+
+- name: Verify attributes alias works
+  ansible.builtin.assert:
+    that:
+      - stat_attributes_reg['stat']['attributes'] is defined
+    msg: attributes alias should work for get_attributes parameter

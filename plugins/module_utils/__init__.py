@@ -38,6 +38,11 @@ from ansible_collections.o0_o.posix.plugins.module_utils.jc_utils import (
 from ansible_collections.o0_o.posix.plugins.module_utils.compliance_utils import (  # noqa: E501
     is_posix,
 )
+from ansible_collections.o0_o.posix.plugins.module_utils.dev_utils import (
+    device_from_hex_major_minor,
+    device_from_major_minor,
+    device_value,
+)
 from ansible_collections.o0_o.posix.plugins.module_utils.id_utils import (
     id_info,
 )
@@ -65,6 +70,12 @@ from ansible_collections.o0_o.posix.plugins.module_utils.ps_utils import (
 from ansible_collections.o0_o.posix.plugins.module_utils.shells_utils import (
     parse_shells,
 )
+from ansible_collections.o0_o.posix.plugins.module_utils.uptime_utils import (
+    parse_uptime,
+)
+from ansible_collections.o0_o.posix.plugins.module_utils.who_utils import (
+    parse_who,
+)
 from ansible_collections.o0_o.posix.plugins.module_utils.stat_utils import (
     stat,
 )
@@ -77,6 +88,9 @@ from ansible_collections.o0_o.posix.plugins.module_utils.uname_utils import (
 
 __all__ = [
     "PosixActionBase",
+    "device_from_hex_major_minor",
+    "device_from_major_minor",
+    "device_value",
     "df",
     "parse_df",
     "parse_df_entry",
@@ -99,6 +113,8 @@ __all__ = [
     "parse_mount",
     "parse_mount_entry",
     "parse_shells",
+    "parse_uptime",
+    "parse_who",
     "ps",
     "restructure_process",
     "stat",

@@ -1,0 +1,75 @@
+# vim: ts=2:sw=2:sts=2:et:ft=yaml.ansible
+# -*- mode: yaml; yaml-indent-offset: 2; indent-tabs-mode: nil; -*-
+---
+# GNU General Public License v3.0+
+# SPDX-License-Identifier: GPL-3.0-or-later
+# (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
+#
+# Copyright (c) 2025 oØ.o (@o0-o)
+#
+# This file is part of the o0_o.posix Ansible Collection.
+
+- name: Create temporary directory for integration tests
+  ansible.builtin.tempfile:
+    state: directory
+    suffix: stat_test
+  register: test_tmpdir_reg
+
+- name: Set files directory
+  ansible.builtin.set_fact:
+    files_dir: "{{ playbook_dir }}/targets/stat/files"
+
+- name: Set test directory fact
+  ansible.builtin.set_fact:
+    stat_test_dir: "{{ test_tmpdir_reg['path'] }}"
+
+- name: Gather minimal facts for platform detection
+  ansible.builtin.setup:
+    gather_subset:
+      - '!all'
+      - '!min'
+      - distribution
+      - system
+
+- name: Try
+  block:
+
+    - name: Run stat test suite
+      vars:
+        loop_list: >-
+          {{ [true, false] | ansible.builtin.product([true, false]) }}
+        test_sets:
+          - basic_stat.yml
+          - file_types.yml
+          - checksums.yml
+          - permissions.yml
+          - symlinks.yml
+          - aliases.yml
+          - compare_modes.yml
+      block:
+
+        - name: Run test set with permutations of force_raw and check_mode
+          ansible.builtin.include_tasks: "{{ item[0] }}"
+          loop: "{{ test_sets | ansible.builtin.product(loop_list) }}"
+          vars:
+            _force_raw: "{{ item[1][0] }}"
+            ansible_check_mode: "{{ item[1][1] }}"
+
+    - name: Run timestamp tests (only permute by raw mode, not check_mode)
+      ansible.builtin.include_tasks: timestamps.yml
+      loop: [true, false]
+      vars:
+        _force_raw: "{{ item }}"
+
+    - name: Compare builtin passthrough mode with raw mode
+      ansible.builtin.include_tasks: raw_mode_comparison.yml
+
+    - name: Run platform-specific tests (not permuted)
+      ansible.builtin.include_tasks: platform_specific.yml
+
+  always:
+
+    - name: Clean up temporary directory
+      ansible.builtin.file:
+        path: "{{ stat_test_dir }}"
+        state: absent

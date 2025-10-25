@@ -14,6 +14,7 @@
 from __future__ import annotations
 
 import datetime
+import os
 import stat as stat_mod
 from typing import Any, Dict, List, Optional, Union
 
@@ -94,7 +95,7 @@ def _normalize_stat_entry(entry: Dict[str, Any]) -> Dict[str, Any]:
     result["dev"] = _device_value(entry)
     result["inode"] = _to_int(entry.get("inode"))
     result["nlink"] = _to_int(entry.get("links"))
-    result["rdev"] = _to_int(entry.get("rdev"))
+    result["rdev"] = _rdev_value(entry)
     result["block_size"] = _to_int(entry.get("block_size"))
     result["blocks"] = _to_int(entry.get("blocks"))
 
@@ -229,13 +230,26 @@ def _isoformat(epoch: Union[int, float]) -> str:
 
 
 def _device_value(entry: Dict[str, Any]) -> Optional[int]:
-    """Attempt to derive the device number from jc output."""
+    """Attempt to derive the device number from jc output.
+
+    On BSD/macOS, jc provides unix_device which is already the st_dev
+    integer. On Linux, jc provides device as a "major,minor" string
+    which must be converted using makedev().
+    """
 
     unix_device = entry.get("unix_device")
     if unix_device is not None:
         return _to_int(unix_device)
 
     device = entry.get("device")
+
+    # Linux format: "major,minor" (e.g., "254,2")
+    if isinstance(device, str) and "," in device:
+        dev_int = _device_from_major_minor(device)
+        if dev_int is not None:
+            return dev_int
+
+    # Legacy format: "disk/3d" or similar
     if isinstance(device, str) and "/" in device:
         suffix = device.split("/", 1)[1]
         if suffix.endswith("d"):
@@ -244,6 +258,57 @@ def _device_value(entry: Dict[str, Any]) -> Optional[int]:
             return int(suffix, 10)
         except ValueError:
             return None
+    return None
+
+
+def _device_from_major_minor(device_str: str) -> Optional[int]:
+    """Convert Linux "major,minor" device string to device integer.
+
+    On Linux, jc --stat returns the device field as "major,minor"
+    (e.g., "254,2"). This function parses that string and uses
+    os.makedev() to convert it to the st_dev integer that matches
+    ansible.builtin.stat.
+
+    :param device_str: Device string in "major,minor" format
+    :returns: Device number as integer, or None if parsing fails
+    """
+    try:
+        parts = device_str.split(",")
+        if len(parts) != 2:
+            return None
+        major = int(parts[0].strip())
+        minor = int(parts[1].strip())
+        return os.makedev(major, minor)
+    except (ValueError, OSError):
+        return None
+
+
+def _rdev_value(entry: Dict[str, Any]) -> Optional[int]:
+    """Attempt to derive the device type number from jc output.
+
+    For device files (block/character), rdev represents the device
+    identifier. On Linux, jc provides this as "major,minor" format
+    (e.g., "1,3" for /dev/null). On BSD/macOS, it's already an
+    integer.
+    """
+
+    rdev = entry.get("rdev")
+
+    # Already an integer (BSD/macOS or regular files)
+    if isinstance(rdev, (int, float)):
+        return int(rdev)
+
+    # String value - could be numeric or major,minor format
+    if isinstance(rdev, str):
+        # Try major,minor format first
+        if "," in rdev:
+            rdev_int = _device_from_major_minor(rdev)
+            if rdev_int is not None:
+                return rdev_int
+
+        # Try direct integer conversion
+        return _to_int(rdev)
+
     return None
 
 
