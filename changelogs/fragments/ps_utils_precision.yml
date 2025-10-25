@@ -1,0 +1,5 @@
+# vim: ts=2:sw=2:sts=2:et:ft=yaml.ansible
+# -*- mode: yaml; yaml-indent-offset: 2; indent-tabs-mode: nil; -*-
+---
+bugfixes:
+  - 'ps_utils - Fix process start time calculation precision by truncating microseconds from current time to match second-precision elapsed time values.'
