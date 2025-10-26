@@ -281,7 +281,23 @@ class ActionModule(PosixActionBase, ActionBase):
         if is_bsd:
             # BSD: blocks and block_size fields
             stat_result["blocks"] = jc_data.get("blocks", 0)
-            stat_result["block_size"] = jc_data.get("block_size", 512)
+
+            # Workaround for jc parser bug on OpenBSD: the actual
+            # block_size value ends up in the birth_time field as a
+            # string when birth_time_epoch is null
+            block_size_value = jc_data.get("block_size", 512)
+            if birth_time is None:
+                birth_time_str = jc_data.get("birth_time")
+                if birth_time_str and isinstance(birth_time_str, str):
+                    try:
+                        # If birth_time is a numeric string, it's likely
+                        # the actual block_size (jc parsing bug)
+                        parsed = int(birth_time_str)
+                        if parsed > 0:
+                            block_size_value = parsed
+                    except (ValueError, TypeError):
+                        pass
+            stat_result["block_size"] = block_size_value
         else:
             # Linux: blocks and io_blocks fields
             stat_result["blocks"] = jc_data.get("blocks", 0)
