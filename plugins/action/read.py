@@ -21,6 +21,7 @@ from ansible.plugins.action import ActionBase
 
 from ansible_collections.o0_o.posix.plugins.module_utils import PosixActionBase
 from ansible_collections.o0_o.utils.plugins.module_utils import (
+    format_epoch_timestamp,
     truthy_or_integer,
 )
 
@@ -84,10 +85,12 @@ class ActionModule(PosixActionBase, ActionBase):
             "xattrs": {"type": "bool", "default": False},
             "flags": {"type": "bool", "default": False},
             "selinux": {"type": "bool", "default": False},
+            "_force_raw": {"type": "bool", "default": False},
         }
         validation_result, new_args = self.validate_argument_spec(
             argument_spec=argument_spec
         )
+        self.force_raw = new_args.pop("_force_raw", False)
 
         path_list = new_args["paths"]
 
@@ -231,13 +234,10 @@ class ActionModule(PosixActionBase, ActionBase):
         visited.add(path)
 
         stat_result = self._run_action(
-            "ansible.builtin.stat",
+            "o0_o.posix.stat",
             {
                 "path": path,
                 "follow": False,
-                "get_attributes": True,
-                "get_checksum": False,
-                "get_mime": False,
             },
             task_vars=task_vars,
         )
@@ -294,6 +294,22 @@ class ActionModule(PosixActionBase, ActionBase):
                 writeable = stat_data.get("writable")
             if writeable is not None:
                 info["writable"] = bool(writeable)
+
+        # Add modified and created time if available
+        if include_metadata:
+            # Format mtime as modified with utils datetime structure
+            mtime = stat_data.get("mtime")
+            if mtime is not None:
+                info["modified"] = format_epoch_timestamp(mtime)
+
+            # Format birthtime or ctime as created with utils datetime structure
+            birthtime = stat_data.get("birthtime")
+            if birthtime is not None:
+                info["created"] = format_epoch_timestamp(birthtime)
+            else:
+                ctime = stat_data.get("ctime")
+                if ctime is not None:
+                    info["created"] = format_epoch_timestamp(ctime)
 
         link_paths: List[str] = []
 
@@ -639,13 +655,10 @@ class ActionModule(PosixActionBase, ActionBase):
 
         try:
             return self._run_action(
-                "ansible.builtin.stat",
+                "o0_o.posix.stat",
                 {
                     "path": path,
                     "follow": True,
-                    "get_attributes": True,
-                    "get_checksum": False,
-                    "get_mime": False,
                 },
                 task_vars=task_vars,
             )
@@ -1117,13 +1130,10 @@ class ActionModule(PosixActionBase, ActionBase):
 
         try:
             stat_result = self._run_action(
-                "ansible.builtin.stat",
+                "o0_o.posix.stat",
                 {
                     "path": target,
                     "follow": False,
-                    "get_attributes": True,
-                    "get_checksum": False,
-                    "get_mime": False,
                 },
                 task_vars=task_vars,
             )

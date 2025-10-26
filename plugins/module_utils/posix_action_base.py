@@ -25,7 +25,7 @@ import difflib
 import hashlib
 import shlex
 import stat
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from os import path
 from typing import Any, Dict, List, Optional, Union, Tuple
 
@@ -152,6 +152,61 @@ class PosixActionBase:
             pass
 
         return "localhost"
+
+    def _get_target_timezone(
+        self, task_vars: Optional[Dict[str, Any]] = None
+    ) -> timezone:
+        """Get target system's timezone as a timezone object.
+
+        Uses 'date +%z' to get the UTC offset (e.g., '-0400').
+        Falls back to UTC if detection fails.
+
+        :param task_vars: Available Ansible variables
+        :returns: timezone object representing target's local timezone
+        """
+        offset_cmd = self._cmd(
+            ["date", "+%z"], task_vars=task_vars, check_mode=False
+        )
+        if offset_cmd.get("rc") != 0:
+            host = self._get_inventory_hostname(task_vars)
+            self._display.vvv(
+                f"[{host}] Failed to get timezone offset, assuming UTC"
+            )
+            return timezone.utc
+
+        offset_str = (offset_cmd.get("stdout") or "").strip()
+        if not offset_str:
+            return timezone.utc
+
+        try:
+            return self._parse_timezone_offset(offset_str)
+        except ValueError as e:
+            host = self._get_inventory_hostname(task_vars)
+            self._display.vvv(
+                f"[{host}] Failed to parse timezone offset "
+                f"'{offset_str}': {e}, assuming UTC"
+            )
+            return timezone.utc
+
+    def _parse_timezone_offset(self, offset: str) -> timezone:
+        """Parse timezone offset string like '-0400' or '+0530'.
+
+        :param offset: Timezone offset string from 'date +%z'
+        :returns: timezone object with the specified offset
+        :raises ValueError: If offset format is invalid
+        """
+        if len(offset) != 5 or offset[0] not in ("+", "-"):
+            raise ValueError(f"Invalid offset format: {offset}")
+
+        try:
+            sign = 1 if offset[0] == "+" else -1
+            hours = int(offset[1:3])
+            minutes = int(offset[3:5])
+        except ValueError:
+            raise ValueError(f"Invalid offset format: {offset}")
+
+        offset_delta = timedelta(hours=sign * hours, minutes=sign * minutes)
+        return timezone(offset_delta)
 
     def _run_action(
         self,
