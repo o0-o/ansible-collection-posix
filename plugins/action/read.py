@@ -233,11 +233,22 @@ class ActionModule(PosixActionBase, ActionBase):
             return None, {}
         visited.add(path)
 
+        # Request extended attributes from stat if any are needed
+        def should_include(field: str) -> bool:
+            return include_metadata or field_options.get(field, False)
+
+        get_attributes = any(
+            should_include(field)
+            for field in ["acl", "xattrs", "flags", "selinux"]
+        )
+
         stat_result = self._run_action(
             "o0_o.posix.stat",
             {
                 "path": path,
                 "follow": False,
+                "get_attributes": get_attributes,
+                "_force_raw": getattr(self, "force_raw", False),
             },
             task_vars=task_vars,
         )
@@ -247,10 +258,6 @@ class ActionModule(PosixActionBase, ActionBase):
 
         info: Dict[str, Any] = {}
         extra_paths: Dict[str, Optional[Dict[str, Any]]] = {}
-
-        # Helper to check if a field should be included
-        def should_include(field_name: str) -> bool:
-            return include_metadata or field_options.get(field_name, False)
 
         normalized_path = posixpath.normpath(path)
 
@@ -302,7 +309,8 @@ class ActionModule(PosixActionBase, ActionBase):
             if mtime is not None:
                 info["modified"] = format_epoch_timestamp(mtime)
 
-            # Format birthtime or ctime as created with utils datetime structure
+            # Format birthtime or ctime as created with utils datetime
+            # structure
             birthtime = stat_data.get("birthtime")
             if birthtime is not None:
                 info["created"] = format_epoch_timestamp(birthtime)
@@ -465,64 +473,44 @@ class ActionModule(PosixActionBase, ActionBase):
                 )
             )
 
+        # Use stat's already-processed extended attributes
         if should_include("selinux"):
-            selinux = stat_data.get("selinux_label")
+            selinux = stat_data.get("selinux")
             if selinux:
                 info["selinux"] = selinux
 
         if should_include("flags"):
-            attr_flags = stat_data.get("attr_flags")
-            if attr_flags:
-                info["flags"] = self._normalize_flags(attr_flags)
+            # Prefer stat's processed attributes list
+            attributes = stat_data.get("attributes")
+            if attributes:
+                info["flags"] = attributes
+            else:
+                # Fallback to raw attr_flags if attributes not present
+                attr_flags = stat_data.get("attr_flags")
+                if attr_flags:
+                    info["flags"] = self._normalize_flags(attr_flags)
 
-        xattrs = stat_data.get("xattrs")
-        names, acl_entries, selinux_extra = self._process_xattrs(xattrs)
-        if should_include("xattrs") and names:
-            info["xattrs"] = names
+        if should_include("xattrs"):
+            # Use stat's already-processed xattrs list
+            xattrs = stat_data.get("xattrs")
+            if xattrs:
+                info["xattrs"] = xattrs
+
         if should_include("acl"):
-            for acl_entry in acl_entries:
-                self._merge_acl(info, acl_entry)
-        if (
-            should_include("selinux")
-            and selinux_extra
-            and "selinux" not in info
-        ):
-            info["selinux"] = selinux_extra
+            # Use stat's already-processed ACL data
+            acl = stat_data.get("acl")
+            if acl:
+                info["acl"] = acl
 
         if file_type == "directory" and include_content:
             directory_entries = self._list_directory(path, task_vars)
             if directory_entries is not None:
                 info["content"] = directory_entries
 
-        skip_extended_metadata = file_type == "pipe"
-
-        if not skip_extended_metadata:
-            if should_include("acl"):
-                acl_data = self._get_acl(path, task_vars)
-                if acl_data:
-                    self._merge_acl(info, acl_data)
-
-            if should_include("flags") and "flags" not in info:
-                flags = self._get_flags(path, task_vars)
-                if flags:
-                    info["flags"] = self._normalize_flags(flags)
-
-            if "xattrs" not in info or "selinux" not in info:
-                xattr_fallback = self._get_xattrs(path, task_vars)
-                names_fb, acl_entries_fb, selinux_fb = self._process_xattrs(
-                    xattr_fallback
-                )
-                if should_include("xattrs") and names_fb:
-                    info["xattrs"] = names_fb
-                if should_include("acl"):
-                    for acl_entry in acl_entries_fb:
-                        self._merge_acl(info, acl_entry)
-                if (
-                    should_include("selinux")
-                    and selinux_fb
-                    and "selinux" not in info
-                ):
-                    info["selinux"] = selinux_fb
+        # Note: No fallback needed for xattrs/acl/flags/selinux.
+        # If we requested get_attributes=True from stat, it already ran
+        # raw commands with its own fallback. If stat didn't return
+        # these fields, they don't exist or aren't available.
 
         encoding, content_text = self._maybe_get_content(
             path=path,
@@ -659,6 +647,7 @@ class ActionModule(PosixActionBase, ActionBase):
                 {
                     "path": path,
                     "follow": True,
+                    "_force_raw": getattr(self, "force_raw", False),
                 },
                 task_vars=task_vars,
             )
@@ -1134,6 +1123,7 @@ class ActionModule(PosixActionBase, ActionBase):
                 {
                     "path": target,
                     "follow": False,
+                    "_force_raw": getattr(self, "force_raw", False),
                 },
                 task_vars=task_vars,
             )
@@ -1240,143 +1230,6 @@ class ActionModule(PosixActionBase, ActionBase):
         filtered.reverse()
         return filtered
 
-    def _process_xattrs(
-        self,
-        source: Optional[object],
-    ) -> Tuple[List[str], List[Dict[str, Any]], Optional[str]]:
-        """Normalize xattr sources into names and specialised records."""
-
-        names: List[str] = []
-        acl_records: Dict[str, Dict[str, Any]] = {}
-        selinux_value: Optional[str] = None
-
-        def place_acl(record_type: str) -> Dict[str, Any]:
-            entry = acl_records.setdefault(record_type, {"type": record_type})
-            return entry
-
-        def handle(name: str, value: Optional[str]) -> None:
-            nonlocal selinux_value
-            key = name.strip()
-            if not key:
-                return
-            lowered = key.lower()
-            if lowered == "system.posix_acl_access":
-                return
-            if lowered == "system.posix_acl_default":
-                return
-            if lowered in {"com.apple.acl.text", "com.apple.security.acl"}:
-                entry = place_acl("macos_xattr")
-                if value is not None and "text" not in entry:
-                    entry["text"] = value
-                return
-            if lowered in {"system.nfs4_acl", "nfs4_acl"}:
-                entry = place_acl("nfs4_xattr")
-                if value is not None and "text" not in entry:
-                    entry["text"] = value
-                return
-            if lowered == "security.selinux":
-                if value and selinux_value is None:
-                    selinux_value = value
-                return
-            names.append(key)
-
-        if isinstance(source, dict):
-            for key, value in source.items():
-                if isinstance(key, bytes):
-                    key_obj = key.decode("utf-8", "ignore")
-                else:
-                    key_obj = str(key)
-                value_str = None
-                if value is not None:
-                    if isinstance(value, bytes):
-                        value_str = value.decode("utf-8", "ignore")
-                    else:
-                        value_str = str(value)
-                handle(key_obj, value_str)
-        elif isinstance(source, str):
-            for line in source.splitlines():
-                stripped = line.strip()
-                if not stripped or stripped.startswith("#"):
-                    continue
-                if ":" in stripped and "=" not in stripped:
-                    key, raw_val = stripped.split(":", 1)
-                    handle(key, raw_val.strip())
-                    continue
-                if "=" in stripped:
-                    key, raw_val = stripped.split("=", 1)
-                    handle(key, raw_val.strip().strip('"').strip("'"))
-                    continue
-                handle(stripped, None)
-        elif source is not None:
-            handle(str(source), None)
-
-        names = sorted(set(names))
-        acl_list = [value for value in acl_records.values() if len(value) > 1]
-        return names, acl_list, selinux_value
-
-    def _merge_acl(self, info: Dict[str, Any], entry: Dict[str, Any]) -> None:
-        """Merge ACL details into result dictionary with type tracking."""
-
-        if not entry:
-            return
-
-        entry_type = entry.get("type")
-        existing = info.get("acl")
-
-        if entry_type == "posix_xattr":
-            if isinstance(existing, dict) and existing.get("type") == "posix":
-                return
-            if isinstance(existing, list) and any(
-                isinstance(item, dict) and item.get("type") == "posix"
-                for item in existing
-            ):
-                return
-
-        if existing is None:
-            info["acl"] = entry.copy()
-            return
-
-        if isinstance(existing, dict):
-            existing_type = existing.get("type")
-            if entry_type and existing_type == entry_type:
-                merged = existing.copy()
-                for key, value in entry.items():
-                    if key in {"type"}:
-                        continue
-                    if key not in merged:
-                        merged[key] = value
-                info["acl"] = merged
-                return
-
-            info["acl"] = [existing.copy(), entry.copy()]
-            return
-
-        if isinstance(existing, list):
-            if entry_type:
-                for idx, item in enumerate(existing):
-                    if (
-                        isinstance(item, dict)
-                        and item.get("type") == entry_type
-                    ):
-                        merged = item.copy()
-                        for key, value in entry.items():
-                            if key in {"type"}:
-                                continue
-                            if key not in merged:
-                                merged[key] = value
-                        existing[idx] = merged
-                        info["acl"] = existing
-                        return
-            existing.append(entry.copy())
-            info["acl"] = existing
-            return
-
-        # Existing value is plain string; convert to structured form.
-        info["acl"] = [
-            {"type": "unknown", "text": str(existing)},
-            entry.copy(),
-        ]
-
     def _filter_symlinks(
         self,
         candidates: List[str],
@@ -1384,7 +1237,7 @@ class ActionModule(PosixActionBase, ActionBase):
         reference_inodes: set[int],
         current_path: str,
     ) -> List[str]:
-        """Filter symlink candidates to those that resolve to the target."""
+        """Filter symlink candidates to those resolving to target."""
 
         valid: List[str] = []
         seen: set[str] = set()
@@ -1414,98 +1267,6 @@ class ActionModule(PosixActionBase, ActionBase):
             valid.append(normalized_candidate)
 
         return valid
-
-    def _normalize_flags(self, value: str) -> List[str]:
-        """Normalize filesystem flags output into a list."""
-
-        flags = value.strip()
-        if not flags or flags == "-":
-            return []
-        if "," in flags:
-            return [flag.strip() for flag in flags.split(",") if flag.strip()]
-        return [flag for flag in flags.split() if flag]
-
-    def _get_acl(
-        self, path: str, task_vars: Optional[Dict[str, Any]]
-    ) -> Optional[Dict[str, Any]]:
-        """Retrieve ACL information for a path.
-
-        :param str path: Path to get ACLs for
-        :param Optional[Dict[str, Any]] task_vars: Available Ansible
-            variables
-        :returns Optional[Dict[str, Any]]: ACL metadata with type or None
-        """
-        result = self._cmd(["getfacl", "-p", path], task_vars=task_vars)
-        if result.get("rc") == 0:
-            output = (result.get("stdout") or "").strip()
-            if output:
-                return {"type": "posix", "text": output}
-        # macOS fallback: ls -le prints ACLs
-        alt = self._cmd(["ls", "-le", path], task_vars=task_vars)
-        if alt.get("rc") == 0:
-            output = (alt.get("stdout") or "").strip()
-            if output:
-                lines = output.splitlines()
-                prefixes = tuple(f"{i}:" for i in range(10))
-                if any(
-                    line.lstrip().startswith(prefixes) for line in lines[1:]
-                ):
-                    return {"type": "macos", "text": output}
-        return None
-
-    def _get_xattrs(
-        self, path: str, task_vars: Optional[Dict[str, Any]]
-    ) -> Optional[str]:
-        """Retrieve extended attributes for a path.
-
-        :param str path: Path to get extended attributes for
-        :param Optional[Dict[str, Any]] task_vars: Available Ansible
-            variables
-        :returns Optional[str]: Extended attributes or None if
-            unavailable
-        """
-        result = self._cmd(
-            ["getfattr", "--absolute-names", "-d", path], task_vars=task_vars
-        )
-        if result.get("rc") == 0:
-            output = (result.get("stdout") or "").strip()
-            if output:
-                return output
-        # macOS fallback: xattr -l
-        alt = self._cmd(["xattr", "-l", path], task_vars=task_vars)
-        if alt.get("rc") == 0:
-            output = (alt.get("stdout") or "").strip()
-            if output:
-                return output
-        return None
-
-    def _get_flags(
-        self, path: str, task_vars: Optional[Dict[str, Any]]
-    ) -> Optional[str]:
-        """Retrieve filesystem flags for a path.
-
-        :param str path: Path to get flags for
-        :param Optional[Dict[str, Any]] task_vars: Available Ansible
-            variables
-        :returns Optional[str]: Filesystem flags or None if unavailable
-        """
-        result = self._cmd(["lsattr", "-d", path], task_vars=task_vars)
-        if result.get("rc") != 0:
-            alt = self._cmd(["ls", "-ldO", path], task_vars=task_vars)
-            if alt.get("rc") != 0:
-                return None
-            stdout = alt.get("stdout") or ""
-            parts = stdout.split()
-            if len(parts) >= 5:
-                flags = parts[4]
-                if flags != "-":
-                    return flags
-            return None
-        stdout = result.get("stdout") or ""
-        parts = stdout.split()
-        if not parts:
-            return None
-        return parts[0]
 
     def _detect_encoding(
         self,
