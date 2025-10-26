@@ -273,7 +273,26 @@ class ActionModule(PosixActionBase, ActionBase):
         stat_result["device_type"] = self._device_type_value(
             jc_data, task_vars
         )
-        stat_result["blocks"] = jc_data.get("blocks")
+
+        # BSD stat uses different field names than Linux
+        # BSD: block_size is filesystem block size, blocks is allocated
+        # Linux: io_blocks is filesystem block size, blocks is allocated
+        is_bsd = "unix_device" in jc_data
+        if is_bsd:
+            # BSD: blocks and block_size fields
+            stat_result["blocks"] = jc_data.get("blocks", 0)
+            stat_result["block_size"] = jc_data.get("block_size", 512)
+        else:
+            # Linux: blocks and io_blocks fields
+            stat_result["blocks"] = jc_data.get("blocks", 0)
+            block_size = jc_data.get("io_blocks") or jc_data.get("block_size")
+            if block_size:
+                stat_result["block_size"] = block_size
+            else:
+                raise AnsibleActionFail(
+                    "jc stat result missing block_size or io_blocks"
+                )
+
         # Convert to float for consistency with builtin.stat
         stat_result["atime"] = float(jc_data["access_time_epoch"])
         stat_result["mtime"] = float(jc_data["modify_time_epoch"])
@@ -283,20 +302,10 @@ class ActionModule(PosixActionBase, ActionBase):
         # Linux ext4). On Linux ext4, birth_time_epoch might be 0 or
         # equal to ctime. On OpenBSD, it may be None.
         if birth_time and birth_time > 0:
-            # On BSD/macOS (detected by unix_device), always trust
-            # birth_time_epoch. On Linux, only if different from ctime.
-            is_bsd = "unix_device" in jc_data
+            # On BSD/macOS, always trust birth_time_epoch.
+            # On Linux, only if different from ctime.
             if is_bsd or birth_time != jc_data["change_time_epoch"]:
                 stat_result["birthtime"] = float(birth_time)
-
-        # Block size
-        block_size = jc_data.get("block_size") or jc_data.get("io_blocks")
-        if block_size:
-            stat_result["block_size"] = block_size
-        else:
-            raise AnsibleActionFail(
-                "jc stat result missing block_size or io_blocks"
-            )
 
         # File type flags - check if symlink first
         flags = jc_data["flags"]
@@ -420,22 +429,23 @@ class ActionModule(PosixActionBase, ActionBase):
         else:
             raise AnsibleActionFail(f"Unable to determine gid of {groupname}")
 
-        # Unix flags (BSD) - validate it's hex string before
-        # converting
-        unix_flags = jc_data.get("unix_flags")
-        if unix_flags and isinstance(unix_flags, str):
-            # Only process if it looks like a hex value (not a path)
-            if unix_flags.replace("/", "").replace("x", "").isalnum():
-                try:
-                    # Remove any 0x prefix if present
-                    hex_str = unix_flags.lower().replace("0x", "")
-                    # Validate all characters are valid hex digits
-                    if all(c in "0123456789abcdef" for c in hex_str):
-                        stat_result["flags"] = int(hex_str, 16)
-                except (ValueError, TypeError):
-                    # Skip invalid values - jc sometimes puts path
-                    # in this field on parsing errors
-                    pass
+        # Unix flags (BSD) - validate it's hex string before converting
+        # On BSD systems, default to 0 to match builtin.stat behavior
+        if is_bsd:
+            stat_result["flags"] = 0  # Default for BSD systems
+            unix_flags = jc_data.get("unix_flags")
+            if unix_flags and isinstance(unix_flags, str):
+                # Only process if it looks like a hex value (not a path)
+                if unix_flags.replace("/", "").replace("x", "").isalnum():
+                    try:
+                        # Remove any 0x prefix if present
+                        hex_str = unix_flags.lower().replace("0x", "")
+                        # Validate all characters are valid hex digits
+                        if all(c in "0123456789abcdef" for c in hex_str):
+                            stat_result["flags"] = int(hex_str, 16)
+                    except (ValueError, TypeError):
+                        # Keep default value 0
+                        pass
 
         # Get checksum if requested (only for regular files)
         if get_checksum and stat_result["isreg"]:
@@ -675,11 +685,25 @@ class ActionModule(PosixActionBase, ActionBase):
         mime_info: Dict[str, str] = {}
         parts = output.split(";", 1)
         if parts:
-            mime_info["mimetype"] = parts[0].strip()
+            mimetype = parts[0].strip()
+            # Normalize non-regular file types to "unknown" to match
+            # builtin.stat behavior
+            if mimetype in (
+                "application/x-not-regular-file",
+                "inode/directory",
+            ):
+                mime_info["mimetype"] = "unknown"
+            else:
+                mime_info["mimetype"] = mimetype
+
         if len(parts) > 1:
             charset_part = parts[1].strip()
             if charset_part.startswith("charset="):
                 mime_info["charset"] = charset_part[8:].strip()
+
+        # Always include charset, default to "unknown" if not found
+        if "charset" not in mime_info:
+            mime_info["charset"] = "unknown"
 
         return mime_info if mime_info else None
 
