@@ -365,37 +365,17 @@ class ActionModule(PosixActionBase, ActionBase):
         is_executable = test_executable.get("rc") == 0
 
         # Mode - convert flags to 4-digit octal
-        # For symlinks (when NOT following), mode is always 0777
-        # When following a symlink, use target's mode
-        if is_symlink and not follow:
-            stat_result["mode"] = "0777"
-        else:
-            stat_result["mode"] = self._parse_mode_from_flags(type_flags)
+        # When following a symlink, use target's mode. Otherwise use the
+        # actual permissions from the file/symlink itself.
+        mode_flags = target_jc_data["flags"] if target_jc_data else flags
+        stat_result["mode"] = self._parse_mode_from_flags(mode_flags)
 
         # Permission booleans - rusr, wusr, xusr, rgrp, wgrp, xgrp, etc.
-        # For symlinks (when NOT following), all permission bits True
-        # When following a symlink, use target's permissions
-        if is_symlink and not follow:
-            permission_bools = {
-                "rusr": True,
-                "wusr": True,
-                "xusr": True,
-                "rgrp": True,
-                "wgrp": True,
-                "xgrp": True,
-                "roth": True,
-                "woth": True,
-                "xoth": True,
-                "isuid": False,
-                "isgid": False,
-                "readable": True,
-                "writeable": True,
-                "executable": is_executable,
-            }
-        else:
-            permission_bools = self._parse_permission_booleans(type_flags)
-            # Override executable with test result for accuracy
-            permission_bools["executable"] = is_executable
+        # When following a symlink, use target's permissions. Otherwise
+        # use actual permissions from the file/symlink.
+        permission_bools = self._parse_permission_booleans(mode_flags)
+        # Override executable with test result for accuracy
+        permission_bools["executable"] = is_executable
         stat_result.update(permission_bools)
 
         # Symlink targets - get immediate and resolved targets
