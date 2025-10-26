@@ -279,24 +279,31 @@ class ActionModule(PosixActionBase, ActionBase):
         # Linux: io_blocks is filesystem block size, blocks is allocated
         is_bsd = "unix_device" in jc_data
         if is_bsd:
-            # BSD: blocks and block_size fields
-            stat_result["blocks"] = jc_data.get("blocks", 0)
-
-            # Workaround for jc parser bug on OpenBSD: the actual
-            # block_size value ends up in the birth_time field as a
-            # string when birth_time_epoch is null
+            # Workaround for jc parser bug on OpenBSD: All fields after
+            # the timestamps are shifted. The jc parser misaligns:
+            #   birth_time <- block_size (as string)
+            #   block_size <- blocks
+            #   blocks <- unix_flags (usually 0)
+            #   unix_flags <- path
+            blocks_value = jc_data.get("blocks", 0)
             block_size_value = jc_data.get("block_size", 512)
+
             if birth_time is None:
                 birth_time_str = jc_data.get("birth_time")
                 if birth_time_str and isinstance(birth_time_str, str):
                     try:
-                        # If birth_time is a numeric string, it's likely
-                        # the actual block_size (jc parsing bug)
-                        parsed = int(birth_time_str)
-                        if parsed > 0:
-                            block_size_value = parsed
+                        # birth_time field contains the actual
+                        # block_size
+                        parsed_block_size = int(birth_time_str)
+                        if parsed_block_size > 0:
+                            # block_size field contains the actual
+                            # blocks
+                            blocks_value = block_size_value
+                            block_size_value = parsed_block_size
                     except (ValueError, TypeError):
                         pass
+
+            stat_result["blocks"] = blocks_value
             stat_result["block_size"] = block_size_value
         else:
             # Linux: blocks and io_blocks fields
@@ -702,12 +709,9 @@ class ActionModule(PosixActionBase, ActionBase):
         parts = output.split(";", 1)
         if parts:
             mimetype = parts[0].strip()
-            # Normalize non-regular file types to "unknown" to match
-            # builtin.stat behavior
-            if mimetype in (
-                "application/x-not-regular-file",
-                "inode/directory",
-            ):
+            # Normalize application/x-not-regular-file to "unknown" to
+            # match builtin.stat behavior on OpenBSD
+            if mimetype == "application/x-not-regular-file":
                 mime_info["mimetype"] = "unknown"
             else:
                 mime_info["mimetype"] = mimetype
