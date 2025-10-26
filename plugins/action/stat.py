@@ -476,7 +476,13 @@ class ActionModule(PosixActionBase, ActionBase):
             if checksum:
                 stat_result["checksum"] = checksum
             else:
-                raise AnsibleActionFail("Checksum is empty")
+                # Warn if checksum algorithm not available on target
+                host = self._get_inventory_hostname(task_vars)
+                self._display.warning(
+                    f"[{host}] Checksum algorithm '{checksum_algorithm}' "
+                    f"not available on target system. Checksum field will "
+                    f"be omitted."
+                )
 
         # Get MIME type if requested
         if get_mime:
@@ -678,6 +684,20 @@ class ActionModule(PosixActionBase, ActionBase):
                     parts = stdout.split()
                     if parts:
                         return parts[0]
+
+        # Try OpenBSD commands (sha1, sha256, sha512 without -q)
+        # Output format: "SHA256 (file) = checksum"
+        if algorithm in ("sha1", "sha256", "sha512"):
+            result = self._cmd(
+                [algorithm, path], task_vars=task_vars, check_mode=False
+            )
+            if result.get("rc") == 0:
+                stdout = result.get("stdout", "").strip()
+                if stdout and "=" in stdout:
+                    # Parse "SHA256 (file) = checksum"
+                    checksum = stdout.split("=", 1)[1].strip()
+                    if checksum:
+                        return checksum
 
         return None
 
