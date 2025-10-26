@@ -1,0 +1,7 @@
+# vim: ts=2:sw=2:sts=2:et:ft=yaml.ansible
+# -*- mode: yaml; yaml-indent-offset: 2; indent-tabs-mode: nil; -*-
+---
+minor_changes:
+  - 'filters - Added ``uptime`` filter to parse POSIX uptime output with elapsed time, boot time (controller timezone), login session count, and load averages.'
+  - 'uptime - New action/module pair that gathers uptime details using the ``uptime`` command with timezone-aware parsing.'
+  - 'uptime - Action plugin detects target system timezone using ``date +%z`` to display boot time in target timezone for more intuitive output.'
