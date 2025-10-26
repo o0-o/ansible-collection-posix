@@ -92,6 +92,7 @@ def test_parse_who_openbsd_partial_time(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Test parsing OpenBSD who entries with month/day timestamps."""
+
     def fake_jc(parser: str, value: object) -> List[Dict[str, object]]:
         assert parser == "who"
         return [
@@ -122,6 +123,7 @@ def test_parse_who_openbsd_year_rollover(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Test year adjustment for OpenBSD who timestamps lacking year."""
+
     def fake_jc(parser: str, value: object) -> List[Dict[str, object]]:
         assert parser == "who"
         return [

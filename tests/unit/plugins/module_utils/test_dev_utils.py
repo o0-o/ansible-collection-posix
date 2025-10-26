@@ -40,7 +40,9 @@ class TestDeviceFromMajorMinor:
             ("136,0", (136 << 8) | 0),  # 34816 (simple formula)
         ],
     )
-    def test_valid_device_strings(self, device_str: str, expected: int) -> None:
+    def test_valid_device_strings(
+        self, device_str: str, expected: int
+    ) -> None:
         """Test conversion of valid major,minor strings using Linux formula."""
         result = device_from_major_minor(device_str)
         assert result == expected
@@ -100,13 +102,22 @@ class TestDeviceFromHexMajorMinor:
     @pytest.mark.parametrize(
         "hex_str,expected",
         [
-            ("fe,2", (0xFE << 8) | 0x2),  # 65026 (254,2 in decimal, simple formula)
+            (
+                "fe,2",
+                (0xFE << 8) | 0x2,
+            ),  # 65026 (254,2 in decimal, simple formula)
             ("8,0", (0x8 << 8) | 0x0),  # 2048 (simple formula)
             # 0x103 = 259 >= 256, so uses modern formula
-            ("103,1", 1099511628545),  # Modern formula result (259,1 in decimal)
+            (
+                "103,1",
+                1099511628545,
+            ),  # Modern formula result (259,1 in decimal)
             ("0,5", (0x0 << 8) | 0x5),  # 5 (simple formula)
             ("1,3", (0x1 << 8) | 0x3),  # 259 (simple formula)
-            ("88,0", (0x88 << 8) | 0x0),  # 34816 (136,0 in decimal, simple formula)
+            (
+                "88,0",
+                (0x88 << 8) | 0x0,
+            ),  # 34816 (136,0 in decimal, simple formula)
         ],
     )
     def test_valid_hex_strings(self, hex_str: str, expected: int) -> None:

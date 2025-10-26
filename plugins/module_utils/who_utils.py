@@ -163,11 +163,7 @@ def _parse_with_dateutil(
                     parsed = parsed.replace(year=parsed.year - 1)
                 except ValueError:
                     parsed = parsed - timedelta(days=366)
-        elif (
-            ":" in iso_hint
-            and "T" not in iso_hint
-            and "-" not in iso_hint
-        ):
+        elif ":" in iso_hint and "T" not in iso_hint and "-" not in iso_hint:
             if parsed > reference + tolerance:
                 parsed = parsed - timedelta(days=1)
 
