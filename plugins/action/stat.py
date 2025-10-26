@@ -350,8 +350,10 @@ class ActionModule(PosixActionBase, ActionBase):
         type_flags = target_jc_data["flags"] if target_jc_data else flags
 
         # Set file type based on appropriate flags
+        # Note: islnk always uses original flags (path is always a
+        # symlink). Other types use target flags when following.
+        stat_result["islnk"] = is_symlink
         stat_result["isdir"] = type_flags.startswith("d")
-        stat_result["islnk"] = type_flags.startswith("l")
         stat_result["isreg"] = type_flags.startswith("-")
         stat_result["isblk"] = type_flags.startswith("b")
         stat_result["ischr"] = type_flags.startswith("c")
