@@ -259,9 +259,13 @@ class ActionModule(PosixActionBase, ActionBase):
                 f"{to_text(birth_time)}"
             )
 
-        # 1:1s
-        path = jc_data["file"]
-        stat_result["path"] = path
+        # 1:1s - use file from jc output, fallback to input path if
+        # empty
+        result_path = jc_data.get("file")
+        if not result_path or not result_path.strip():
+            # jc parsing error - use the input path instead
+            result_path = path
+        stat_result["path"] = result_path
         stat_result["size"] = jc_data["size"]
         stat_result["nlink"] = jc_data.get("links")
         stat_result["inode"] = jc_data.get("inode")
@@ -436,16 +440,22 @@ class ActionModule(PosixActionBase, ActionBase):
         else:
             raise AnsibleActionFail(f"Unable to determine gid of {groupname}")
 
-        # Unix flags (BSD)
+        # Unix flags (BSD) - validate it's hex string before
+        # converting
         unix_flags = jc_data.get("unix_flags")
-        if unix_flags:
-            try:
-                stat_result["flags"] = int(unix_flags, 16)
-            except (ValueError, TypeError) as e:
-                raise AnsibleActionFail(
-                    f"Unable to convert unix flags ({unix_flags}) to integer: "
-                    f"{e}"
-                )
+        if unix_flags and isinstance(unix_flags, str):
+            # Only process if it looks like a hex value (not a path)
+            if unix_flags.replace("/", "").replace("x", "").isalnum():
+                try:
+                    # Remove any 0x prefix if present
+                    hex_str = unix_flags.lower().replace("0x", "")
+                    # Validate all characters are valid hex digits
+                    if all(c in "0123456789abcdef" for c in hex_str):
+                        stat_result["flags"] = int(hex_str, 16)
+                except (ValueError, TypeError):
+                    # Skip invalid values - jc sometimes puts path
+                    # in this field on parsing errors
+                    pass
 
         # Get checksum if requested (only for regular files)
         if get_checksum and stat_result["isreg"]:
