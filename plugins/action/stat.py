@@ -14,7 +14,7 @@ from __future__ import annotations
 import re
 from numbers import Number
 
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, Optional
 
 from ansible.errors import AnsibleActionFail
 from ansible.module_utils.common.text.converters import to_text
@@ -243,7 +243,6 @@ class ActionModule(PosixActionBase, ActionBase):
             "access_time_epoch",
             "modify_time_epoch",
             "change_time_epoch",
-            "birth_time_epoch",
         ]:
             value = jc_data.get(field)
             if value is None or not isinstance(value, Number):
@@ -251,6 +250,14 @@ class ActionModule(PosixActionBase, ActionBase):
                     f"jc stat result missing {field} field (number): "
                     f"{to_text(value)}"
                 )
+
+        # birth_time_epoch is optional - not all systems support it
+        birth_time = jc_data.get("birth_time_epoch")
+        if birth_time is not None and not isinstance(birth_time, Number):
+            raise AnsibleActionFail(
+                f"jc stat result has invalid birth_time_epoch: "
+                f"{to_text(birth_time)}"
+            )
 
         # 1:1s
         path = jc_data["file"]
@@ -270,8 +277,7 @@ class ActionModule(PosixActionBase, ActionBase):
 
         # Only set birthtime if actually supported (BSD/macOS, not
         # Linux ext4). On Linux ext4, birth_time_epoch might be 0 or
-        # equal to ctime.
-        birth_time = jc_data.get("birth_time_epoch")
+        # equal to ctime. On OpenBSD, it may be None.
         if birth_time and birth_time > 0:
             # On BSD/macOS (detected by unix_device), always trust
             # birth_time_epoch. On Linux, only if different from ctime.
@@ -323,9 +329,9 @@ class ActionModule(PosixActionBase, ActionBase):
                     raise AnsibleActionFail(
                         "jc stat result for target missing flags field"
                     )
-                # Check if target is still a symlink (broken symlink case)
-                # On some systems, stat -L on a broken symlink returns the
-                # symlink itself rather than failing
+                # Check if target is still a symlink (broken symlink)
+                # On some systems, stat -L on broken symlink returns
+                # the symlink itself rather than failing
                 if target_jc_data["flags"].startswith("l"):
                     # Broken symlink - target doesn't exist
                     return {"exists": False}
@@ -582,314 +588,6 @@ class ActionModule(PosixActionBase, ActionBase):
         perms["executable"] = perms["xusr"]
 
         return perms
-
-    def _process_xattrs(
-        self,
-        source: Optional[object],
-    ) -> Tuple[List[str], List[Dict[str, Any]], Optional[str]]:
-        """Normalize xattr sources into names and specialised records.
-
-        :param Optional[object] source: Extended attributes from xattr
-            command
-        :returns Tuple[List[str], List[Dict[str, Any]], Optional[str]]:
-            Tuple of (attribute names, ACL records, SELinux value)
-        """
-        names: List[str] = []
-        acl_records: Dict[str, Dict[str, Any]] = {}
-        selinux_value: Optional[str] = None
-
-        def place_acl(record_type: str) -> Dict[str, Any]:
-            entry = acl_records.setdefault(record_type, {"type": record_type})
-            return entry
-
-        def handle(name: str, value: Optional[str]) -> None:
-            nonlocal selinux_value
-            key = name.strip()
-            if not key:
-                return
-            lowered = key.lower()
-            if lowered == "system.posix_acl_access":
-                return
-            if lowered == "system.posix_acl_default":
-                return
-            if lowered in {"com.apple.acl.text", "com.apple.security.acl"}:
-                entry = place_acl("macos_xattr")
-                if value is not None and "text" not in entry:
-                    entry["text"] = value
-                return
-            if lowered in {"system.nfs4_acl", "nfs4_acl"}:
-                entry = place_acl("nfs4_xattr")
-                if value is not None and "text" not in entry:
-                    entry["text"] = value
-                return
-            if lowered == "security.selinux":
-                if value and selinux_value is None:
-                    selinux_value = value
-                return
-            names.append(key)
-
-        if isinstance(source, dict):
-            for key, value in source.items():
-                if isinstance(key, bytes):
-                    key_obj = key.decode("utf-8", "ignore")
-                else:
-                    key_obj = str(key)
-                value_str = None
-                if value is not None:
-                    if isinstance(value, bytes):
-                        value_str = value.decode("utf-8", "ignore")
-                    else:
-                        value_str = str(value)
-                handle(key_obj, value_str)
-        elif isinstance(source, str):
-            for line in source.splitlines():
-                stripped = line.strip()
-                if not stripped or stripped.startswith("#"):
-                    continue
-                if ":" in stripped and "=" not in stripped:
-                    key, raw_val = stripped.split(":", 1)
-                    handle(key, raw_val.strip())
-                    continue
-                if "=" in stripped:
-                    key, raw_val = stripped.split("=", 1)
-                    handle(key, raw_val.strip().strip('"').strip("'"))
-                    continue
-                handle(stripped, None)
-        elif source is not None:
-            handle(str(source), None)
-
-        names = sorted(set(names))
-        acl_list = [value for value in acl_records.values() if len(value) > 1]
-        return names, acl_list, selinux_value
-
-    def _merge_acl(self, info: Dict[str, Any], entry: Dict[str, Any]) -> None:
-        """Merge ACL details into result dictionary with type tracking.
-
-        :param Dict[str, Any] info: Stat dictionary to merge ACL into
-        :param Dict[str, Any] entry: ACL entry to merge
-        """
-        if not entry:
-            return
-
-        entry_type = entry.get("type")
-        existing = info.get("acl")
-
-        if entry_type == "posix_xattr":
-            if isinstance(existing, dict) and existing.get("type") == "posix":
-                return
-            if isinstance(existing, list) and any(
-                isinstance(item, dict) and item.get("type") == "posix"
-                for item in existing
-            ):
-                return
-
-        if existing is None:
-            info["acl"] = entry.copy()
-            return
-
-        if isinstance(existing, dict):
-            existing_type = existing.get("type")
-            if entry_type and existing_type == entry_type:
-                merged = existing.copy()
-                for key, value in entry.items():
-                    if key in {"type"}:
-                        continue
-                    if key not in merged:
-                        merged[key] = value
-                info["acl"] = merged
-                return
-
-            info["acl"] = [existing.copy(), entry.copy()]
-            return
-
-        if isinstance(existing, list):
-            if entry_type:
-                for idx, item in enumerate(existing):
-                    if (
-                        isinstance(item, dict)
-                        and item.get("type") == entry_type
-                    ):
-                        merged = item.copy()
-                        for key, value in entry.items():
-                            if key in {"type"}:
-                                continue
-                            if key not in merged:
-                                merged[key] = value
-                        existing[idx] = merged
-                        info["acl"] = existing
-                        return
-            existing.append(entry.copy())
-            info["acl"] = existing
-            return
-
-        # Existing value is plain string; convert to structured form.
-        info["acl"] = [
-            {"type": "unknown", "text": str(existing)},
-            entry.copy(),
-        ]
-
-    def _extract_attr_flags(self, value: str) -> str:
-        """Extract raw flag characters from lsattr output.
-
-        Converts "--------------e-------" to "e" (just the set flags).
-        For BSD/macOS format, returns empty string as it doesn't use
-        single-character flags.
-
-        :param str value: Raw lsattr/ls output
-        :returns str: Flag characters that are set
-        """
-        flags_str = value.strip()
-        if not flags_str or flags_str == "-":
-            return ""
-
-        # BSD/macOS format - doesn't use attr_flags field
-        if "," in flags_str or any(
-            word.isalpha() and len(word) > 1 for word in flags_str.split()
-        ):
-            return ""
-
-        # Linux lsattr format - extract non-dash characters
-        flag_chars = "".join(
-            char for char in flags_str if char not in ("-", " ")
-        )
-        return flag_chars
-
-    def _normalize_flags(self, value: str) -> List[str]:
-        """Parse filesystem flags into attribute names.
-
-        Handles multiple formats:
-        - Linux lsattr: "--------------e-------" → ["extents"]
-        - BSD/macOS: "restricted,hidden" or "restricted hidden" → as-is
-
-        :param str value: Raw flags string
-        :returns List[str]: List of attribute names
-        """
-        flags_str = value.strip()
-        if not flags_str or flags_str == "-":
-            return []
-
-        # BSD/macOS format: comma or space separated words
-        if "," in flags_str:
-            return [
-                flag.strip() for flag in flags_str.split(",") if flag.strip()
-            ]
-
-        # Check if readable words (BSD format without commas)
-        if any(word.isalpha() and len(word) > 1 for word in flags_str.split()):
-            return [flag.strip() for flag in flags_str.split() if flag.strip()]
-
-        # Linux lsattr format: single-character flags
-        flag_map = {
-            "a": "append_only",
-            "c": "compressed",
-            "d": "no_dump",
-            "e": "extents",
-            "i": "immutable",
-            "j": "data_journaling",
-            "s": "secure_deletion",
-            "t": "no_tail_merging",
-            "u": "undeletable",
-            "A": "no_atime",
-            "D": "synchronous_directory",
-            "S": "synchronous_updates",
-            "T": "top_of_directory_hierarchy",
-            "C": "no_copy_on_write",
-            "E": "encrypted",
-            "I": "indexed_directory",
-            "N": "inline_data",
-            "P": "project_hierarchy",
-            "V": "verity",
-        }
-
-        attributes = []
-        for char in flags_str:
-            if char in flag_map:
-                attributes.append(flag_map[char])
-
-        return attributes
-
-    def _get_acl(
-        self, path: str, task_vars: Optional[Dict[str, Any]]
-    ) -> Optional[Dict[str, Any]]:
-        """Retrieve ACL information for a path.
-
-        :param str path: Path to get ACLs for
-        :param Optional[Dict[str, Any]] task_vars: Available Ansible
-            task variables
-        :returns Optional[Dict[str, Any]]: ACL metadata with type or
-            None
-        """
-        result = self._cmd(["getfacl", "-p", path], task_vars=task_vars)
-        if result.get("rc") == 0:
-            output = (result.get("stdout") or "").strip()
-            if output:
-                return {"type": "posix", "text": output}
-        # macOS fallback: ls -le prints ACLs
-        alt = self._cmd(["ls", "-le", path], task_vars=task_vars)
-        if alt.get("rc") == 0:
-            output = (alt.get("stdout") or "").strip()
-            if output:
-                lines = output.splitlines()
-                prefixes = tuple(f"{i}:" for i in range(10))
-                if any(
-                    line.lstrip().startswith(prefixes) for line in lines[1:]
-                ):
-                    return {"type": "macos", "text": output}
-        return None
-
-    def _get_xattrs(
-        self, path: str, task_vars: Optional[Dict[str, Any]]
-    ) -> Optional[str]:
-        """Retrieve extended attributes for a path.
-
-        :param str path: Path to get extended attributes for
-        :param Optional[Dict[str, Any]] task_vars: Available Ansible
-            variables
-        :returns Optional[str]: Extended attributes or None if
-            unavailable
-        """
-        result = self._cmd(
-            ["getfattr", "--absolute-names", "-d", path], task_vars=task_vars
-        )
-        if result.get("rc") == 0:
-            output = (result.get("stdout") or "").strip()
-            if output:
-                return output
-        # macOS fallback: xattr -l
-        alt = self._cmd(["xattr", "-l", path], task_vars=task_vars)
-        if alt.get("rc") == 0:
-            output = (alt.get("stdout") or "").strip()
-            if output:
-                return output
-        return None
-
-    def _get_flags(
-        self, path: str, task_vars: Optional[Dict[str, Any]]
-    ) -> Optional[str]:
-        """Retrieve filesystem flags for a path.
-
-        :param str path: Path to get flags for
-        :param Optional[Dict[str, Any]] task_vars: Available Ansible
-            variables
-        :returns Optional[str]: Filesystem flags or None if unavailable
-        """
-        result = self._cmd(["lsattr", "-d", path], task_vars=task_vars)
-        if result.get("rc") != 0:
-            alt = self._cmd(["ls", "-ldO", path], task_vars=task_vars)
-            if alt.get("rc") != 0:
-                return None
-            stdout = alt.get("stdout") or ""
-            parts = stdout.split()
-            if len(parts) >= 5:
-                flags = parts[4]
-                if flags != "-":
-                    return flags
-            return None
-        stdout = result.get("stdout") or ""
-        parts = stdout.split()
-        if not parts:
-            return None
-        return parts[0]
 
     def _get_checksum(
         self,
