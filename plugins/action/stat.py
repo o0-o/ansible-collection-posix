@@ -730,7 +730,7 @@ class ActionModule(PosixActionBase, ActionBase):
                 "required": True,
                 "aliases": ["dest", "name"],
             },
-            "follow": {"type": "bool", "default": True},
+            "follow": {"type": "bool", "default": False},
             "get_checksum": {"type": "bool", "default": True},
             "get_mime": {
                 "type": "bool",
