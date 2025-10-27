@@ -14,6 +14,7 @@ from __future__ import annotations
 import os
 import posixpath
 import shlex
+from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 
 from ansible.errors import AnsibleActionFail
@@ -304,20 +305,27 @@ class ActionModule(PosixActionBase, ActionBase):
 
         # Add modified and created time if available
         if include_metadata:
+            # Get local timezone for timestamp formatting
+            local_tz = datetime.now().astimezone().tzinfo
+
             # Format mtime as modified with utils datetime structure
             mtime = stat_data.get("mtime")
             if mtime is not None:
-                info["modified"] = format_epoch_timestamp(mtime)
+                info["modified"] = format_epoch_timestamp(mtime, tz=local_tz)
 
             # Format birthtime or ctime as created with utils datetime
             # structure
             birthtime = stat_data.get("birthtime")
             if birthtime is not None:
-                info["created"] = format_epoch_timestamp(birthtime)
+                info["created"] = format_epoch_timestamp(
+                    birthtime, tz=local_tz
+                )
             else:
                 ctime = stat_data.get("ctime")
                 if ctime is not None:
-                    info["created"] = format_epoch_timestamp(ctime)
+                    info["created"] = format_epoch_timestamp(
+                        ctime, tz=local_tz
+                    )
 
         link_paths: List[str] = []
 
