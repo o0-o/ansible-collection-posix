@@ -75,3 +75,31 @@
       - stat_symlink_follow_reg['stat']['isreg']
       - not stat_symlink_follow_reg['stat']['islnk']
     msg: Should report regular file when following symlinks
+
+- name: Stat character device /dev/null
+  o0_o.posix.stat:
+    path: /dev/null
+    _force_raw: "{{ _force_raw }}"
+  register: stat_chr_reg
+
+- name: Verify character device flags
+  ansible.builtin.assert:
+    that:
+      - stat_chr_reg['stat']['exists']
+      - stat_chr_reg['stat']['ischr']
+      - not stat_chr_reg['stat']['isreg']
+      - not stat_chr_reg['stat']['isdir']
+      - not stat_chr_reg['stat']['islnk']
+      - not stat_chr_reg['stat']['isblk']
+      - not stat_chr_reg['stat']['isfifo']
+      - not stat_chr_reg['stat']['issock']
+    msg: /dev/null should be identified as character device
+
+- name: Verify character device has required fields
+  ansible.builtin.assert:
+    that:
+      - stat_chr_reg['stat']['dev'] is defined
+      - stat_chr_reg['stat']['device_type'] is defined
+      - stat_chr_reg['stat']['dev'] is number
+      - stat_chr_reg['stat']['device_type'] is number
+    msg: Character device should have dev and device_type fields

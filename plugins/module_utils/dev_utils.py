@@ -99,7 +99,16 @@ def device_value(entry: Dict[str, Any]) -> Optional[int]:
     unix_device = entry.get("unix_device")
     if unix_device is not None:
         try:
-            return int(unix_device)
+            dev_int = int(unix_device)
+            # On BSD/macOS, jc may return values as unsigned 32-bit
+            # integers, but Python's os.stat and ansible.builtin.stat
+            # return them as signed int32 for compatibility. Convert to
+            # signed if value is in the upper half of 32-bit range.
+            if dev_int > 0x7FFFFFFF:  # If > 2^31-1 (2147483647)
+                import ctypes
+
+                dev_int = ctypes.c_int32(dev_int).value
+            return dev_int
         except (ValueError, TypeError):
             return None
 
