@@ -178,8 +178,9 @@ def restructure_process(proc: Dict[str, Any]) -> Dict[str, Any]:
     # (lstart field is no longer used because it contains spaces
     # which breaks jc parsing of ps output)
     if elapsed_data and "seconds" in elapsed_data:
-        # Truncate microseconds from now since elapsed is second-precision
-        now = datetime.now(timezone.utc).replace(microsecond=0)
+        # Use local timezone so offset and pretty fields reflect localhost
+        # Truncate microseconds since elapsed is second-precision
+        now = datetime.now().astimezone().replace(microsecond=0)
         started_dt = now - timedelta(seconds=elapsed_data["seconds"])
         # Format as ISO8601 and parse back to get consistent structure
         started_str = started_dt.isoformat()
