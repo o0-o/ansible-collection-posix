@@ -67,25 +67,33 @@ class ActionModule(PosixActionBase, ActionBase):
                 "elements": "str",
                 "aliases": ["path"],
             },
-            "content": {"type": "bool", "default": False},
-            "metadata": {"type": "bool", "default": True},
+            "include": {
+                "type": "list",
+                "elements": "str",
+                "default": ["metadata"],
+                "choices": [
+                    "content",
+                    "metadata",
+                    "type",
+                    "name",
+                    "parent",
+                    "mode",
+                    "owner",
+                    "group",
+                    "writable",
+                    "links",
+                    "modified",
+                    "created",
+                    "acl",
+                    "xattrs",
+                    "flags",
+                    "selinux",
+                ],
+            },
             "encoding": {"type": "str"},
             "parents": {"type": "raw", "default": False},
             "find_hardlinks": {"type": "bool", "default": False},
             "find_symlinks": {"type": "bool", "default": False},
-            # Individual field inclusion (used when metadata=false)
-            "type": {"type": "bool", "default": False},
-            "name": {"type": "bool", "default": False},
-            "parent": {"type": "bool", "default": False},
-            "mode": {"type": "bool", "default": False},
-            "owner": {"type": "bool", "default": False},
-            "group": {"type": "bool", "default": False},
-            "writable": {"type": "bool", "default": False},
-            "links": {"type": "bool", "default": False},
-            "acl": {"type": "bool", "default": False},
-            "xattrs": {"type": "bool", "default": False},
-            "flags": {"type": "bool", "default": False},
-            "selinux": {"type": "bool", "default": False},
             "_force_raw": {"type": "bool", "default": False},
         }
         validation_result, new_args = self.validate_argument_spec(
@@ -95,8 +103,9 @@ class ActionModule(PosixActionBase, ActionBase):
 
         path_list = new_args["paths"]
 
-        include_content = new_args["content"]
-        include_metadata = new_args["metadata"]
+        # Convert include list to set for fast lookup
+        include_fields = set(new_args["include"])
+        include_content = "content" in include_fields
         preferred_encoding = new_args.get("encoding")
         parents_option = truthy_or_integer(
             new_args["parents"], zero_is_false=True, only_positive=True
@@ -114,22 +123,6 @@ class ActionModule(PosixActionBase, ActionBase):
         find_hardlinks = new_args.get("find_hardlinks", False)
         find_symlinks = new_args.get("find_symlinks", False)
 
-        # Field inclusion options (when metadata=false)
-        field_options = {
-            "type": new_args.get("type", False),
-            "name": new_args.get("name", False),
-            "parent": new_args.get("parent", False),
-            "mode": new_args.get("mode", False),
-            "owner": new_args.get("owner", False),
-            "group": new_args.get("group", False),
-            "writable": new_args.get("writable", False),
-            "links": new_args.get("links", False),
-            "acl": new_args.get("acl", False),
-            "xattrs": new_args.get("xattrs", False),
-            "flags": new_args.get("flags", False),
-            "selinux": new_args.get("selinux", False),
-        }
-
         files: Dict[str, Optional[Dict[str, Any]]] = {}
         for current_path in path_list:
             visited_paths: set[str] = set()
@@ -137,8 +130,7 @@ class ActionModule(PosixActionBase, ActionBase):
             info, extra_entries = self._gather_file_info(
                 path=current_path,
                 include_content=include_content,
-                include_metadata=include_metadata,
-                field_options=field_options,
+                include_fields=include_fields,
                 preferred_encoding=preferred_encoding,
                 task_vars=task_vars,
                 parents=parents,
@@ -167,8 +159,7 @@ class ActionModule(PosixActionBase, ActionBase):
             parent_info, parent_extra = self._gather_file_info(
                 path=parent_path,
                 include_content=False,
-                include_metadata=include_metadata,
-                field_options=field_options,
+                include_fields=include_fields,
                 preferred_encoding=None,
                 task_vars=task_vars,
                 parents=False,
@@ -194,8 +185,7 @@ class ActionModule(PosixActionBase, ActionBase):
         self,
         path: str,
         include_content: bool,
-        include_metadata: bool,
-        field_options: Dict[str, bool],
+        include_fields: set[str],
         preferred_encoding: Optional[str],
         task_vars: Optional[Dict[str, Any]],
         parents: bool,
@@ -207,10 +197,8 @@ class ActionModule(PosixActionBase, ActionBase):
 
         :param str path: Path to inspect
         :param bool include_content: Whether to read file content
-        :param bool include_metadata: Whether to include all metadata
-            fields
-        :param Dict[str, bool] field_options: Individual field
-            inclusion options (used when include_metadata is False)
+        :param set[str] include_fields: Set of field names to include
+            (if "metadata" is present, all fields are included)
         :param Optional[str] preferred_encoding: Override encoding
             detection
         :param Optional[Dict[str, Any]] task_vars: Available Ansible
@@ -236,21 +224,17 @@ class ActionModule(PosixActionBase, ActionBase):
 
         # Request extended attributes from stat if any are needed
         def should_include(field: str) -> bool:
-            return include_metadata or field_options.get(field, False)
+            return "metadata" in include_fields or field in include_fields
 
         get_attributes = any(
             should_include(field)
             for field in ["acl", "xattrs", "flags", "selinux"]
         )
 
-        stat_result = self._run_action(
-            "o0_o.posix.stat",
-            {
-                "path": path,
-                "follow": False,
-                "get_attributes": get_attributes,
-                "_force_raw": getattr(self, "force_raw", False),
-            },
+        stat_result = self._stat(
+            path=path,
+            follow=False,
+            get_attributes=get_attributes,
             task_vars=task_vars,
         )
         stat_data = stat_result.get("stat", {})
@@ -287,12 +271,18 @@ class ActionModule(PosixActionBase, ActionBase):
                 info["mode"] = mode
 
         if should_include("owner"):
-            owner = stat_data.get("pw_name") or stat_data.get("uid")
+            # Prefer numeric ID (matches process handling)
+            owner = stat_data.get("uid")
+            if owner is None:
+                owner = stat_data.get("pw_name")
             if owner is not None:
                 info["owner"] = owner
 
         if should_include("group"):
-            group = stat_data.get("gr_name") or stat_data.get("gid")
+            # Prefer numeric ID (matches process handling)
+            group = stat_data.get("gid")
+            if group is None:
+                group = stat_data.get("gr_name")
             if group is not None:
                 info["group"] = group
 
@@ -304,45 +294,61 @@ class ActionModule(PosixActionBase, ActionBase):
                 info["writable"] = bool(writeable)
 
         # Add modified and created time if available
-        if include_metadata:
+        if (
+            should_include("metadata")
+            or should_include("modified")
+            or should_include("created")
+        ):
             # Get local timezone for timestamp formatting
             local_tz = datetime.now().astimezone().tzinfo
 
             # Format mtime as modified with utils datetime structure
-            mtime = stat_data.get("mtime")
-            if mtime is not None:
-                info["modified"] = format_epoch_timestamp(mtime, tz=local_tz)
+            if should_include("metadata") or should_include("modified"):
+                mtime = stat_data.get("mtime")
+                if mtime is not None:
+                    info["modified"] = format_epoch_timestamp(
+                        mtime, tz=local_tz
+                    )
 
             # Format birthtime or ctime as created with utils datetime
             # structure
-            birthtime = stat_data.get("birthtime")
-            if birthtime is not None:
-                info["created"] = format_epoch_timestamp(
-                    birthtime, tz=local_tz
-                )
-            else:
-                ctime = stat_data.get("ctime")
-                if ctime is not None:
+            if should_include("metadata") or should_include("created"):
+                birthtime = stat_data.get("birthtime")
+                if birthtime is not None:
                     info["created"] = format_epoch_timestamp(
-                        ctime, tz=local_tz
+                        birthtime, tz=local_tz
                     )
+                else:
+                    ctime = stat_data.get("ctime")
+                    if ctime is not None:
+                        info["created"] = format_epoch_timestamp(
+                            ctime, tz=local_tz
+                        )
 
         link_paths: List[str] = []
 
         link_target = stat_data.get("lnk_source")
         display_link = None
         if link_target:
-            display_link = self._resolve_symbolic_target(
-                path=path,
-                link_target=link_target,
-                task_vars=task_vars,
-            )
+            # Use lnk_target from stat (immediate target) if available,
+            # otherwise use lnk_source (resolved target)
+            immediate_target = stat_data.get("lnk_target")
+            if immediate_target:
+                # Normalize relative paths
+                if posixpath.isabs(immediate_target):
+                    display_link = posixpath.normpath(immediate_target)
+                else:
+                    base_dir = posixpath.dirname(path) or "."
+                    combined = posixpath.join(base_dir, immediate_target)
+                    display_link = posixpath.normpath(combined)
+            else:
+                # Fall back to resolved target
+                display_link = posixpath.normpath(link_target)
         if display_link:
             nested_info, nested_extra = self._gather_file_info(
                 path=link_target,
                 include_content=include_content,
-                include_metadata=include_metadata,
-                field_options=field_options,
+                include_fields=include_fields,
                 preferred_encoding=preferred_encoding,
                 task_vars=task_vars,
                 parents=parents,
@@ -403,8 +409,7 @@ class ActionModule(PosixActionBase, ActionBase):
                     hard_info, nested_extra = self._gather_file_info(
                         path=hard_path,
                         include_content=include_content,
-                        include_metadata=include_metadata,
-                        field_options=field_options,
+                        include_fields=include_fields,
                         preferred_encoding=preferred_encoding,
                         task_vars=task_vars,
                         parents=True,
@@ -423,8 +428,7 @@ class ActionModule(PosixActionBase, ActionBase):
                         self._collect_symlink_refs(
                             target=hard_path,
                             include_content=include_content,
-                            include_metadata=include_metadata,
-                            field_options=field_options,
+                            include_fields=include_fields,
                             preferred_encoding=preferred_encoding,
                             task_vars=task_vars,
                             parents=parents,
@@ -455,8 +459,7 @@ class ActionModule(PosixActionBase, ActionBase):
                 symlink_info, nested_extra = self._gather_file_info(
                     path=symlink_path,
                     include_content=include_content,
-                    include_metadata=include_metadata,
-                    field_options=field_options,
+                    include_fields=include_fields,
                     preferred_encoding=preferred_encoding,
                     task_vars=task_vars,
                     parents=parents,
@@ -472,8 +475,7 @@ class ActionModule(PosixActionBase, ActionBase):
                 self._collect_symlink_refs(
                     target=link_target,
                     include_content=include_content,
-                    include_metadata=include_metadata,
-                    field_options=field_options,
+                    include_fields=include_fields,
                     preferred_encoding=preferred_encoding,
                     task_vars=task_vars,
                     parents=parents,
@@ -582,53 +584,6 @@ class ActionModule(PosixActionBase, ActionBase):
                 return label
         return None
 
-    def _resolve_symbolic_target(
-        self,
-        path: str,
-        link_target: str,
-        task_vars: Optional[Dict[str, Any]],
-    ) -> Optional[str]:
-        """Determine the best display value for a symlink target.
-
-        Prefers the literal symlink payload obtained via C(readlink)
-        when available so callers receive the same path string the
-        filesystem stores, falling back to the stat-provided value.
-
-        :param str path: Symlink path to inspect
-        :param str link_target: Target reported by the stat module
-        :param Optional[Dict[str, Any]] task_vars: Available Ansible
-            variables
-        :returns Optional[str]: Normalized target string or None when
-            unavailable
-        """
-        candidates: List[str] = []
-
-        readlink_result = self._cmd(
-            ["readlink", path],
-            task_vars=task_vars,
-            check_mode=False,
-        )
-        if readlink_result.get("rc") == 0:
-            output = (readlink_result.get("stdout") or "").strip()
-            if output:
-                if posixpath.isabs(output):
-                    candidates.append(output)
-                else:
-                    base_dir = posixpath.dirname(path) or "."
-                    combined = posixpath.join(base_dir, output)
-                    candidates.append(combined)
-
-        if link_target:
-            candidates.append(link_target)
-
-        for candidate in candidates:
-            if not candidate:
-                continue
-            normalized = posixpath.normpath(candidate)
-            if normalized:
-                return normalized
-        return None
-
     def _extract_inode(self, stat_data: Dict[str, Any]) -> Optional[int]:
         """Extract inode number from stat output when present."""
 
@@ -650,13 +605,9 @@ class ActionModule(PosixActionBase, ActionBase):
         """Retrieve stat data with symlink following enabled."""
 
         try:
-            return self._run_action(
-                "o0_o.posix.stat",
-                {
-                    "path": path,
-                    "follow": True,
-                    "_force_raw": getattr(self, "force_raw", False),
-                },
+            return self._stat(
+                path=path,
+                follow=True,
                 task_vars=task_vars,
             )
         except AnsibleActionFail:
@@ -1113,8 +1064,7 @@ class ActionModule(PosixActionBase, ActionBase):
         self,
         target: str,
         include_content: bool,
-        include_metadata: bool,
-        field_options: Dict[str, bool],
+        include_fields: set[str],
         preferred_encoding: Optional[str],
         task_vars: Optional[Dict[str, Any]],
         parents: bool,
@@ -1126,13 +1076,9 @@ class ActionModule(PosixActionBase, ActionBase):
             return {}
 
         try:
-            stat_result = self._run_action(
-                "o0_o.posix.stat",
-                {
-                    "path": target,
-                    "follow": False,
-                    "_force_raw": getattr(self, "force_raw", False),
-                },
+            stat_result = self._stat(
+                path=target,
+                follow=False,
                 task_vars=task_vars,
             )
         except AnsibleActionFail:
@@ -1182,8 +1128,7 @@ class ActionModule(PosixActionBase, ActionBase):
             symlink_info, nested_extra = self._gather_file_info(
                 path=symlink_path,
                 include_content=include_content,
-                include_metadata=include_metadata,
-                field_options=field_options,
+                include_fields=include_fields,
                 preferred_encoding=preferred_encoding,
                 task_vars=task_vars,
                 parents=parents,
@@ -1344,9 +1289,9 @@ class ActionModule(PosixActionBase, ActionBase):
         if not encoding:
             return None, None
 
-        slurp = self._execute_module(
-            module_name="o0_o.posix.slurp64",
-            module_args={"src": path, "encoding": encoding},
+        slurp = self._slurp(
+            src=path,
+            encoding=encoding,
             task_vars=task_vars,
         )
         if slurp.get("failed"):

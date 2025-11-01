@@ -1,0 +1,7 @@
+minor_changes:
+  - posix_action_base - Add ``_read()`` and ``_stat()`` helper methods for
+    cleaner invocation of posix modules from action plugins. These helpers
+    provide typed interfaces and automatically handle ``force_raw`` via
+    class variables.
+  - read - Update action plugin to use ``_stat()`` helper method instead
+    of ``_run_action()`` for more concise and maintainable code.
