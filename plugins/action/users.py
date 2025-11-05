@@ -87,6 +87,9 @@ class ActionModule(PosixActionBase, ActionBase):
         # Gather shells config
         config = self._gather_shells_config(task_vars)
 
+        # Gather shell binary metadata from user shells
+        shells = self._gather_shell_binaries(users, task_vars)
+
         result.update(
             {
                 "changed": False,
@@ -94,6 +97,7 @@ class ActionModule(PosixActionBase, ActionBase):
                     "o0_users": users,
                     "o0_groups": groups,
                     "o0_homes": homes,
+                    "o0_shells": shells,
                     "o0_config": config,
                 },
             }
@@ -642,11 +646,10 @@ class ActionModule(PosixActionBase, ActionBase):
         """
         shells_path = "/etc/shells"
 
-        # Read file metadata (no creation date for config files)
+        # Read file metadata (minimal metadata without type or created)
         read_result = self._read(
             path=shells_path,
             include=[
-                "type",
                 "content",
                 "owner",
                 "group",
@@ -678,9 +681,8 @@ class ActionModule(PosixActionBase, ActionBase):
                     "config": shells_list,
                 }
 
-                # Add metadata fields
+                # Add metadata fields (minimal metadata)
                 for key in [
-                    "type",
                     "owner",
                     "group",
                     "mode",
@@ -694,6 +696,58 @@ class ActionModule(PosixActionBase, ActionBase):
                 config[shells_path] = config_entry
 
         return config
+
+    def _gather_shell_binaries(
+        self, users: Dict[str, Dict[str, Any]], task_vars: Dict[str, Any]
+    ) -> Dict[str, Dict[str, Any]]:
+        """Gather metadata for shell binaries used by users.
+
+        Creates o0_shells dict keyed by shell path with file metadata.
+        Only adds shells that don't already exist in o0_shells from
+        previous facts gathering.
+
+        :param Dict[str, Dict[str, Any]] users: User mapping
+        :param Dict[str, Any] task_vars: Task variables
+        :returns Dict[str, Dict[str, Any]]: Shell paths with metadata
+        """
+        # Start with existing o0_shells if available
+        existing_shells = task_vars.get("o0_shells", {})
+        shells = dict(existing_shells)  # Copy to preserve existing
+
+        # Collect unique shell paths that don't already exist
+        shell_paths_to_read = set()
+        for user_data in users.values():
+            shell = user_data.get("shell")
+            if shell and isinstance(shell, str):
+                # Only gather metadata if shell not already in dict
+                if shell not in shells:
+                    shell_paths_to_read.add(shell)
+
+        if not shell_paths_to_read:
+            return shells
+
+        # Batch read metadata for all new shells
+        read_result = self._read(
+            paths=list(shell_paths_to_read),
+            include=[
+                "owner",
+                "group",
+                "mode",
+                "modified",
+                "acl",
+                "selinux",
+            ],
+            task_vars=task_vars,
+        )
+
+        if not read_result.get("failed") and "paths" in read_result:
+            for shell_path, shell_data in read_result["paths"].items():
+                if shell_data:
+                    # Add tag to identify as shell binary
+                    shell_data["tags"] = ["posix", "shell"]
+                    shells[shell_path] = shell_data
+
+        return shells
 
 
 def _to_int(value: Any) -> Optional[int]:
