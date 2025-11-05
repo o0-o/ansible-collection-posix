@@ -90,12 +90,10 @@ class ActionModule(PosixActionBase, ActionBase):
         result.update(
             {
                 "changed": False,
-                "ansible_facts": {
-                    "users": users,
-                    "groups": groups,
-                    "homes": homes,
-                    "shells": shells,
-                },
+                "users": users,
+                "groups": groups,
+                "homes": homes,
+                "shells": shells,
             }
         )
         return result
