@@ -605,12 +605,11 @@ class ActionModule(PosixActionBase, ActionBase):
         if not home_paths:
             return {}
 
-        # Batch read metadata for all homes
+        # Batch read metadata for all homes (target auto-included)
         read_result = self._read(
             paths=list(home_paths),
             include=[
                 "type",
-                "target",
                 "owner",
                 "group",
                 "mode",
@@ -645,7 +644,6 @@ class ActionModule(PosixActionBase, ActionBase):
                                 path=target,
                                 include=[
                                     "type",
-                                    "target",
                                     "owner",
                                     "group",
                                     "mode",
@@ -710,11 +708,11 @@ class ActionModule(PosixActionBase, ActionBase):
         if not shell_paths_to_read:
             return shells
 
-        # Batch read metadata for all new shells
+        # Batch read metadata for all new shells (target auto-included)
         read_result = self._read(
             paths=list(shell_paths_to_read),
             include=[
-                "target",
+                "type",
                 "owner",
                 "group",
                 "mode",
