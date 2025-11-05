@@ -603,6 +603,7 @@ class ActionModule(PosixActionBase, ActionBase):
             paths=list(home_paths),
             include=[
                 "type",
+                "target",
                 "owner",
                 "group",
                 "mode",
@@ -657,6 +658,7 @@ class ActionModule(PosixActionBase, ActionBase):
         read_result = self._read(
             paths=list(shell_paths_to_read),
             include=[
+                "target",
                 "owner",
                 "group",
                 "mode",
