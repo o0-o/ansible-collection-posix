@@ -94,11 +94,11 @@ class ActionModule(PosixActionBase, ActionBase):
             {
                 "changed": False,
                 "ansible_facts": {
-                    "o0_users": users,
-                    "o0_groups": groups,
-                    "o0_homes": homes,
-                    "o0_shells": shells,
-                    "o0_config": config,
+                    "users": users,
+                    "groups": groups,
+                    "homes": homes,
+                    "shells": shells,
+                    "config": config,
                 },
             }
         )
@@ -316,15 +316,15 @@ class ActionModule(PosixActionBase, ActionBase):
 
         Adds 'known' boolean to each user indicating whether their
         shell is listed in /etc/shells. Requires
-        o0_config['/etc/shells'] to be populated from a previous
+        config['/etc/shells'] to be populated from a previous
         facts gather.
 
         :param Dict[str, Dict[str, Any]] users: User mapping to augment
         :param Dict[str, Any] task_vars: Task variables
         """
-        # Check if o0_config exists with /etc/shells data
-        o0_config = task_vars.get("o0_config", {})
-        shells_config = o0_config.get("/etc/shells", {})
+        # Check if config exists with /etc/shells data
+        config = task_vars.get("config", {})
+        shells_config = config.get("/etc/shells", {})
         shells_list = shells_config.get("config")
 
         if not shells_list or not isinstance(shells_list, list):
@@ -589,7 +589,7 @@ class ActionModule(PosixActionBase, ActionBase):
     ) -> Dict[str, Dict[str, Any]]:
         """Gather metadata for all user home directories.
 
-        Creates o0_homes dict keyed by home path with file metadata.
+        Creates homes dict keyed by home path with file metadata.
         This provides foundation for SSH facts to add SSH-specific data.
 
         :param Dict[str, Dict[str, Any]] users: User mapping
@@ -638,7 +638,7 @@ class ActionModule(PosixActionBase, ActionBase):
         """Gather /etc/shells configuration.
 
         Reads /etc/shells file and parses valid shell list, storing in
-        o0_config namespace for validation of user shells.
+        config namespace for validation of user shells.
 
         :param Dict[str, Any] task_vars: Task variables
         :returns Dict[str, Dict[str, Any]]: Config dict with
@@ -702,16 +702,16 @@ class ActionModule(PosixActionBase, ActionBase):
     ) -> Dict[str, Dict[str, Any]]:
         """Gather metadata for shell binaries used by users.
 
-        Creates o0_shells dict keyed by shell path with file metadata.
-        Only adds shells that don't already exist in o0_shells from
+        Creates shells dict keyed by shell path with file metadata.
+        Only adds shells that don't already exist in shells from
         previous facts gathering.
 
         :param Dict[str, Dict[str, Any]] users: User mapping
         :param Dict[str, Any] task_vars: Task variables
         :returns Dict[str, Dict[str, Any]]: Shell paths with metadata
         """
-        # Start with existing o0_shells if available
-        existing_shells = task_vars.get("o0_shells", {})
+        # Start with existing shells if available
+        existing_shells = task_vars.get("shells", {})
         shells = dict(existing_shells)  # Copy to preserve existing
 
         # Collect unique shell paths that don't already exist
