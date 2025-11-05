@@ -75,6 +75,9 @@ class ActionModule(PosixActionBase, ActionBase):
             key=key,
         )
 
+        # Validate shells against /etc/shells if available
+        self._validate_user_shells(users, task_vars)
+
         # Gather SSH keys for users
         self._gather_ssh_keys_for_users(users, task_vars)
 
@@ -297,6 +300,37 @@ class ActionModule(PosixActionBase, ActionBase):
                 group_entry["members"] = members
             if member_uid not in members:
                 members.append(member_uid)
+
+    def _validate_user_shells(
+        self, users: Dict[str, Dict[str, Any]], task_vars: Dict[str, Any]
+    ) -> None:
+        """Validate user shells against /etc/shells if available.
+
+        Adds 'known' boolean to each user indicating whether their
+        shell is listed in /etc/shells. Requires
+        o0_config['/etc/shells'] to be populated from a previous
+        facts gather.
+
+        :param Dict[str, Dict[str, Any]] users: User mapping to augment
+        :param Dict[str, Any] task_vars: Task variables
+        """
+        # Check if o0_config exists with /etc/shells data
+        o0_config = task_vars.get("o0_config", {})
+        shells_config = o0_config.get("/etc/shells", {})
+        shells_list = shells_config.get("config")
+
+        if not shells_list or not isinstance(shells_list, list):
+            # No /etc/shells config available, skip validation
+            return
+
+        # Build set of valid shells for fast lookup
+        valid_shells = set(shells_list)
+
+        # Validate each user's shell
+        for user_data in users.values():
+            shell = user_data.get("shell")
+            if shell and isinstance(shell, str):
+                user_data["known"] = shell in valid_shells
 
     def _gather_ssh_keys_for_users(
         self, users: Dict[str, Dict[str, Any]], task_vars: Dict[str, Any]
