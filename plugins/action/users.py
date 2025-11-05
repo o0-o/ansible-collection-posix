@@ -84,6 +84,9 @@ class ActionModule(PosixActionBase, ActionBase):
         # Gather home directory metadata
         homes = self._gather_home_metadata(users, task_vars)
 
+        # Gather shells config
+        config = self._gather_shells_config(task_vars)
+
         result.update(
             {
                 "changed": False,
@@ -91,6 +94,7 @@ class ActionModule(PosixActionBase, ActionBase):
                     "o0_users": users,
                     "o0_groups": groups,
                     "o0_homes": homes,
+                    "o0_config": config,
                 },
             }
         )
@@ -623,6 +627,73 @@ class ActionModule(PosixActionBase, ActionBase):
                     homes[home_path] = home_data
 
         return homes
+
+    def _gather_shells_config(
+        self, task_vars: Dict[str, Any]
+    ) -> Dict[str, Dict[str, Any]]:
+        """Gather /etc/shells configuration.
+
+        Reads /etc/shells file and parses valid shell list, storing in
+        o0_config namespace for validation of user shells.
+
+        :param Dict[str, Any] task_vars: Task variables
+        :returns Dict[str, Dict[str, Any]]: Config dict with
+            /etc/shells entry
+        """
+        shells_path = "/etc/shells"
+
+        # Read file metadata (no creation date for config files)
+        read_result = self._read(
+            path=shells_path,
+            include=[
+                "type",
+                "content",
+                "owner",
+                "group",
+                "mode",
+                "modified",
+                "acl",
+                "selinux",
+            ],
+            task_vars=task_vars,
+        )
+
+        config: Dict[str, Dict[str, Any]] = {}
+
+        if not read_result.get("failed") and "paths" in read_result:
+            file_data = read_result["paths"].get(shells_path)
+            if file_data:
+                # Parse shells from content
+                content = file_data.get("content", "")
+                shells_list = []
+                for line in content.splitlines():
+                    line = line.strip()
+                    # Skip comments and blank lines
+                    if line and not line.startswith("#"):
+                        shells_list.append(line)
+
+                # Build config entry
+                config_entry = {
+                    "tags": ["posix", "config", "shells"],
+                    "config": shells_list,
+                }
+
+                # Add metadata fields
+                for key in [
+                    "type",
+                    "owner",
+                    "group",
+                    "mode",
+                    "modified",
+                    "acl",
+                    "selinux",
+                ]:
+                    if key in file_data:
+                        config_entry[key] = file_data[key]
+
+                config[shells_path] = config_entry
+
+        return config
 
 
 def _to_int(value: Any) -> Optional[int]:
