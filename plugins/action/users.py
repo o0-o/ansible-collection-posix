@@ -581,19 +581,26 @@ class ActionModule(PosixActionBase, ActionBase):
     ) -> Dict[str, Dict[str, Any]]:
         """Gather metadata for all user home directories.
 
-        Creates homes dict keyed by home path with file metadata.
-        This provides foundation for SSH facts to add SSH-specific data.
+        Creates homes dict keyed by home path with file metadata and
+        residents list. For symlinks, users are listed in both the
+        link and target entries.
 
         :param Dict[str, Dict[str, Any]] users: User mapping
         :param Dict[str, Any] task_vars: Task variables
         :returns Dict[str, Dict[str, Any]]: Home paths with metadata
         """
-        # Collect unique home paths
+        # Collect unique home paths and build residents mapping
         home_paths = set()
+        home_to_residents: Dict[str, List[int]] = {}
+
         for user_data in users.values():
             home = user_data.get("home")
-            if home and isinstance(home, str):
+            uid = user_data.get("id")
+            if home and isinstance(home, str) and isinstance(uid, int):
                 home_paths.add(home)
+                if home not in home_to_residents:
+                    home_to_residents[home] = []
+                home_to_residents[home].append(uid)
 
         if not home_paths:
             return {}
@@ -619,9 +626,58 @@ class ActionModule(PosixActionBase, ActionBase):
         if not read_result.get("failed") and "paths" in read_result:
             for home_path, home_data in read_result["paths"].items():
                 if home_data:
-                    # Add tag to identify as home directory
+                    # Add tag and residents list
                     home_data["tags"] = ["posix", "home"]
+                    home_data["residents"] = home_to_residents.get(
+                        home_path, []
+                    )
                     homes[home_path] = home_data
+
+                    # For symlinks, also add residents to target
+                    if (
+                        home_data.get("type") == "link"
+                        and "target" in home_data
+                    ):
+                        target = home_data["target"]
+                        # Read target metadata if not already read
+                        if target not in homes:
+                            target_read = self._read(
+                                path=target,
+                                include=[
+                                    "type",
+                                    "target",
+                                    "owner",
+                                    "group",
+                                    "mode",
+                                    "modified",
+                                    "created",
+                                    "acl",
+                                    "selinux",
+                                ],
+                                task_vars=task_vars,
+                            )
+                            if (
+                                not target_read.get("failed")
+                                and "paths" in target_read
+                            ):
+                                target_data = target_read["paths"].get(target)
+                                if target_data:
+                                    target_data["tags"] = ["posix", "home"]
+                                    target_data["residents"] = (
+                                        home_to_residents.get(home_path, [])
+                                    )
+                                    homes[target] = target_data
+                        else:
+                            # Target already in homes, add residents
+                            if "residents" not in homes[target]:
+                                homes[target]["residents"] = []
+                            homes[target]["residents"].extend(
+                                home_to_residents.get(home_path, [])
+                            )
+                            # Remove duplicates
+                            homes[target]["residents"] = list(
+                                set(homes[target]["residents"])
+                            )
 
         return homes
 
