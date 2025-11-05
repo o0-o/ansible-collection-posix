@@ -78,7 +78,19 @@ class ActionModule(PosixActionBase, ActionBase):
         # Gather SSH keys for users
         self._gather_ssh_keys_for_users(users, task_vars)
 
-        result.update({"changed": False, "users": users, "groups": groups})
+        # Gather home directory metadata
+        homes = self._gather_home_metadata(users, task_vars)
+
+        result.update(
+            {
+                "changed": False,
+                "ansible_facts": {
+                    "o0_users": users,
+                    "o0_groups": groups,
+                    "o0_homes": homes,
+                },
+            }
+        )
         return result
 
     def _read_text_file(self, path: str, task_vars: Dict[str, Any]) -> str:
@@ -102,19 +114,27 @@ class ActionModule(PosixActionBase, ActionBase):
         groups_by_id = group_info(group_content, key="id")
         groups_by_name = group_info(group_content, key="name")
 
+        # Build name-to-UID mapping for converting members to UIDs
+        name_to_uid: Dict[str, int] = {}
+        for username, data in users_by_name.items():
+            uid = data.get("id")
+            if isinstance(uid, int):
+                name_to_uid[username] = uid
+
         self._initialize_user_groups(
             users_by_id=users_by_id,
             users_by_name=users_by_name,
             groups_by_id=groups_by_id,
             groups_by_name=groups_by_name,
+            name_to_uid=name_to_uid,
         )
         self._augment_membership(
-            passwd_by_name=users_by_name,
             users_by_id=users_by_id,
             users_by_name=users_by_name,
             group_content=group_content,
             groups_by_id=groups_by_id,
             groups_by_name=groups_by_name,
+            name_to_uid=name_to_uid,
         )
 
         if key == "id":
@@ -127,6 +147,7 @@ class ActionModule(PosixActionBase, ActionBase):
         users_by_name: Dict[str, Dict[str, Any]],
         groups_by_id: Dict[str, Dict[str, Any]],
         groups_by_name: Dict[str, Dict[str, Any]],
+        name_to_uid: Dict[str, int],
     ) -> None:
         self._normalize_group_member_lists(groups_by_id, groups_by_name)
 
@@ -137,7 +158,8 @@ class ActionModule(PosixActionBase, ActionBase):
                 groups.append(primary_gid)
                 entry["group"] = primary_gid
                 username = entry.get("name")
-                if isinstance(username, str) and username:
+                uid = _to_int(uid_str)
+                if isinstance(username, str) and username and uid is not None:
                     gid_str = str(primary_gid)
                     label = (
                         groups_by_id.get(gid_str, {}).get("name") or gid_str
@@ -147,7 +169,7 @@ class ActionModule(PosixActionBase, ActionBase):
                         groups_by_name,
                         primary_gid,
                         label,
-                        username,
+                        uid,
                     )
             else:
                 entry["group"] = None
@@ -156,6 +178,7 @@ class ActionModule(PosixActionBase, ActionBase):
         for name, entry in users_by_name.items():
             groups: List[str] = []
             primary_gid = entry.get("gid")
+            uid = name_to_uid.get(name)
             if primary_gid is not None:
                 gid_str = str(primary_gid)
                 group_label = groups_by_id.get(gid_str, {}).get("name")
@@ -163,33 +186,34 @@ class ActionModule(PosixActionBase, ActionBase):
                     group_label = gid_str
                 entry["group"] = group_label
                 groups.append(group_label)
-                self._add_group_member(
-                    groups_by_id,
-                    groups_by_name,
-                    primary_gid,
-                    group_label,
-                    name,
-                )
+                if uid is not None:
+                    self._add_group_member(
+                        groups_by_id,
+                        groups_by_name,
+                        primary_gid,
+                        group_label,
+                        uid,
+                    )
             else:
                 entry["group"] = None
             entry["groups"] = groups
 
+        # Remove gid field now that we've replaced it with group
+        for entry in users_by_id.values():
+            entry.pop("gid", None)
+        for entry in users_by_name.values():
+            entry.pop("gid", None)
+
     def _augment_membership(
         self,
-        passwd_by_name: Dict[str, Dict[str, Any]],
         users_by_id: Dict[str, Dict[str, Any]],
         users_by_name: Dict[str, Dict[str, Any]],
         group_content: str,
         groups_by_id: Dict[str, Dict[str, Any]],
         groups_by_name: Dict[str, Dict[str, Any]],
+        name_to_uid: Dict[str, int],
     ) -> None:
         group_entries = jc_parse("group", group_content) or []
-
-        name_to_uid: Dict[str, int] = {}
-        for username, data in passwd_by_name.items():
-            uid = data.get("id")
-            if isinstance(uid, int):
-                name_to_uid[username] = uid
 
         for group_entry in group_entries:
             gid = _to_int(group_entry.get("gid"))
@@ -225,7 +249,7 @@ class ActionModule(PosixActionBase, ActionBase):
                     groups_by_name,
                     gid,
                     label_name,
-                    member,
+                    uid,
                 )
 
     def _normalize_group_member_lists(
@@ -233,11 +257,14 @@ class ActionModule(PosixActionBase, ActionBase):
         groups_by_id: Dict[str, Dict[str, Any]],
         groups_by_name: Dict[str, Dict[str, Any]],
     ) -> None:
+        # Initialize members as empty lists (populated with UIDs)
         for entry in groups_by_id.values():
-            entry["members"] = normalize_group_members(entry.get("members"))
+            if "members" not in entry or entry["members"] is None:
+                entry["members"] = []
 
         for entry in groups_by_name.values():
-            entry["members"] = normalize_group_members(entry.get("members"))
+            if "members" not in entry or entry["members"] is None:
+                entry["members"] = []
 
     def _add_group_member(
         self,
@@ -245,9 +272,9 @@ class ActionModule(PosixActionBase, ActionBase):
         groups_by_name: Dict[str, Dict[str, Any]],
         gid: Optional[int],
         label: Optional[str],
-        member: str,
+        member_uid: int,
     ) -> None:
-        if not member:
+        if member_uid is None:
             return
 
         if gid is not None:
@@ -255,10 +282,10 @@ class ActionModule(PosixActionBase, ActionBase):
             group_entry = groups_by_id.setdefault(gid_str, {})
             members = group_entry.get("members")
             if not isinstance(members, list):
-                members = normalize_group_members(members)
+                members = []
                 group_entry["members"] = members
-            if member not in members:
-                members.append(member)
+            if member_uid not in members:
+                members.append(member_uid)
 
         if label:
             group_entry = groups_by_name.setdefault(label, {})
@@ -266,10 +293,10 @@ class ActionModule(PosixActionBase, ActionBase):
                 group_entry["id"] = gid
             members = group_entry.get("members")
             if not isinstance(members, list):
-                members = normalize_group_members(members)
+                members = []
                 group_entry["members"] = members
-            if member not in members:
-                members.append(member)
+            if member_uid not in members:
+                members.append(member_uid)
 
     def _gather_ssh_keys_for_users(
         self, users: Dict[str, Dict[str, Any]], task_vars: Dict[str, Any]
@@ -295,7 +322,7 @@ class ActionModule(PosixActionBase, ActionBase):
                 ssh_dir, task_vars
             )
             if not can_read_ssh_dir:
-                # No read access to .ssh directory - don't add keys at all
+                # No read access to .ssh directory - skip keys
                 continue
 
             # Gather authorized keys
@@ -381,7 +408,7 @@ class ActionModule(PosixActionBase, ActionBase):
 
                         # Use key data as dict key
                         if key_data in found_keys:
-                            # Key already exists - mark which files it's in
+                            # Key exists - mark which files contain it
                             if key_name == "authorized_keys2":
                                 found_keys[key_data]["authorized_keys2"] = True
                         else:
@@ -486,7 +513,7 @@ class ActionModule(PosixActionBase, ActionBase):
             # Try to read and parse the file (only first line)
             try:
                 content = self._read_text_file(pub_file, task_vars)
-                # Only use first non-empty line after trimming whitespace
+                # Only use first non-empty line after trimming
                 lines = [
                     line.strip()
                     for line in content.splitlines()
@@ -514,6 +541,54 @@ class ActionModule(PosixActionBase, ActionBase):
                 continue
 
         return pub_keys
+
+    def _gather_home_metadata(
+        self, users: Dict[str, Dict[str, Any]], task_vars: Dict[str, Any]
+    ) -> Dict[str, Dict[str, Any]]:
+        """Gather metadata for all user home directories.
+
+        Creates o0_homes dict keyed by home path with file metadata.
+        This provides foundation for SSH facts to add SSH-specific data.
+
+        :param Dict[str, Dict[str, Any]] users: User mapping
+        :param Dict[str, Any] task_vars: Task variables
+        :returns Dict[str, Dict[str, Any]]: Home paths with metadata
+        """
+        # Collect unique home paths
+        home_paths = set()
+        for user_data in users.values():
+            home = user_data.get("home")
+            if home and isinstance(home, str):
+                home_paths.add(home)
+
+        if not home_paths:
+            return {}
+
+        # Batch read metadata for all homes
+        read_result = self._read(
+            paths=list(home_paths),
+            include=[
+                "type",
+                "owner",
+                "group",
+                "mode",
+                "modified",
+                "created",
+                "acl",
+                "selinux",
+            ],
+            task_vars=task_vars,
+        )
+
+        homes: Dict[str, Dict[str, Any]] = {}
+        if not read_result.get("failed") and "paths" in read_result:
+            for home_path, home_data in read_result["paths"].items():
+                if home_data:
+                    # Add tag to identify as home directory
+                    home_data["tags"] = ["posix", "home"]
+                    homes[home_path] = home_data
+
+        return homes
 
 
 def _to_int(value: Any) -> Optional[int]:
