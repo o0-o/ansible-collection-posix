@@ -262,14 +262,12 @@ class ActionModule(PosixActionBase, ActionBase):
         groups_by_id: Dict[str, Dict[str, Any]],
         groups_by_name: Dict[str, Dict[str, Any]],
     ) -> None:
-        # Initialize members as empty lists (populated with UIDs)
+        # Clear members lists - we'll repopulate with UIDs only
         for entry in groups_by_id.values():
-            if "members" not in entry or entry["members"] is None:
-                entry["members"] = []
+            entry["members"] = []
 
         for entry in groups_by_name.values():
-            if "members" not in entry or entry["members"] is None:
-                entry["members"] = []
+            entry["members"] = []
 
     def _add_group_member(
         self,
