@@ -109,8 +109,9 @@ _raw:
 """
 
 from ansible.errors import AnsibleLookupError
+from ansible.plugins.lookup import LookupBase
 
-from ansible_collections.o0_o.utils.plugins.module_utils.lookup_utils import (
+from ansible_collections.o0_o.utils.plugins.module_utils import (
     VarsLookupBase,
 )
 from ansible_collections.o0_o.posix.plugins.module_utils.user_utils import (
@@ -118,7 +119,7 @@ from ansible_collections.o0_o.posix.plugins.module_utils.user_utils import (
 )
 
 
-class LookupModule(VarsLookupBase):
+class LookupModule(LookupBase, VarsLookupBase):
     """Look up group information by GID or group name."""
 
     def run(self, terms, variables=None, **kwargs):
