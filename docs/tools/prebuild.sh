@@ -38,3 +38,6 @@ antsibull-docs \
     --squash-hierarchy \
     --dest-dir "${GENERATED_DIR}" \
     o0_o.posix
+
+# Copy the generated index.rst to the root for GitHub Pages.
+cp "${GENERATED_DIR}/index.rst" "${SOURCE_DIR}/index.rst"
