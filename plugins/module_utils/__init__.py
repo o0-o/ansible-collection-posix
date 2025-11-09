@@ -38,6 +38,10 @@ from ansible_collections.o0_o.posix.plugins.module_utils.jc_utils import (
 from ansible_collections.o0_o.posix.plugins.module_utils.compliance_utils import (  # noqa: E501
     is_posix,
 )
+from ansible_collections.o0_o.posix.plugins.module_utils.command_utils import (
+    format_command,
+    format_command_list,
+)
 from ansible_collections.o0_o.posix.plugins.module_utils.dev_utils import (
     device_from_hex_major_minor,
     device_from_major_minor,
@@ -85,9 +89,21 @@ from ansible_collections.o0_o.posix.plugins.module_utils.posix_action_base impor
 from ansible_collections.o0_o.posix.plugins.module_utils.uname_utils import (
     uname,
 )
+from ansible_collections.o0_o.posix.plugins.module_utils.user_utils import (
+    lookup_group,
+    lookup_user,
+)
+from ansible_collections.o0_o.posix.plugins.module_utils.read_posix_action_base import (  # noqa: E501
+    ReadPosixActionBase,
+)
+from ansible_collections.o0_o.posix.plugins.module_utils.write_posix_action_base import (  # noqa: E501
+    WritePosixActionBase,
+)
 
 __all__ = [
     "PosixActionBase",
+    "ReadPosixActionBase",
+    "WritePosixActionBase",
     "device_from_hex_major_minor",
     "device_from_major_minor",
     "device_value",
@@ -95,6 +111,8 @@ __all__ = [
     "parse_df",
     "parse_df_entry",
     "dmidecode",
+    "format_command",
+    "format_command_list",
     "fstab",
     "parse_fstab",
     "parse_fstab_entry",
@@ -121,4 +139,6 @@ __all__ = [
     "normalize_source",
     "process_registered_result",
     "uname",
+    "lookup_group",
+    "lookup_user",
 ]

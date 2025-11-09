@@ -1,0 +1,15 @@
+# vim: ts=2:sw=2:sts=2:et:ft=yaml.ansible
+# -*- mode: yaml; yaml-indent-offset: 2; indent-tabs-mode: nil; -*-
+---
+minor_changes:
+  - >-
+    Refactored ``command`` action plugin with improved code organization,
+    cleaner argument handling, and automatic SSH connection message removal
+    from stderr output.
+bugfixes:
+  - >-
+    Fixed command module to properly set ``raw`` field in results when using
+    raw fallback execution.
+  - >-
+    Fixed command module variable reference errors that caused failures when
+    using shell mode or creates parameter.
