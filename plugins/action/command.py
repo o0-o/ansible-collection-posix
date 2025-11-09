@@ -64,20 +64,7 @@ class ActionModule(PosixActionBase, ActionBase):
     _supports_async = False
 
     def _raw_cmd(self):
-        """
-        Execute a command using low-level methods.
-
-        Performs command execution using direct shell invocation when
-        the standard Ansible command module is unavailable due to a
-        missing Python interpreter on the remote host.
-
-        :raises AnsibleActionFail: When command execution fails or
-            arguments are invalid
-
-        .. note::
-           This method handles shell vs non-shell execution modes,
-           directory changes, and creates/removes conditional logic.
-        """
+        """Execute a command using low-level shell methods."""
         if self.expand_vars is not None and self.expand_vars != self.shell:
             raise AnsibleActionFail(
                 "Raw fallback requires expand_argument_vars and _uses_shell "
@@ -215,8 +202,7 @@ class ActionModule(PosixActionBase, ActionBase):
 
     def _def_args(self):
         """
-        Define and parse module arguments using the file argument spec,
-        and store validated values as instance attributes.
+        Parse and validate module arguments.
 
         Returns:
             dict: The validated argument dictionary.
@@ -306,28 +292,7 @@ class ActionModule(PosixActionBase, ActionBase):
         tmp: Optional[str] = None,
         task_vars: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
-        """
-        Execute the command action with raw fallback capability.
-
-        Main entry point that attempts command execution using the
-        standard Ansible command module first, then falls back to raw
-        shell execution if Python interpreter is missing on the remote
-        host.
-
-        :param Optional[str] tmp: Temporary directory path (unused in
-            modern Ansible versions)
-        :param Optional[Dict[str, Any]] task_vars: Task variables
-            dictionary
-        :returns Dict[str, Any]: Standard Ansible result dictionary
-
-        :raises AnsibleActionFail: When the packaging module is missing,
-            command arguments are invalid, or command execution fails
-
-        .. note::
-           This method validates arguments against a comprehensive
-           specification and handles version compatibility for the
-           expand_argument_vars parameter (Ansible 2.16+).
-        """
+        """Execute the command action with raw fallback capability."""
         task_vars = task_vars or {}
         self.host = self._get_inventory_hostname(task_vars)
 
