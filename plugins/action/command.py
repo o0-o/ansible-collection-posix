@@ -63,7 +63,7 @@ class ActionModule(PosixActionBase, ActionBase):
     _supports_check_mode = True
     _supports_async = False
 
-    def _raw_cmd(self):
+    def _raw_cmd(self) -> None:
         """
         Execute a command using low-level shell methods.
 
@@ -205,7 +205,7 @@ class ActionModule(PosixActionBase, ActionBase):
 
         return
 
-    def _def_args(self):
+    def _def_args(self) -> Dict[str, Any]:
         """
         Parse and validate module arguments.
 
