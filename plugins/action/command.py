@@ -89,7 +89,7 @@ class ActionModule(PosixActionBase, ActionBase):
         # If chdir is specified, validate the target directory
         # _low_level_command has no specific chdir exception
         if self.chdir:
-            quoted_chdir = shlex.quote(self.chdir)
+            quoted_chdir = self._quote(self.chdir)
             cd_result = self._low_level_execute_command(
                 f"cd {quoted_chdir}", executable=self.executable
             )
@@ -103,7 +103,7 @@ class ActionModule(PosixActionBase, ActionBase):
         shoulda = "Would" if self._task.check_mode else "Did"
 
         if self.creates and not self.result["msg"]:
-            quoted_creates = shlex.quote(self.creates)
+            quoted_creates = self._quote(self.creates)
             created = self._low_level_execute_command(
                 f"test -e {quoted_creates}"
             )
@@ -118,7 +118,7 @@ class ActionModule(PosixActionBase, ActionBase):
                 return
 
         if self.removes and not self.result["msg"]:
-            quoted_removes = shlex.quote(self.removes)
+            quoted_removes = self._quote(self.removes)
             removed = self._low_level_execute_command(
                 f"test -e {quoted_removes}"
             )
@@ -145,7 +145,7 @@ class ActionModule(PosixActionBase, ActionBase):
                 # Determine the final command to execute
                 if self.shell:
                     cmd_str = self._format_command(self.args)
-                    cmd = shlex.join(["/bin/sh", "-c", cmd_str])
+                    cmd = self._format_command(["/bin/sh", "-c", cmd_str])
                 else:
                     cmd = self._format_command(self.args)
                 # Execute the command
