@@ -21,15 +21,8 @@ when Python is not available on the remote host.
 
 from __future__ import annotations
 
-import difflib
-import hashlib
 import shlex
-import stat
-from datetime import datetime, timedelta, timezone
-from os import path
-from typing import Any, Dict, List, Optional, Union, Tuple
-
-from ansible.module_utils.common.text.converters import to_text
+from typing import Any, Dict, List, Optional, Union
 
 
 class PosixActionBase:
@@ -341,6 +334,8 @@ class PosixActionBase:
         self,
         commands: List[Union[str, List[str]]],
         chdir: Optional[str] = None,
+        creates: Optional[str] = None,
+        removes: Optional[str] = None,
         fail_fast: bool = False,
         task_vars: Optional[Dict[str, Any]] = None,
         check_mode: Optional[bool] = None,
@@ -356,6 +351,8 @@ class PosixActionBase:
             execute. Each can be a shell string or list of arguments
         :param Optional[str] chdir: Change to this directory before
             executing commands
+        :param Optional[str] creates: Skip commands if this path exists
+        :param Optional[str] removes: Skip commands if this path does
             not exist
         :param bool fail_fast: Stop on first command failure (default
             False)

@@ -11,8 +11,7 @@
 
 from __future__ import annotations
 
-import shlex
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 
 from ansible.module_utils.common.text.converters import to_bytes, to_text
 from ansible.plugins.action import ActionBase
