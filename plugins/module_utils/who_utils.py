@@ -156,7 +156,7 @@ def _parse_with_dateutil(
 
     if iso_hint:
         if iso_hint.startswith("--"):
-            for _ in range(3):
+            for attempt in range(3):
                 if parsed <= reference + tolerance:
                     break
                 try:

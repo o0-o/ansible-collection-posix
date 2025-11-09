@@ -11,7 +11,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from typing import Any, Dict, List, Union
 
 from ansible_collections.o0_o.posix.plugins.module_utils import jc_parse
@@ -147,12 +147,12 @@ def restructure_process(proc: Dict[str, Any]) -> Dict[str, Any]:
     if title:
         restructured["title"] = title
 
-    # Convert uid/gid to integers
+    # Convert uid/gid to integers (use "owner" to match file metadata)
     if "uid" in proc:
         try:
-            restructured["user"] = int(proc["uid"])
+            restructured["owner"] = int(proc["uid"])
         except (ValueError, TypeError):
-            restructured["user"] = proc["uid"]
+            restructured["owner"] = proc["uid"]
 
     if "gid" in proc:
         try:

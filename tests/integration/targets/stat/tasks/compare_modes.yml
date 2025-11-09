@@ -90,7 +90,9 @@
 - name: Verify both modes have same checksum
   ansible.builtin.assert:
     that:
-      - stat_builtin_reg['stat']['checksum'] == stat_raw_reg['stat']['checksum']
+      - >-
+        stat_builtin_reg['stat']['checksum'] ==
+        stat_raw_reg['stat']['checksum']
     msg: Checksums should match between modes
 
 - name: Verify both modes have same MIME type

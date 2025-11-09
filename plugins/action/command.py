@@ -25,10 +25,7 @@ from ansible.errors import AnsibleActionFail
 from ansible.plugins.action import ActionBase
 from ansible.module_utils.common.collections import is_iterable
 from ansible.module_utils.common.text.converters import to_native, to_text
-from ansible_collections.o0_o.posix.plugins.module_utils import (
-    PosixActionBase,
-    format_command,
-)
+from ansible_collections.o0_o.posix.plugins.module_utils import PosixActionBase
 
 try:
     from packaging.version import parse as parse_version
@@ -147,10 +144,10 @@ class ActionModule(PosixActionBase, ActionBase):
 
                 # Determine the final command to execute
                 if self.shell:
-                    cmd_str = format_command(self.args)
-                    cmd = shlex.join(["sh", "-c", cmd_str])
+                    cmd_str = self._format_command(self.args)
+                    cmd = shlex.join(["/bin/sh", "-c", cmd_str])
                 else:
-                    cmd = format_command(self.args)
+                    cmd = self._format_command(self.args)
                 # Execute the command
                 exec_result = self._low_level_execute_command(
                     cmd,

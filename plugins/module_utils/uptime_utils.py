@@ -194,7 +194,7 @@ def parse_uptime(
     if elapsed_seconds is None:
         uptime_text = parsed.get("uptime")
         if not uptime_text and " up " in text:
-            _, remainder = text.split(" up ", 1)
+            prefix, remainder = text.split(" up ", 1)
             uptime_text = _extract_uptime_segment(remainder)
         if not uptime_text:
             raise ValueError("could not determine uptime duration")

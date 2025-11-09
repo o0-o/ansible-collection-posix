@@ -18,7 +18,6 @@ from ansible.module_utils.common.text.converters import to_bytes, to_text
 from ansible.plugins.action import ActionBase
 
 from ansible_collections.o0_o.posix.plugins.module_utils import PosixActionBase
-from ansible_collections.o0_o.posix.plugins.module_utils import format_command
 
 __metaclass__ = type
 
@@ -138,7 +137,7 @@ class ActionModule(PosixActionBase, ActionBase):
             lines = ["set +e"]  # Don't exit on command errors
 
         for i, cmd in enumerate(self.commands):
-            cmd_str = format_command(cmd)
+            cmd_str = self._format_command(cmd)
             self.commands[i] = cmd_str
 
             lines.extend(

@@ -107,10 +107,6 @@ users:
       description: Username
       type: str
       sample: o0-o
-    gid:
-      description: Primary group ID
-      type: int
-      sample: 20
     gecos:
       description: User comment/info field
       type: str
@@ -168,15 +164,15 @@ users:
 groups:
   description: >-
     Mapping of groups keyed according to the I(key) option. Each entry
-    includes the group name when available and the group members.
+    includes the group name when available and the group members as UIDs.
   returned: always
   type: dict
   sample:
     "20":
       name: staff
       members:
-        - root
-        - o0-o
+        - 0
+        - 1000
 """
 from ansible.module_utils.basic import AnsibleModule
 

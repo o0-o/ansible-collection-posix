@@ -38,10 +38,6 @@ from ansible_collections.o0_o.posix.plugins.module_utils.jc_utils import (
 from ansible_collections.o0_o.posix.plugins.module_utils.compliance_utils import (  # noqa: E501
     is_posix,
 )
-from ansible_collections.o0_o.posix.plugins.module_utils.command_utils import (
-    format_command,
-    format_command_list,
-)
 from ansible_collections.o0_o.posix.plugins.module_utils.dev_utils import (
     device_from_hex_major_minor,
     device_from_major_minor,
@@ -111,8 +107,6 @@ __all__ = [
     "parse_df",
     "parse_df_entry",
     "dmidecode",
-    "format_command",
-    "format_command_list",
     "fstab",
     "parse_fstab",
     "parse_fstab_entry",

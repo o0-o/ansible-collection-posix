@@ -50,8 +50,9 @@
         that:
           - stat_macos_mime_reg['stat']['mimetype'] is defined
           - >-
-            'text' in stat_macos_mime_reg['stat']['mimetype']
-            or stat_macos_mime_reg['stat']['mimetype'] == 'application/octet-stream'
+            'text' in stat_macos_mime_reg['stat']['mimetype'] or
+            stat_macos_mime_reg['stat']['mimetype'] ==
+            'application/octet-stream'
         msg: macOS should detect MIME type
 
 - name: FreeBSD specific tests

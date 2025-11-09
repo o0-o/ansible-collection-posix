@@ -20,14 +20,16 @@ from typing import Any, Dict, List, Optional, Tuple
 from ansible.errors import AnsibleActionFail
 from ansible.plugins.action import ActionBase
 
-from ansible_collections.o0_o.posix.plugins.module_utils import PosixActionBase
+from ansible_collections.o0_o.posix.plugins.module_utils import (
+    ReadPosixActionBase,
+)
 from ansible_collections.o0_o.utils.plugins.module_utils import (
     format_epoch_timestamp,
     truthy_or_integer,
 )
 
 
-class ActionModule(PosixActionBase, ActionBase):
+class ActionModule(ReadPosixActionBase, ActionBase):
     """Inspect file metadata and optionally return printable content.
 
     Gathers comprehensive metadata about files, directories, links, and

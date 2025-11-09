@@ -13,8 +13,6 @@
 
 from __future__ import annotations
 
-import pytest
-
 from ansible_collections.o0_o.posix.plugins.module_utils.user_utils import (
     lookup_group,
     lookup_user,

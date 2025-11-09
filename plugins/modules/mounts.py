@@ -31,27 +31,42 @@ description:
     network filesystems.
   - Does not require Python on the target host.
 options:
-  include_virtual:
+  device:
+    description:
+      - Include device-backed filesystems in the output.
+      - Device filesystems are those backed by block devices.
+    type: bool
+    default: true
+  virtual:
     description:
       - Include virtual filesystems in the output.
       - Virtual filesystems include memory-based and special purpose
-        filesystems like tmpfs, overlay, autofs, etc.
+        filesystems like tmpfs, autofs, etc.
     type: bool
     default: false
-  include_network:
+  network:
     description:
       - Include network filesystems in the output.
       - Network filesystems include nfs, nfs4, cifs, smbfs, sshfs, etc.
     type: bool
     default: true
-  include_pseudo:
+  pseudo:
     description:
       - Include pseudo filesystems in the output.
       - Pseudo filesystems are kernel interfaces like proc, sysfs,
         debugfs, etc.
-      - If not specified, defaults to the value of include_virtual.
+      - If not specified, defaults to the value of I(virtual).
     type: bool
-    default: null
+  overlay:
+    description:
+      - Include overlay filesystems in the output.
+    type: bool
+    default: true
+  fuse:
+    description:
+      - Include FUSE (Filesystem in Userspace) filesystems in the output.
+    type: bool
+    default: true
 author:
   - oØ.o (@o0-o)
 notes:

@@ -40,25 +40,31 @@
 
     - name: Look up root user's primary group by GID
       ansible.builtin.set_fact:
-        root_group_by_gid: '{{ lookup("o0_o.posix.group", root_by_uid["group"]) }}'
+        root_group_by_gid: >-
+          {{ lookup("o0_o.posix.group", root_by_uid["group"]) }}
 
     - name: Verify root group lookup by GID
       ansible.builtin.assert:
         that:
           - root_group_by_gid is defined
           - root_group_by_gid is not none
-          - root_group_by_gid['name'] is defined or root_group_by_gid['id'] is defined
+          - >-
+            root_group_by_gid['name'] is defined or
+            root_group_by_gid['id'] is defined
           - root_group_by_gid['members'] is defined
       when: root_group_by_gid is not none
 
     - name: Skip group tests if root group not found
       ansible.builtin.debug:
-        msg: "Skipping group lookup tests - root user's group not found in groups fact"
+        msg: >-
+          Skipping group lookup tests - root user's group not found in
+          groups fact
       when: root_group_by_gid is none
 
     - name: Look up root user's primary group by name
       ansible.builtin.set_fact:
-        root_group_by_name: '{{ lookup("o0_o.posix.group", root_group_by_gid["name"]) }}'
+        root_group_by_name: >-
+          {{ lookup("o0_o.posix.group", root_group_by_gid["name"]) }}
       when:
         - root_group_by_gid is not none
         - root_group_by_gid['name'] is defined
@@ -68,7 +74,9 @@
         that:
           - root_group_by_name is defined
           - root_group_by_name is not none
-          - root_group_by_name['id'] is defined or root_group_by_name['name'] is defined
+          - >-
+            root_group_by_name['id'] is defined or
+            root_group_by_name['name'] is defined
           - root_group_by_name['members'] is defined
       when:
         - root_group_by_gid is not none
@@ -105,7 +113,9 @@
 
     - name: Test user lookup with default value
       ansible.builtin.set_fact:
-        user_with_default: '{{ lookup("o0_o.posix.user", 99999, default={"name": "default_user", "home": "/tmp"}) }}'
+        user_with_default: >-
+          {{ lookup("o0_o.posix.user", 99999,
+             default={"name": "default_user", "home": "/tmp"}) }}
 
     - name: Verify user lookup returns default when not found
       ansible.builtin.assert:
@@ -116,7 +126,9 @@
 
     - name: Test group lookup with default value
       ansible.builtin.set_fact:
-        group_with_default: '{{ lookup("o0_o.posix.group", 99999, default={"name": "default_group", "members": []}) }}'
+        group_with_default: >-
+          {{ lookup("o0_o.posix.group", 99999,
+             default={"name": "default_group", "members": []}) }}
 
     - name: Verify group lookup returns default when not found
       ansible.builtin.assert:
@@ -127,7 +139,8 @@
 
     - name: Test user lookup with None as default
       ansible.builtin.set_fact:
-        user_none_default: '{{ lookup("o0_o.posix.user", 99999, default=None) }}'
+        user_none_default: >-
+          {{ lookup("o0_o.posix.user", 99999, default=None) }}
 
     - name: Verify user lookup returns None when default is None
       ansible.builtin.assert:

@@ -61,6 +61,37 @@ class PosixActionBase:
                 ...
     """
 
+    def _format_command(self, cmd: Union[str, List[str]]) -> str:
+        """
+        Convert a command to a shell-safe string.
+
+        Handles both string and list inputs, properly quoting list
+        elements for shell execution.
+
+        :param cmd: Command as string or list of arguments
+        :returns str: Shell-safe command string
+        """
+        if isinstance(cmd, str):
+            return cmd
+
+        # Use shlex.join() if available (Python 3.8+)
+        try:
+            return shlex.join(cmd)
+        except AttributeError:
+            # Python < 3.8 fallback
+            return " ".join(shlex.quote(str(arg)) for arg in cmd)
+
+    def _format_command_list(
+        self, commands: List[Union[str, List[str]]]
+    ) -> List[str]:
+        """
+        Convert a list of commands to shell-safe strings.
+
+        :param commands: List of commands (each as string or list)
+        :returns List[str]: List of shell-safe command strings
+        """
+        return [self._format_command(cmd) for cmd in commands]
+
     def _is_interpreter_missing(self, result: Dict[str, Any]) -> bool:
         """
         Check if failure was likely caused by a missing Python
@@ -275,6 +306,7 @@ class PosixActionBase:
         self,
         cmd: Union[str, List[str]],
         stdin: Optional[str] = None,
+        chdir: Optional[str] = None,
         task_vars: Optional[Dict[str, Any]] = None,
         check_mode: Optional[bool] = None,
     ) -> Dict[str, Any]:
@@ -294,14 +326,16 @@ class PosixActionBase:
         """
         task_vars = task_vars or {}
 
-        args = {"stdin": stdin}
+        args = {
+            "stdin": stdin,
+            "chdir": chdir,
+        }
 
         if isinstance(cmd, list):
             args["argv"] = cmd
         elif isinstance(cmd, str):
             args["cmd"] = cmd
             args["_uses_shell"] = True
-            args["executable"] = "/bin/sh"
         else:
             raise TypeError(
                 f"Expected cmd to be str or list, got {type(cmd).__name__}"
@@ -318,8 +352,6 @@ class PosixActionBase:
         self,
         commands: List[Union[str, List[str]]],
         chdir: Optional[str] = None,
-        creates: Optional[str] = None,
-        removes: Optional[str] = None,
         fail_fast: bool = False,
         task_vars: Optional[Dict[str, Any]] = None,
         check_mode: Optional[bool] = None,
@@ -335,15 +367,13 @@ class PosixActionBase:
             execute. Each can be a shell string or list of arguments
         :param Optional[str] chdir: Change to this directory before
             executing commands
-        :param Optional[str] creates: Skip execution if this path exists
-        :param Optional[str] removes: Skip execution if this path does
             not exist
         :param bool fail_fast: Stop on first command failure (default
             False)
         :param Optional[dict] task_vars: Dictionary of task variables
         :param Optional[bool] check_mode: Optional override for Ansible
             check mode
-        :returns dict: Result dictionary with 'results' list containing
+        :returns dict: Result dictionary with 'commands' list containing
             individual command outputs
         """
         task_vars = task_vars or {}
@@ -474,30 +504,6 @@ class PosixActionBase:
             args,
             task_vars=task_vars,
             check_mode=check_mode,
-        )
-
-    def _slurp(
-        self,
-        src: str,
-        encoding: str = "utf-8",
-        task_vars: Optional[Dict[str, Any]] = None,
-    ) -> Dict[str, Any]:
-        """
-        Run the fallback-compatible 'slurp64' action plugin to read
-        remote files.
-
-        :param str src: The path to the file to slurp on the remote
-            host
-        :param str encoding: The encoding to use when reading the file
-            (default: utf-8)
-        :param Optional[dict] task_vars: Dictionary of task variables
-            from the calling task
-        :returns dict: The result dictionary from the slurp64 plugin
-        """
-        return self._run_action(
-            "o0_o.posix.slurp64",
-            {"src": src, "encoding": encoding},
-            task_vars=task_vars,
         )
 
     def _cat(

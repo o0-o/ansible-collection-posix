@@ -31,7 +31,7 @@ def test_restructure_basic_fields() -> None:
 
     assert result["id"] == 100
     assert result["parent"] == 1
-    assert result["user"] == 1000  # Converted to int
+    assert result["owner"] == 1000  # Converted to int
     assert result["group"] == 1000  # Converted to int
     assert result["title"] == "/usr/sbin/sshd -D"
 
@@ -217,7 +217,7 @@ def test_restructure_invalid_uid_gid() -> None:
     result = restructure_process(proc)
 
     # Should keep original values if conversion fails
-    assert result["user"] == "invalid"
+    assert result["owner"] == "invalid"
     assert result["group"] == "also_invalid"
 
 
@@ -273,7 +273,7 @@ def test_restructure_complete_process() -> None:
     # Basic fields
     assert result["id"] == 100
     assert result["parent"] == 1
-    assert result["user"] == 1000
+    assert result["owner"] == 1000
     assert result["group"] == 1000
     assert result["title"] == "/usr/sbin/sshd -D -f /etc/ssh/sshd_config"
 

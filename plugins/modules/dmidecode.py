@@ -34,7 +34,7 @@ author:
 notes:
   - This module is implemented as an action plugin.
   - The dmidecode command typically requires root privileges.
-  - Use C(become: true) when calling this module.
+  - "Use C(become: true) when calling this module."
 """
 
 EXAMPLES = r"""

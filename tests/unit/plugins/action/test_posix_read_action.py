@@ -47,6 +47,8 @@ def test_read_regular_file(monkeypatch, plugin) -> None:
             "exists": True,
             "isreg": True,
             "mode": "0644",
+            "uid": 0,
+            "gid": 0,
             "pw_name": "root",
             "gr_name": "wheel",
             "writeable": True,
@@ -64,7 +66,7 @@ def test_read_regular_file(monkeypatch, plugin) -> None:
     def mock_run_action(
         name: str, args: Dict[str, object], task_vars=None, check_mode=None
     ):
-        if name == "ansible.builtin.stat":
+        if name == "o0_o.posix.stat":
             return stat_result
         raise AssertionError(f"Unexpected action {name}")
 
@@ -106,7 +108,7 @@ def test_read_regular_file(monkeypatch, plugin) -> None:
 
     plugin._task.args = {
         "path": args_path,
-        "content": True,
+        "include": ["content", "metadata"],
         "find_hardlinks": True,
     }
     result = plugin.run(task_vars={})
@@ -114,8 +116,8 @@ def test_read_regular_file(monkeypatch, plugin) -> None:
     file_info = result["paths"][args_path]
     assert file_info["type"] == "regular"
     assert file_info["mode"] == "0644"
-    assert file_info["owner"] == "root"
-    assert file_info["group"] == "wheel"
+    assert file_info["owner"] == 0
+    assert file_info["group"] == 0
     assert file_info["writable"] is True
     assert file_info["name"] == "sample"
     assert file_info["parent"] == "/etc"
@@ -143,6 +145,8 @@ def test_read_symlink(monkeypatch, plugin) -> None:
             "islnk": True,
             "lnk_source": "/var/target",
             "mode": "0777",
+            "uid": 0,
+            "gid": 0,
             "pw_name": "root",
             "gr_name": "wheel",
             "nlink": 1,
@@ -153,7 +157,7 @@ def test_read_symlink(monkeypatch, plugin) -> None:
     def mock_run_action(
         name: str, args: Dict[str, object], task_vars=None, check_mode=None
     ):
-        if name == "ansible.builtin.stat":
+        if name == "o0_o.posix.stat":
             return stat_result
         raise AssertionError("slurp should not be called for symlinks")
 
@@ -163,7 +167,10 @@ def test_read_symlink(monkeypatch, plugin) -> None:
     monkeypatch.setattr(plugin, "_run_action", mock_run_action)
     monkeypatch.setattr(plugin, "_cmd", mock_cmd)
 
-    plugin._task.args = {"path": "/var/link", "content": True}
+    plugin._task.args = {
+        "path": "/var/link",
+        "include": ["content", "metadata"],
+    }
     result = plugin.run(task_vars={})
 
     file_info = result["paths"]["/var/link"]
@@ -186,6 +193,8 @@ def test_read_pipe_excludes_links(monkeypatch, plugin) -> None:
             "exists": True,
             "isfifo": True,
             "mode": "0644",
+            "uid": 0,
+            "gid": 0,
             "pw_name": "root",
             "gr_name": "wheel",
             "nlink": 1,
@@ -195,7 +204,7 @@ def test_read_pipe_excludes_links(monkeypatch, plugin) -> None:
     def mock_run_action(
         name: str, args: Dict[str, object], task_vars=None, check_mode=None
     ):
-        if name == "ansible.builtin.stat":
+        if name == "o0_o.posix.stat":
             return stat_result
         raise AssertionError(name)
 
@@ -223,7 +232,7 @@ def test_find_symlinks_adds_entries(monkeypatch, plugin) -> None:
     def mock_run_action(
         name: str, args: Dict[str, object], task_vars=None, check_mode=None
     ):
-        if name != "ansible.builtin.stat":
+        if name != "o0_o.posix.stat":
             raise AssertionError(name)
         path = args["path"]
         follow = args.get("follow", False)
@@ -235,6 +244,8 @@ def test_find_symlinks_adds_entries(monkeypatch, plugin) -> None:
                     "exists": True,
                     "isreg": True,
                     "mode": "0644",
+                    "uid": 0,
+                    "gid": 0,
                     "pw_name": "root",
                     "gr_name": "wheel",
                     "nlink": 1,
@@ -306,7 +317,7 @@ def test_find_symlinks_for_hardlinks(monkeypatch, plugin) -> None:
     def mock_run_action(
         name: str, args: Dict[str, object], task_vars=None, check_mode=None
     ):
-        if name != "ansible.builtin.stat":
+        if name != "o0_o.posix.stat":
             raise AssertionError(name)
         path = args["path"]
         follow = args.get("follow", False)
@@ -363,7 +374,7 @@ def test_parents_includes_parent_directories(monkeypatch, plugin) -> None:
     def mock_run_action(
         name: str, args: Dict[str, object], task_vars=None, check_mode=None
     ):
-        if name == "ansible.builtin.stat":
+        if name == "o0_o.posix.stat":
             path = args["path"]
             return {"stat": stat_map[path]}
         raise AssertionError(name)
@@ -395,7 +406,7 @@ def test_directory_content_listing(monkeypatch, plugin) -> None:
     def mock_run_action(
         name: str, args: Dict[str, object], task_vars=None, check_mode=None
     ):
-        if name == "ansible.builtin.stat":
+        if name == "o0_o.posix.stat":
             return {
                 "stat": {
                     "exists": True,
@@ -413,7 +424,7 @@ def test_directory_content_listing(monkeypatch, plugin) -> None:
     monkeypatch.setattr(plugin, "_run_action", mock_run_action)
     monkeypatch.setattr(plugin, "_cmd", mock_cmd)
 
-    plugin._task.args = {"path": dir_path, "content": True}
+    plugin._task.args = {"path": dir_path, "include": ["content", "metadata"]}
     result = plugin.run(task_vars={})
 
     info = result["paths"][dir_path]
@@ -436,7 +447,7 @@ def test_parents_limit(monkeypatch, plugin) -> None:
     def mock_run_action(
         name: str, args: Dict[str, object], task_vars=None, check_mode=None
     ):
-        if name == "ansible.builtin.stat":
+        if name == "o0_o.posix.stat":
             path = args["path"]
             return {"stat": stat_map[path]}
         raise AssertionError(name)
@@ -461,7 +472,7 @@ def test_read_missing_path(monkeypatch, plugin) -> None:
     def mock_run_action(
         name: str, args: Dict[str, object], task_vars=None, check_mode=None
     ):
-        if name == "ansible.builtin.stat":
+        if name == "o0_o.posix.stat":
             return {"stat": {"exists": False}}
         raise AssertionError
 
@@ -485,6 +496,8 @@ def test_read_parents_symlink(monkeypatch, plugin) -> None:
             "exists": True,
             "islnk": True,
             "lnk_source": target_path,
+            "uid": 0,
+            "gid": 0,
             "pw_name": "root",
             "gr_name": "wheel",
             "nlink": 1,
@@ -493,6 +506,8 @@ def test_read_parents_symlink(monkeypatch, plugin) -> None:
             "exists": True,
             "isreg": True,
             "mode": "0600",
+            "uid": 0,
+            "gid": 0,
             "pw_name": "root",
             "gr_name": "wheel",
             "nlink": 1,
@@ -502,7 +517,7 @@ def test_read_parents_symlink(monkeypatch, plugin) -> None:
     def mock_run_action(
         name: str, args: Dict[str, object], task_vars=None, check_mode=None
     ):
-        if name == "ansible.builtin.stat":
+        if name == "o0_o.posix.stat":
             path = args["path"]
             return {"stat": stat_map[path]}
         raise AssertionError(f"Unexpected action {name}")
@@ -527,7 +542,7 @@ def test_read_parents_symlink(monkeypatch, plugin) -> None:
 
     plugin._task.args = {
         "path": symlink_path,
-        "content": True,
+        "include": ["content", "metadata"],
         "parents": True,
     }
     result = plugin.run(task_vars={})
@@ -539,7 +554,7 @@ def test_read_parents_symlink(monkeypatch, plugin) -> None:
     assert "link" not in file_info
     target_info = result["paths"][target_path]
     assert target_info["type"] == "regular"
-    assert target_info["owner"] == "root"
+    assert target_info["owner"] == 0
     assert "target data" in target_info["content"]
     assert "/" in result["paths"]
     root_info = result["paths"]["/"]
@@ -560,6 +575,8 @@ def test_read_parents_hard_links(monkeypatch, plugin) -> None:
             "exists": True,
             "isreg": True,
             "mode": "0600",
+            "uid": 0,
+            "gid": 0,
             "pw_name": "root",
             "gr_name": "wheel",
             "nlink": 2,
@@ -569,6 +586,8 @@ def test_read_parents_hard_links(monkeypatch, plugin) -> None:
             "exists": True,
             "isreg": True,
             "mode": "0600",
+            "uid": 0,
+            "gid": 0,
             "pw_name": "root",
             "gr_name": "wheel",
             "nlink": 2,
@@ -581,7 +600,7 @@ def test_read_parents_hard_links(monkeypatch, plugin) -> None:
     def mock_run_action(
         name: str, args: Dict[str, object], task_vars=None, check_mode=None
     ):
-        if name == "ansible.builtin.stat":
+        if name == "o0_o.posix.stat":
             path = args["path"]
             return {"stat": stat_map[path]}
         raise AssertionError(f"Unexpected action {name}")
@@ -634,7 +653,7 @@ def test_read_xattr_fallback(monkeypatch, plugin) -> None:
     def mock_run_action(
         name: str, args: Dict[str, object], task_vars=None, check_mode=None
     ):
-        if name == "ansible.builtin.stat":
+        if name == "o0_o.posix.stat":
             return stat_result
         raise AssertionError(name)
 
@@ -667,7 +686,7 @@ def test_read_flags_fallback(monkeypatch, plugin) -> None:
     def mock_run_action(
         name: str, args: Dict[str, object], task_vars=None, check_mode=None
     ):
-        if name == "ansible.builtin.stat":
+        if name == "o0_o.posix.stat":
             return stat_result
         raise AssertionError(name)
 
@@ -706,7 +725,7 @@ def test_read_multiple_paths(monkeypatch, plugin) -> None:
     def mock_run_action(
         name: str, args: Dict[str, object], task_vars=None, check_mode=None
     ):
-        if name == "ansible.builtin.stat":
+        if name == "o0_o.posix.stat":
             return {"stat": stat_map[args["path"]]}
         raise AssertionError(name)
 

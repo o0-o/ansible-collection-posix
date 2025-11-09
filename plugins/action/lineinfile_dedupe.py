@@ -22,10 +22,12 @@ from ansible.errors import AnsibleActionFail
 from ansible.plugins.action import ActionBase
 from ansible.module_utils.common.file import get_file_arg_spec
 from ansible.module_utils.common.text.converters import to_text
-from ansible_collections.o0_o.posix.plugins.module_utils import PosixActionBase
+from ansible_collections.o0_o.posix.plugins.module_utils import (
+    WritePosixActionBase,
+)
 
 
-class ActionModule(PosixActionBase, ActionBase):
+class ActionModule(WritePosixActionBase, ActionBase):
     """
     Insert or remove lines in files with deduplication support.
 

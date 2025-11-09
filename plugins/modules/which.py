@@ -47,12 +47,11 @@ EXAMPLES = r"""
 """
 
 RETURN = r"""
-contains:
-  path:
-    description: Full path to the command if found
-    type: str
-    returned: always
-    sample: /bin/date
+path:
+  description: Full path to the command if found
+  type: str
+  returned: always
+  sample: /bin/date
 """
 from ansible.module_utils.basic import AnsibleModule
 

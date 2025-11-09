@@ -11,7 +11,7 @@
 - name: Read regular file with content
   o0_o.posix.read:
     path: "{{ read_regular_path }}"
-    content: true
+    include: ['content', 'metadata']
     find_hardlinks: true
   register: read_regular_content_reg
 
@@ -48,7 +48,6 @@
 - name: Read regular file without content
   o0_o.posix.read:
     path: "{{ read_regular_path }}"
-    content: false
   register: read_regular_meta_reg
 
 - name: Assert regular file metadata without content
@@ -66,7 +65,7 @@
 - name: Read binary file with content enabled
   o0_o.posix.read:
     path: "{{ read_binary_path }}"
-    content: true
+    include: ['content', 'metadata']
   register: read_binary_reg
 
 - name: Assert binary file avoids content
@@ -130,7 +129,7 @@
   o0_o.posix.read:
     path: "{{ read_symlink_path }}"
     parents: true
-    content: true
+    include: ['content', 'metadata']
   register: read_symlink_recursive_reg
 
 - name: Read regular file with symlink discovery

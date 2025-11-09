@@ -27,99 +27,46 @@ description:
     raising an error.
   - Recursive inspection can expand symlink and hard link metadata.
 options:
-  path:
+  paths:
     description:
-      - Absolute path to the file to inspect.
-      - Mutually exclusive with I(paths).
-    type: str
-  content:
+      - List of paths to inspect in a single invocation.
+      - Can also be specified as a single path string using the I(path)
+        alias.
+    type: list
+    elements: str
+    required: true
+    aliases: [path]
+  include:
     description:
-      - Whether to attempt reading the file content when a suitable
-        encoding can be established.
-    type: bool
-    default: false
-  metadata:
-    description:
-      - Whether to include all metadata fields in the result.
-      - When C(true) (default), all available metadata fields are included.
-      - When C(false), only fields specified by individual field parameters
+      - List of field names to include in the result.
+      - When C(metadata) is in the list, all available metadata fields
         are included.
-      - This parameter works as a counterpart to I(content), allowing
-        selective field inclusion for performance optimization.
-    type: bool
-    default: true
-  type:
-    description:
-      - Include file type field when I(metadata=false).
-      - Ignored when I(metadata=true).
-    type: bool
-    default: false
-  name:
-    description:
-      - Include file name field when I(metadata=false).
-      - Ignored when I(metadata=true).
-    type: bool
-    default: false
-  parent:
-    description:
-      - Include parent directory field when I(metadata=false).
-      - Ignored when I(metadata=true).
-    type: bool
-    default: false
-  mode:
-    description:
-      - Include file mode/permissions field when I(metadata=false).
-      - Ignored when I(metadata=true).
-    type: bool
-    default: false
-  owner:
-    description:
-      - Include file owner field when I(metadata=false).
-      - Ignored when I(metadata=true).
-    type: bool
-    default: false
-  group:
-    description:
-      - Include file group field when I(metadata=false).
-      - Ignored when I(metadata=true).
-    type: bool
-    default: false
-  writable:
-    description:
-      - Include writable flag when I(metadata=false).
-      - Ignored when I(metadata=true).
-    type: bool
-    default: false
-  links:
-    description:
-      - Include hard link information when I(metadata=false).
-      - Ignored when I(metadata=true).
-    type: bool
-    default: false
-  acl:
-    description:
-      - Include ACL entries when I(metadata=false).
-      - Ignored when I(metadata=true).
-    type: bool
-    default: false
-  xattrs:
-    description:
-      - Include extended attributes when I(metadata=false).
-      - Ignored when I(metadata=true).
-    type: bool
-    default: false
-  flags:
-    description:
-      - Include file flags when I(metadata=false).
-      - Ignored when I(metadata=true).
-    type: bool
-    default: false
-  selinux:
-    description:
-      - Include SELinux context when I(metadata=false).
-      - Ignored when I(metadata=true).
-    type: bool
-    default: false
+      - When C(content) is in the list, file content will be read and
+        included when a suitable encoding can be determined.
+      - Other field names (C(type), C(name), C(parent), C(mode), C(owner),
+        C(group), C(writable), C(links), C(modified), C(created), C(acl),
+        C(xattrs), C(flags), C(selinux)) can be specified individually
+        for selective field inclusion.
+    type: list
+    elements: str
+    default: ['metadata']
+    choices:
+      - content
+      - metadata
+      - type
+      - name
+      - parent
+      - mode
+      - owner
+      - group
+      - writable
+      - links
+      - modified
+      - created
+      - acl
+      - xattrs
+      - flags
+      - selinux
   encoding:
     description:
       - Override the detected encoding when reading file content.
@@ -163,12 +110,6 @@ options:
         traversed only once.
     type: bool
     default: false
-  paths:
-    description:
-      - List of paths to inspect in a single invocation.
-      - Mutually exclusive with I(path).
-    type: list
-    elements: str
 author:
   - oØ.o (@o0-o)
 notes:
@@ -187,7 +128,7 @@ EXAMPLES = r"""
 - name: Force UTF-8 decoding and capture file data
   o0_o.posix.read:
     path: /etc/issue
-    content: true
+    include: ['content', 'metadata']
     encoding: utf-8
   register: issue_read
 
@@ -213,9 +154,7 @@ EXAMPLES = r"""
 - name: Gather only specific fields for performance
   o0_o.posix.read:
     path: /etc/localtime
-    metadata: false
-    type: true
-    links: true
+    include: ['type', 'links']
   register: minimal_read
 """
 
@@ -326,7 +265,29 @@ def main() -> None:
             "elements": "str",
             "aliases": ["path"],
         },
-        "content": {"type": "bool", "default": False},
+        "include": {
+            "type": "list",
+            "elements": "str",
+            "default": ["metadata"],
+            "choices": [
+                "content",
+                "metadata",
+                "type",
+                "name",
+                "parent",
+                "mode",
+                "owner",
+                "group",
+                "writable",
+                "links",
+                "modified",
+                "created",
+                "acl",
+                "xattrs",
+                "flags",
+                "selinux",
+            ],
+        },
         "encoding": {"type": "str"},
         "parents": {"type": "raw", "default": False},
         "find_hardlinks": {"type": "bool", "default": False},

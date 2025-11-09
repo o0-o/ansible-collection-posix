@@ -1,0 +1,665 @@
+# vim: ts=4:sw=4:sts=4:et:ft=python
+# -*- mode: python; tab-width: 4; indent-tabs-mode: nil; -*-
+#
+# GNU General Public License v3.0+
+# SPDX-License-Identifier: GPL-3.0-or-later
+# (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
+#
+# Copyright (c) 2025 oØ.o (@o0-o)
+#
+# This file is part of the o0_o.posix Ansible Collection.
+
+"""Base class for action plugins that need write operations."""
+
+from __future__ import annotations
+
+import difflib
+import hashlib
+import stat
+from datetime import datetime, timezone
+from typing import Any, Dict, List, Optional, Tuple, Union
+
+from ansible_collections.o0_o.posix.plugins.module_utils import (
+    ReadPosixActionBase,
+)
+
+
+class WritePosixActionBase(ReadPosixActionBase):
+    """Base class for plugins with write operations.
+
+    Inherits from ReadPosixActionBase since write operations typically
+    need read capabilities for idempotence checking.
+    """
+
+    def _pseudo_stat(
+        self, target_path: str, task_vars: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
+        """
+        Fallback-compatible file stat using POSIX ``test`` commands.
+
+        This method uses a combination of ``test`` shell commands to
+        detect if a remote path exists, what type of object it is (e.g.,
+        file, directory, etc.), and whether it is a symlink.
+
+        :param str target_path: The remote path to test
+        :param Optional[dict] task_vars: Ansible task_vars from run(),
+            passed to _cmd()
+        :returns dict: Dictionary with keys 'exists' (bool), 'type'
+            (str or None), 'is_symlink' (bool), 'raw' (bool)
+        :raises RuntimeError: if type cannot be determined
+        """
+        exists_test = self._cmd(
+            ["test", "-e", target_path], task_vars=task_vars, check_mode=False
+        )
+
+        result = {"raw": exists_test.get("raw", False)}
+
+        if exists_test["rc"] != 0:
+            result["exists"] = False
+            result["type"] = None
+            return result
+
+        result["exists"] = True
+
+        symlink_test = self._cmd(
+            ["test", "-L", target_path], task_vars=task_vars, check_mode=False
+        )
+
+        result["is_symlink"] = symlink_test["rc"] == 0
+
+        type_tests = [
+            ("directory", ["-d"]),
+            ("file", ["-f"]),
+            ("block", ["-b"]),
+            ("char", ["-c"]),
+            ("pipe", ["-p"]),
+            ("socket", ["-S"]),
+        ]
+
+        for type_name, flag in type_tests:
+            check = self._cmd(
+                ["test"] + flag + [target_path],
+                task_vars=task_vars,
+                check_mode=False,
+            )
+            if check["rc"] == 0:
+                result["type"] = type_name
+                return result
+
+        raise RuntimeError(
+            f"All POSIX 'test' commands failed on '{target_path}'"
+        )
+
+    def _mkdir(
+        self,
+        target_path: str,
+        task_vars: Optional[Dict[str, Any]] = None,
+        parents: Optional[bool] = True,
+        mode: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """
+        Ensure a directory exists on the remote host.
+
+        Creates a directory on the remote host using fallback-compatible
+        methods, optionally applying a permission mode.
+
+        :param str target_path: The remote directory path to create
+        :param Optional[dict] task_vars: Ansible task_vars from
+            ``run()``
+        :param bool parents: Whether to create parent directories
+            (``mkdir -p``)
+        :param Optional[str] mode: Optional permission mode string
+            (e.g. "0755")
+        :returns dict: Dictionary with ``changed`` boolean key
+        :raises RuntimeError: On directory creation error
+        """
+        self._display.vvv(f"Creating directory: {target_path}")
+
+        # Check if the path exists
+        stat = self._pseudo_stat(target_path, task_vars=task_vars)
+        if stat["type"] == "directory":
+            self._display.vvv(f"Directory already exists: {target_path}")
+            return {"rc": 0, "changed": False}
+        if stat["exists"]:
+            raise NotADirectoryError(
+                f"Path '{target_path}' exists but is not a directory "
+                f"({stat['type']})"
+            )
+
+        # Attempt to create directory
+        args = ["mkdir"]
+        if parents:
+            args.append("-p")
+        if mode:
+            args.extend(["-m", mode])
+        args.append(target_path)
+
+        mkdir_result = self._cmd(args, task_vars=task_vars)
+        if mkdir_result["rc"] != 0:
+            raise RuntimeError(
+                f"Failed to create directory '{target_path}': "
+                f"{mkdir_result.get('stderr', '').strip()}"
+            )
+
+        return {"rc": mkdir_result["rc"], "changed": True, "raw": stat["raw"]}
+
+    def _generate_ansible_backup_path(self, target_path: str) -> str:
+        """
+        Generate an Ansible-style backup file name based on the path.
+
+        The format is: ``<path>.<md5_digest>.<UTC timestamp>``
+
+        :param str target_path: The full remote file path to back up
+        :returns str: Backup file name as a string
+        """
+        digest = hashlib.md5(target_path.encode("utf-8")).hexdigest()
+        timestamp = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")
+        return f"{target_path}.{digest}.{timestamp}"
+
+    def _validate_file(
+        self,
+        tmpfile: str,
+        validate_cmd: str,
+        task_vars: Optional[Dict[str, Any]] = None,
+    ) -> None:
+        """
+        Run a validation command against a temporary file.
+
+        :param str tmpfile: The temporary file to validate
+        :param str validate_cmd: The validation command template
+        :param Optional[dict] task_vars: Task vars from the calling
+            action
+        :raises RuntimeError: If validation fails
+        """
+        self._display.vvv(f"Validating {tmpfile}")
+        if not validate_cmd:
+            return
+
+        cmd = validate_cmd % self._quote(tmpfile)
+        result = self._cmd(cmd, task_vars=task_vars)
+
+        if result["rc"] != 0:
+            raise RuntimeError(
+                f"Validation failed: {validate_cmd} => "
+                f"{result.get('stderr', '')}"
+            )
+
+    def _create_backup(
+        self, dest: str, task_vars: Optional[Dict[str, Any]] = None
+    ) -> Optional[str]:
+        """
+        Create a backup of the destination file if it exists.
+
+        :param str dest: Destination file to back up
+        :param Optional[dict] task_vars: Task vars from the calling
+            action
+        :returns Optional[str]: Path to the backup file or None if not
+            created
+        :raises RuntimeError: If backup fails
+        """
+        result = self._cmd(["test", "-e", dest], task_vars=task_vars)
+        if result["rc"] != 0:
+            return None
+
+        backup_path = self._generate_ansible_backup_path(dest)
+        self._display.vvv(f"Creating backup at {backup_path}")
+        result = self._cmd(
+            ["cp", "--preserve=all", dest, backup_path], task_vars=task_vars
+        )
+
+        if result["rc"] != 0:
+            raise RuntimeError(f"Backup failed: {result.get('stderr', '')}")
+
+        return backup_path
+
+    def _get_perms(
+        self,
+        target: str,
+        selinux: bool = False,
+        task_vars: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        """
+        Retrieve POSIX file permissions using ``ls``.
+
+        Retrieves POSIX file permissions and optionally SELinux context
+        for a given file or directory. When ``selinux=True``, the
+        SELinux context (if available) is also parsed and returned
+        alongside mode, owner, and group. Any trailing ACL/attribute
+        indicators (e.g., "+", "@") are stripped from the mode field.
+
+        :param str target: Path to the file or directory to inspect
+        :param bool selinux: Whether to include SELinux context
+            information
+        :param Optional[dict] task_vars: Ansible task variables for
+            command execution
+        :returns dict: Dictionary containing file permissions with keys:
+            - ``mode`` (str): Symbolic file mode (e.g., "-rw-r--r--")
+            - ``owner`` (str): File owner
+            - ``group`` (str): File group
+            - Optional SELinux keys: ``seuser``, ``setype``, ``serole``,
+              ``selevel``
+        :raises RuntimeError: If the ``ls`` command fails or
+            produces unexpected output
+        """
+        self._display.vvv(f"Getting permissions of {target}")
+        ls_args = ["ls"]
+        if selinux:
+            ls_args.append("-Zd")
+        else:
+            ls_args.append("-ld")
+        ls_args.append(target)
+
+        cmd_result = self._cmd(ls_args, task_vars=task_vars)
+        if cmd_result["rc"] != 0:
+            raise RuntimeError(
+                f"Could not stat {target}: {cmd_result['stderr']}"
+            )
+
+        parts = cmd_result["stdout_lines"][0].split()
+
+        if selinux:
+            try:
+                # Format: context user:role:type:level owner group ...
+                context = parts[0]
+                mode = parts[1][1:10]  # Trim type and ACL symbols
+                owner = parts[2]
+                group = parts[3]
+                seuser, serole, setype, selevel = context.split(":")
+            except Exception:
+                raise RuntimeError(
+                    "Unexpected SELinux output from ls -Zd: "
+                    f"{cmd_result['stdout']}"
+                )
+
+            return {
+                "mode": mode,
+                "owner": owner,
+                "group": group,
+                "seuser": seuser,
+                "serole": serole,
+                "setype": setype,
+                "selevel": selevel,
+            }
+
+        else:
+            mode = parts[0][1:10]  # Trim type and ACL symbols
+            owner = parts[2]
+            group = parts[3]
+            return {
+                "mode": mode,
+                "owner": owner,
+                "group": group,
+            }
+
+    def _write_temp_file(
+        self,
+        lines: List[str],
+        tmpfile: str,
+        task_vars: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        """
+        Write lines to a remote temp file using ``tee`` and stdin.
+
+        Writes content to a temporary file on the remote host, then
+        applies ``chmod 0600`` for security.
+
+        :param List[str] lines: Content lines to write
+        :param str tmpfile: Temporary file path on remote host
+        :param Optional[dict] task_vars: Ansible task variables
+        :returns dict: Result from the ``tee`` command
+        :raises RuntimeError: If writing or chmod fails
+        """
+        self._display.vvv(f"Writing to temp file: {tmpfile}")
+        lines_str = "\n".join(lines)
+        write_result = self._cmd(
+            cmd=["tee", tmpfile],
+            stdin=lines_str,
+            task_vars=task_vars,
+        )
+        if write_result.get("rc", 1) != 0:
+            raise RuntimeError(
+                f"Failed to write temp file {tmpfile}: "
+                f"{write_result.get('stderr', '')}"
+            )
+
+        self._display.vvv(f"Setting temp file permissions: {tmpfile}")
+        chmod_result = self._cmd(
+            ["chmod", "0600", tmpfile], task_vars=task_vars
+        )
+        if chmod_result.get("rc", 1) != 0:
+            raise RuntimeError(
+                f"Failed to chmod temp file: {chmod_result.get('stderr', '')}"
+            )
+        return write_result
+
+    def _convert_octal_mode_to_symbolic(
+        self, octal_mode: Union[str, int]
+    ) -> str:
+        """
+        Convert octal mode permissions to symbolic representation.
+
+        Converts an octal representation of POSIX mode permissions into
+        symbolic format without type or ACL symbols.
+
+        :param Union[str, int] octal_mode: A stringable octal mode
+            (e.g. 644, "0755")
+        :returns str: String of the symbolic mode without type or ACL
+            symbols
+        :raises RuntimeError: On conversion error
+        """
+        int_mode = int(str(octal_mode), 8)
+        try:
+            # Strip type and ACL symbols
+            symbolic_mode = stat.filemode(int_mode)[1:10]
+        except Exception:
+            raise RuntimeError(
+                f"Error converting mode {octal_mode} to symbols"
+            )
+        return symbolic_mode
+
+    def _compare_content_and_perms(
+        self,
+        dest: str,
+        lines: List[str],
+        perms: Optional[Dict[str, Any]] = None,
+        selinux: bool = False,
+        task_vars: Optional[Dict[str, Any]] = None,
+    ) -> Tuple[bool, Optional[str], List[str]]:
+        """
+        Compare existing file contents and permissions to desired state.
+
+        :param str dest: Path to destination file on the remote host
+        :param List[str] lines: Desired content lines to compare
+        :param Optional[dict] perms: Desired permissions dict (may
+            include owner, group, mode, etc.)
+        :param bool selinux: Whether SELinux attributes are in use
+        :param Optional[dict] task_vars: Ansible task_vars from
+            ``run()``
+        :returns Tuple[bool, Optional[str], List[str]]: Tuple of
+            (changed, old_content, old_lines)
+        :raises RuntimeError: On invalid input
+        """
+        self._display.vvv(f"Comparing content and permissions with {dest}")
+        changed = False
+
+        old_stat = self._pseudo_stat(dest, task_vars=task_vars)
+        self._display.vvv(f"Old stat: {old_stat}")
+
+        if not old_stat["exists"]:
+            self._display.vvv(f"File does not exist: {dest}")
+            return True, None, []
+
+        old_slurp = self._slurp(src=dest, task_vars=task_vars)
+        old_content = old_slurp["content"]
+        old_lines = old_slurp["content_lines"]
+        self._display.vvv(f"Old lines: {old_lines}")
+
+        if lines != old_lines:
+            self._display.vvv("Content changed (lines comparison)")
+            changed = True
+
+        old_perms = self._get_perms(dest, selinux=selinux, task_vars=task_vars)
+        self._display.vvv(f"Old perms: {old_perms}")
+
+        if perms:
+            for key in [
+                "owner",
+                "group",
+                "selevel",
+                "serole",
+                "setype",
+                "seuser",
+            ]:
+                if perms.get(key) and perms[key] != old_perms.get(key):
+                    self._display.vvv(
+                        f"Perm {key} changed: {perms[key]} != "
+                        f"{old_perms.get(key)}"
+                    )
+                    changed = True
+
+            if perms.get("mode"):
+                try:
+                    symbol_perms = self._convert_octal_mode_to_symbolic(
+                        perms["mode"]
+                    )
+                    if symbol_perms != old_perms["mode"]:
+                        self._display.vvv(
+                            f"Mode changed: {symbol_perms} != "
+                            f"{old_perms['mode']}"
+                        )
+                        changed = True
+                except Exception as e:
+                    raise RuntimeError(f"Invalid mode: {perms['mode']}: {e}")
+
+        self._display.vvv(f"Comparison result: changed is {changed}")
+
+        return changed, old_content, old_lines
+
+    def _apply_perms_and_selinux(
+        self,
+        dest: str,
+        perms: Dict[str, Any],
+        selinux: bool = False,
+        task_vars: Optional[Dict[str, Any]] = None,
+    ) -> None:
+        """
+        Apply ownership, permission mode, and SELinux context to file.
+
+        Sets the owner, group, and file mode on the destination path if
+        specified in ``perms``. Also applies the SELinux context if
+        ``selinux`` is True. Then verifies the applied values match
+        expectations.
+
+        :param str dest: Remote file path to update
+        :param dict perms: Dictionary with keys ``owner``, ``group``,
+            ``mode``, etc.
+        :param bool selinux: Boolean indicating whether SELinux handling
+            is enabled
+        :param Optional[dict] task_vars: Ansible task variables
+        :raises RuntimeError: On failure to apply or verify any
+            permission or SELinux step
+        """
+        self._display.vvv(f"Applying permissions to {dest}")
+        cmd = self._cmd
+
+        if perms:
+            if perms.get("owner"):
+                chown_result = cmd(
+                    ["chown", perms["owner"], dest], task_vars=task_vars
+                )
+                if chown_result["rc"] != 0:
+                    raise RuntimeError(
+                        f"Failed to chown {dest}: "
+                        f"{chown_result.get('stderr', '')}"
+                    )
+
+            if perms.get("group"):
+                chgrp_result = cmd(
+                    ["chgrp", perms["group"], dest], task_vars=task_vars
+                )
+                if chgrp_result["rc"] != 0:
+                    raise RuntimeError(
+                        f"Failed to chgrp {dest}: "
+                        f"{chgrp_result.get('stderr', '')}"
+                    )
+
+            if perms.get("mode"):
+                chmod_result = cmd(
+                    ["chmod", perms["mode"], dest], task_vars=task_vars
+                )
+                if chmod_result["rc"] != 0:
+                    raise RuntimeError(
+                        f"Failed to chmod {dest}: "
+                        f"{chmod_result.get('stderr', '')}"
+                    )
+
+        if selinux:
+            self._handle_selinux_context(dest, perms, task_vars=task_vars)
+
+        # Confirm permissions were applied
+        if perms:
+            final_perms = self._get_perms(
+                dest, selinux=selinux, task_vars=task_vars
+            )
+
+            for key in [
+                "owner",
+                "group",
+                "selevel",
+                "serole",
+                "setype",
+                "seuser",
+            ]:
+                if perms.get(key) and final_perms.get(key) != perms.get(key):
+                    raise RuntimeError(
+                        f"Post-apply verification failed: expected {key}="
+                        f"{perms[key]}, got {final_perms.get(key)}"
+                    )
+
+            if perms.get("mode"):
+                try:
+                    expected_mode = self._convert_octal_mode_to_symbolic(
+                        perms["mode"]
+                    )
+                    actual_mode = final_perms.get("mode")
+                    if actual_mode != expected_mode:
+                        raise RuntimeError(
+                            "Post-apply verification failed: expected mode="
+                            f"{expected_mode}, got {actual_mode}"
+                        )
+                except Exception as e:
+                    raise RuntimeError(
+                        f"Invalid mode format: {perms['mode']}: {e}"
+                    )
+
+    def _write_file(
+        self,
+        content: Union[str, List[str]],
+        dest: str,
+        perms: Optional[Dict[str, Any]] = None,
+        backup: bool = False,
+        validate_cmd: Optional[str] = None,
+        check_mode: Optional[bool] = None,
+        task_vars: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        """
+        Write content to destination file using fallback-compatible
+        methods.
+
+        Writes content to the destination file on the remote host with
+        support for optional validation, backup creation, and
+        permission handling.
+
+        :param Union[str, List[str]] content: A string or list of
+            strings to write
+        :param str dest: The remote destination file path
+        :param Optional[dict] perms: Dictionary with keys like owner,
+            group, mode, seuser, etc.
+        :param bool backup: Whether to back up the existing file
+        :param Optional[str] validate_cmd: Shell command for validation,
+            should include '%s'
+        :param Optional[bool] check_mode: Whether to run in check mode
+        :param Optional[dict] task_vars: Ansible task_vars from
+            ``run()``
+        :returns dict: Dictionary with 'changed', 'rc', 'msg', and
+            optional 'backup_file'
+        :raises RuntimeError: On any critical failure
+        """
+        self._display.vvv(f"Starting _write_file to {dest}")
+
+        cmd = self._cmd
+        shell = self._connection._shell
+        backup_path = None
+        check_mode = check_mode or False
+        result = {"changed": False}
+
+        self._make_raw_tmp_path(task_vars=task_vars)
+        tmpdir = shell.tmpdir
+        self._display.vvv(f"Using temporary directory: {tmpdir}")
+        tmpfile = shell.join_path(tmpdir, "ansible_tmpfile")
+        self._display.vvv(f"Using temporary file: {tmpfile}")
+
+        old_stat = self._pseudo_stat(dest, task_vars=task_vars)
+        self._display.vvv(f"Old stat: {old_stat}")
+        if old_stat["exists"] and old_stat["type"] != "file":
+            raise RuntimeError(f"Cannot write over {old_stat['type']}")
+
+        # Normalize content and lines list
+        lines, content = self._normalize_content(content)
+
+        # Detect if any SELinux parameters are requested
+        selinux = self._check_selinux_tools(perms, task_vars=task_vars)
+
+        # Ensure the remote temporary directory exists
+        self._mkdir(tmpdir, task_vars=task_vars, parents=True, mode="0700")
+
+        # Write the lines to a temporary file
+        self._write_temp_file(lines, tmpfile, task_vars=task_vars)
+
+        # Run validation command, if provided
+        if validate_cmd:
+            self._validate_file(tmpfile, validate_cmd, task_vars=task_vars)
+
+        # Back up the destination file, if requested
+        if backup:
+            backup_path = self._create_backup(dest, task_vars=task_vars)
+
+        # Compare old and new
+        changed, old_content, old_lines = self._compare_content_and_perms(
+            dest, lines, perms, selinux, task_vars=task_vars
+        )
+        result["changed"] = changed
+
+        # Calculate diff
+        if task_vars.get("diff", False) and result["changed"]:
+            diff = "\n".join(
+                difflib.unified_diff(
+                    old_lines, lines, fromfile=dest, tofile=dest, lineterm=""
+                )
+            )
+            result["diff"] = {
+                "before_header": dest,
+                "after_header": dest,
+                "before": old_content,
+                "after": content,
+                "unified_diff": diff,
+            }
+            self._display.vvv(f"Generated diff: {diff}")
+
+        if check_mode:
+            self._display.vvv("Check mode is enabled")
+            if result["changed"]:
+                result.update(
+                    {"msg": "Check mode: changes would have been made."}
+                )
+            else:
+                result.update({"msg": "Check mode: no changes needed."})
+
+        else:
+            if result["changed"]:
+                # Move the temp file to the final destination
+                mv_result = cmd(["mv", tmpfile, dest], task_vars=task_vars)
+                self._display.vvv(f"mv result: {mv_result}")
+                if mv_result["rc"] != 0:
+                    raise RuntimeError(
+                        "Failed to move temp file into place: "
+                        f"{mv_result.get('stderr', '')}"
+                    )
+
+                # Apply final permissions and ownership
+                self._apply_perms_and_selinux(
+                    dest, perms, selinux, task_vars=task_vars
+                )
+
+                result["msg"] = "File written successfully"
+            else:
+                self._display.vvv("Files identical, no change necessary")
+                result["msg"] = "File not changed"
+
+        result["rc"] = 0
+
+        if backup_path:
+            result["backup_file"] = backup_path
+
+        self._display.vvv(f"_write_file completed: {result}")
+        return result

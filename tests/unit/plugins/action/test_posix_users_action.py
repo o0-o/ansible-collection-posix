@@ -11,7 +11,8 @@
 
 from __future__ import annotations
 
-from typing import Dict, Generator
+from copy import deepcopy
+from typing import Generator
 
 import pytest
 
@@ -21,34 +22,34 @@ from ansible_collections.o0_o.posix.plugins.action.users import ActionModule
 PASSWD_ID = {
     "0": {
         "name": "root",
-        "gid": 0,
         "gecos": "root",
         "home": "/root",
         "shell": "/bin/sh",
+        "gid": 0,  # Will be removed and replaced with "group"
     },
     "1000": {
         "name": "o0-o",
-        "gid": 20,
         "gecos": "o0-o",
         "home": "/home/o0-o",
         "shell": "/bin/zsh",
+        "gid": 20,  # Will be removed and replaced with "group"
     },
 }
 
 PASSWD_NAME = {
     "root": {
         "id": 0,
-        "gid": 0,
         "gecos": "root",
         "home": "/root",
         "shell": "/bin/sh",
+        "gid": 0,  # Will be removed and replaced with "group"
     },
     "o0-o": {
         "id": 1000,
-        "gid": 20,
         "gecos": "o0-o",
         "home": "/home/o0-o",
         "shell": "/bin/zsh",
+        "gid": 20,  # Will be removed and replaced with "group"
     },
 }
 
@@ -104,24 +105,28 @@ def test_users_action_by_id(
     monkeypatch.setattr(plugin, "_cmd", mock_cmd)
     monkeypatch.setattr(
         "ansible_collections.o0_o.posix.plugins.action.users.passwd_info",
-        lambda content, key="id": PASSWD_ID if key == "id" else PASSWD_NAME,
+        lambda content, key="id": (
+            deepcopy(PASSWD_ID) if key == "id" else deepcopy(PASSWD_NAME)
+        ),
     )
     monkeypatch.setattr(
         "ansible_collections.o0_o.posix.plugins.action.users.group_info",
-        lambda content, key="id": GROUP_ID if key == "id" else GROUP_NAME,
+        lambda content, key="id": (
+            deepcopy(GROUP_ID) if key == "id" else deepcopy(GROUP_NAME)
+        ),
     )
     monkeypatch.setattr(
         "ansible_collections.o0_o.posix.plugins.action.users.jc_parse",
-        lambda parser, data: GROUP_ENTRIES,
+        lambda parser, data: deepcopy(GROUP_ENTRIES),
     )
 
     result = plugin.run(task_vars={})
 
     assert result["users"]["1000"]["group"] == 20
     assert sorted(result["users"]["1000"]["groups"]) == [20, 101]
-    assert result["groups"]["0"]["members"] == ["root"]
+    assert result["groups"]["0"]["members"] == [0]
     assert result["groups"]["20"]["name"] == "staff"
-    assert result["groups"]["20"]["members"] == ["o0-o"]
+    assert result["groups"]["20"]["members"] == [1000]
 
 
 def test_users_action_by_name(
@@ -141,15 +146,19 @@ def test_users_action_by_name(
     monkeypatch.setattr(plugin, "_cmd", mock_cmd)
     monkeypatch.setattr(
         "ansible_collections.o0_o.posix.plugins.action.users.passwd_info",
-        lambda content, key="id": PASSWD_ID if key == "id" else PASSWD_NAME,
+        lambda content, key="id": (
+            deepcopy(PASSWD_ID) if key == "id" else deepcopy(PASSWD_NAME)
+        ),
     )
     monkeypatch.setattr(
         "ansible_collections.o0_o.posix.plugins.action.users.group_info",
-        lambda content, key="id": GROUP_ID if key == "id" else GROUP_NAME,
+        lambda content, key="id": (
+            deepcopy(GROUP_ID) if key == "id" else deepcopy(GROUP_NAME)
+        ),
     )
     monkeypatch.setattr(
         "ansible_collections.o0_o.posix.plugins.action.users.jc_parse",
-        lambda parser, data: GROUP_ENTRIES,
+        lambda parser, data: deepcopy(GROUP_ENTRIES),
     )
 
     result = plugin.run(task_vars={})
@@ -157,6 +166,6 @@ def test_users_action_by_name(
     user_entry = result["users"]["o0-o"]
     assert user_entry["group"] == "staff"
     assert sorted(user_entry["groups"]) == ["access_bpf", "staff"]
-    assert result["groups"]["root"]["members"] == ["root"]
+    assert result["groups"]["root"]["members"] == [0]
     assert result["groups"]["staff"]["id"] == 20
-    assert result["groups"]["staff"]["members"] == ["o0-o"]
+    assert result["groups"]["staff"]["members"] == [1000]
