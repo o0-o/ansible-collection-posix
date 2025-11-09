@@ -139,33 +139,34 @@ class PosixActionBase:
 
         return False
 
-    def _get_inventory_hostname(
+    def _def_inventory_hostname(
         self, task_vars: Optional[Dict[str, Any]] = None
-    ) -> str:
-        """Return the inventory hostname for log/warning messages.
+    ) -> None:
+        """Define the inventory hostname for log/warning messages.
 
         Prefers the value from ``task_vars`` when provided, then falls
         back to the task's vars mapping. Defaults to ``localhost`` when
         no value can be determined (e.g., local actions).
 
         :param task_vars: Optional task vars mapping
-        :returns: Hostname string suitable for log prefixes
         """
         if isinstance(task_vars, dict):
             host = task_vars.get("inventory_hostname")
             if host:
-                return str(host)
+                self.inventory_hostname = str(host)
 
         try:
             mapping = getattr(self._task, "vars", None)
             if isinstance(mapping, dict):
                 host = mapping.get("inventory_hostname")
                 if host:
-                    return str(host)
+                    self.inventory_hostname = str(host)
         except Exception:
             pass
 
-        return "localhost"
+        self.inventory_hostname = "localhost"
+
+        return
 
     def _get_target_timezone(
         self, task_vars: Optional[Dict[str, Any]] = None
@@ -290,6 +291,7 @@ class PosixActionBase:
         cmd: Union[str, List[str]],
         stdin: Optional[str] = None,
         chdir: Optional[str] = None,
+        strip: bool = True,
         task_vars: Optional[Dict[str, Any]] = None,
         check_mode: Optional[bool] = None,
     ) -> Dict[str, Any]:
@@ -301,6 +303,7 @@ class PosixActionBase:
             shell string or a list of arguments
         :param Optional[str] stdin: Optional standard input to pass to
             the command
+        :param bool strip: Strip trailing whitespace from output
         :param Optional[dict] task_vars: Dictionary of task variables
             from the calling task
         :param Optional[bool] check_mode: Optional override for Ansible
@@ -312,6 +315,7 @@ class PosixActionBase:
         args = {
             "stdin": stdin,
             "chdir": chdir,
+            "strip": strip,
         }
 
         if isinstance(cmd, list):

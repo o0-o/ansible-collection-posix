@@ -217,9 +217,11 @@ class ActionModule(PosixActionBase, ActionBase):
         script = self._build_batch_script(tmp)
 
         # Execute single batch command
+        # strip=False to preserve length-prefix format parsing
         cmd_result = self._cmd(
             script,
             chdir=self.chdir,
+            strip=False,
             check_mode=self._task.check_mode,
             task_vars=task_vars,
         )
