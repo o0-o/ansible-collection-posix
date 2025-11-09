@@ -22,6 +22,7 @@ when Python is not available on the remote host.
 from __future__ import annotations
 
 import shlex
+from datetime import timedelta, timezone
 from typing import Any, Dict, List, Optional, Union
 
 
