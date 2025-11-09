@@ -82,8 +82,6 @@ class ActionModule(PosixActionBase, ActionBase):
             )
             self.executable = None
 
-        self.result["cmd"] = self.args
-
         # If chdir is specified, validate the target directory
         # _low_level_command has no specific chdir exception
         if self.chdir:
@@ -100,7 +98,7 @@ class ActionModule(PosixActionBase, ActionBase):
         # Use creates/removes logic for check_mode idempotence
         shoulda = "Would" if self._task.check_mode else "Did"
 
-        if self.creates and not self.result["msg"]:
+        if self.creates:
             quoted_creates = self._quote(self.creates)
             created = self._low_level_execute_command(
                 f"test -e {quoted_creates}"
@@ -115,7 +113,7 @@ class ActionModule(PosixActionBase, ActionBase):
                 self.result["rc"] = 0
                 return
 
-        if self.removes and not self.result["msg"]:
+        if self.removes:
             quoted_removes = self._quote(self.removes)
             removed = self._low_level_execute_command(
                 f"test -e {quoted_removes}"
@@ -136,34 +134,31 @@ class ActionModule(PosixActionBase, ActionBase):
         self.result["changed"] = True
 
         # Actually run the command unless in check_mode
-        if not self.result["msg"]:
-            if not self._task.check_mode:
-                self.result["start"] = datetime.datetime.now()
+        if not self._task.check_mode:
+            self.result["start"] = datetime.datetime.now()
 
-                # Determine the final command to execute
-                if self.shell:
-                    cmd_str = self._format_command(self.args)
-                    cmd = self._format_command(["/bin/sh", "-c", cmd_str])
-                else:
-                    # Audit mode validates syntax and normalizes quoting
-                    cmd = self._format_command(self.args, audit=True)
-                # Execute the command
-                exec_result = self._low_level_execute_command(
-                    cmd,
-                    in_data=self.stdin,
-                    executable=self.executable,
-                    chdir=self.chdir,
+            # Determine the final command to execute
+            if self.shell:
+                self.command = self._format_command(
+                    ["/bin/sh", "-c", self.command]
                 )
-                self.result["end"] = datetime.datetime.now()
-                self.result.update(exec_result)
-            else:
-                self.result["rc"] = 0
-                self.result["msg"] = (
-                    "Command would have run if not in check mode"
-                )
-                if self.creates is None and self.removes is None:
-                    self.result["skipped"] = True
-                    self.result["changed"] = False
+            # Execute the command
+            exec_result = self._low_level_execute_command(
+                self.command,
+                in_data=self.stdin,
+                executable=self.executable,
+                chdir=self.chdir,
+            )
+            self.result["end"] = datetime.datetime.now()
+            self.result.update(exec_result)
+        else:
+            self.result["rc"] = 0
+            self.result["msg"] = (
+                "Command would have run if not in check mode"
+            )
+            if self.creates is None and self.removes is None:
+                self.result["skipped"] = True
+                self.result["changed"] = False
 
         # Convert timestamps and delta to text
         if self.result["start"] is not None and self.result["end"] is not None:
@@ -246,15 +241,17 @@ class ActionModule(PosixActionBase, ActionBase):
         self.force_raw = new_module_args.pop("_force_raw")
 
         # Args
-        self.args = new_module_args.pop("cmd")
-        if self.args is not None:
+        cmd = new_module_args.pop("cmd")
+        if cmd is not None:
             # Avoid errors when using builtin command module
-            new_module_args["_raw_params"] = self.args
-        self.argv = new_module_args["argv"]
-        if self.argv is None:
+            new_module_args["_raw_params"] = cmd
+        argv = new_module_args["argv"]
+        if argv is None:
             # Avoid errors when using builtin command module
             new_module_args.pop("argv")
-        self.args = self.args or self.argv
+        self.command = cmd or argv
+        if not self.shell:
+            self.command = self._format_command(self.command)
 
         # Stdin
         self.stdin = new_module_args["stdin"]
@@ -306,6 +303,7 @@ class ActionModule(PosixActionBase, ActionBase):
         self.result = super(ActionModule, self).run(tmp, task_vars=task_vars)
         self.result.update(
             {
+                "cmd": self.command,
                 "changed": False,
                 "stdout": "",
                 "stderr": "",

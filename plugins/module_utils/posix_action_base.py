@@ -57,9 +57,7 @@ class PosixActionBase:
                 ...
     """
 
-    def _format_command(
-        self, cmd: Union[str, List[str]], audit: bool = False
-    ) -> str:
+    def _format_command(self, cmd: Union[str, List[str]]) -> str:
         """
         Convert a command to a shell-safe string.
 
@@ -69,35 +67,25 @@ class PosixActionBase:
         integers or Path objects.
 
         :param cmd: Command as string or list of arguments
-        :param bool audit: When True, validate and normalize string
-            commands by tokenizing and re-joining (useful for non-shell
-            mode validation)
         :returns str: Shell-safe command string
         """
         if isinstance(cmd, str):
-            if audit:
-                # Validate syntax and normalize quoting by tokenizing
-                # and re-joining
-                tokens = shlex.split(cmd)
-                try:
-                    return shlex.join(tokens)
-                except AttributeError:
-                    # Python < 3.8 fallback
-                    return " ".join(shlex.quote(str(arg)) for arg in tokens)
-            return cmd
-
-        # Convert all list elements to native strings
-        cmd = [
-            to_native(arg, errors="surrogate_or_strict", nonstring="simplerepr")
-            for arg in cmd
-        ]
-
-        # Use shlex.join() if available (Python 3.8+)
+            # Validate syntax and normalize quoting by tokenizing
+            # and re-joining
+            cmd = shlex.split(cmd)
+        else:
+            # Convert all list elements to native strings
+            cmd = [
+                to_native(arg, errors="surrogate_or_strict", nonstring="simplerepr")
+                for arg in cmd
+            ]
         try:
+            # Use shlex.join() if available (Python 3.8+)
             return shlex.join(cmd)
         except AttributeError:
             # Python < 3.8 fallback
-            return " ".join(shlex.quote(arg) for arg in cmd)
+            return " ".join(shlex.quote(str(arg)) for arg in cmd)
+        return cmd
 
     def _normalize_newlines(self, text: str) -> str:
         """
@@ -354,11 +342,11 @@ class PosixActionBase:
             "strip_empty_ends": strip,
         }
 
-        if isinstance(cmd, list):
-            args["argv"] = cmd
-        elif isinstance(cmd, str):
+        if isinstance(cmd, str):
             args["cmd"] = cmd
             args["_uses_shell"] = True
+        elif isinstance(cmd, list):
+            args["argv"] = cmd
         else:
             raise TypeError(
                 f"Expected cmd to be str or list, got {type(cmd).__name__}"

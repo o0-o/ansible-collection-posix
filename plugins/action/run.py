@@ -147,30 +147,29 @@ class ActionModule(PosixActionBase, ActionBase):
         :returns str: Shell script content
         """
         if self.fail_fast:
-            lines = ["set -e"]  # Exit on command errors
+            cmds = ["set -e"]  # Exit on command errors
         else:
-            lines = ["set +e"]  # Don't exit on command errors
+            cmds = ["set +e"]  # Don't exit on command errors
 
         for i, cmd in enumerate(self.commands):
-            cmd_str = self._format_command(cmd)
-            self.commands[i] = cmd_str
-
-            lines.extend(
+            if not isinstance(cmd, str):
+                cmd = self._format_command(cmd)
+            cmds.extend(
                 [
                     # Execute and capture
-                    f'({cmd_str}) 1>"{tmp}/{i}.stdout" 2>"{tmp}/{i}.stderr"',
+                    f'({cmd}) 1>"{tmp}{i}.stdout" 2>"{tmp}{i}.stderr"',
                     # Output: RC, stdout_length, stdout, stderr_length, stderr
                     'echo "${?}"',
-                    f'wc -c "{tmp}/{i}.stdout"',
-                    f'cat "{tmp}/{i}.stdout"',
-                    f'wc -c "{tmp}/{i}.stderr"',
-                    f'cat "{tmp}/{i}.stderr"',
+                    f'wc -c "{tmp}{i}.stdout"',
+                    f'cat "{tmp}{i}.stdout"',
+                    f'wc -c "{tmp}{i}.stderr"',
+                    f'cat "{tmp}{i}.stderr"',
                 ]
             )
 
         # Ensure script ends with a newline for proper parsing
-        lines.append('echo')
-        return "\n".join(lines)
+        cmds.append('echo')
+        return "; ".join(cmds)
 
     def _def_args(self) -> Dict[str, Any]:
         """
@@ -227,6 +226,7 @@ class ActionModule(PosixActionBase, ActionBase):
 
         # Build batched script using Ansible's tmp
         script = self._build_batch_script(tmp)
+        self._display.vvv(f"Batch command:\n{script}")
 
         # Execute single batch command
         # strip=False to preserve length-prefix format parsing
@@ -237,6 +237,7 @@ class ActionModule(PosixActionBase, ActionBase):
             check_mode=self._task.check_mode,
             task_vars=task_vars,
         )
+        self._display.vvv(f"Batch result:\n{to_text(cmd_result)}")
 
         self.result.update(
             {
@@ -257,7 +258,6 @@ class ActionModule(PosixActionBase, ActionBase):
                     "failed": True,
                     "msg": f"Failed to parse batch output: {e}",
                     "stdout": cmd_result["stdout"],
-                    "stdout_bytes": len(cmd_result["stdout"]),
                 }
             )
             return self.result
