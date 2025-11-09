@@ -63,7 +63,7 @@ class ActionModule(PosixActionBase, ActionBase):
     _supports_check_mode = True
     _supports_async = False
 
-    def _raw_cmd(self) -> Dict[str, Any]:
+    def _raw_cmd(self):
         """
         Execute a command using low-level methods.
 
@@ -220,12 +220,12 @@ class ActionModule(PosixActionBase, ActionBase):
 
         Returns:
             dict: The validated argument dictionary.
+
+        Raises:
+            ImportError: When the packaging module is not available.
         """
         if PACKAGING_IMPORT_ERROR:
-            raise AnsibleActionFail(
-                "The 'packaging' Python module is required to run this "
-                f"plugin. Import failed: {PACKAGING_IMPORT_ERROR}"
-            )
+            raise PACKAGING_IMPORT_ERROR
 
         argument_spec = {
             "_uses_shell": {"type": "bool", "default": False},
@@ -331,7 +331,13 @@ class ActionModule(PosixActionBase, ActionBase):
         task_vars = task_vars or {}
         self.host = self._get_inventory_hostname(task_vars)
 
-        new_module_args = self._def_args()
+        try:
+            new_module_args = self._def_args()
+        except ImportError as e:
+            raise AnsibleActionFail(
+                "The 'packaging' Python module is required to run this "
+                f"plugin. Import failed: {e}"
+            )
 
         self.result = super(ActionModule, self).run(tmp, task_vars=task_vars)
         self.result.update(
