@@ -64,7 +64,12 @@ class ActionModule(PosixActionBase, ActionBase):
     _supports_async = False
 
     def _raw_cmd(self):
-        """Execute a command using low-level shell methods."""
+        """
+        Execute a command using low-level shell methods.
+
+        :raises AnsibleActionFail: When command execution fails or
+            arguments are invalid
+        """
         if self.expand_vars is not None and self.expand_vars != self.shell:
             raise AnsibleActionFail(
                 "Raw fallback requires expand_argument_vars and _uses_shell "
@@ -204,11 +209,8 @@ class ActionModule(PosixActionBase, ActionBase):
         """
         Parse and validate module arguments.
 
-        Returns:
-            dict: The validated argument dictionary.
-
-        Raises:
-            ImportError: When the packaging module is not available.
+        :returns dict: The validated argument dictionary
+        :raises ImportError: When the packaging module is not available
         """
         if PACKAGING_IMPORT_ERROR:
             raise PACKAGING_IMPORT_ERROR
@@ -292,7 +294,15 @@ class ActionModule(PosixActionBase, ActionBase):
         tmp: Optional[str] = None,
         task_vars: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
-        """Execute the command action with raw fallback capability."""
+        """
+        Execute the command action with raw fallback capability.
+
+        :param Optional[str] tmp: Temporary directory path (unused)
+        :param Optional[Dict[str, Any]] task_vars: Task variables
+        :returns Dict[str, Any]: Ansible result dictionary
+        :raises AnsibleActionFail: When packaging module is missing or
+            command execution fails
+        """
         task_vars = task_vars or {}
         self.host = self._get_inventory_hostname(task_vars)
 
