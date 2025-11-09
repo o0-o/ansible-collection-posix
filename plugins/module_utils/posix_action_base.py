@@ -25,6 +25,8 @@ import shlex
 from datetime import timedelta, timezone
 from typing import Any, Dict, List, Optional, Union
 
+from ansible.module_utils.common.text.converters import to_native
+
 
 class PosixActionBase:
     """
@@ -62,7 +64,9 @@ class PosixActionBase:
         Convert a command to a shell-safe string.
 
         Handles both string and list inputs, properly quoting list
-        elements for shell execution.
+        elements for shell execution. List elements are automatically
+        converted to native strings to handle non-string types like
+        integers or Path objects.
 
         :param cmd: Command as string or list of arguments
         :param bool audit: When True, validate and normalize string
@@ -82,12 +86,18 @@ class PosixActionBase:
                     return " ".join(shlex.quote(str(arg)) for arg in tokens)
             return cmd
 
+        # Convert all list elements to native strings
+        cmd = [
+            to_native(arg, errors="surrogate_or_strict", nonstring="simplerepr")
+            for arg in cmd
+        ]
+
         # Use shlex.join() if available (Python 3.8+)
         try:
             return shlex.join(cmd)
         except AttributeError:
             # Python < 3.8 fallback
-            return " ".join(shlex.quote(str(arg)) for arg in cmd)
+            return " ".join(shlex.quote(arg) for arg in cmd)
 
     def _normalize_newlines(self, text: str) -> str:
         """

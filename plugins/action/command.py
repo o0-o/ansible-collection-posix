@@ -22,8 +22,7 @@ from typing import Any, Dict, Optional
 from ansible import __version__ as ansible_version
 from ansible.errors import AnsibleActionFail
 from ansible.plugins.action import ActionBase
-from ansible.module_utils.common.collections import is_iterable
-from ansible.module_utils.common.text.converters import to_native, to_text
+from ansible.module_utils.common.text.converters import to_text
 from ansible_collections.o0_o.posix.plugins.module_utils import PosixActionBase
 
 try:
@@ -255,14 +254,6 @@ class ActionModule(PosixActionBase, ActionBase):
         if self.argv is None:
             # Avoid errors when using builtin command module
             new_module_args.pop("argv")
-        else:
-            # Ensure all argv elements are safely converted to strings
-            self.argv = [
-                to_native(
-                    arg, errors="surrogate_or_strict", nonstring="simplerepr"
-                )
-                for arg in self.argv
-            ]
         self.args = self.args or self.argv
 
         # Stdin
