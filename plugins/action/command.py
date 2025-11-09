@@ -17,7 +17,6 @@ from __future__ import annotations
 
 import datetime
 import re
-import shlex
 from typing import Any, Dict, Optional
 
 from ansible import __version__ as ansible_version
@@ -147,7 +146,8 @@ class ActionModule(PosixActionBase, ActionBase):
                     cmd_str = self._format_command(self.args)
                     cmd = self._format_command(["/bin/sh", "-c", cmd_str])
                 else:
-                    cmd = self._format_command(self.args)
+                    # Audit mode validates syntax and normalizes quoting
+                    cmd = self._format_command(self.args, audit=True)
                 # Execute the command
                 exec_result = self._low_level_execute_command(
                     cmd,
@@ -251,22 +251,19 @@ class ActionModule(PosixActionBase, ActionBase):
         if self.args is not None:
             # Avoid errors when using builtin command module
             new_module_args["_raw_params"] = self.args
-            # Tokenize raw params if using non-shell mode
-            if not self.shell:
-                self.args = shlex.split(self.args)
         self.argv = new_module_args["argv"]
         if self.argv is None:
             # Avoid errors when using builtin command module
             new_module_args.pop("argv")
-        self.args = self.args or self.argv
-        # Ensure all args are safely converted to strings
-        if is_iterable(self.args, include_strings=False):
-            self.args = [
+        else:
+            # Ensure all argv elements are safely converted to strings
+            self.argv = [
                 to_native(
                     arg, errors="surrogate_or_strict", nonstring="simplerepr"
                 )
-                for arg in self.args
+                for arg in self.argv
             ]
+        self.args = self.args or self.argv
 
         # Stdin
         self.stdin = new_module_args["stdin"]

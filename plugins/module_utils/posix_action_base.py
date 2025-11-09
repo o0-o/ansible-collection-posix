@@ -55,7 +55,9 @@ class PosixActionBase:
                 ...
     """
 
-    def _format_command(self, cmd: Union[str, List[str]]) -> str:
+    def _format_command(
+        self, cmd: Union[str, List[str]], audit: bool = False
+    ) -> str:
         """
         Convert a command to a shell-safe string.
 
@@ -63,9 +65,21 @@ class PosixActionBase:
         elements for shell execution.
 
         :param cmd: Command as string or list of arguments
+        :param bool audit: When True, validate and normalize string
+            commands by tokenizing and re-joining (useful for non-shell
+            mode validation)
         :returns str: Shell-safe command string
         """
         if isinstance(cmd, str):
+            if audit:
+                # Validate syntax and normalize quoting by tokenizing
+                # and re-joining
+                tokens = shlex.split(cmd)
+                try:
+                    return shlex.join(tokens)
+                except AttributeError:
+                    # Python < 3.8 fallback
+                    return " ".join(shlex.quote(str(arg)) for arg in tokens)
             return cmd
 
         # Use shlex.join() if available (Python 3.8+)
