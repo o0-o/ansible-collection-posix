@@ -663,3 +663,249 @@ class WritePosixActionBase(ReadPosixActionBase):
 
         self._display.vvv(f"_write_file completed: {result}")
         return result
+
+    def _handle_selinux_context(
+        self,
+        dest: str,
+        perms: Dict[str, Any],
+        task_vars: Optional[Dict[str, Any]] = None,
+    ) -> None:
+        """
+        Apply SELinux context to the destination file.
+
+        If both ``semanage`` and ``restorecon`` are available, persist
+        the context via semanage and apply it with restorecon.
+        Otherwise, fall back to ``chcon``.
+
+        :param str dest: Target file path on the remote host
+        :param dict perms: Dictionary of SELinux keys (seuser, serole,
+            setype, selevel)
+        :param Optional[dict] task_vars: Ansible task_vars from the
+            calling context
+        :raises RuntimeError: If context application fails
+        """
+        self._display.vvv(f"Handling SELinux for {dest}")
+        if not perms:
+            return
+
+        selinux_keys = [
+            k
+            for k in ("selevel", "serole", "setype", "seuser")
+            if perms.get(k)
+        ]
+        if not selinux_keys:
+            return
+
+        setype = perms.get("setype")
+        seuser = perms.get("seuser")
+        serole = perms.get("serole")
+        selevel = perms.get("selevel")
+
+        # Try semanage if available and setype is defined
+        semanage_path = self._which("semanage", task_vars=task_vars)
+        restorecon_path = self._which("restorecon", task_vars=task_vars)
+
+        if semanage_path and restorecon_path and setype:
+            fcontext_type = setype
+            semanage_cmd = [
+                "semanage",
+                "fcontext",
+                "-a",
+                "-t",
+                fcontext_type,
+                dest,
+            ]
+            result = self._cmd(semanage_cmd, task_vars=task_vars)
+            if result["rc"] != 0:
+                raise RuntimeError(
+                    "Failed to register SELinux context with semanage: "
+                    f"{result.get('stderr', '')}"
+                )
+
+            restorecon_cmd = ["restorecon", dest]
+            result = self._cmd(restorecon_cmd, task_vars=task_vars)
+            if result["rc"] != 0:
+                raise RuntimeError(
+                    "Failed to apply SELinux context with restorecon: "
+                    f"{result.get('stderr', '')}"
+                )
+            return
+
+        # Fallback to chcon if available
+        chcon_cmd = ["chcon"]
+        if seuser:
+            chcon_cmd += ["-u", seuser]
+        if serole:
+            chcon_cmd += ["-r", serole]
+        if setype:
+            chcon_cmd += ["-t", setype]
+        if selevel:
+            chcon_cmd += ["-l", selevel]
+        chcon_cmd.append(dest)
+
+        result = self._cmd(chcon_cmd, task_vars=task_vars)
+        if result["rc"] != 0:
+            raise RuntimeError(
+                "Failed to set SELinux context with chcon: "
+                f"{result.get('stderr', '')}"
+            )
+
+    def _normalize_content(
+        self, content: Union[str, List[str]]
+    ) -> Tuple[List[str], str]:
+        """
+        Normalize input content to a list of lines and string.
+
+        Accepts either a string or a list of strings/numbers. Ensures
+        the output string ends with a newline character and all list
+        elements are converted to strings. Raises an RuntimeError
+        on unsupported input types.
+
+        :param Union[str, List[Union[str, int, float]]] content: The
+            input to normalize
+        :returns Tuple[List[str], str]: Tuple of (lines, content)
+        :raises RuntimeError: If input is of invalid type or
+            contains non-stringlike items
+        """
+        if isinstance(content, str):
+            lines = content.splitlines()
+            normalized = content if content.endswith("\n") else content + "\n"
+        elif isinstance(content, list):
+            if not all(
+                isinstance(line, (str, int, float)) for line in content
+            ):
+                raise RuntimeError("_write_file() requires strings or numbers")
+            lines = [str(line) for line in content]
+            normalized = "\n".join(lines) + "\n"
+        else:
+            raise RuntimeError(
+                "_write_file() requires a string or list of strings"
+            )
+        self._display.vvv(f"Normalized lines: {lines}")
+        return lines, normalized
+
+    def _check_selinux_tools(
+        self, perms: Dict[str, Any], task_vars: Dict[str, Any]
+    ) -> bool:
+        """
+        Check whether SELinux tools are available if SELinux parameters
+        are requested. Raises RuntimeError if required tools are
+        missing.
+
+        :param perms: dict of permission settings
+        :param task_vars: Ansible task_vars
+        :return: True if SELinux is in play, False otherwise
+        """
+        self._display.vvv("Checking for SELinux tools")
+        selinux = any(
+            perms and perms.get(k)
+            for k in ("selevel", "serole", "setype", "seuser")
+        )
+
+        if not selinux:
+            self._display.vvv("No SELinux tools found")
+            return False
+
+        chcon_path = self._which("chcon", task_vars=task_vars)
+        semanage_path = self._which("semanage", task_vars=task_vars)
+        self._display.vvv(
+            f"SELinux check: chcon={chcon_path}, semanage={semanage_path}"
+        )
+
+        if not chcon_path:
+            if not semanage_path:
+                raise RuntimeError(
+                    "SELinux parameters were specified, but both 'chcon' "
+                    "and 'semanage' are missing on the remote host"
+                )
+            else:
+                raise RuntimeError(
+                    "SELinux requires 'chcon' to apply contexts, but it is "
+                    "missing on the remote host"
+                )
+
+        if not semanage_path:
+            host = self._get_inventory_hostname(task_vars)
+            self._display.warning(
+                f"[{host}] chcon is available but semanage is not — "
+                "SELinux context changes may not persist"
+            )
+
+        return True
+
+    def _make_raw_tmp_path(
+        self, task_vars: Optional[Dict[str, Any]] = None
+    ) -> str:
+        """
+        Create a temporary directory using raw shell fallback.
+
+        Creates a temporary directory on the remote host using raw shell
+        commands when standard Ansible temporary directory creation is
+        not available.
+
+        :param Optional[dict] task_vars: Ansible task variables
+        :returns str: The path to the created temporary directory
+        :raises RuntimeError: If directory creation fails
+        """
+        cmd = self._cmd
+        shell = self._connection._shell
+        task_vars = task_vars or {}
+
+        if not shell.tmpdir:
+            # Try to create a tmp dir like Ansible's default:
+            # /tmp/ansible_xyz
+            self._display.vvv("Creating temporary directory")
+            tmp_path_cmd = ["mktemp", "-d", "/tmp/ansible.XXXXXX"]
+            cmd_result = cmd(tmp_path_cmd, task_vars=task_vars)
+
+            if cmd_result["rc"] != 0 or not cmd_result["stdout"]:
+                raise RuntimeError(
+                    "Failed to create temporary directory via raw fallback: "
+                    f"{cmd_result['stderr']}"
+                )
+
+            tmpdir = cmd_result["stdout_lines"][0]
+            shell.tmpdir = tmpdir  # Simulate Ansible's behavior
+
+    def _mk_dest_dir(
+        self, file_path: str, task_vars: Optional[Dict[str, Any]] = None
+    ) -> None:
+        """
+        Create the parent directory of the target file if needed.
+
+        Creates the parent directory of the target file if it does not
+        exist.
+
+        :param str file_path: The target file path
+        :param Optional[dict] task_vars: Ansible task variables
+        :returns dict: Dictionary with keys:
+            - ``changed`` (bool): True if directory would be or was
+              created
+            - ``failed`` (bool): True if directory creation failed
+              (only in non-check mode)
+            - ``msg`` (str): Error message if applicable
+        """
+        from os import path
+
+        from ansible.module_utils.common.text.converters import to_text
+
+        self._display.vvv(f"Starting _mk_dest_dir ({file_path})")
+        dir_path = path.dirname(file_path)
+        dir_stat = self._pseudo_stat(dir_path, task_vars=task_vars)
+        if not dir_stat["exists"]:
+            if self._task.check_mode:
+                self.result["changed"] = True
+            else:
+                try:
+                    self._mkdir(dir_path, task_vars=task_vars)
+                    self.result["changed"] = True
+                except Exception as e:
+                    self.result.update(
+                        {
+                            "rc": 256,
+                            "msg": (
+                                f"Error creating {dir_path} " f"({to_text(e)})"
+                            ),
+                            "failed": True,
+                        }
+                    )
