@@ -59,6 +59,12 @@ options:
       - When C(false), all commands execute regardless of failures.
     type: bool
     default: false
+  strip:
+    description:
+      - Strip trailing whitespace from stdout and stderr of each command.
+      - When C(true), trailing newlines and spaces are removed.
+    type: bool
+    default: true
 author:
   - oØ.o (@o0-o)
 notes:
@@ -197,6 +203,7 @@ def main() -> None:
         "creates": {"type": "path"},
         "removes": {"type": "path"},
         "fail_fast": {"type": "bool", "default": False},
+        "strip": {"type": "bool", "default": True},
     }
 
     module = AnsibleModule(

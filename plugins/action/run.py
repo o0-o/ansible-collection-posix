@@ -84,6 +84,8 @@ class ActionModule(PosixActionBase, ActionBase):
                 # Read exactly stdout_len bytes
                 stdout_bytes = output_bytes[offset : offset + stdout_len]
                 stdout = to_text(stdout_bytes, errors="surrogate_or_strict")
+                if self.strip:
+                    stdout = stdout.rstrip()
                 command_result["stdout"] = stdout
                 command_result["stdout_lines"] = (
                     stdout.splitlines() if stdout else []
@@ -106,6 +108,8 @@ class ActionModule(PosixActionBase, ActionBase):
                 # Read exactly stderr_len bytes
                 stderr_bytes = output_bytes[offset : offset + stderr_len]
                 stderr = to_text(stderr_bytes, errors="surrogate_or_strict")
+                if self.strip:
+                    stderr = stderr.rstrip()
                 command_result["stderr"] = stderr
                 command_result["stderr_lines"] = (
                     stderr.splitlines() if stderr else []
@@ -168,6 +172,7 @@ class ActionModule(PosixActionBase, ActionBase):
             },
             "chdir": {"type": "path"},
             "fail_fast": {"type": "bool", "default": False},
+            "strip": {"type": "bool", "default": True},
             "_force_raw": {"type": "bool", "default": False},
         }
 
@@ -177,6 +182,7 @@ class ActionModule(PosixActionBase, ActionBase):
         self.commands = new_module_args["commands"]
         self.chdir = new_module_args["chdir"]
         self.fail_fast = new_module_args["fail_fast"]
+        self.strip = new_module_args["strip"]
         self.force_raw = new_module_args["_force_raw"]
 
         return new_module_args
@@ -194,7 +200,7 @@ class ActionModule(PosixActionBase, ActionBase):
         :returns Dict[str, Any]: Ansible result dictionary
         """
         task_vars = task_vars or {}
-        self.host = self._get_inventory_hostname(task_vars)
+        self._def_inventory_hostname(task_vars)
 
         new_module_args = self._def_args()
 
@@ -218,7 +224,7 @@ class ActionModule(PosixActionBase, ActionBase):
 
         self.result.update(
             {
-                "failed": cmd_result["failed"],
+                "failed": cmd_result.get("failed", False),
                 "raw": cmd_result["raw"],
                 "stderr": cmd_result["stderr"],
             }
