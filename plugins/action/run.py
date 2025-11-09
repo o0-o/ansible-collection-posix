@@ -37,36 +37,45 @@ class ActionModule(PosixActionBase, ActionBase):
     _supports_check_mode = True
     _supports_async = False
 
-    def _parse_batch_output(
-        self, output: str, num_commands: int
-    ) -> List[Dict[str, Any]]:
+    def _parse_batch_output(self, output: str) -> None:
         """
         Parse length-prefixed batch output.
 
         :param str output: Raw batch output string
-        :param int num_commands: Expected number of commands
-        :returns List[Dict[str, Any]]: Parsed command results
         """
-        results = []
+        self.result["commands"] = []
 
         # Convert to bytes for accurate length counting
         # Use to_bytes() with surrogate_or_strict for round-trip safety
         output_bytes = to_bytes(output, errors="surrogate_or_strict")
         offset = 0
 
-        for i in range(num_commands):
+        for i, cmd in enumerate(self.commands):
+            command_result = {
+                "cmd": cmd,
+                "rc": None,
+                "stdout": None,
+                "stderr": None,
+            }
+
             try:
                 # Read RC line
                 rc_line_end = output_bytes.find(b"\n", offset)
+                if rc_line_end == -1:
+                    raise ValueError("Newline not found when searching for rc")
                 rc_line = to_text(
                     output_bytes[offset:rc_line_end],
                     errors="surrogate_or_strict",
                 )
-                rc = int(rc_line.strip())
+                command_result["rc"] = int(rc_line.strip())
                 offset = rc_line_end + 1
 
                 # Read stdout length line (format: "42 /path/file")
                 stdout_len_end = output_bytes.find(b"\n", offset)
+                if stdout_len_end == -1:
+                    raise ValueError(
+                        "Newline not found when searching for stdout"
+                    )
                 stdout_len_line = to_text(
                     output_bytes[offset:stdout_len_end],
                     errors="surrogate_or_strict",
@@ -77,10 +86,18 @@ class ActionModule(PosixActionBase, ActionBase):
                 # Read exactly stdout_len bytes
                 stdout_bytes = output_bytes[offset : offset + stdout_len]
                 stdout = to_text(stdout_bytes, errors="surrogate_or_strict")
+                command_result["stdout"] = stdout
+                command_result["stdout_lines"] = (
+                    stdout.splitlines() if stdout else []
+                )
                 offset += stdout_len
 
                 # Read stderr length line (format: "28 /path/file")
                 stderr_len_end = output_bytes.find(b"\n", offset)
+                if stderr_len_end == -1:
+                    raise ValueError(
+                        "Newline not found when searching for stderr"
+                    )
                 stderr_len_line = to_text(
                     output_bytes[offset:stderr_len_end],
                     errors="surrogate_or_strict",
@@ -91,69 +108,49 @@ class ActionModule(PosixActionBase, ActionBase):
                 # Read exactly stderr_len bytes
                 stderr_bytes = output_bytes[offset : offset + stderr_len]
                 stderr = to_text(stderr_bytes, errors="surrogate_or_strict")
+                command_result["stderr"] = stderr
+                command_result["stderr_lines"] = (
+                    stderr.splitlines() if stderr else []
+                )
                 offset += stderr_len
 
-                results.append(
-                    {
-                        "rc": rc,
-                        "stdout": stdout,
-                        "stderr": stderr,
-                        "stdout_lines": stdout.splitlines() if stdout else [],
-                        "stderr_lines": stderr.splitlines() if stderr else [],
-                    }
-                )
-
             except (ValueError, IndexError) as e:
-                results.append(
-                    {
-                        "msg": f"Failed to parse output for command {i}: {e}",
-                        "rc": None,
-                        "stdout": "",
-                        "stderr": "",
-                    }
+                command_result["msg"] = (
+                    f"Failed to parse output for command: {e}"
                 )
                 break
 
-        return results
+            finally:
+                self.result["commands"].append(command_result)
+
+        return
 
     def _build_batch_script(self, tmp: str) -> str:
         """
-        Build the batched shell script using Ansible's tmpdir.
+        Build the batched shell script using Ansible's tmp.
 
         :param str tmp: Temporary directory path
         :returns str: Shell script content
         """
-        lines = [
-            "set +e",  # Don't exit on command errors
-            "",
-        ]
+        if self.fail_fast:
+            lines = ["set -e"]  # Exit on command errors
+        else:
+            lines = ["set +e"]  # Don't exit on command errors
 
-        for i, cmd in enumerate(commands):
+        for i, cmd in enumerate(self.commands):
             cmd_str = format_command(cmd)
-
-            if chdir:
-                cmd_str = f"(cd {shlex.quote(chdir)} && {cmd_str})"
+            self.commands[i] = cmd_str
 
             lines.extend(
                 [
                     # Execute and capture
-                    f'({cmd_str}) 1>"{tmpdir}/{i}.stdout" 2>"{tmpdir}/{i}.stderr"',  # noqa: E501
-                    f"RC_{i}=$?",
-                ]
-            )
-
-            if fail_fast:
-                lines.append(f"[ $RC_{i} -eq 0 ] || exit $RC_{i}")
-
-            lines.extend(
-                [
+                    f'({cmd_str}) 1>"{tmp}/{i}.stdout" 2>"{tmp}/{i}.stderr"',
                     # Output: RC, stdout_length, stdout, stderr_length, stderr
-                    f'echo "$RC_{i}"',
-                    f'wc -c "{tmpdir}/{i}.stdout"',
-                    f'cat "{tmpdir}/{i}.stdout"',
-                    f'wc -c "{tmpdir}/{i}.stderr"',
-                    f'cat "{tmpdir}/{i}.stderr"',
-                    "",
+                    'echo "${?}"',
+                    f'wc -c "{tmp}/{i}.stdout"',
+                    f'cat "{tmp}/{i}.stdout"',
+                    f'wc -c "{tmp}/{i}.stderr"',
+                    f'cat "{tmp}/{i}.stderr"',
                 ]
             )
 
@@ -204,45 +201,58 @@ class ActionModule(PosixActionBase, ActionBase):
         new_module_args = self._def_args()
 
         self.result = super(ActionModule, self).run(tmp, task_vars=task_vars)
+        self.result["invocation"] = self._task.args.copy()
 
         # Get or create Ansible's temporary directory
         if tmp is None or tmp == "":
             tmp = self._make_tmp_path()
 
-        # Build batched script using Ansible's tmpdir
+        # Build batched script using Ansible's tmp
         script = self._build_batch_script(tmp)
 
         # Execute single batch command
-        cmd_result = self._cmd(script, task_vars=task_vars)
-
-        if cmd_result.get("failed"):
-            result.update(cmd_result)
-            return result
-
-        # Parse combined output back into individual results
-        try:
-            parsed_results = self._parse_batch_output(
-                output=cmd_result["stdout"],
-                num_commands=len(commands),
-            )
-        except Exception as e:
-            result["failed"] = True
-            result["msg"] = f"Failed to parse batch output: {e}"
-            result["raw_output"] = cmd_result["stdout"]
-            return result
-
-        # Check if any command failed
-        any_failed = any(
-            r.get("rc") is None or r.get("rc") != 0 for r in parsed_results
+        cmd_result = self._cmd(
+            script,
+            chdir=self.chdir,
+            check_mode=self._task.check_mode,
+            task_vars=task_vars,
         )
 
-        result.update(
+        self.result.update(
             {
-                "changed": True,
-                "failed": any_failed,
-                "results": parsed_results,
-                "msg": f"Executed {len(commands)} commands",
+                "failed": cmd_result["failed"],
+                "raw": cmd_result["raw"],
+                "stderr": cmd_result["stderr"],
             }
         )
 
-        return result
+        # Parse combined output back into individual results
+        try:
+            self._parse_batch_output(
+                output=cmd_result["stdout"],
+            )
+        except Exception as e:
+            self.result.update(
+                {
+                    "failed": True,
+                    "msg": f"Failed to parse batch output: {e}",
+                    "stdout": cmd_result["stdout"],
+                }
+            )
+            return self.result
+
+        # Check if any command failed
+        any_failed = any(
+            r.get("rc") is None or r.get("rc") != 0
+            for r in self.result["commands"]
+        )
+
+        self.result.update(
+            {
+                "changed": True,
+                "failed": any_failed,
+                "msg": f"Executed {len(self.commands)} commands",
+            }
+        )
+
+        return self.result
