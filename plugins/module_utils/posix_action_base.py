@@ -81,17 +81,6 @@ class PosixActionBase:
             # Python < 3.8 fallback
             return " ".join(shlex.quote(str(arg)) for arg in cmd)
 
-    def _format_command_list(
-        self, commands: List[Union[str, List[str]]]
-    ) -> List[str]:
-        """
-        Convert a list of commands to shell-safe strings.
-
-        :param commands: List of commands (each as string or list)
-        :returns List[str]: List of shell-safe command strings
-        """
-        return [self._format_command(cmd) for cmd in commands]
-
     def _is_interpreter_missing(self, result: Dict[str, Any]) -> bool:
         """
         Check if failure was likely caused by a missing Python
