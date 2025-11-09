@@ -120,7 +120,7 @@ class ActionModule(PosixActionBase, ActionBase):
                 command_result["msg"] = (
                     f"Failed to parse output for command: {e}"
                 )
-                break
+                raise e
 
             finally:
                 self.result["commands"].append(command_result)
@@ -156,6 +156,8 @@ class ActionModule(PosixActionBase, ActionBase):
                 ]
             )
 
+        # Ensure script ends with a newline for proper parsing
+        lines.append('echo')
         return "\n".join(lines)
 
     def _def_args(self) -> Dict[str, Any]:
@@ -241,6 +243,7 @@ class ActionModule(PosixActionBase, ActionBase):
                     "failed": True,
                     "msg": f"Failed to parse batch output: {e}",
                     "stdout": cmd_result["stdout"],
+                    "stdout_bytes": len(cmd_result["stdout"]),
                 }
             )
             return self.result
