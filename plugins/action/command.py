@@ -78,9 +78,9 @@ class ActionModule(PosixActionBase, ActionBase):
         # Warn if executable is set without shell=True
         if not self.shell and self.executable:
             self._display.warning(
-                f"[{self.host}] As of Ansible 2.4, the parameter 'executable' "
-                "is no longer supported with the 'command' module. "
-                f"Not using '{self.executable}'."
+                f"[{self.inventory_hostname}] As of Ansible 2.4, the "
+                "parameter 'executable' is no longer supported with the "
+                f"'command' module. Not using '{self.executable}'."
             )
             self.executable = None
 
@@ -177,19 +177,23 @@ class ActionModule(PosixActionBase, ActionBase):
         # Strip trailing newlines from output if requested and define
         # module stdout/err and stdout/err lines lists.
         if self.result.get("stdout"):
+            # Normalize CRLF to LF for consistent parsing
+            self.result["stdout"] = self._normalize_newlines(
+                to_text(self.result["stdout"])
+            )
             if self.strip:
-                self.result["stdout"] = to_text(self.result["stdout"]).rstrip(
-                    "\r\n"
-                )
+                self.result["stdout"] = self.result["stdout"].rstrip("\r\n")
             self.result["module_stdout"] = self.result["stdout"]
             self.result["stdout_lines"] = self.result["stdout"].splitlines()
 
         if self.result.get("stderr"):
+            # Normalize CRLF to LF for consistent parsing
+            stderr_text = self._normalize_newlines(to_text(self.result["stderr"]))
             # Remove SSH "Shared connection to ... closed." message
             self.result["stderr"] = re.sub(
                 r"^Shared connection to .* closed\.\r?\n?",
                 "",
-                to_text(self.result["stderr"]),
+                stderr_text,
                 flags=re.MULTILINE,
             )
             if self.strip:
@@ -301,7 +305,7 @@ class ActionModule(PosixActionBase, ActionBase):
             command execution fails
         """
         task_vars = task_vars or {}
-        self.host = self._get_inventory_hostname(task_vars)
+        self._def_inventory_hostname(task_vars)
 
         try:
             new_module_args = self._def_args()
@@ -341,8 +345,8 @@ class ActionModule(PosixActionBase, ActionBase):
 
             if self._is_interpreter_missing(builtin_module_result):
                 self._display.warning(
-                    f"[{self.host}] Ansible command module failed; "
-                    "falling back to raw command."
+                    f"[{self.inventory_hostname}] Ansible command module "
+                    "failed; falling back to raw command."
                 )
                 self.force_raw = True
             else:

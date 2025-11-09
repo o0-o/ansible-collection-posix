@@ -75,6 +75,18 @@ class PosixActionBase:
             # Python < 3.8 fallback
             return " ".join(shlex.quote(str(arg)) for arg in cmd)
 
+    def _normalize_newlines(self, text: str) -> str:
+        """
+        Normalize Windows-style line endings to Unix-style.
+
+        Converts CRLF (\\r\\n) to LF (\\n) for consistent parsing across
+        platforms. This matches the behavior of the builtin command module.
+
+        :param str text: Text with potential CRLF line endings
+        :returns str: Text with normalized LF line endings
+        """
+        return text.replace("\r\n", "\n")
+
     def _is_interpreter_missing(self, result: Dict[str, Any]) -> bool:
         """
         Check if failure was likely caused by a missing Python
@@ -315,7 +327,7 @@ class PosixActionBase:
         args = {
             "stdin": stdin,
             "chdir": chdir,
-            "strip": strip,
+            "strip_empty_ends": strip,
         }
 
         if isinstance(cmd, list):

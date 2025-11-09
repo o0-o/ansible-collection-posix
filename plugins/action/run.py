@@ -78,7 +78,13 @@ class ActionModule(PosixActionBase, ActionBase):
                     output_bytes[offset:stdout_len_end],
                     errors="surrogate_or_strict",
                 )
-                stdout_len = int(stdout_len_line.strip().split()[0])
+                # Handle both \n and \r\n line endings
+                parts = stdout_len_line.strip().split()
+                if not parts:
+                    raise ValueError(
+                        f"Empty wc output line for stdout: {repr(stdout_len_line)}"
+                    )
+                stdout_len = int(parts[0])
                 offset = stdout_len_end + 1
 
                 # Read exactly stdout_len bytes
@@ -102,7 +108,13 @@ class ActionModule(PosixActionBase, ActionBase):
                     output_bytes[offset:stderr_len_end],
                     errors="surrogate_or_strict",
                 )
-                stderr_len = int(stderr_len_line.strip().split()[0])
+                # Handle both \n and \r\n line endings
+                parts = stderr_len_line.strip().split()
+                if not parts:
+                    raise ValueError(
+                        f"Empty wc output line for stderr: {repr(stderr_len_line)}"
+                    )
+                stderr_len = int(parts[0])
                 offset = stderr_len_end + 1
 
                 # Read exactly stderr_len bytes
