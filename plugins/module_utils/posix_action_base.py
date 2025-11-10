@@ -200,12 +200,47 @@ class PosixActionBase:
     ) -> timezone:
         """Get target system's timezone as a timezone object.
 
-        Uses 'date +%z' to get the UTC offset (e.g., '-0400').
+        Checks for timezone offset in this order:
+        1. o0_os facts (o0_os.time.zone.offset)
+        2. Standard ansible_facts (ansible_date_time.tz_offset)
+        3. Runs 'date +%z' command as fallback
+
         Falls back to UTC if detection fails.
 
         :param task_vars: Available Ansible variables
         :returns: timezone object representing target's local timezone
         """
+        task_vars = task_vars or {}
+        offset_str = None
+
+        # Try o0_os facts first
+        o0_os = task_vars.get("o0_os", {})
+        if isinstance(o0_os, dict):
+            time_facts = o0_os.get("time", {})
+            if isinstance(time_facts, dict):
+                zone = time_facts.get("zone", {})
+                if isinstance(zone, dict):
+                    offset_str = zone.get("offset")
+
+        # Try standard ansible_facts if not found
+        if not offset_str:
+            ansible_facts = task_vars.get("ansible_facts", {})
+            if isinstance(ansible_facts, dict):
+                date_time = ansible_facts.get("ansible_date_time", {})
+                if isinstance(date_time, dict):
+                    offset_str = date_time.get("tz_offset")
+
+        # If we found offset in facts, parse and return it
+        if offset_str and isinstance(offset_str, str):
+            offset_str = offset_str.strip()
+            if offset_str:
+                try:
+                    return self._parse_timezone_offset(offset_str)
+                except ValueError:
+                    # Invalid offset in facts, fall through to command
+                    pass
+
+        # Fallback: run date command
         offset_cmd = self._cmd(
             ["date", "+%z"], task_vars=task_vars, check_mode=False
         )
@@ -419,153 +454,6 @@ class PosixActionBase:
             task_vars=task_vars,
             check_mode=check_mode,
         )
-
-    def _read(
-        self,
-        path: Optional[str] = None,
-        paths: Optional[List[str]] = None,
-        include: Optional[List[str]] = None,
-        encoding: Optional[str] = None,
-        parents: Optional[bool] = None,
-        find_hardlinks: bool = False,
-        find_symlinks: bool = False,
-        task_vars: Optional[Dict[str, Any]] = None,
-        check_mode: Optional[bool] = None,
-    ) -> Dict[str, Any]:
-        """
-        Run the read action plugin to gather file metadata and
-        content.
-
-        Inspects file metadata and optionally content on POSIX hosts
-        using portable commands. When path does not exist, returns
-        null instead of raising an error.
-
-        :param Optional[str] path: Absolute path to the file to
-            inspect
-        :param Optional[List[str]] paths: List of paths to inspect
-        :param Optional[List[str]] include: List of field names to
-            include (metadata, content, type, name, parent, mode,
-            owner, group, writable, links, modified, created, acl,
-            xattrs, flags, selinux)
-        :param Optional[str] encoding: Override detected encoding for
-            content
-        :param Optional[bool] parents: Include parent directories
-            (False, True, or integer count)
-        :param bool find_hardlinks: Enumerate all hard link paths
-        :param bool find_symlinks: Enumerate all symbolic links
-        :param Optional[dict] task_vars: Dictionary of task variables
-        :param Optional[bool] check_mode: Optional override for
-            Ansible check mode
-        :returns dict: Result dictionary with 'paths' containing file
-            data
-        """
-        task_vars = task_vars or {}
-
-        args = {
-            "find_hardlinks": find_hardlinks,
-            "find_symlinks": find_symlinks,
-        }
-
-        if path:
-            args["path"] = path
-        if paths:
-            args["paths"] = paths
-        if include:
-            args["include"] = include
-        if encoding:
-            args["encoding"] = encoding
-        if parents is not None:
-            args["parents"] = parents
-
-        return self._run_action(
-            "o0_o.posix.read",
-            args,
-            task_vars=task_vars,
-            check_mode=check_mode,
-        )
-
-    def _stat(
-        self,
-        path: str,
-        follow: bool = False,
-        get_checksum: bool = True,
-        get_mime: bool = True,
-        get_attributes: bool = True,
-        checksum_algorithm: str = "sha1",
-        task_vars: Optional[Dict[str, Any]] = None,
-        check_mode: Optional[bool] = None,
-    ) -> Dict[str, Any]:
-        """
-        Run the stat action plugin to gather file status
-        information.
-
-        Retrieves file status information similar to the stat
-        command, including permissions, ownership, timestamps,
-        checksums, and more.
-
-        :param str path: Path to the file to stat
-        :param bool follow: Follow symbolic links (default False)
-        :param bool get_checksum: Calculate file checksum (default
-            True)
-        :param bool get_mime: Get MIME type (default True)
-        :param bool get_attributes: Get file attributes (default
-            True)
-        :param str checksum_algorithm: Algorithm for checksum
-            (default sha1)
-        :param Optional[dict] task_vars: Dictionary of task variables
-        :param Optional[bool] check_mode: Optional override for Ansible
-            check mode
-        :returns dict: Result dictionary with stat information
-
-        .. note::
-           The _force_raw flag is automatically added by _run_action if
-           self.force_raw is True, so no need to pass it explicitly.
-        """
-        task_vars = task_vars or {}
-
-        args = {
-            "path": path,
-            "follow": follow,
-            "get_checksum": get_checksum,
-            "get_mime": get_mime,
-            "get_attributes": get_attributes,
-            "checksum_algorithm": checksum_algorithm,
-        }
-
-        return self._run_action(
-            "o0_o.posix.stat",
-            args,
-            task_vars=task_vars,
-            check_mode=check_mode,
-        )
-
-    def _cat(
-        self, src: str, task_vars: Optional[Dict[str, Any]] = None
-    ) -> Dict[str, Any]:
-        """
-        Fallback method to read the contents of a file using 'cat'.
-
-        :param str src: Path to the file on the remote host
-        :param Optional[dict] task_vars: Dictionary of task variables
-            from the calling task
-        :returns dict: Dictionary with read result or error
-        """
-        cmd_result = self._cmd(
-            ["cat", src], task_vars=task_vars, check_mode=False
-        )
-        result = {"changed": False, "raw": cmd_result.get("raw", False)}
-        result["source"] = src
-
-        stdout = cmd_result.pop("stdout", None)
-        stderr = cmd_result.pop("stderr", None)
-
-        if cmd_result.get("rc") != 0:
-            result["failed"] = True
-            result["msg"] = stderr.strip() or stdout.strip()
-        else:
-            result["content"] = stdout.replace("\r", "")
-
-        return result
 
     def _sanitize_args(self, args: Dict[str, Any]) -> Dict[str, Any]:
         """

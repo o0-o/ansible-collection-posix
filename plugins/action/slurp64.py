@@ -16,10 +16,12 @@ from typing import Any, Dict, Optional
 
 from ansible.errors import AnsibleActionFail
 from ansible.plugins.action import ActionBase
-from ansible_collections.o0_o.posix.plugins.module_utils import PosixActionBase
+from ansible_collections.o0_o.posix.plugins.module_utils import (
+    ReadPosixActionBase,
+)
 
 
-class ActionModule(PosixActionBase, ActionBase):
+class ActionModule(ReadPosixActionBase, ActionBase):
     """
     Read file contents from remote hosts with raw fallback support.
 

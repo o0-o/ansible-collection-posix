@@ -17,7 +17,7 @@ from ansible.errors import AnsibleActionFail
 from ansible.plugins.action import ActionBase
 
 from ansible_collections.o0_o.posix.plugins.module_utils import (
-    PosixActionBase,
+    ReadPosixActionBase,
     group_info,
     jc_parse,
     normalize_group_members,
@@ -28,7 +28,7 @@ from ansible_collections.o0_o.ssh.plugins.module_utils import (
 )
 
 
-class ActionModule(PosixActionBase, ActionBase):
+class ActionModule(ReadPosixActionBase, ActionBase):
     """Gather user and group information from POSIX hosts."""
 
     TRANSFERS_FILES = False
