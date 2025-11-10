@@ -248,64 +248,78 @@ class ActionModule(PosixActionBase, ActionBase):
 
         self.result = super(ActionModule, self).run(tmp, task_vars=task_vars)
         self.result["invocation"] = self._task.args.copy()
-
-        # Get or create Ansible's temporary directory
-        if tmp is None or tmp == "":
-            tmp = self._make_tmp_path()
-
-        # Build batched script using Ansible's tmp
-        script = self._build_batch_script(tmp)
-        self._display.vvv(f"Batch command:\n{script}")
-
-        # Execute single batch command
-        # strip=False to preserve length-prefix format parsing
-        cmd_result = self._cmd(
-            script,
-            chdir=self.chdir,
-            strip=False,
-            check_mode=self._task.check_mode,
-            task_vars=task_vars,
-        )
-        self._display.vvv(f"Batch result:\n{to_text(cmd_result)}")
-
-        self.result.update(
-            {
-                "failed": cmd_result.get("failed", False),
-                "raw": cmd_result["raw"],
-                "stderr": cmd_result["stderr"],
-                "start": cmd_result.get("start"),
-                "end": cmd_result.get("end"),
-                "delta": cmd_result.get("delta"),
-            }
-        )
-
-        # Parse combined output back into individual results
-        try:
-            self._parse_batch_output(
-                output=cmd_result["stdout"],
-            )
-        except Exception as e:
+        # Check mode: validate we could run, but don't actually execute
+        if self._task.check_mode:
             self.result.update(
                 {
-                    "failed": True,
-                    "msg": f"Failed to parse batch output: {e}",
-                    "stdout": cmd_result["stdout"],
+                    "changed": False,
+                    "skipped": True,
+                    "msg": "Check mode: batch execution skipped",
                 }
             )
             return self.result
 
-        # Check if any command failed
-        any_failed = any(
-            r.get("rc") is None or r.get("rc") != 0
-            for r in self.result["commands"]
-        )
+        # Don't change tmp if it was already provided upstream
+        run_tmp = tmp if tmp else self._make_tmp_path()
 
-        self.result.update(
-            {
-                "changed": True,
-                "failed": any_failed,
-                "msg": f"Executed {len(self.commands)} commands",
-            }
-        )
+        try:
+            # Build batched script using Ansible's tmp
+            script = self._build_batch_script(run_tmp)
+            self._display.vvv(f"Batch command:\n{script}")
 
-        return self.result
+            # Execute single batch command
+            # strip=False to preserve length-prefix format parsing
+            cmd_result = self._cmd(
+                script,
+                chdir=self.chdir,
+                strip=False,
+                check_mode=self._task.check_mode,
+                task_vars=task_vars,
+            )
+
+            self.result.update(
+                {
+                    "failed": cmd_result.get("failed", False),
+                    "raw": cmd_result["raw"],
+                    "stderr": cmd_result["stderr"],
+                    "start": cmd_result.get("start"),
+                    "end": cmd_result.get("end"),
+                    "delta": cmd_result.get("delta"),
+                }
+            )
+
+            # Parse combined output back into individual results
+            try:
+                self._parse_batch_output(
+                    output=cmd_result["stdout"],
+                )
+            except Exception as e:
+                self.result.update(
+                    {
+                        "failed": True,
+                        "msg": f"Failed to parse batch output: {e}",
+                        "stdout": cmd_result["stdout"],
+                    }
+                )
+                return self.result
+
+            # Check if any command failed
+            any_failed = any(
+                r.get("rc") is None or r.get("rc") != 0
+                for r in self.result["commands"]
+            )
+
+            self.result.update(
+                {
+                    "changed": True,
+                    "failed": any_failed,
+                    "msg": f"Executed {len(self.commands)} commands",
+                }
+            )
+
+            return self.result
+
+        finally:
+            # Always clean up tmp if we created it here
+            if run_tmp and tmp != run_tmp:
+                self._remove_tmp_path(run_tmp)

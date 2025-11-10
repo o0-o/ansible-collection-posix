@@ -316,7 +316,7 @@ class ActionModule(PosixActionBase, ActionBase):
             }
         )
 
-        del tmp
+        del tmp  # unused
 
         if not self.force_raw:
             builtin_module_args = new_module_args.copy()
