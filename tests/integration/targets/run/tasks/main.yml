@@ -1,7 +1,6 @@
 # vim: ts=2:sw=2:sts=2:et:ft=yaml.ansible
 # -*- mode: yaml; yaml-indent-offset: 2; indent-tabs-mode: nil; -*-
 ---
-#
 # GNU General Public License v3.0+
 # SPDX-License-Identifier: GPL-3.0-or-later
 # (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
@@ -9,26 +8,6 @@
 # Copyright (c) 2025 oØ.o (@o0-o)
 #
 # This file is part of the o0_o.posix Ansible Collection.
-
-- name: Run never raw tests
-  ansible.builtin.include_tasks: never_raw.yml
-  loop:
-    - true
-    - false
-  loop_control:
-    loop_var: check_mode_var
-  vars:
-    ansible_check_mode: "{{ check_mode_var }}"
-
-- name: Run raw tests
-  ansible.builtin.include_tasks: raw.yml
-  loop:
-    - true
-    - false
-  loop_control:
-    loop_var: check_mode_var
-  vars:
-    ansible_check_mode: "{{ check_mode_var }}"
 
 - name: Check mode and _force_raw permutation loop
   vars:
@@ -42,8 +21,8 @@
         ansible_check_mode: "{{ item[0] }}"
         _force_raw: "{{ item[1] }}"
 
-    - name: Run shell operator tests
-      ansible.builtin.include_tasks: shell_operators.yml
+    - name: Run parallel execution tests
+      ansible.builtin.include_tasks: parallel.yml
       loop: "{{ loop_list }}"
       vars:
         ansible_check_mode: "{{ item[0] }}"

@@ -1,0 +1,142 @@
+# vim: ts=2:sw=2:sts=2:et:ft=yaml.ansible
+# -*- mode: yaml; yaml-indent-offset: 2; indent-tabs-mode: nil; -*-
+---
+# GNU General Public License v3.0+
+# SPDX-License-Identifier: GPL-3.0-or-later
+# (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
+#
+# Copyright (c) 2025 oØ.o (@o0-o)
+#
+# This file is part of the o0_o.posix Ansible Collection.
+
+- name: Test basic sequential execution
+  o0_o.posix.run:
+    commands:
+      - echo hello
+      - echo world
+    parallel: false
+    _force_raw: "{{ _force_raw }}"
+  register: sequential_reg
+
+- name: Assert sequential command output
+  ansible.builtin.assert:
+    that:
+      - sequential_reg['commands'] | length == 2
+      - sequential_reg['commands'][0]['cmd'] == 'echo hello'
+      - sequential_reg['commands'][1]['cmd'] == 'echo world'
+      - sequential_reg['commands'][0]['rc'] == 0
+      - sequential_reg['commands'][1]['rc'] == 0
+  when: not ansible_check_mode
+
+- name: Assert sequential command stdout
+  ansible.builtin.assert:
+    that:
+      - sequential_reg['commands'][0]['stdout'] | trim == 'hello'
+      - sequential_reg['commands'][1]['stdout'] | trim == 'world'
+  when: not ansible_check_mode
+
+- name: Assert raw execution is as intended
+  ansible.builtin.assert:
+    that:
+      - sequential_reg['raw'] == _force_raw
+
+- name: Test timing fields present
+  ansible.builtin.assert:
+    that:
+      - sequential_reg['start'] is defined
+      - sequential_reg['end'] is defined
+      - sequential_reg['delta'] is defined
+  when: not ansible_check_mode
+
+- name: Test mixed string and list commands
+  o0_o.posix.run:
+    commands:
+      - echo foo
+      - ['echo', 'bar with spaces']
+      - printf baz
+    parallel: false
+    _force_raw: "{{ _force_raw }}"
+  register: mixed_reg
+
+- name: Assert mixed command output
+  ansible.builtin.assert:
+    that:
+      - mixed_reg['commands'] | length == 3
+      - mixed_reg['commands'][0]['stdout'] | trim == 'foo'
+      - mixed_reg['commands'][1]['stdout'] | trim == 'bar with spaces'
+      - mixed_reg['commands'][2]['stdout'] | trim == 'baz'
+  when: not ansible_check_mode
+
+- name: Assert raw execution is as intended
+  ansible.builtin.assert:
+    that:
+      - mixed_reg['raw'] == _force_raw
+
+- name: Test shell operators preserved in string commands
+  o0_o.posix.run:
+    commands:
+      - echo foo; echo bar
+      - echo baz | cat
+    parallel: false
+    _force_raw: "{{ _force_raw }}"
+  register: operators_reg
+
+- name: Assert shell operators work correctly
+  ansible.builtin.assert:
+    that:
+      - operators_reg['commands'][0]['stdout_lines'] | length == 2
+      - operators_reg['commands'][0]['stdout_lines'][0] == 'foo'
+      - operators_reg['commands'][0]['stdout_lines'][1] == 'bar'
+      - operators_reg['commands'][1]['stdout'] | trim == 'baz'
+  when: not ansible_check_mode
+
+- name: Assert raw execution is as intended
+  ansible.builtin.assert:
+    that:
+      - operators_reg['raw'] == _force_raw
+
+- name: Test stderr redirection in commands
+  o0_o.posix.run:
+    commands:
+      - echo stdout_test
+      - printf stderr_test 1>&2
+      - echo both_test; printf both_stderr 1>&2
+    parallel: false
+    _force_raw: "{{ _force_raw }}"
+  register: stderr_reg
+
+- name: Assert stderr handling
+  ansible.builtin.assert:
+    that:
+      - stderr_reg['commands'][0]['stdout'] | trim == 'stdout_test'
+      - stderr_reg['commands'][0]['stderr'] | trim == ''
+      - stderr_reg['commands'][1]['stdout'] | trim == ''
+      - stderr_reg['commands'][1]['stderr'] | trim == 'stderr_test'
+      - stderr_reg['commands'][2]['stdout'] | trim == 'both_test'
+      - stderr_reg['commands'][2]['stderr'] | trim == 'both_stderr'
+  when: not ansible_check_mode
+
+- name: Assert raw execution is as intended
+  ansible.builtin.assert:
+    that:
+      - stderr_reg['raw'] == _force_raw
+
+- name: Test empty commands list handling
+  o0_o.posix.run:
+    commands:
+      - 'true'
+    _force_raw: "{{ _force_raw }}"
+  register: empty_output_reg
+
+- name: Assert empty output handled correctly
+  ansible.builtin.assert:
+    that:
+      - empty_output_reg['commands'] | length == 1
+      - empty_output_reg['commands'][0]['rc'] == 0
+      - empty_output_reg['commands'][0]['stdout'] == ''
+  when: not ansible_check_mode
+
+- name: Assert raw execution is as intended
+  ansible.builtin.assert:
+    that:
+      - empty_output_reg['raw'] == _force_raw

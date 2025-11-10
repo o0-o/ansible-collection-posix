@@ -153,9 +153,7 @@ class ActionModule(PosixActionBase, ActionBase):
             self.result.update(exec_result)
         else:
             self.result["rc"] = 0
-            self.result["msg"] = (
-                "Command would have run if not in check mode"
-            )
+            self.result["msg"] = "Command would have run if not in check mode"
             if self.creates is None and self.removes is None:
                 self.result["skipped"] = True
                 self.result["changed"] = False
@@ -182,7 +180,9 @@ class ActionModule(PosixActionBase, ActionBase):
 
         if self.result.get("stderr"):
             # Normalize CRLF to LF for consistent parsing
-            stderr_text = self._normalize_newlines(to_text(self.result["stderr"]))
+            stderr_text = self._normalize_newlines(
+                to_text(self.result["stderr"])
+            )
             # Remove SSH "Shared connection to ... closed." message
             self.result["stderr"] = re.sub(
                 r"^Shared connection to .* closed\.\r?\n?",
@@ -308,7 +308,6 @@ class ActionModule(PosixActionBase, ActionBase):
                 "stdout": "",
                 "stderr": "",
                 "rc": None,
-                "cmd": None,
                 "start": None,
                 "end": None,
                 "delta": None,

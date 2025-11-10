@@ -1,0 +1,112 @@
+# vim: ts=2:sw=2:sts=2:et:ft=yaml.ansible
+# -*- mode: yaml; yaml-indent-offset: 2; indent-tabs-mode: nil; -*-
+---
+# GNU General Public License v3.0+
+# SPDX-License-Identifier: GPL-3.0-or-later
+# (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
+#
+# Copyright (c) 2025 oØ.o (@o0-o)
+#
+# This file is part of the o0_o.posix Ansible Collection.
+
+- name: Skip for check_mode
+  when: not ansible_check_mode
+  block:
+
+    - name: Test shell command with semicolons
+      o0_o.posix.command:
+        cmd: echo foo; echo bar; echo baz
+        _uses_shell: true
+        _force_raw: "{{ _force_raw }}"
+      register: semicolon_reg
+
+    - name: Assert semicolon command output
+      ansible.builtin.assert:
+        that:
+          - semicolon_reg['rc'] == 0
+          - semicolon_reg['stdout_lines'] | length == 3
+          - semicolon_reg['stdout_lines'][0] == 'foo'
+          - semicolon_reg['stdout_lines'][1] == 'bar'
+          - semicolon_reg['stdout_lines'][2] == 'baz'
+
+    - name: Assert raw execution is as intended
+      ansible.builtin.assert:
+        that:
+          - semicolon_reg['raw'] == _force_raw
+
+    - name: Test shell command with pipes
+      o0_o.posix.command:
+        cmd: echo "hello world" | grep hello
+        _uses_shell: true
+        _force_raw: "{{ _force_raw }}"
+      register: pipe_reg
+
+    - name: Assert pipe command output
+      ansible.builtin.assert:
+        that:
+          - pipe_reg['rc'] == 0
+          - "'hello' in pipe_reg['stdout']"
+
+    - name: Assert raw execution is as intended
+      ansible.builtin.assert:
+        that:
+          - pipe_reg['raw'] == _force_raw
+
+    - name: Test shell command with stderr redirect
+      o0_o.posix.command:
+        cmd: echo foo 1>&2
+        _uses_shell: true
+        _force_raw: "{{ _force_raw }}"
+      register: redirect_reg
+
+    - name: Assert redirect command output
+      ansible.builtin.assert:
+        that:
+          - redirect_reg['rc'] == 0
+          - redirect_reg['stderr'] | trim == 'foo'
+          - redirect_reg['stdout'] | trim == ''
+
+    - name: Assert raw execution is as intended
+      ansible.builtin.assert:
+        that:
+          - redirect_reg['raw'] == _force_raw
+
+    - name: Test complex shell command with multiple operators
+      o0_o.posix.command:
+        cmd: echo start; echo middle | cat; echo end 1>&2
+        _uses_shell: true
+        _force_raw: "{{ _force_raw }}"
+      register: complex_reg
+
+    - name: Assert complex command output
+      ansible.builtin.assert:
+        that:
+          - complex_reg['rc'] == 0
+          - "'start' in complex_reg['stdout']"
+          - "'middle' in complex_reg['stdout']"
+          - "'end' in complex_reg['stderr']"
+
+    - name: Assert raw execution is as intended
+      ansible.builtin.assert:
+        that:
+          - complex_reg['raw'] == _force_raw
+
+    - name: Test shell command with quoted arguments and operators
+      o0_o.posix.command:
+        cmd: echo "hello world"; echo "foo bar"
+        _uses_shell: true
+        _force_raw: "{{ _force_raw }}"
+      register: quoted_reg
+
+    - name: Assert quoted command output
+      ansible.builtin.assert:
+        that:
+          - quoted_reg['rc'] == 0
+          - quoted_reg['stdout_lines'] | length == 2
+          - quoted_reg['stdout_lines'][0] == 'hello world'
+          - quoted_reg['stdout_lines'][1] == 'foo bar'
+
+    - name: Assert raw execution is as intended
+      ansible.builtin.assert:
+        that:
+          - quoted_reg['raw'] == _force_raw

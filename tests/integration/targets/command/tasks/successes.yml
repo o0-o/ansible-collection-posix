@@ -180,3 +180,23 @@
   ansible.builtin.assert:
     that:
       - command_reg['raw'] == _force_raw
+
+- name: Test timing fields populated
+  o0_o.posix.command:
+    cmd: sleep 0.1
+    _force_raw: "{{ _force_raw }}"
+  register: timing_reg
+
+- name: Assert timing fields present and valid
+  ansible.builtin.assert:
+    that:
+      - timing_reg['start'] is defined
+      - timing_reg['end'] is defined
+      - timing_reg['delta'] is defined
+      - timing_reg['delta'] is match('0:00:00.*')
+  when: not ansible_check_mode
+
+- name: Assert raw execution is as intended
+  ansible.builtin.assert:
+    that:
+      - timing_reg['raw'] == _force_raw

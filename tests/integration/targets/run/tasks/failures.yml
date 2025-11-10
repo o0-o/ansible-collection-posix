@@ -1,0 +1,116 @@
+# vim: ts=2:sw=2:sts=2:et:ft=yaml.ansible
+# -*- mode: yaml; yaml-indent-offset: 2; indent-tabs-mode: nil; -*-
+---
+# GNU General Public License v3.0+
+# SPDX-License-Identifier: GPL-3.0-or-later
+# (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
+#
+# Copyright (c) 2025 oØ.o (@o0-o)
+#
+# This file is part of the o0_o.posix Ansible Collection.
+
+- name: Skip for check_mode
+  when: not ansible_check_mode
+  block:
+
+    - name: 'Fail: Test fail_fast with sequential execution'
+      block:
+
+        - name: Run commands with fail_fast (sequential)
+          o0_o.posix.run:
+            commands:
+              - echo before
+              - 'false'
+              - echo after
+            parallel: false
+            fail_fast: true
+            _force_raw: "{{ _force_raw }}"
+
+      rescue:
+
+        - name: Assert fail_fast stopped execution
+          ansible.builtin.assert:
+            that:
+              - ansible_failed_result is failed
+              - ansible_failed_result['commands'][0]['rc'] == 0
+              - ansible_failed_result['commands'][1]['rc'] != 0
+
+    - name: 'Fail: Test command failure without fail_fast'
+      block:
+
+        - name: Run commands with one failure (no fail_fast)
+          o0_o.posix.run:
+            commands:
+              - echo first
+              - 'false'
+              - echo third
+            parallel: false
+            fail_fast: false
+            _force_raw: "{{ _force_raw }}"
+
+      rescue:
+
+        - name: Assert all commands ran despite failure
+          ansible.builtin.assert:
+            that:
+              - ansible_failed_result is failed
+              - ansible_failed_result['commands'] | length == 3
+              - ansible_failed_result['commands'][0]['rc'] == 0
+              - ansible_failed_result['commands'][1]['rc'] != 0
+              - ansible_failed_result['commands'][2]['rc'] == 0
+              - >-
+                ansible_failed_result['commands'][0]['stdout'] | trim
+                == 'first'
+              - >-
+                ansible_failed_result['commands'][2]['stdout'] | trim
+                == 'third'
+
+    - name: 'Fail: Test nonexistent command'
+      block:
+
+        - name: Run nonexistent command
+          o0_o.posix.run:
+            commands:
+              - nonexistent_command_xyz123
+            _force_raw: "{{ _force_raw }}"
+
+      rescue:
+
+        - name: Assert nonexistent command failed
+          ansible.builtin.assert:
+            that:
+              - ansible_failed_result is failed
+              - ansible_failed_result['commands'][0]['rc'] != 0
+
+    - name: 'Fail: Test invalid chdir'
+      block:
+
+        - name: Run command with invalid chdir
+          o0_o.posix.run:
+            commands:
+              - echo test
+            chdir: /nonexistent/directory
+            _force_raw: "{{ _force_raw }}"
+
+      rescue:
+
+        - name: Assert chdir failure
+          ansible.builtin.assert:
+            that:
+              - ansible_failed_result is failed
+
+- name: 'Fail: Test missing commands parameter'
+  block:
+
+    - name: Run without commands parameter
+      o0_o.posix.run:
+        parallel: false
+        _force_raw: "{{ _force_raw }}"
+
+  rescue:
+
+    - name: Assert missing commands parameter
+      ansible.builtin.assert:
+        that:
+          - ansible_failed_result is failed
+          - "'required' in ansible_failed_result['msg'] | lower"

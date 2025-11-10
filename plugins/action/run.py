@@ -27,7 +27,8 @@ class ActionModule(PosixActionBase, ActionBase):
 
     Batches commands into one shell script that captures each
     command's rc/stdout/stderr and returns them with length prefixes
-    for accurate parsing.
+    for accurate parsing. Commands run in parallel by default using
+    background jobs (&) and wait for efficiency.
     """
 
     TRANSFERS_FILES = False
@@ -82,7 +83,8 @@ class ActionModule(PosixActionBase, ActionBase):
                 parts = stdout_len_line.strip().split()
                 if not parts:
                     raise ValueError(
-                        f"Empty wc output line for stdout: {repr(stdout_len_line)}"
+                        f"Empty wc output line for stdout: "
+                        f"{repr(stdout_len_line)}"
                     )
                 stdout_len = int(parts[0])
                 offset = stdout_len_end + 1
@@ -112,7 +114,8 @@ class ActionModule(PosixActionBase, ActionBase):
                 parts = stderr_len_line.strip().split()
                 if not parts:
                     raise ValueError(
-                        f"Empty wc output line for stderr: {repr(stderr_len_line)}"
+                        f"Empty wc output line for stderr: "
+                        f"{repr(stderr_len_line)}"
                     )
                 stderr_len = int(parts[0])
                 offset = stderr_len_end + 1
@@ -151,24 +154,48 @@ class ActionModule(PosixActionBase, ActionBase):
         else:
             cmds = ["set +e"]  # Don't exit on command errors
 
-        for i, cmd in enumerate(self.commands):
-            if not isinstance(cmd, str):
-                cmd = self._format_command(cmd)
-            cmds.extend(
-                [
-                    # Execute and capture
-                    f'({cmd}) 1>"{tmp}{i}.stdout" 2>"{tmp}{i}.stderr"',
-                    # Output: RC, stdout_length, stdout, stderr_length, stderr
-                    'echo "${?}"',
-                    f'wc -c "{tmp}{i}.stdout"',
-                    f'cat "{tmp}{i}.stdout"',
-                    f'wc -c "{tmp}{i}.stderr"',
-                    f'cat "{tmp}{i}.stderr"',
-                ]
-            )
+        if self.parallel:
+            # Launch all commands in background
+            for i, cmd in enumerate(self.commands):
+                if not isinstance(cmd, str):
+                    cmd = self._format_command(cmd)
+                cmds.append(
+                    f'({cmd}) 1>"{tmp}{i}.stdout" 2>"{tmp}{i}.stderr" & '
+                    f"pid{i}=$!"
+                )
+
+            # Wait for each and collect results
+            for i in range(len(self.commands)):
+                cmds.extend(
+                    [
+                        f'wait "$pid{i}"',
+                        'echo "$?"',
+                        f'wc -c "{tmp}{i}.stdout"',
+                        f'cat "{tmp}{i}.stdout"',
+                        f'wc -c "{tmp}{i}.stderr"',
+                        f'cat "{tmp}{i}.stderr"',
+                    ]
+                )
+        else:
+            # Sequential execution
+            for i, cmd in enumerate(self.commands):
+                if not isinstance(cmd, str):
+                    cmd = self._format_command(cmd)
+                cmds.extend(
+                    [
+                        # Execute and capture
+                        f'({cmd}) 1>"{tmp}{i}.stdout" 2>"{tmp}{i}.stderr"',
+                        'echo "${?}"',
+                        f'wc -c "{tmp}{i}.stdout"',
+                        f'cat "{tmp}{i}.stdout"',
+                        f'wc -c "{tmp}{i}.stderr"',
+                        f'cat "{tmp}{i}.stderr"',
+                    ]
+                )
 
         # Ensure script ends with a newline for proper parsing
-        cmds.append('echo')
+        cmds.append("echo")
+
         return "; ".join(cmds)
 
     def _def_args(self) -> Dict[str, Any]:
@@ -184,6 +211,7 @@ class ActionModule(PosixActionBase, ActionBase):
                 "required": True,
             },
             "chdir": {"type": "path"},
+            "parallel": {"type": "bool", "default": True},
             "fail_fast": {"type": "bool", "default": False},
             "strip": {"type": "bool", "default": True},
             "_force_raw": {"type": "bool", "default": False},
@@ -194,6 +222,7 @@ class ActionModule(PosixActionBase, ActionBase):
         )
         self.commands = new_module_args["commands"]
         self.chdir = new_module_args["chdir"]
+        self.parallel = new_module_args["parallel"]
         self.fail_fast = new_module_args["fail_fast"]
         self.strip = new_module_args["strip"]
         self.force_raw = new_module_args["_force_raw"]
@@ -215,7 +244,7 @@ class ActionModule(PosixActionBase, ActionBase):
         task_vars = task_vars or {}
         self._def_inventory_hostname(task_vars)
 
-        new_module_args = self._def_args()
+        self._def_args()
 
         self.result = super(ActionModule, self).run(tmp, task_vars=task_vars)
         self.result["invocation"] = self._task.args.copy()
@@ -244,6 +273,9 @@ class ActionModule(PosixActionBase, ActionBase):
                 "failed": cmd_result.get("failed", False),
                 "raw": cmd_result["raw"],
                 "stderr": cmd_result["stderr"],
+                "start": cmd_result.get("start"),
+                "end": cmd_result.get("end"),
+                "delta": cmd_result.get("delta"),
             }
         )
 

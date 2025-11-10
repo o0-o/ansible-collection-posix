@@ -76,7 +76,9 @@ class PosixActionBase:
         else:
             # Convert all list elements to native strings
             cmd = [
-                to_native(arg, errors="surrogate_or_strict", nonstring="simplerepr")
+                to_native(
+                    arg, errors="surrogate_or_strict", nonstring="simplerepr"
+                )
                 for arg in cmd
             ]
         try:
@@ -91,8 +93,9 @@ class PosixActionBase:
         """
         Normalize Windows-style line endings to Unix-style.
 
-        Converts CRLF (\\r\\n) to LF (\\n) for consistent parsing across
-        platforms. This matches the behavior of the builtin command module.
+        Converts CRLF (\\r\\n) to LF (\\n) for consistent parsing
+        across platforms. This matches the behavior of the builtin
+        command module.
 
         :param str text: Text with potential CRLF line endings
         :returns str: Text with normalized LF line endings
@@ -365,6 +368,7 @@ class PosixActionBase:
         chdir: Optional[str] = None,
         creates: Optional[str] = None,
         removes: Optional[str] = None,
+        parallel: bool = True,
         fail_fast: bool = False,
         task_vars: Optional[Dict[str, Any]] = None,
         check_mode: Optional[bool] = None,
@@ -375,6 +379,7 @@ class PosixActionBase:
 
         Dramatically reduces latency by batching commands into a single
         remote execution instead of multiple individual SSH round trips.
+        Commands execute in parallel by default for maximum efficiency.
 
         :param List[Union[str, List[str]]] commands: List of commands to
             execute. Each can be a shell string or list of arguments
@@ -383,6 +388,8 @@ class PosixActionBase:
         :param Optional[str] creates: Skip commands if this path exists
         :param Optional[str] removes: Skip commands if this path does
             not exist
+        :param bool parallel: Execute commands in parallel using
+            background jobs (default True)
         :param bool fail_fast: Stop on first command failure (default
             False)
         :param Optional[dict] task_vars: Dictionary of task variables
@@ -395,6 +402,7 @@ class PosixActionBase:
 
         args = {
             "commands": commands,
+            "parallel": parallel,
             "fail_fast": fail_fast,
         }
 
@@ -425,26 +433,31 @@ class PosixActionBase:
         check_mode: Optional[bool] = None,
     ) -> Dict[str, Any]:
         """
-        Run the read action plugin to gather file metadata and content.
+        Run the read action plugin to gather file metadata and
+        content.
 
-        Inspects file metadata and optionally content on POSIX hosts using
-        portable commands. When path does not exist, returns null instead
-        of raising an error.
+        Inspects file metadata and optionally content on POSIX hosts
+        using portable commands. When path does not exist, returns
+        null instead of raising an error.
 
-        :param Optional[str] path: Absolute path to the file to inspect
+        :param Optional[str] path: Absolute path to the file to
+            inspect
         :param Optional[List[str]] paths: List of paths to inspect
-        :param Optional[List[str]] include: List of field names to include
-            (metadata, content, type, name, parent, mode, owner, group,
-            writable, links, modified, created, acl, xattrs, flags, selinux)
-        :param Optional[str] encoding: Override detected encoding for content
-        :param Optional[bool] parents: Include parent directories (False,
-            True, or integer count)
+        :param Optional[List[str]] include: List of field names to
+            include (metadata, content, type, name, parent, mode,
+            owner, group, writable, links, modified, created, acl,
+            xattrs, flags, selinux)
+        :param Optional[str] encoding: Override detected encoding for
+            content
+        :param Optional[bool] parents: Include parent directories
+            (False, True, or integer count)
         :param bool find_hardlinks: Enumerate all hard link paths
         :param bool find_symlinks: Enumerate all symbolic links
         :param Optional[dict] task_vars: Dictionary of task variables
-        :param Optional[bool] check_mode: Optional override for Ansible
-            check mode
-        :returns dict: Result dictionary with 'paths' containing file data
+        :param Optional[bool] check_mode: Optional override for
+            Ansible check mode
+        :returns dict: Result dictionary with 'paths' containing file
+            data
         """
         task_vars = task_vars or {}
 
@@ -483,17 +496,22 @@ class PosixActionBase:
         check_mode: Optional[bool] = None,
     ) -> Dict[str, Any]:
         """
-        Run the stat action plugin to gather file status information.
+        Run the stat action plugin to gather file status
+        information.
 
-        Retrieves file status information similar to the stat command,
-        including permissions, ownership, timestamps, checksums, and more.
+        Retrieves file status information similar to the stat
+        command, including permissions, ownership, timestamps,
+        checksums, and more.
 
         :param str path: Path to the file to stat
         :param bool follow: Follow symbolic links (default False)
-        :param bool get_checksum: Calculate file checksum (default True)
+        :param bool get_checksum: Calculate file checksum (default
+            True)
         :param bool get_mime: Get MIME type (default True)
-        :param bool get_attributes: Get file attributes (default True)
-        :param str checksum_algorithm: Algorithm for checksum (default sha1)
+        :param bool get_attributes: Get file attributes (default
+            True)
+        :param str checksum_algorithm: Algorithm for checksum
+            (default sha1)
         :param Optional[dict] task_vars: Dictionary of task variables
         :param Optional[bool] check_mode: Optional override for Ansible
             check mode
