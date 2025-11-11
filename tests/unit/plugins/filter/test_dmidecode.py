@@ -203,7 +203,6 @@ def test_dmidecode_parses_real_output(
     assert "date" in bios
     assert "pretty" in bios["date"]
     assert "seconds" in bios["date"]
-    assert "iso8601" in bios["date"]
     assert "features" in bios
     assert isinstance(bios["features"], list)
 

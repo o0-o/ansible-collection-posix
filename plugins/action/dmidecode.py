@@ -39,14 +39,25 @@ class ActionModule(PosixActionBase, ActionBase):
         tmp: Optional[str] = None,
         task_vars: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
-        task_vars = task_vars or {}
-        tmp = None
+        """Main entry point for the action plugin.
 
-        result = super().run(tmp, task_vars)
+        Executes dmidecode command and parses output into structured
+        hardware information. Requires root privileges on most systems.
+
+        :param Optional[str] tmp: Temporary directory path (unused)
+        :param Optional[Dict[str, Any]] task_vars: Task variables
+        :returns Dict[str, Any]: Result with hardware information
+        """
+        task_vars = task_vars or {}
+        self._def_inventory_hostname(task_vars)
+
+        result = super(ActionModule, self).run(tmp, task_vars=task_vars)
+        result["changed"] = False
+        del tmp  # unused
 
         # Validate args (no arguments needed)
         argument_spec = {}
-        validation_result, new_args = self.validate_argument_spec(
+        validation_result, new_module_args = self.validate_argument_spec(
             argument_spec=argument_spec
         )
 
@@ -58,8 +69,18 @@ class ActionModule(PosixActionBase, ActionBase):
         if cmd_result.get("rc") != 0:
             stderr = cmd_result.get("stderr", "")
             stdout = cmd_result.get("stdout", "")
+            rc = cmd_result.get("rc")
             error_msg = stderr or stdout or "Unknown error"
-            raise AnsibleActionFail(f"dmidecode command failed: {error_msg}")
+            result.update(
+                {
+                    "failed": True,
+                    "msg": (
+                        f"dmidecode command failed with code {rc}: {error_msg}"
+                    ),
+                    "hardware": {},
+                }
+            )
+            return result
 
         # Parse the output using the dmidecode filter
         try:
@@ -69,5 +90,6 @@ class ActionModule(PosixActionBase, ActionBase):
                 f"Failed to parse dmidecode output: {type(e).__name__}: {e}"
             ) from e
 
-        result.update({"changed": False, "hardware": hardware})
+        result["hardware"] = hardware
+
         return result

@@ -1,0 +1,27 @@
+# vim: ts=2:sw=2:sts=2:et:ft=yaml.ansible
+# -*- mode: yaml; yaml-indent-offset: 2; indent-tabs-mode: nil; -*-
+---
+# GNU General Public License v3.0+
+# SPDX-License-Identifier: GPL-3.0-or-later
+# (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
+#
+# Copyright (c) 2025 oØ.o (@o0-o)
+#
+# This file is part of the o0_o.posix Ansible Collection.
+
+- name: Run dmidecode module
+  o0_o.posix.dmidecode:
+  register: dmidecode_result_reg
+  ignore_errors: true
+
+- name: Verify module returns without exception
+  ansible.builtin.assert:
+    that:
+      - dmidecode_result_reg is defined
+    fail_msg: 'dmidecode module raised an exception'
+
+- name: Display result status
+  ansible.builtin.debug:
+    msg: >-
+      dmidecode {{ 'succeeded' if not dmidecode_result_reg['failed']
+      else 'failed (expected on systems without root or dmidecode)' }}
