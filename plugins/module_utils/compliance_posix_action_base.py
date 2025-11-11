@@ -16,10 +16,12 @@ from __future__ import annotations
 from copy import deepcopy
 from typing import Any, Dict, List, Tuple
 
-from ansible_collections.o0_o.posix.plugins.module_utils import is_posix
+from ansible_collections.o0_o.posix.plugins.module_utils import (
+    PosixActionBase, is_posix
+)
 
 
-class CompliancePosixActionBase:
+class CompliancePosixActionBase(PosixActionBase):
     """Mixin for gathering POSIX/SUS compliance information.
 
     Provides methods to gather and process POSIX, X/Open, and SUS
@@ -266,32 +268,26 @@ class CompliancePosixActionBase:
         :param Dict[str, Any] compliance: Compliance facts dictionary
         :returns str: Human-readable status message
         """
-        posix_compliant = is_posix({"compliance": compliance})
 
-        if posix_compliant is True:
-            if "sus" in compliance:
-                # If SUS compliant, just mention SUS (it includes POSIX)
+        if "sus" in compliance:
+            # If SUS compliant, just mention SUS (it includes POSIX)
+            return (
+                f"System is compliant with "
+                f"{compliance['sus']['version']['name']}"
+            )
+        elif "posix" in compliance:
+            # Otherwise mention POSIX with components
+            components = []
+            if "components" in compliance["posix"]:
+                for comp_key in ["xsh", "xcu", "xsi"]:
+                    if comp_key in compliance["posix"]["components"]:
+                        components.append(comp_key.upper())
+            if components:
                 return (
-                    f"System is compliant with "
-                    f"{compliance['sus']['version']['name']}"
+                    f"System is POSIX-compliant "
+                    f"({', '.join(components)})"
                 )
-            elif "posix" in compliance:
-                # Otherwise mention POSIX with components
-                components = []
-                if "components" in compliance["posix"]:
-                    for comp_key in ["xsh", "xcu", "xsi"]:
-                        if comp_key in compliance["posix"]["components"]:
-                            components.append(comp_key.upper())
-                if components:
-                    return (
-                        f"System is POSIX-compliant "
-                        f"({', '.join(components)})"
-                    )
-                else:
-                    return "System is POSIX-compliant"
             else:
                 return "System is POSIX-compliant"
-        elif posix_compliant is False:
-            return "System is not POSIX-compliant"
         else:
-            return "Cannot determine POSIX compliance"
+            return "System is not POSIX-compliant"
