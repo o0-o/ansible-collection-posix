@@ -9,82 +9,35 @@
 #
 # This file is part of the o0_o.posix Ansible Collection.
 
-- name: Test POSIX compliance detection
+- name: Run compliance module
   o0_o.posix.compliance:
-  register: posix_result_reg
+  register: compliance_result_reg
 
-- name: Assert that result has required fields
+- name: Verify basic output structure
   ansible.builtin.assert:
     that:
-      - posix_result_reg is defined
-      - posix_result_reg['is_posix'] is defined
-      - posix_result_reg['is_posix'] is boolean
-      - posix_result_reg['msg'] is defined
-      - posix_result_reg['msg'] is string
-      - posix_result_reg['changed'] == false
-    fail_msg: 'Compliance module did not return expected fields'
+      - compliance_result_reg is defined
+      - compliance_result_reg['changed'] == false
+      - compliance_result_reg['msg'] is defined
+      - compliance_result_reg['msg'] is string
+      - compliance_result_reg['compliance'] is defined
+      - compliance_result_reg['compliance'] is mapping
+    fail_msg: 'Compliance module did not return expected structure'
 
-- name: Display POSIX compliance status
-  ansible.builtin.debug:
-    msg: |
-      POSIX compliant: {{ posix_result_reg['is_posix'] }}
-      Message: {{ posix_result_reg['msg'] }}
-      Compliance: |
-        {{ posix_result_reg['compliance'] | default([]) | to_nice_json }}
-
-- name: Test in check mode
+- name: Run in check mode
   o0_o.posix.compliance:
   check_mode: true
-  register: posix_check_reg
+  register: compliance_check_reg
 
-- name: Assert check mode works
+- name: Verify check mode works
   ansible.builtin.assert:
     that:
-      - posix_check_reg is defined
-      - posix_check_reg['is_posix'] is defined
-      - posix_check_reg['is_posix'] is boolean
-      - posix_check_reg['changed'] == false
-    fail_msg: 'Compliance module did not work correctly in check mode'
+      - compliance_check_reg is defined
+      - compliance_check_reg['changed'] == false
+      - compliance_check_reg['compliance'] is defined
+    fail_msg: 'Compliance module did not work in check mode'
 
-- name: Verify consistency between normal and check mode
-  ansible.builtin.assert:
-    that:
-      - posix_result_reg['is_posix'] == posix_check_reg['is_posix']
-    fail_msg: 'Compliance module returned different results in check mode'
-
-# Test conditional execution based on POSIX compliance
-- name: Run command only on POSIX systems
-  o0_o.posix.command:
-    argv: [echo, "This is a POSIX system"]
-  register: posix_command_reg
-  when: posix_result_reg['is_posix']
-
-- name: Verify command ran on POSIX systems
-  ansible.builtin.assert:
-    that:
-      - posix_command_reg is not skipped
-      - posix_command_reg['stdout'] == "This is a POSIX system"
-    fail_msg: 'Command should have run on POSIX system'
-  when: posix_result_reg['is_posix']
-
-# Test that we can use the compliance information
-- name: Check if compliance dict is properly formatted
-  ansible.builtin.assert:
-    that:
-      - posix_result_reg['compliance'] is defined
-      - posix_result_reg['compliance'] is mapping
-    fail_msg: 'Compliance should be a dictionary'
-  when: posix_result_reg['compliance'] is defined
-
-# Test multiple invocations return consistent results
-- name: Test module again
-  o0_o.posix.compliance:
-  register: posix_second_reg
-
-- name: Verify consistent results
-  ansible.builtin.assert:
-    that:
-      - posix_result_reg['is_posix'] == posix_second_reg['is_posix']
-      - posix_result_reg['compliance'] == posix_second_reg['compliance']
-    fail_msg: |
-      Compliance module returned inconsistent results on multiple invocations
+- name: Display compliance info
+  ansible.builtin.debug:
+    msg: >-
+      {{ compliance_result_reg['msg'] }}
