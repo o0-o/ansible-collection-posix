@@ -95,11 +95,15 @@ from ansible_collections.o0_o.posix.plugins.module_utils.read_posix_action_base 
 from ansible_collections.o0_o.posix.plugins.module_utils.write_posix_action_base import (  # noqa: E501
     WritePosixActionBase,
 )
+from ansible_collections.o0_o.posix.plugins.module_utils.compliance_posix_action_base import (  # noqa: E501
+    CompliancePosixActionBase,
+)
 
 __all__ = [
     "PosixActionBase",
     "ReadPosixActionBase",
     "WritePosixActionBase",
+    "CompliancePosixActionBase",
     "device_from_hex_major_minor",
     "device_from_major_minor",
     "device_value",
