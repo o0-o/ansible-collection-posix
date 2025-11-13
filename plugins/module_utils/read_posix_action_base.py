@@ -19,11 +19,15 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from ansible.module_utils.common.text.converters import to_text
 
-from ansible_collections.o0_o.posix.plugins.module_utils import (
+from ansible_collections.o0_o.posix.plugins.module_utils.dev_utils import (
     device_from_hex_major_minor,
     device_from_major_minor,
     device_value,
+)
+from ansible_collections.o0_o.posix.plugins.module_utils.jc_utils import (
     jc_parse,
+)
+from ansible_collections.o0_o.posix.plugins.module_utils.posix_action_base import (  # noqa: E501
     PosixActionBase,
 )
 
@@ -631,11 +635,10 @@ class ReadPosixActionBase(PosixActionBase):
                 stat_result["checksum"] = checksum
             else:
                 # Warn if checksum algorithm not available on target
-                host = self._get_inventory_hostname(task_vars)
                 self._display.warning(
-                    f"[{host}] Checksum algorithm '{checksum_algorithm}' "
-                    f"not available on target system. Checksum field will "
-                    f"be omitted."
+                    f"[{self.inventory_hostname}] Checksum algorithm "
+                    f"'{checksum_algorithm}' not available on target system. "
+                    f"Checksum field will be omitted."
                 )
 
         # Get MIME type if requested

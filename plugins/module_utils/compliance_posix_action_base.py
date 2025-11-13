@@ -16,8 +16,8 @@ from __future__ import annotations
 from copy import deepcopy
 from typing import Any, Dict, List, Tuple
 
-from ansible_collections.o0_o.posix.plugins.module_utils import (
-    PosixActionBase, is_posix
+from ansible_collections.o0_o.posix.plugins.module_utils.posix_action_base import (  # noqa: E501
+    PosixActionBase,
 )
 
 
@@ -284,8 +284,7 @@ class CompliancePosixActionBase(PosixActionBase):
                         components.append(comp_key.upper())
             if components:
                 return (
-                    f"System is POSIX-compliant "
-                    f"({', '.join(components)})"
+                    f"System is POSIX-compliant " f"({', '.join(components)})"
                 )
             else:
                 return "System is POSIX-compliant"

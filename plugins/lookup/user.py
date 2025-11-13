@@ -116,9 +116,7 @@ from ansible.plugins.lookup import LookupBase
 from ansible_collections.o0_o.utils.plugins.module_utils import (
     VarsLookupBase,
 )
-from ansible_collections.o0_o.posix.plugins.module_utils.user_utils import (
-    lookup_user,
-)
+from ansible_collections.o0_o.posix.plugins.module_utils import lookup_user
 
 
 class LookupModule(LookupBase, VarsLookupBase):

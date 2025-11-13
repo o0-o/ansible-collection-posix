@@ -15,7 +15,7 @@ from __future__ import annotations
 
 from typing import Any, Dict
 
-from ansible_collections.o0_o.posix.plugins.module_utils.compliance_utils import (  # noqa: E501
+from ansible_collections.o0_o.posix.plugins.module_utils import (
     is_posix as is_posix_check,
 )
 

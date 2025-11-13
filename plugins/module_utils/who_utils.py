@@ -21,7 +21,9 @@ try:
 except ImportError:  # pragma: no cover - handled by parse_datetime import
     dateutil_parser = None
 
-from ansible_collections.o0_o.posix.plugins.module_utils import jc_parse
+from ansible_collections.o0_o.posix.plugins.module_utils.jc_utils import (
+    jc_parse,
+)
 from ansible_collections.o0_o.utils.plugins.module_utils import (
     parse_datetime,
     parse_elapsed_time,

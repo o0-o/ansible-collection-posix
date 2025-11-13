@@ -19,8 +19,6 @@ from ansible_collections.o0_o.posix.plugins.module_utils import (
     PosixActionBase,
     df,
     mount,
-)
-from ansible_collections.o0_o.posix.plugins.module_utils.fstab_utils import (
     parse_fstab,
 )
 

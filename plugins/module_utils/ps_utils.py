@@ -14,7 +14,9 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Union
 
-from ansible_collections.o0_o.posix.plugins.module_utils import jc_parse
+from ansible_collections.o0_o.posix.plugins.module_utils.jc_utils import (
+    jc_parse,
+)
 from ansible_collections.o0_o.utils.plugins.module_utils import (
     parse_datetime,
     parse_elapsed_time,

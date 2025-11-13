@@ -322,7 +322,7 @@ class ActionModule(PosixActionBase, ActionBase):
 
         # Parse users
         if not passwd_slurp.get("failed"):
-            from ansible_collections.o0_o.posix.plugins.module_utils.passwd_utils import (  # noqa: E501
+            from ansible_collections.o0_o.posix.plugins.module_utils import (
                 passwd_info,
             )
 
@@ -331,7 +331,7 @@ class ActionModule(PosixActionBase, ActionBase):
 
         # Parse groups
         if not group_slurp.get("failed"):
-            from ansible_collections.o0_o.posix.plugins.module_utils.group_utils import (  # noqa: E501
+            from ansible_collections.o0_o.posix.plugins.module_utils import (
                 group_info,
             )
 
@@ -415,7 +415,7 @@ class ActionModule(PosixActionBase, ActionBase):
         # Always check POSIX compliance first to validate the host
         try:
             compliance_facts = self._gather_compliance(task_vars=task_vars)
-            from ansible_collections.o0_o.posix.plugins.module_utils.compliance_utils import (  # noqa: E501
+            from ansible_collections.o0_o.posix.plugins.module_utils import (
                 is_posix as check_is_posix,
             )
 

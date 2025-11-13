@@ -19,7 +19,7 @@ import stat
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple, Union
 
-from ansible_collections.o0_o.posix.plugins.module_utils import (
+from ansible_collections.o0_o.posix.plugins.module_utils.read_posix_action_base import (  # noqa: E501
     ReadPosixActionBase,
 )
 
@@ -825,10 +825,9 @@ class WritePosixActionBase(ReadPosixActionBase):
                 )
 
         if not semanage_path:
-            host = self._get_inventory_hostname(task_vars)
             self._display.warning(
-                f"[{host}] chcon is available but semanage is not — "
-                "SELinux context changes may not persist"
+                f"[{self.inventory_hostname}] chcon is available but semanage "
+                f"is not — SELinux context changes may not persist"
             )
 
         return True
