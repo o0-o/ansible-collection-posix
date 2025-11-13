@@ -16,9 +16,9 @@ import os
 import pytest
 
 
-def test_write_temp_file_success(monkeypatch, base) -> None:
+def test_write_temp_file_success(monkeypatch, write_base) -> None:
     """Test _write_temp_file writes content successfully."""
-    tmpfile = os.path.join(base._connection._shell.tmpdir, "file.txt")
+    tmpfile = os.path.join(write_base._connection._shell.tmpdir, "file.txt")
     written = {}
 
     def mock_cmd(cmd, task_vars=None, check_mode=False, **kwargs):
@@ -31,24 +31,24 @@ def test_write_temp_file_success(monkeypatch, base) -> None:
             return {"rc": 0}
         raise Exception(f"unexpected cmd: {cmd}")
 
-    monkeypatch.setattr(base, "_cmd", mock_cmd)
+    monkeypatch.setattr(write_base, "_cmd", mock_cmd)
 
-    result = base._write_temp_file(["one", "two"], tmpfile, task_vars={})
+    result = write_base._write_temp_file(["one", "two"], tmpfile, task_vars={})
 
     assert result["rc"] == 0
     assert written["path"] == tmpfile
     assert written["content"].splitlines() == ["one", "two"]
 
 
-def test_write_temp_file_failure(monkeypatch, base) -> None:
+def test_write_temp_file_failure(monkeypatch, write_base) -> None:
     """Test _write_temp_file raises error when tee command fails."""
 
     def mock_cmd(cmd, task_vars=None, check_mode=False, **kwargs):
         return {"rc": 1, "stderr": "no tee"}
 
-    monkeypatch.setattr(base, "_cmd", mock_cmd)
+    monkeypatch.setattr(write_base, "_cmd", mock_cmd)
 
     with pytest.raises(
         RuntimeError, match=r"Failed to write temp file .*no tee"
     ):
-        base._write_temp_file(["oops"], "/tmp/fail", task_vars={})
+        write_base._write_temp_file(["oops"], "/tmp/fail", task_vars={})

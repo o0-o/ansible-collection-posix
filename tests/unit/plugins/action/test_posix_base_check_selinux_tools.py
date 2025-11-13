@@ -14,46 +14,48 @@ from __future__ import annotations
 import pytest
 
 
-def test_selinux_not_requested(base) -> None:
+def test_selinux_not_requested(write_base) -> None:
     """
     Test _check_selinux_tools returns False when SELinux not requested.
     """
-    result = base._check_selinux_tools(perms={}, task_vars={})
+    result = write_base._check_selinux_tools(perms={}, task_vars={})
     assert result is False
 
 
-def test_selinux_tools_missing_both(base, monkeypatch) -> None:
+def test_selinux_tools_missing_both(write_base, monkeypatch) -> None:
     """
     Test _check_selinux_tools raises error when both tools missing.
     """
-    monkeypatch.setattr(base, "_which", lambda tool, task_vars=None: None)
+    monkeypatch.setattr(
+        write_base, "_which", lambda tool, task_vars=None: None
+    )
 
     with pytest.raises(RuntimeError, match="both 'chcon' and 'semanage'"):
-        base._check_selinux_tools(
+        write_base._check_selinux_tools(
             perms={"setype": "something"},
             task_vars={},
         )
 
 
-def test_selinux_chcon_missing_only(base, monkeypatch) -> None:
+def test_selinux_chcon_missing_only(write_base, monkeypatch) -> None:
     """Test _check_selinux_tools raises error when chcon missing."""
 
     def fake_which(tool, task_vars=None):
         return "/usr/sbin/semanage" if tool == "semanage" else None
 
-    monkeypatch.setattr(base, "_which", fake_which)
+    monkeypatch.setattr(write_base, "_which", fake_which)
 
     with pytest.raises(RuntimeError, match="requires 'chcon'"):
-        base._check_selinux_tools(
+        write_base._check_selinux_tools(
             perms={"setype": "something"},
             task_vars={},
         )
 
 
-def test_selinux_semanage_missing_warns(base, monkeypatch) -> None:
+def test_selinux_semanage_missing_warns(write_base, monkeypatch) -> None:
     """Test _check_selinux_tools warns when semanage missing."""
     monkeypatch.setattr(
-        base,
+        write_base,
         "_which",
         lambda tool, task_vars=None: "/bin/chcon" if tool == "chcon" else None,
     )
@@ -67,9 +69,9 @@ def test_selinux_semanage_missing_warns(base, monkeypatch) -> None:
         def vvv(self, msg):
             pass
 
-    base._display = FakeDisplay()
+    write_base._display = FakeDisplay()
 
-    result = base._check_selinux_tools(
+    result = write_base._check_selinux_tools(
         perms={"serole": "some_role"},
         task_vars={},
     )
@@ -78,10 +80,10 @@ def test_selinux_semanage_missing_warns(base, monkeypatch) -> None:
     assert any("chcon is available but semanage is not" in w for w in warnings)
 
 
-def test_selinux_both_tools_present(base, monkeypatch) -> None:
+def test_selinux_both_tools_present(write_base, monkeypatch) -> None:
     """Test _check_selinux_tools succeeds when both tools present."""
     monkeypatch.setattr(
-        base, "_which", lambda tool, task_vars=None: f"/usr/sbin/{tool}"
+        write_base, "_which", lambda tool, task_vars=None: f"/usr/sbin/{tool}"
     )
 
     logs = []
@@ -93,9 +95,9 @@ def test_selinux_both_tools_present(base, monkeypatch) -> None:
         def vvv(self, msg):
             logs.append(msg)
 
-    base._display = FakeDisplay()
+    write_base._display = FakeDisplay()
 
-    result = base._check_selinux_tools(
+    result = write_base._check_selinux_tools(
         perms={"seuser": "system_u"},
         task_vars={},
     )

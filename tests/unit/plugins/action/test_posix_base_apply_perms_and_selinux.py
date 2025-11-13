@@ -130,7 +130,7 @@ TEST_USER = get_test_user()
     ],
 )
 def test_apply_perms_and_selinux_confirmation(
-    base, perms, selinux, should_fail, expected_mode, mock_selinux_keys
+    write_base, perms, selinux, should_fail, expected_mode, mock_selinux_keys
 ) -> None:
     """Test _apply_perms_and_selinux against real files."""
     # Skip ownership change tests when not running as root
@@ -145,12 +145,12 @@ def test_apply_perms_and_selinux_confirmation(
         # Stub _handle_selinux_context to confirm it's called when
         # selinux=True
         called_selinux = {}
-        base._handle_selinux_context = (
+        write_base._handle_selinux_context = (
             lambda *a, **kw: called_selinux.setdefault("called", True)
         )
 
         # Mock _get_perms when selinux is True
-        original_get_perms = base._get_perms
+        original_get_perms = write_base._get_perms
 
         def mock_get_perms(target, selinux=False, task_vars=None):
             base_perms = original_get_perms(target, False, task_vars)
@@ -158,18 +158,20 @@ def test_apply_perms_and_selinux_confirmation(
                 base_perms.update(mock_selinux_keys)
             return base_perms
 
-        base._get_perms = mock_get_perms
+        write_base._get_perms = mock_get_perms
 
         if should_fail:
             with pytest.raises(RuntimeError):
-                base._apply_perms_and_selinux(
+                write_base._apply_perms_and_selinux(
                     path, perms, selinux=selinux, task_vars={}
                 )
         else:
-            base._apply_perms_and_selinux(
+            write_base._apply_perms_and_selinux(
                 path, perms, selinux=selinux, task_vars={}
             )
-            confirmed = base._get_perms(path, selinux=False, task_vars={})
+            confirmed = write_base._get_perms(
+                path, selinux=False, task_vars={}
+            )
 
             if perms.get("mode"):
                 assert confirmed["mode"] == expected_mode

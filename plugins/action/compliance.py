@@ -79,9 +79,10 @@ class ActionModule(CompliancePosixActionBase, ActionBase):
 
         # Map results back to tags
         tagged_results = {}
-        for (tag, _), cmd_result in zip(
+        for (tag, command), cmd_result in zip(
             tagged_commands, run_result["commands"]
         ):
+            del command  # Unused in this loop
             tagged_results[tag] = cmd_result
 
         # Process via mixin method

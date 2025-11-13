@@ -25,7 +25,7 @@ import pytest
     ],
 )
 def test_pseudo_stat_detects_type(
-    base, tmp_path, file_type, flag, expected_type, is_symlink
+    write_base, tmp_path, file_type, flag, expected_type, is_symlink
 ) -> None:
     """Test _pseudo_stat detects common POSIX file types."""
     # Create appropriate test file
@@ -39,22 +39,22 @@ def test_pseudo_stat_detects_type(
         real.write_text("data")
         target.symlink_to(real)
 
-    result = base._pseudo_stat(str(target))
+    result = write_base._pseudo_stat(str(target))
 
     assert result["exists"] is True
     assert result["type"] == expected_type
     assert result["is_symlink"] is is_symlink
 
 
-def test_pseudo_stat_nonexistent(base) -> None:
+def test_pseudo_stat_nonexistent(write_base) -> None:
     """Test _pseudo_stat reports non-existent files correctly."""
     fake_path = "/tmp/this/path/should/not/exist"
-    result = base._pseudo_stat(fake_path)
+    result = write_base._pseudo_stat(fake_path)
     assert result["exists"] is False
     assert result["type"] is None
 
 
-def test_pseudo_stat_unsupported_type(base, tmp_path) -> None:
+def test_pseudo_stat_unsupported_type(write_base, tmp_path) -> None:
     """Test _pseudo_stat raises error for unsupported file types."""
     # Make a named pipe (FIFO) and test it
     fifo_path = tmp_path / "fifo"
@@ -67,7 +67,7 @@ def test_pseudo_stat_unsupported_type(base, tmp_path) -> None:
             return {"rc": 0, "raw": False}
         return {"rc": 1, "raw": False}
 
-    base._cmd = fake_cmd
+    write_base._cmd = fake_cmd
 
     with pytest.raises(RuntimeError, match="All POSIX 'test' commands failed"):
-        base._pseudo_stat(str(fifo_path))
+        write_base._pseudo_stat(str(fifo_path))

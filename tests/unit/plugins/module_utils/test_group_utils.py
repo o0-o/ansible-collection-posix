@@ -34,7 +34,7 @@ def test_group_info_key_id(
 
     if isinstance(config, dict):
         monkeypatch.setattr(
-            "ansible_collections.o0_o.posix.plugins.module_utils.group_utils.jc_parse",
+            "ansible_collections.o0_o.posix.plugins.module_utils.group_utils.jc_parse",  # noqa: E501
             lambda parser, data: SAMPLE_GROUPS,
         )
 
@@ -51,7 +51,7 @@ def test_group_info_key_name(monkeypatch: pytest.MonkeyPatch) -> None:
     """Name keyed result maps to id with fallback for unnamed groups."""
 
     monkeypatch.setattr(
-        "ansible_collections.o0_o.posix.plugins.module_utils.group_utils.jc_parse",
+        "ansible_collections.o0_o.posix.plugins.module_utils.group_utils.jc_parse",  # noqa: E501
         lambda parser, data: SAMPLE_GROUPS,
     )
 
@@ -73,7 +73,7 @@ def test_group_info_handles_empty(monkeypatch: pytest.MonkeyPatch) -> None:
     """Empty input returns empty mapping."""
 
     monkeypatch.setattr(
-        "ansible_collections.o0_o.posix.plugins.module_utils.group_utils.jc_parse",
+        "ansible_collections.o0_o.posix.plugins.module_utils.group_utils.jc_parse",  # noqa: E501
         lambda parser, data: [],
     )
 
@@ -97,7 +97,7 @@ def test_group_info_normalizes_string_members(
     ]
 
     monkeypatch.setattr(
-        "ansible_collections.o0_o.posix.plugins.module_utils.group_utils.jc_parse",
+        "ansible_collections.o0_o.posix.plugins.module_utils.group_utils.jc_parse",  # noqa: E501
         lambda parser, data: sample_groups,
     )
 

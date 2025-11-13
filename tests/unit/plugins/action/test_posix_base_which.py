@@ -21,7 +21,7 @@ import pytest
         (
             "true",
             {
-                ("sh", "-c", "command -v true"): {
+                ("sh", "-c", "unalias -a 2>/dev/null; command -v true"): {
                     "rc": 0,
                     "stdout": "/usr/bin/true",
                 },
@@ -32,7 +32,11 @@ import pytest
         (
             "echo",
             {
-                ("sh", "-c", "command -v echo"): {"rc": 0, "stdout": "echo"},
+                (
+                    "sh",
+                    "-c",
+                    "unalias -a 2>/dev/null; command -v echo",
+                ): {"rc": 0, "stdout": "echo"},
             },
             "echo",
         ),
@@ -40,7 +44,10 @@ import pytest
         (
             "cat",
             {
-                ("sh", "-c", "command -v cat"): {"rc": 1, "stdout": ""},
+                ("sh", "-c", "unalias -a 2>/dev/null; command -v cat"): {
+                    "rc": 1,
+                    "stdout": "",
+                },
                 ("which", "cat"): {"rc": 0, "stdout": "/bin/cat"},
             },
             "/bin/cat",
@@ -49,7 +56,11 @@ import pytest
         (
             "printf",
             {
-                ("sh", "-c", "command -v printf"): {"rc": 1, "stdout": ""},
+                (
+                    "sh",
+                    "-c",
+                    "unalias -a 2>/dev/null; command -v printf",
+                ): {"rc": 1, "stdout": ""},
                 ("which", "printf"): {
                     "rc": 0,
                     "stdout": "printf: shell built-in command",
@@ -61,7 +72,11 @@ import pytest
         (
             "fakecmd",
             {
-                ("sh", "-c", "command -v fakecmd"): {"rc": 1, "stdout": ""},
+                (
+                    "sh",
+                    "-c",
+                    "unalias -a 2>/dev/null; command -v fakecmd",
+                ): {"rc": 1, "stdout": ""},
                 ("which", "fakecmd"): {"rc": 1, "stdout": ""},
             },
             None,

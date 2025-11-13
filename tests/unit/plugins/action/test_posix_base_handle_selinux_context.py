@@ -106,14 +106,14 @@ from ansible_collections.o0_o.posix.tests.utils import generate_temp_path
     ],
 )
 def test_handle_selinux_context_logic(
-    base, perms, which_map, expected_cmds, fail_cmd, expected_error
+    write_base, perms, which_map, expected_cmds, fail_cmd, expected_error
 ) -> None:
     """Test _handle_selinux_context with various tool configurations."""
     dest = generate_temp_path()
     issued_cmds = []
 
     # Mock _which to simulate tool presence
-    base._which = lambda tool, task_vars=None: which_map.get(tool)
+    write_base._which = lambda tool, task_vars=None: which_map.get(tool)
 
     # Mock _cmd to track and simulate execution
     def mock_cmd(cmd, task_vars=None):
@@ -122,12 +122,12 @@ def test_handle_selinux_context_logic(
             return {"rc": 1, "stderr": f"{cmd[0]} failed"}
         return {"rc": 0, "stderr": ""}
 
-    base._cmd = mock_cmd
+    write_base._cmd = mock_cmd
 
     if expected_error:
         with pytest.raises(RuntimeError, match=expected_error):
-            base._handle_selinux_context(dest, perms)
+            write_base._handle_selinux_context(dest, perms)
     else:
-        base._handle_selinux_context(dest, perms)
+        write_base._handle_selinux_context(dest, perms)
 
     assert issued_cmds == expected_cmds(dest)

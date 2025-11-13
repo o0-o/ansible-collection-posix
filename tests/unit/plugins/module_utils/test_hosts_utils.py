@@ -223,7 +223,7 @@ def test_hosts_handles_list_of_lines() -> None:
     with patch.object(
         hosts_utils, "jc_parse", return_value=jc_return
     ) as mock_parse:
-        result = hosts_utils.hosts(lines)
+        hosts_utils.hosts(lines)
 
     mock_parse.assert_called_once_with(
         "hosts", "127.0.0.1 localhost\n::1 localhost"

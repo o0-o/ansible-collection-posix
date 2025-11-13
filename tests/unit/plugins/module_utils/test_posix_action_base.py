@@ -70,7 +70,11 @@ def test_which_prefers_command_v(monkeypatch) -> None:
     result = dummy._which("grep")
 
     assert result == "/usr/bin/grep"
-    assert dummy.calls[0] == ["sh", "-c", "command -v grep"]
+    assert dummy.calls[0] == [
+        "sh",
+        "-c",
+        "unalias -a 2>/dev/null; command -v grep",
+    ]
 
 
 def test_which_handles_builtin_via_command_v() -> None:
@@ -97,7 +101,7 @@ def test_which_fallback_returns_path_from_which() -> None:
 
     result = dummy._which("Grep")
 
-    assert result == "/usr/bin/grep"
+    assert result == "/usr/bin/Grep"  # Preserves case from stdout
     assert dummy.calls[1] == ["which", "Grep"]
     assert any(
         "command -v Grep failed" in msg for msg in dummy._display.messages

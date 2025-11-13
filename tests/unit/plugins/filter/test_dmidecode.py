@@ -251,7 +251,8 @@ def test_dmidecode_parses_real_output(
     proc = processors["intel_xeon_cpu_e5_2620_v3"]
     assert proc["make"] == "Intel"
     assert proc["family"] == "Xeon"
-    # Model is cleaned: trademark symbols, @ speed, make, family, and CPU removed
+    # Model is cleaned: trademark symbols, @ speed, make, family,
+    # and CPU removed
     assert proc["model"] == "E5-2620 v3"
     # Signature is in individual locations, not in processor spec
     assert "signature" not in proc
@@ -389,7 +390,7 @@ def test_dmidecode_parses_real_output(
 
 def test_dmidecode_cleans_features() -> None:
     """Test that feature strings are properly cleaned."""
-    from ansible_collections.o0_o.posix.plugins.module_utils.dmidecode_utils import (
+    from ansible_collections.o0_o.posix.plugins.module_utils.dmidecode_utils import (  # noqa: E501
         _clean_feature,
     )
 
@@ -413,7 +414,7 @@ def test_dmidecode_cleans_features() -> None:
 
 def test_dmidecode_validates_meaningless_values() -> None:
     """Test that meaningless values are properly detected."""
-    from ansible_collections.o0_o.posix.plugins.module_utils.dmidecode_utils import (
+    from ansible_collections.o0_o.posix.plugins.module_utils.dmidecode_utils import (  # noqa: E501
         _is_meaningless_value,
     )
 
@@ -441,7 +442,7 @@ def test_dmidecode_validates_meaningless_values() -> None:
 
 def test_dmidecode_parses_presence() -> None:
     """Test that presence strings are converted to booleans."""
-    from ansible_collections.o0_o.posix.plugins.module_utils.dmidecode_utils import (
+    from ansible_collections.o0_o.posix.plugins.module_utils.dmidecode_utils import (  # noqa: E501
         _parse_presence,
     )
 
@@ -458,7 +459,7 @@ def test_dmidecode_parses_presence() -> None:
 
 def test_dmidecode_parses_slot_usage() -> None:
     """Test that slot usage strings are converted to booleans."""
-    from ansible_collections.o0_o.posix.plugins.module_utils.dmidecode_utils import (
+    from ansible_collections.o0_o.posix.plugins.module_utils.dmidecode_utils import (  # noqa: E501
         _parse_slot_usage,
     )
 
@@ -476,7 +477,7 @@ def test_dmidecode_parses_slot_usage() -> None:
 
 def test_dmidecode_parses_slot_length() -> None:
     """Test that slot length strings are converted to booleans."""
-    from ansible_collections.o0_o.posix.plugins.module_utils.dmidecode_utils import (
+    from ansible_collections.o0_o.posix.plugins.module_utils.dmidecode_utils import (  # noqa: E501
         _parse_slot_length,
     )
 
@@ -493,7 +494,7 @@ def test_dmidecode_parses_slot_length() -> None:
 
 def test_dmidecode_parses_yes_no() -> None:
     """Test that yes/no strings are converted to booleans."""
-    from ansible_collections.o0_o.posix.plugins.module_utils.dmidecode_utils import (
+    from ansible_collections.o0_o.posix.plugins.module_utils.dmidecode_utils import (  # noqa: E501
         _parse_yes_no,
     )
 
@@ -510,7 +511,7 @@ def test_dmidecode_parses_yes_no() -> None:
 
 def test_dmidecode_normalizes_slot_types() -> None:
     """Test that slot types are normalized to lowercase with underscores."""
-    from ansible_collections.o0_o.posix.plugins.module_utils.dmidecode_utils import (
+    from ansible_collections.o0_o.posix.plugins.module_utils.dmidecode_utils import (  # noqa: E501
         _normalize_slot_type,
     )
 

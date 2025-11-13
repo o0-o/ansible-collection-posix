@@ -424,7 +424,8 @@ _value:
               type: dict
               contains:
                 bytes:
-                  description: Capacity in bytes (requires o0_o.utils collection)
+                  description: >-
+                    Capacity in bytes (requires o0_o.utils collection)
                   type: int
                   sample: 824633720832
                 pretty:

@@ -58,7 +58,10 @@ EXAMPLES = r"""
 
 - name: Show memory configuration
   ansible.builtin.debug:
-    msg: "Total capacity: {{ hardware_info.hardware.baseboard.memory.capacity.pretty }}"
+    msg: >-
+      Total capacity: {{
+        hardware_info.hardware.baseboard.memory.capacity.pretty
+      }}
 """
 
 RETURN = r"""

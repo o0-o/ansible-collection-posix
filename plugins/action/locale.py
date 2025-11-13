@@ -44,7 +44,8 @@ class ActionModule(PosixActionBase, ActionBase):
             variables
         :returns Dict[str, Any]: Result with locale categories under
             'locale' key
-        :raises AnsibleActionFail: When locale detection fails completely
+        :raises AnsibleActionFail: When locale detection fails
+            completely
         """
 
         task_vars = task_vars or {}
@@ -95,7 +96,8 @@ class ActionModule(PosixActionBase, ActionBase):
 
         :param Optional[Dict[str, Any]] task_vars: Available Ansible
             variables
-        :returns Dict[str, str]: Environment variables from locale command
+        :returns Dict[str, str]: Environment variables from locale
+            command
         """
 
         lc = self._cmd(["locale"], task_vars=task_vars, check_mode=False)
@@ -125,8 +127,8 @@ class ActionModule(PosixActionBase, ActionBase):
 
         :param Optional[Dict[str, Any]] task_vars: Available Ansible
             variables
-        :returns Dict[str, Any]: Locale categories mapped from environment
-            vars
+        :returns Dict[str, Any]: Locale categories mapped from
+            environment vars
         :raises RuntimeError: When no locale information can be obtained
         """
 

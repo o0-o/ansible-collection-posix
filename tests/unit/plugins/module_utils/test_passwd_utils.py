@@ -47,7 +47,7 @@ def test_passwd_info_key_id(
 
     if isinstance(config, dict):
         monkeypatch.setattr(
-            "ansible_collections.o0_o.posix.plugins.module_utils.passwd_utils.jc_parse",
+            "ansible_collections.o0_o.posix.plugins.module_utils.passwd_utils.jc_parse",  # noqa: E501
             lambda parser, data: SAMPLE_PASSWD,
         )
 
@@ -64,7 +64,7 @@ def test_passwd_info_key_name(monkeypatch: pytest.MonkeyPatch) -> None:
     """Name keyed result maps to uid with metadata."""
 
     monkeypatch.setattr(
-        "ansible_collections.o0_o.posix.plugins.module_utils.passwd_utils.jc_parse",
+        "ansible_collections.o0_o.posix.plugins.module_utils.passwd_utils.jc_parse",  # noqa: E501
         lambda parser, data: SAMPLE_PASSWD,
     )
 
@@ -87,7 +87,7 @@ def test_passwd_info_handles_empty(monkeypatch: pytest.MonkeyPatch) -> None:
     """Empty input returns empty mapping."""
 
     monkeypatch.setattr(
-        "ansible_collections.o0_o.posix.plugins.module_utils.passwd_utils.jc_parse",
+        "ansible_collections.o0_o.posix.plugins.module_utils.passwd_utils.jc_parse",  # noqa: E501
         lambda parser, data: [],
     )
 

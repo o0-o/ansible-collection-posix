@@ -901,7 +901,8 @@ def _process_memory_modules(
                 module["bits"] = bits
 
             # ECC detection based on total width
-            # If total width is multiple of 8 but not multiple of 32, assume ECC
+            # If total width is multiple of 8 but not multiple of 32,
+            # assume ECC
             if "total" in bits:
                 total = bits["total"]
                 if total % 8 == 0 and total % 32 != 0:
@@ -1257,7 +1258,8 @@ def _process_processors(
                     try:
                         cache_handle_int = int(cache_handle, 16)
                         if cache_handle_int < proc_handle_int:
-                            # Check if this cache is close enough (within ~5 handles)
+                            # Check if this cache is close enough
+                            # (within ~5 handles)
                             if proc_handle_int - cache_handle_int <= 5:
                                 cache_data = cache_by_handle[cache_handle]
                                 if cache_data.get("internal"):
@@ -1342,7 +1344,8 @@ def _process_processors(
                 processor["family"] = family
 
             # Model (cleaned version string)
-            # Remove trademark symbols, @ speed suffix, make, family, CPU/Processor
+            # Remove trademark symbols, @ speed suffix, make, family,
+            # CPU/Processor
             cleaned_model = version
             # Remove (R), (TM), etc.
             cleaned_model = re.sub(r"\([RTM]+\)", "", cleaned_model)

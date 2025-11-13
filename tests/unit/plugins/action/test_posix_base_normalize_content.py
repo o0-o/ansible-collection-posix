@@ -23,10 +23,10 @@ import pytest
     ],
 )
 def test_normalize_content_string(
-    base, input_str, expected_lines, expected_content
+    write_base, input_str, expected_lines, expected_content
 ) -> None:
     """Test _normalize_content with string input."""
-    lines, normalized = base._normalize_content(input_str)
+    lines, normalized = write_base._normalize_content(input_str)
     assert lines == expected_lines
     assert normalized == expected_content
 
@@ -40,10 +40,10 @@ def test_normalize_content_string(
     ],
 )
 def test_normalize_content_list(
-    base, input_list, expected_lines, expected_content
+    write_base, input_list, expected_lines, expected_content
 ) -> None:
     """Test _normalize_content with list input."""
-    lines, normalized = base._normalize_content(input_list)
+    lines, normalized = write_base._normalize_content(input_list)
     assert lines == expected_lines
     assert normalized == expected_content
 
@@ -60,8 +60,8 @@ def test_normalize_content_list(
     ],
 )
 def test_normalize_content_rejects_invalid_input(
-    base, invalid_content
+    write_base, invalid_content
 ) -> None:
     """Test _normalize_content rejects invalid input types."""
     with pytest.raises(RuntimeError, match="_write_file.*"):
-        base._normalize_content(invalid_content)
+        write_base._normalize_content(invalid_content)

@@ -29,7 +29,7 @@ from ansible_collections.o0_o.posix.tests.utils import (
     ],
 )
 def test_cat_file_content(
-    base, content, expect_error, expected_output
+    read_base, content, expect_error, expected_output
 ) -> None:
     """Test _cat method file reading with various content scenarios."""
     path = generate_temp_path()
@@ -39,8 +39,8 @@ def test_cat_file_content(
             with open(path, "w", encoding="utf-8") as f:
                 f.write(content)
 
-        base.force_raw = True
-        result = base._cat(path)
+        read_base.force_raw = True
+        result = read_base._cat(path)
 
         if expect_error:
             assert result["failed"] is True

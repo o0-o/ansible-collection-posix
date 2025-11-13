@@ -35,6 +35,7 @@ def plugin(base) -> Generator[ActionModule, None, None]:
     )
     plugin._cmd = base._cmd
     plugin._display = base._display
+    plugin.inventory_hostname = "localhost"
     return plugin
 
 

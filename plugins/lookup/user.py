@@ -76,21 +76,33 @@ EXAMPLES = r"""
 
 - name: Get user info from multiple hosts
   ansible.builtin.debug:
-    msg: "Host {{ item }}: {{ lookup('o0_o.posix.user', 'deploy', host=item) }}"
+    msg: >-
+      Host {{ item }}: {{ lookup('o0_o.posix.user', 'deploy', host=item) }}
   loop: "{{ groups['webservers'] }}"
   when: lookup('o0_o.posix.user', 'deploy', host=item) is not none
 
 - name: Look up user with default value if not found
   ansible.builtin.set_fact:
-    user_home: "{{ lookup('o0_o.posix.user', 'appuser', default={})['home'] | default('/opt/app') }}"
+    user_home: >-
+      {{
+        lookup('o0_o.posix.user', 'appuser', default={})['home']
+        | default('/opt/app')
+      }}
 
 - name: Get user shell with fallback
   ansible.builtin.debug:
-    msg: "Shell: {{ lookup('o0_o.posix.user', ansible_user_id, default={'shell': '/bin/sh'})['shell'] }}"
+    msg: >-
+      Shell: {{
+        lookup('o0_o.posix.user', ansible_user_id,
+               default={'shell': '/bin/sh'})['shell']
+      }}
 
 - name: Look up from another host with default
   ansible.builtin.set_fact:
-    remote_user: "{{ lookup('o0_o.posix.user', 1000, host='remote_host', default=None) }}"
+    remote_user: >-
+      {{
+        lookup('o0_o.posix.user', 1000, host='remote_host', default=None)
+      }}
 """
 
 RETURN = r"""

@@ -42,7 +42,7 @@ from ansible_collections.o0_o.posix.tests.utils import (
     ],
 )
 def test_mkdir_behavior(
-    base, exists, is_dir, setup, expect_error, error_msg, changed
+    write_base, exists, is_dir, setup, expect_error, error_msg, changed
 ) -> None:
     """Test _mkdir behavior in various scenarios."""
     path = generate_temp_path()
@@ -63,7 +63,7 @@ def test_mkdir_behavior(
 
             try:
                 with pytest.raises(RuntimeError) as excinfo:
-                    base._mkdir(os.path.join(restricted, "fail"))
+                    write_base._mkdir(os.path.join(restricted, "fail"))
                 if error_msg:
                     assert error_msg in str(excinfo.value)
             finally:
@@ -82,11 +82,11 @@ def test_mkdir_behavior(
         if expect_error:
             # Accept either RuntimeError or NotADirectoryError
             with pytest.raises((RuntimeError, NotADirectoryError)) as excinfo:
-                base._mkdir(path)
+                write_base._mkdir(path)
             if error_msg:
                 assert error_msg in str(excinfo.value)
         else:
-            result = base._mkdir(path)
+            result = write_base._mkdir(path)
             assert result["rc"] == 0
             assert result["changed"] is changed
 
@@ -94,13 +94,13 @@ def test_mkdir_behavior(
         cleanup_path(path)
 
 
-def test_mkdir_invalid_mode(base) -> None:
+def test_mkdir_invalid_mode(write_base) -> None:
     """Test _mkdir with invalid mode argument."""
     path = generate_temp_path()
 
     try:
         with pytest.raises(RuntimeError) as excinfo:
-            base._mkdir(path, mode="invalid")
+            write_base._mkdir(path, mode="invalid")
         assert "Failed to create directory" in str(excinfo.value)
     finally:
         cleanup_path(path)

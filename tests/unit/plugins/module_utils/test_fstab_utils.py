@@ -161,7 +161,10 @@ def test_parse_fstab_fallback_openbsd_swap() -> None:
 
 
 def test_generate_fstab_entry_omits_none_dump_pass() -> None:
-    """Test generating OpenBSD-style 4-field entries when dump/pass are None."""
+    """Test generating OpenBSD-style 4-field entries.
+
+    When dump/pass are None, they are omitted.
+    """
 
     entry = {
         "source": "e0cb35ae99f8f89d.b",

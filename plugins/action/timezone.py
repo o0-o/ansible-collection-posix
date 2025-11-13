@@ -348,7 +348,8 @@ class ActionModule(PosixActionBase, ActionBase):
 
     def _parse_posix_string(self, value: str) -> Dict[str, Any]:
         pattern = re.compile(
-            r"^(?P<std>[A-Za-z]{3,})(?P<std_offset>[-+]?\d+(?::\d{2}(?::\d{2})?)?)"
+            r"^(?P<std>[A-Za-z]{3,})"
+            r"(?P<std_offset>[-+]?\d+(?::\d{2}(?::\d{2})?)?)"
             r"(?:"
             r"(?P<dst>[A-Za-z]{3,})"
             r"(?P<dst_offset>[-+]?\d+(?::\d{2}(?::\d{2})?)?)?"

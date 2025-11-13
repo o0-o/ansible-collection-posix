@@ -34,6 +34,7 @@ def plugin(base) -> Generator[ActionModule, None, None]:
         shared_loader_obj=base._shared_loader_obj,
     )
     plugin._display = base._display
+    plugin.inventory_hostname = "localhost"
     return plugin
 
 
@@ -68,6 +69,8 @@ def test_read_regular_file(monkeypatch, plugin) -> None:
     ):
         if name == "o0_o.posix.stat":
             return stat_result
+        if name == "o0_o.posix.slurp64":
+            return {"content": slurp_content}
         raise AssertionError(f"Unexpected action {name}")
 
     def mock_execute_module(
@@ -83,7 +86,8 @@ def test_read_regular_file(monkeypatch, plugin) -> None:
             return {
                 "rc": 0,
                 "stdout": (
-                    "Filesystem 512-blocks Used Available Capacity Mounted on\n"
+                    "Filesystem 512-blocks Used Available Capacity "
+                    "Mounted on\n"
                     "/dev/disk1s1 100 10 90 10% /\n"
                 ),
             }
@@ -362,8 +366,6 @@ def test_find_symlinks_for_hardlinks(monkeypatch, plugin) -> None:
 def test_parents_includes_parent_directories(monkeypatch, plugin) -> None:
     """Parents mode includes parent directories in the result map."""
 
-    path_chain = ["/foo", "/foo/bar", "/foo/bar/baz"]
-
     stat_map = {
         "/": {"exists": True, "isdir": True, "nlink": 2},
         "/foo": {"exists": True, "isdir": True, "nlink": 2},
@@ -610,7 +612,8 @@ def test_read_parents_hard_links(monkeypatch, plugin) -> None:
             return {
                 "rc": 0,
                 "stdout": (
-                    "Filesystem 512-blocks Used Available Capacity Mounted on\n"
+                    "Filesystem 512-blocks Used Available Capacity "
+                    "Mounted on\n"
                     "/dev/disk1s1 100 10 90 10% /\n"
                 ),
             }

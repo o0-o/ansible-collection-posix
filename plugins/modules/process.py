@@ -20,7 +20,9 @@ short_description: Gather process information from POSIX systems
 version_added: "1.4.0"
 description:
   - Gathers process information using ps command with jc parsing.
-  - Provides structured process data including PID, executable, arguments, and resource usage.
+  - >-
+    Provides structured process data including PID, executable,
+    arguments, and resource usage.
   - Supports filtering by PID or executable path.
 options:
   pid:

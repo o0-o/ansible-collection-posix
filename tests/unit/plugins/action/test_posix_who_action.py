@@ -37,6 +37,7 @@ def plugin(base) -> Generator[ActionModule, None, None]:
         shared_loader_obj=base._shared_loader_obj,
     )
     plugin._display = base._display
+    plugin.inventory_hostname = "localhost"
     yield plugin
 
 

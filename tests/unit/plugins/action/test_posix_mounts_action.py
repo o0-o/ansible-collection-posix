@@ -36,6 +36,7 @@ def plugin(base) -> Generator[ActionModule, None, None]:
 
     # Make display available for the test without initialization
     plugin._display = base._display
+    plugin.inventory_hostname = "localhost"
 
     yield plugin
 

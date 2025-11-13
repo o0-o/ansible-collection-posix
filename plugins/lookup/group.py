@@ -76,21 +76,35 @@ EXAMPLES = r"""
 
 - name: Compare group membership across hosts
   ansible.builtin.debug:
-    msg: "{{ item }} docker members: {{ lookup('o0_o.posix.group', 'docker', host=item)['members'] }}"
+    msg: >-
+      {{ item }} docker members:
+      {{ lookup('o0_o.posix.group', 'docker', host=item)['members'] }}
   loop: "{{ groups['docker_hosts'] }}"
   when: lookup('o0_o.posix.group', 'docker', host=item) is not none
 
 - name: Look up group with default value if not found
   ansible.builtin.set_fact:
-    group_members: "{{ lookup('o0_o.posix.group', 'developers', default={})['members'] | default([]) }}"
+    group_members: >-
+      {{
+        lookup('o0_o.posix.group', 'developers', default={})['members']
+        | default([])
+      }}
 
 - name: Get group with fallback to empty dict
   ansible.builtin.debug:
-    msg: "{{ lookup('o0_o.posix.group', 9999, default={'name': 'unknown', 'members': []}) }}"
+    msg: >-
+      {{
+        lookup('o0_o.posix.group', 9999,
+               default={'name': 'unknown', 'members': []})
+      }}
 
 - name: Check if group exists across hosts with default
   ansible.builtin.set_fact:
-    has_docker: "{{ lookup('o0_o.posix.group', 'docker', host=item, default=None) is not none }}"
+    has_docker: >-
+      {{
+        lookup('o0_o.posix.group', 'docker', host=item, default=None)
+        is not none
+      }}
   loop: "{{ groups['all'] }}"
 """
 
@@ -142,7 +156,8 @@ class LookupModule(LookupBase, VarsLookupBase):
 
         if not isinstance(groups, dict):
             raise AnsibleLookupError(
-                f"'groups' fact is not a dictionary, got {type(groups).__name__}"
+                f"'groups' fact is not a dictionary, "
+                f"got {type(groups).__name__}"
             )
 
         ret = []

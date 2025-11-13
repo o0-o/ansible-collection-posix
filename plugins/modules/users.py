@@ -60,9 +60,9 @@ seealso:
     description: Parse id command output
   - ref: o0_o.posix.group filter <ansible_collections.o0_o.posix.group_filter>
     description: Parse /etc/group content
-  - ref: o0_o.posix.passwd filter <ansible_collections.o0_o.posix.passwd_filter>
+  - ref: o0_o.posix.passwd filter <ansible_collections.o0_o.posix.passwd_filter>  # noqa: E501
     description: Parse /etc/passwd content
-  - ref: o0_o.posix.authorized_keys filter <ansible_collections.o0_o.posix.authorized_keys_filter>
+  - ref: o0_o.posix.authorized_keys filter <ansible_collections.o0_o.posix.authorized_keys_filter>  # noqa: E501
     description: Parse SSH authorized_keys content
 """
 
@@ -83,14 +83,17 @@ EXAMPLES = r"""
 
 - name: Check authorized keys for all users
   ansible.builtin.debug:
-    msg: "User {{ item.value.name }} has {{ item.value.keys.authorized | length }} authorized keys"
+    msg: >-
+      User {{ item.value.name }} has
+      {{ item.value.keys.authorized | length }} authorized keys
   loop: "{{ system_users['users'] | dict2items }}"
   when: item.value.keys is defined and item.value.keys.authorized is defined
 
 - name: Find keys that exist in authorized_keys2
   ansible.builtin.debug:
     msg: "Key {{ item.key[:20] }}... is in authorized_keys2"
-  loop: "{{ system_users['users']['1000']['keys']['authorized'] | dict2items }}"
+  loop: >-
+    {{ system_users['users']['1000']['keys']['authorized'] | dict2items }}
   when:
     - system_users['users']['1000']['keys'] is defined
     - item.value.authorized_keys2 is defined

@@ -120,7 +120,10 @@ class TestDeviceFromHexMajorMinor:
         ],
     )
     def test_valid_hex_strings(self, hex_str: str, expected: int) -> None:
-        """Test conversion of valid hex major,minor strings using Linux formula."""
+        """Test conversion of valid hex major,minor strings.
+
+        Uses Linux formula for device number calculation.
+        """
         result = device_from_hex_major_minor(hex_str)
         assert result == expected
 

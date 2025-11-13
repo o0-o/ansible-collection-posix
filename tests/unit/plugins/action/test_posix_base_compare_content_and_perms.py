@@ -106,7 +106,7 @@ import pytest
     ],
 )
 def test_compare_content_and_perms(
-    base,
+    write_base,
     old_stat,
     old_content,
     old_perms,
@@ -118,16 +118,18 @@ def test_compare_content_and_perms(
     """Test _compare_content_and_perms logic."""
     dest = "/tmp/testfile"
 
-    base._pseudo_stat = lambda path, task_vars=None: old_stat
-    base._slurp = lambda src, task_vars=None: {
+    write_base._pseudo_stat = lambda path, task_vars=None: old_stat
+    write_base._slurp = lambda src, task_vars=None: {
         "content": old_content,
         "content_lines": old_content.splitlines() if old_content else [],
     }
-    base._get_perms = lambda path, selinux=False, task_vars=None: old_perms
+    write_base._get_perms = (
+        lambda path, selinux=False, task_vars=None: old_perms
+    )
 
     if expect_change == "error":
         with pytest.raises(RuntimeError):
-            base._compare_content_and_perms(
+            write_base._compare_content_and_perms(
                 lines=content.splitlines(),
                 dest=dest,
                 perms=perms,
@@ -135,12 +137,14 @@ def test_compare_content_and_perms(
                 task_vars={},
             )
     else:
-        ret_changed, ret_content, ret_lines = base._compare_content_and_perms(
-            lines=content.splitlines(),
-            dest=dest,
-            perms=perms,
-            selinux=selinux,
-            task_vars={},
+        ret_changed, ret_content, ret_lines = (
+            write_base._compare_content_and_perms(
+                lines=content.splitlines(),
+                dest=dest,
+                perms=perms,
+                selinux=selinux,
+                task_vars={},
+            )
         )
         assert ret_changed is expect_change
         assert ret_content == old_content

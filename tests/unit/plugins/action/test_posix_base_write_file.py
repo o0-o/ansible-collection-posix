@@ -27,22 +27,24 @@ from ansible_collections.o0_o.posix.tests.utils import (
 )
 
 
-def test_write_file_rejects_invalid_content(base) -> None:
+def test_write_file_rejects_invalid_content(write_base) -> None:
     """Test _write_file rejects invalid content types."""
     tmp_path = generate_temp_path()
     try:
         for invalid in [None, 123, [object()], ["foo", object()]]:
             with pytest.raises(RuntimeError):
-                base._write_file(content=invalid, dest=tmp_path, task_vars={})
+                write_base._write_file(
+                    content=invalid, dest=tmp_path, task_vars={}
+                )
     finally:
         cleanup_path(tmp_path)
 
 
-def test_write_file_basic_write(base) -> None:
+def test_write_file_basic_write(write_base) -> None:
     """Test basic _write_file functionality."""
     tmp_path = generate_temp_path()
     try:
-        result = base._write_file(
+        result = write_base._write_file(
             content="hello\nworld\n", dest=tmp_path, task_vars={}
         )
         assert result["changed"] is True
@@ -53,14 +55,14 @@ def test_write_file_basic_write(base) -> None:
         cleanup_path(tmp_path)
 
 
-def test_write_file_backup_and_validate(base) -> None:
+def test_write_file_backup_and_validate(write_base) -> None:
     """Test _write_file backup and validation features."""
     tmp_path = generate_temp_path()
     with open(tmp_path, "w") as f:
         f.write("existing")
 
-    base._validate_file = lambda tmp, cmd, task_vars: None
-    base._create_backup = lambda dest, task_vars: dest + ".bak"
+    write_base._validate_file = lambda tmp, cmd, task_vars: None
+    write_base._create_backup = lambda dest, task_vars: dest + ".bak"
 
     # Mock _slurp to use real_cmd and cat to read the file
     def mock_slurp(src, task_vars=None):
@@ -73,9 +75,9 @@ def test_write_file_backup_and_validate(base) -> None:
             "content_lines": content.splitlines(),
         }
 
-    base._slurp = mock_slurp
+    write_base._slurp = mock_slurp
 
-    result = base._write_file(
+    result = write_base._write_file(
         content="new",
         dest=tmp_path,
         task_vars={},
@@ -90,7 +92,7 @@ def test_write_file_backup_and_validate(base) -> None:
     cleanup_path(tmp_path + ".bak")
 
 
-def test_write_file_check_mode_and_diff(base) -> None:
+def test_write_file_check_mode_and_diff(write_base) -> None:
     """Test _write_file check mode and diff functionality."""
     tmp_path = generate_temp_path()
     original = "old content\n"
@@ -99,12 +101,12 @@ def test_write_file_check_mode_and_diff(base) -> None:
         with open(tmp_path, "w") as f:
             f.write(original)
 
-        base._slurp = lambda src, task_vars=None: {
+        write_base._slurp = lambda src, task_vars=None: {
             "content": original,
             "content_lines": original.splitlines(),
         }
 
-        result = base._write_file(
+        result = write_base._write_file(
             content=updated,
             dest=tmp_path,
             task_vars={"diff": True},
@@ -121,7 +123,7 @@ def test_write_file_check_mode_and_diff(base) -> None:
         cleanup_path(tmp_path)
 
 
-def test_write_file_applies_permissions(base) -> None:
+def test_write_file_applies_permissions(write_base) -> None:
     """Test _write_file applies permissions correctly."""
     tmp_path = generate_temp_path()
     uid = os.getuid()
@@ -132,7 +134,7 @@ def test_write_file_applies_permissions(base) -> None:
         "mode": "0640",
     }
     try:
-        result = base._write_file(
+        result = write_base._write_file(
             content="secure", dest=tmp_path, perms=perms, task_vars={}
         )
         assert result["changed"] is True
@@ -142,16 +144,16 @@ def test_write_file_applies_permissions(base) -> None:
         cleanup_path(tmp_path)
 
 
-def test_write_file_selinux_tools_missing(base) -> None:
+def test_write_file_selinux_tools_missing(write_base) -> None:
     """Test _write_file error when SELinux tools missing."""
-    base._which = lambda name, task_vars=None: (
+    write_base._which = lambda name, task_vars=None: (
         None if name == "chcon" else "/usr/sbin/semanage"
     )
-    base._display = MagicMock()
+    write_base._display = MagicMock()
     tmp_path = generate_temp_path()
     try:
         with pytest.raises(RuntimeError, match="requires 'chcon'"):
-            base._write_file(
+            write_base._write_file(
                 content="foo",
                 dest=tmp_path,
                 perms={"setype": "foo_t"},

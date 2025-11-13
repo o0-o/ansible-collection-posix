@@ -7,4 +7,5 @@ max-doc-length = 72
 ignore = ["E203"]
 per-file-ignores = [
     "plugins/modules/*.py:E402",
+    "plugins/lookup/*.py:E402",
 ]
