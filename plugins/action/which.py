@@ -10,7 +10,7 @@
 # This file is part of the o0_o.posix Ansible Collection.
 from __future__ import annotations
 
-from typing import Any, Dict, Optional
+from typing import Any, Optional
 
 from ansible.plugins.action import ActionBase
 
@@ -33,8 +33,8 @@ class ActionModule(PosixActionBase, ActionBase):
     def run(
         self,
         tmp: Optional[str] = None,
-        task_vars: Optional[Dict[str, Any]] = None,
-    ) -> Dict[str, Any]:
+        task_vars: Optional[dict[str, Any]] = None,
+    ) -> dict[str, Any]:
         task_vars = task_vars or {}
         tmp = None
 

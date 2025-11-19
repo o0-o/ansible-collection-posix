@@ -13,7 +13,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict, List
+from typing import Any
 from unittest.mock import patch
 
 import pytest
@@ -115,7 +115,7 @@ def test_generate_hosts_entry_requires_hostname() -> None:
 def test_hosts_parses_string_input() -> None:
     """Test hosts() function delegates to jc_parse for string input."""
 
-    jc_return: List[Dict[str, Any]] = [
+    jc_return: list[dict[str, Any]] = [
         {
             "ip": "127.0.0.1",
             "hostname": ["localhost"],
@@ -169,7 +169,7 @@ def test_hosts_generates_from_list() -> None:
 def test_hosts_handles_dict_with_content_key() -> None:
     """Test hosts() handles dict with content key (slurp result)."""
 
-    jc_return: List[Dict[str, Any]] = [
+    jc_return: list[dict[str, Any]] = [
         {
             "ip": "127.0.0.1",
             "hostname": ["localhost"],
@@ -190,7 +190,7 @@ def test_hosts_handles_dict_with_content_key() -> None:
 def test_hosts_handles_dict_with_stdout_key() -> None:
     """Test hosts() handles dict with stdout key (command result)."""
 
-    jc_return: List[Dict[str, Any]] = [
+    jc_return: list[dict[str, Any]] = [
         {
             "ip": "127.0.0.1",
             "hostname": ["localhost"],
@@ -211,7 +211,7 @@ def test_hosts_handles_dict_with_stdout_key() -> None:
 def test_hosts_handles_list_of_lines() -> None:
     """Test hosts() handles list of lines input."""
 
-    jc_return: List[Dict[str, Any]] = [
+    jc_return: list[dict[str, Any]] = [
         {
             "ip": "127.0.0.1",
             "hostname": ["localhost"],
@@ -233,7 +233,7 @@ def test_hosts_handles_list_of_lines() -> None:
 def test_hosts_skips_invalid_entries() -> None:
     """Test that invalid entries are skipped during parsing."""
 
-    jc_return: List[Dict[str, Any]] = [
+    jc_return: list[dict[str, Any]] = [
         {
             "ip": "127.0.0.1",
             "hostname": ["localhost"],

@@ -11,7 +11,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict, Optional
+from typing import Any, Optional
 
 from ansible.module_utils.common.text.converters import to_bytes, to_text
 from ansible.plugins.action import ActionBase
@@ -198,7 +198,7 @@ class ActionModule(PosixActionBase, ActionBase):
 
         return "; ".join(cmds)
 
-    def _def_args(self) -> Dict[str, Any]:
+    def _def_args(self) -> dict[str, Any]:
         """
         Parse and validate module arguments.
 
@@ -232,14 +232,14 @@ class ActionModule(PosixActionBase, ActionBase):
     def run(
         self,
         tmp: Optional[str] = None,
-        task_vars: Optional[Dict[str, Any]] = None,
-    ) -> Dict[str, Any]:
+        task_vars: Optional[dict[str, Any]] = None,
+    ) -> dict[str, Any]:
         """
         Execute multiple commands in batch.
 
         :param Optional[str] tmp: Temporary directory path
-        :param Optional[Dict[str, Any]] task_vars: Task variables
-        :returns Dict[str, Any]: Ansible result dictionary
+        :param Optional[dict[str, Any]] task_vars: Task variables
+        :returns dict[str, Any]: Ansible result dictionary
         """
         task_vars = task_vars or {}
         self._def_inventory_hostname(task_vars)

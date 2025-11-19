@@ -13,7 +13,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict
+from typing import Any
 
 from ansible.errors import AnsibleFilterError
 from ansible.module_utils.common.text.converters import to_native
@@ -56,10 +56,10 @@ author:
 class FilterModule:
     """Expose the id normalization helper as a filter."""
 
-    def filters(self) -> Dict[str, Any]:
+    def filters(self) -> dict[str, Any]:
         return {"id": self.id_filter}
 
-    def id_filter(self, config: Any, key: str = "id") -> Dict[str, Any]:
+    def id_filter(self, config: Any, key: str = "id") -> dict[str, Any]:
         try:
             return id_info(config, key=key)
         except (ValueError, ImportError) as exc:

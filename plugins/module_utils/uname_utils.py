@@ -13,7 +13,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Union
+from typing import Any, Union
 
 from ansible_collections.o0_o.posix.plugins.module_utils.jc_utils import (
     jc_parse,
@@ -29,7 +29,7 @@ except ImportError:
     HAS_PARSE_HOSTNAME = False
 
 
-def parse_uname_entry(entry: Dict[str, Any]) -> Dict[str, Any]:
+def parse_uname_entry(entry: dict[str, Any]) -> dict[str, Any]:
     """Parse a single uname entry from jc output to normalized format.
 
     Converts jc's uname field names to standardized format:
@@ -94,7 +94,7 @@ def parse_uname_entry(entry: Dict[str, Any]) -> Dict[str, Any]:
     return norm_entry
 
 
-def uname(config: Union[str, List[str], Dict[str, Any]]) -> Dict[str, Any]:
+def uname(config: Union[str, list[str], dict[str, Any]]) -> dict[str, Any]:
     """Process uname data - parse command output into structured format.
 
     Returns data structure with:
@@ -130,7 +130,7 @@ def uname(config: Union[str, List[str], Dict[str, Any]]) -> Dict[str, Any]:
             raise
 
         tokens = text.split()
-        entry: Dict[str, Any] = {}
+        entry: dict[str, Any] = {}
 
         # OpenBSD format:
         # OpenBSD <node> <release> <build> <arch>

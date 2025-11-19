@@ -11,7 +11,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict, Union, List
+from typing import Any, Union
 
 from ansible.errors import AnsibleFilterError
 from ansible.module_utils.common.text.converters import to_native
@@ -110,7 +110,7 @@ _output:
 class FilterModule:
     """Generic filter for parsing command output using jc."""
 
-    def filters(self) -> Dict[str, Any]:
+    def filters(self) -> dict[str, Any]:
         """Return the filter functions."""
         return {
             "jc": self.jc_filter,
@@ -118,11 +118,11 @@ class FilterModule:
 
     def jc_filter(
         self,
-        data: Union[str, List[str], Dict[str, Any]],
+        data: Union[str, list[str], dict[str, Any]],
         parser: str,
         raw: bool = False,
         quiet: bool = True,
-    ) -> Union[List[Dict[str, Any]], Dict[str, Any]]:
+    ) -> Union[list[dict[str, Any]], dict[str, Any]]:
         """Parse command output using jc library.
 
         :param data: Output from command - string, list of lines,

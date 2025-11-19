@@ -13,7 +13,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Union
+from typing import Any, Union
 
 from ansible_collections.o0_o.posix.plugins.module_utils.jc_utils import (
     jc_parse,
@@ -23,14 +23,14 @@ VALID_KEYS = {"id", "name"}
 
 
 def group_info(
-    config: Union[str, Dict[str, Any], List[Dict[str, Any]]], key: str = "id"
-) -> Dict[str, Dict[str, Any]]:
+    config: Union[str, dict[str, Any], list[dict[str, Any]]], key: str = "id"
+) -> dict[str, dict[str, Any]]:
     """Normalize /etc/group data into lookup dictionaries."""
 
     if key not in VALID_KEYS:
         raise ValueError(f"Unsupported key '{key}', expected 'id' or 'name'")
 
-    entries: List[Dict[str, Any]]
+    entries: list[dict[str, Any]]
 
     if isinstance(config, dict):
         if "stdout" in config or "content" in config:
@@ -56,7 +56,7 @@ def group_info(
 
     entries = parsed
 
-    result: Dict[str, Dict[str, Any]] = {}
+    result: dict[str, dict[str, Any]] = {}
     for entry in entries:
         name = entry.get("name")
         if not name:
@@ -91,7 +91,7 @@ def _to_int(value: Any) -> int | None:
         return None
 
 
-def normalize_group_members(value: Any) -> List[str]:
+def normalize_group_members(value: Any) -> list[str]:
     if value in (None, ""):
         return []
 

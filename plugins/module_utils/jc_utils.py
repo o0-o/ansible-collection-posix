@@ -13,7 +13,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Union
+from typing import Any, Union
 
 from ansible_collections.o0_o.posix.plugins.module_utils.filter_utils import (
     process_registered_result,
@@ -29,10 +29,10 @@ except ImportError:
 
 def jc_parse(
     parser: str,
-    data: Union[str, Dict[str, Any]],
+    data: Union[str, dict[str, Any]],
     quiet: bool = True,
     raw: bool = False,
-) -> Union[List[Dict[str, Any]], Dict[str, Any]]:
+) -> Union[list[dict[str, Any]], dict[str, Any]]:
     """Parse command output using jc library.
 
     Handles both string and dict inputs (e.g., from command module).
@@ -65,7 +65,7 @@ def jc_parse(
     # Define the parsing function
     def parse_content(
         content: str,
-    ) -> Union[List[Dict[str, Any]], Dict[str, Any]]:
+    ) -> Union[list[dict[str, Any]], dict[str, Any]]:
         try:
             # Parse using jc library
             return jc.parse(parser, content, raw=raw, quiet=quiet)

@@ -14,12 +14,12 @@
 from __future__ import annotations
 
 import re
-from typing import Any, Callable, Dict, Optional, Union
+from typing import Any, Callable, Optional, Union
 import base64
 
 
 def process_registered_result(
-    config: Dict[str, Any], parser: Callable[[Union[str, list]], Any]
+    config: dict[str, Any], parser: Callable[[Union[str, list]], Any]
 ) -> Any:
     """Process registered result dict with automatic base64 detection.
 
@@ -57,7 +57,7 @@ def process_registered_result(
         )
 
 
-def normalize_source(source: str) -> Optional[Dict[str, Any]]:
+def normalize_source(source: str) -> Optional[dict[str, Any]]:
     """Normalize a mount/df source into a structured dictionary.
 
     Parses various source formats into a consistent structure:
@@ -85,7 +85,7 @@ def normalize_source(source: str) -> Optional[Dict[str, Any]]:
     if source in ("none", "-"):
         return None
 
-    result: Dict[str, Any] = {}
+    result: dict[str, Any] = {}
 
     # Check for UUID formats
     uuid_match = re.match(r"^(PART)?(UUID)=(.+)$", source, re.IGNORECASE)

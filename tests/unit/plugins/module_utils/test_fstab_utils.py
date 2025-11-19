@@ -13,7 +13,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict, List
+from typing import Any
 from unittest.mock import patch
 
 import pytest
@@ -51,7 +51,7 @@ def test_parse_fstab_entry_normalizes_options() -> None:
     "entry",
     [({},), ({"fs_spec": "dev"},)],
 )
-def test_parse_fstab_entry_requires_fields(entry: Dict[str, Any]) -> None:
+def test_parse_fstab_entry_requires_fields(entry: dict[str, Any]) -> None:
     """Missing required fields raise ValueError."""
 
     with pytest.raises(ValueError):
@@ -89,7 +89,7 @@ def test_generate_fstab_entry_special_filesystem_pass_zero() -> None:
 def test_parse_fstab_uses_jc_parse() -> None:
     """parse_fstab delegates to jc_parse and filters invalid entries."""
 
-    jc_return: List[Dict[str, Any]] = [
+    jc_return: list[dict[str, Any]] = [
         {
             "fs_spec": "/dev/sda1",
             "fs_file": "/",

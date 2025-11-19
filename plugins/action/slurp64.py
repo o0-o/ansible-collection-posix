@@ -12,7 +12,7 @@
 from __future__ import annotations
 
 from base64 import b64decode
-from typing import Any, Dict, Optional
+from typing import Any, Optional
 
 from ansible.errors import AnsibleActionFail
 from ansible.plugins.action import ActionBase
@@ -49,8 +49,8 @@ class ActionModule(ReadPosixActionBase, ActionBase):
     def run(
         self,
         tmp: Optional[str] = None,
-        task_vars: Optional[Dict[str, Any]] = None,
-    ) -> Dict[str, Any]:
+        task_vars: Optional[dict[str, Any]] = None,
+    ) -> dict[str, Any]:
         """
         Read file contents from remote host with raw fallback.
 
@@ -60,9 +60,9 @@ class ActionModule(ReadPosixActionBase, ActionBase):
 
         :param Optional[str] tmp: Temporary directory path (unused in
             modern Ansible)
-        :param Optional[Dict[str, Any]] task_vars: Task variables
+        :param Optional[dict[str, Any]] task_vars: Task variables
             dictionary
-        :returns Dict[str, Any]: Standard Ansible result dictionary
+        :returns dict[str, Any]: Standard Ansible result dictionary
 
         :raises AnsibleActionFail: When file reading fails, base64
             decoding fails, or required parameters are missing

@@ -11,7 +11,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Optional
 
 from ansible.errors import AnsibleActionFail
 from ansible.plugins.action import ActionBase
@@ -41,8 +41,8 @@ class ActionModule(PosixActionBase, ActionBase):
     def run(
         self,
         tmp: Optional[str] = None,
-        task_vars: Optional[Dict[str, Any]] = None,
-    ) -> Dict[str, Any]:
+        task_vars: Optional[dict[str, Any]] = None,
+    ) -> dict[str, Any]:
         """
         Main entry point for the action plugin.
 
@@ -52,9 +52,9 @@ class ActionModule(PosixActionBase, ActionBase):
 
         :param Optional[str] tmp: Temporary directory path (unused
             in modern Ansible)
-        :param Optional[Dict[str, Any]] task_vars: Task variables
+        :param Optional[dict[str, Any]] task_vars: Task variables
             dictionary
-        :returns Dict[str, Any]: Dictionary with mount point
+        :returns dict[str, Any]: Dictionary with mount point
             information keyed by mount path
         """
         task_vars = task_vars or {}
@@ -117,8 +117,8 @@ class ActionModule(PosixActionBase, ActionBase):
         return result
 
     def _get_mounts_dict(
-        self, task_vars: Dict[str, Any]
-    ) -> Dict[str, Dict[str, Any]]:
+        self, task_vars: dict[str, Any]
+    ) -> dict[str, dict[str, Any]]:
         """Get mount information as a dict keyed by mountpoint.
 
         This method:
@@ -173,8 +173,8 @@ class ActionModule(PosixActionBase, ActionBase):
         return filtered_dict
 
     def _get_df_dict(
-        self, task_vars: Dict[str, Any]
-    ) -> Dict[str, Dict[str, Any]]:
+        self, task_vars: dict[str, Any]
+    ) -> dict[str, dict[str, Any]]:
         """Get df output and convert to dict keyed by mountpoint.
 
         :param task_vars: Task variables dictionary
@@ -206,8 +206,8 @@ class ActionModule(PosixActionBase, ActionBase):
             raise AnsibleActionFail(f"Failed to execute df command: {e}")
 
     def _get_mount_list(
-        self, task_vars: Dict[str, Any]
-    ) -> List[Dict[str, Any]]:
+        self, task_vars: dict[str, Any]
+    ) -> list[dict[str, Any]]:
         """Get mount output as a list.
 
         :param task_vars: Task variables dictionary
@@ -229,8 +229,8 @@ class ActionModule(PosixActionBase, ActionBase):
             raise AnsibleActionFail(f"Failed to execute mount command: {e}")
 
     def _get_fstab_list(
-        self, task_vars: Dict[str, Any]
-    ) -> List[Dict[str, Any]]:
+        self, task_vars: dict[str, Any]
+    ) -> list[dict[str, Any]]:
         """Get fstab content as a list of parsed entries.
 
         :param task_vars: Task variables dictionary
@@ -261,7 +261,7 @@ class ActionModule(PosixActionBase, ActionBase):
             )
             return []
 
-    def _should_include_mount(self, mount_info: Dict[str, Any]) -> bool:
+    def _should_include_mount(self, mount_info: dict[str, Any]) -> bool:
         """Check if mount should be included based on filter arguments.
 
         :param mount_info: Mount entry to check
@@ -371,8 +371,8 @@ class ActionModule(PosixActionBase, ActionBase):
         return True
 
     def _filter_mounts_dict(
-        self, mounts_dict: Dict[str, Dict[str, Any]]
-    ) -> Dict[str, Dict[str, Any]]:
+        self, mounts_dict: dict[str, dict[str, Any]]
+    ) -> dict[str, dict[str, Any]]:
         """Filter mounts dict based on module arguments.
 
         :param mounts_dict: Dict of all mounts keyed by mountpoint

@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import re
 from datetime import datetime, timedelta, timezone
-from typing import Any, Dict, Iterable, List, Optional, Sequence, Union
+from typing import Any, Iterable, Optional, Sequence, Union
 
 from ansible_collections.o0_o.posix.plugins.module_utils.jc_utils import (
     jc_parse,
@@ -26,7 +26,7 @@ from ansible_collections.o0_o.utils.plugins.module_utils import (
 )
 
 
-def _coerce_to_text(data: Union[str, Sequence[str], Dict[str, Any]]) -> str:
+def _coerce_to_text(data: Union[str, Sequence[str], dict[str, Any]]) -> str:
     """Convert supported inputs into a single string."""
     if isinstance(data, str):
         return data
@@ -50,7 +50,7 @@ def _extract_uptime_segment(rest: str) -> str:
     without_load = re.split(r",?\s*load averages?:", rest, maxsplit=1)[0]
     segments = [segment.strip() for segment in without_load.split(",")]
 
-    uptime_parts: List[str] = []
+    uptime_parts: list[str] = []
     for segment in segments:
         if not segment:
             continue
@@ -101,7 +101,7 @@ def _parse_elapsed(uptime_text: str) -> int:
     return total_seconds
 
 
-def _extract_load(parsed: Dict[str, Any], text: str) -> List[float]:
+def _extract_load(parsed: dict[str, Any], text: str) -> list[float]:
     """Determine load averages using jc output or fallback parsing."""
 
     keys = ("load_1m", "load_5m", "load_15m")
@@ -119,7 +119,7 @@ def _extract_load(parsed: Dict[str, Any], text: str) -> List[float]:
     return loads
 
 
-def _extract_login_sessions(parsed: Dict[str, Any], text: str) -> int:
+def _extract_login_sessions(parsed: dict[str, Any], text: str) -> int:
     """Extract number of logged-in users from parsed uptime data."""
 
     raw_value = parsed.get("users")
@@ -140,7 +140,7 @@ def _extract_login_sessions(parsed: Dict[str, Any], text: str) -> int:
     return 0
 
 
-def _parse_started_time(value: str) -> Optional[Dict[str, Any]]:
+def _parse_started_time(value: str) -> Optional[dict[str, Any]]:
     """Parse jc up_since string while dropping microseconds."""
 
     candidate = value.strip()
@@ -165,16 +165,16 @@ def _parse_started_time(value: str) -> Optional[Dict[str, Any]]:
 
 
 def parse_uptime(
-    data: Union[str, Sequence[str], Dict[str, Any]],
+    data: Union[str, Sequence[str], dict[str, Any]],
     now: Optional[datetime] = None,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Parse uptime command output into structured data.
 
     :param data: Raw uptime output (string, list, or command result
         dict)
     :param Optional[datetime] now: Reference time for computing start
         timestamp. Defaults to current UTC time.
-    :returns Dict[str, Any]: Parsed uptime details and load averages
+    :returns dict[str, Any]: Parsed uptime details and load averages
         (elapsed uptime and load averages dictionary)
     :raises ValueError: When parsing fails
     """
@@ -215,7 +215,7 @@ def parse_uptime(
     load_values = _extract_load(parsed, text)
     session_count = _extract_login_sessions(parsed, text)
 
-    started_info: Optional[Dict[str, Any]] = None
+    started_info: Optional[dict[str, Any]] = None
     up_since = parsed.get("up_since")
     if isinstance(up_since, str) and up_since.strip():
         started_info = _parse_started_time(up_since.strip())
@@ -253,7 +253,7 @@ def _format_elapsed_for_helper(seconds: int) -> str:
     return time_part
 
 
-def _parse_load_averages(text: str) -> List[float]:
+def _parse_load_averages(text: str) -> list[float]:
     """Extract load averages from uptime output."""
     load_match = re.search(r"load averages?:\s*(.*)$", text, re.IGNORECASE)
     if not load_match:

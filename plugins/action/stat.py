@@ -11,7 +11,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict, Optional
+from typing import Any, Optional
 
 from ansible.errors import AnsibleActionFail
 from ansible.plugins.action import ActionBase
@@ -43,14 +43,14 @@ class ActionModule(ReadPosixActionBase, ActionBase):
     def run(
         self,
         tmp: Optional[str] = None,
-        task_vars: Optional[Dict[str, Any]] = None,
-    ) -> Dict[str, Any]:
+        task_vars: Optional[dict[str, Any]] = None,
+    ) -> dict[str, Any]:
         """Execute stat and return file metadata.
 
         :param Optional[str] tmp: Unused temporary directory path
-        :param Optional[Dict[str, Any]] task_vars: Available Ansible
+        :param Optional[dict[str, Any]] task_vars: Available Ansible
             variables
-        :returns Dict[str, Any]: Result with file metadata under 'stat'
+        :returns dict[str, Any]: Result with file metadata under 'stat'
             key
         :raises AnsibleActionFail: When invalid arguments are provided
         """

@@ -13,12 +13,12 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Optional
 
 
 def find_mount_by_target(
-    mounts_list: List[Dict[str, Any]], target: str
-) -> Optional[Dict[str, Any]]:
+    mounts_list: list[dict[str, Any]], target: str
+) -> Optional[dict[str, Any]]:
     """Find a mount entry by target in a list of mounts.
 
     :param mounts_list: List of mount dictionaries
@@ -32,9 +32,9 @@ def find_mount_by_target(
 
 
 def assert_mount_has_fields(
-    mount: Dict[str, Any],
-    required_fields: List[str],
-    optional_fields: Optional[List[str]] = None,
+    mount: dict[str, Any],
+    required_fields: list[str],
+    optional_fields: Optional[list[str]] = None,
 ) -> None:
     """Assert that a mount has required fields and optionally check for
     optional fields.
@@ -50,8 +50,8 @@ def assert_mount_has_fields(
 
 
 def convert_dict_mounts_to_list(
-    mounts_dict: Dict[str, Dict[str, Any]],
-) -> List[Dict[str, Any]]:
+    mounts_dict: dict[str, dict[str, Any]],
+) -> list[dict[str, Any]]:
     """Convert old dict-style mounts to new list-style mounts.
 
     Helper for updating test expectations from the old format where

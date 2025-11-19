@@ -13,7 +13,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict, List
+from typing import Any
 from unittest.mock import patch
 
 import pytest
@@ -22,7 +22,7 @@ from ansible_collections.o0_o.posix.plugins.module_utils import df_utils
 
 
 @pytest.fixture
-def sample_entry() -> Dict[str, Any]:
+def sample_entry() -> dict[str, Any]:
     """Provide a jc-style df entry with 1024 byte blocks."""
 
     return {
@@ -33,7 +33,7 @@ def sample_entry() -> Dict[str, Any]:
     }
 
 
-def test_parse_df_entry_builds_capacity(sample_entry: Dict[str, Any]) -> None:
+def test_parse_df_entry_builds_capacity(sample_entry: dict[str, Any]) -> None:
     """Parse a jc df entry and compute capacity fields."""
 
     result = df_utils.parse_df_entry(sample_entry)
@@ -52,7 +52,7 @@ def test_parse_df_entry_builds_capacity(sample_entry: Dict[str, Any]) -> None:
     [({}, "Empty df entry"), ({"filesystem": "dev"}, "mounted_on")],
 )
 def test_parse_df_entry_validates_required_fields(
-    entry: Dict[str, Any], error_text: str
+    entry: dict[str, Any], error_text: str
 ) -> None:
     """Missing required keys raise ValueError with helpful context."""
 
@@ -74,7 +74,7 @@ def test_parse_df_entry_validates_required_fields(
     ],
 )
 def test_parse_df_normalizes_entries(
-    parser_return: List[Dict[str, Any]], expected_mounts: List[str]
+    parser_return: list[dict[str, Any]], expected_mounts: list[str]
 ) -> None:
     """parse_df delegates to jc_parse and normalizes each entry."""
 

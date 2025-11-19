@@ -13,7 +13,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict, Optional
+from typing import Any, Optional
 
 
 def device_from_major_minor(device_str: str) -> Optional[int]:
@@ -86,7 +86,7 @@ def device_from_hex_major_minor(hex_str: str) -> Optional[int]:
         return None
 
 
-def device_value(entry: Dict[str, Any]) -> Optional[int]:
+def device_value(entry: dict[str, Any]) -> Optional[int]:
     """Attempt to derive the device number from jc output.
 
     On BSD/macOS, jc provides unix_device which is already the

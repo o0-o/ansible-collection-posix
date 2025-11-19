@@ -11,7 +11,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict, Optional
+from typing import Any, Optional
 
 from ansible.errors import AnsibleActionFail
 from ansible.plugins.action import ActionBase
@@ -37,16 +37,16 @@ class ActionModule(PosixActionBase, ActionBase):
     def run(
         self,
         tmp: Optional[str] = None,
-        task_vars: Optional[Dict[str, Any]] = None,
-    ) -> Dict[str, Any]:
+        task_vars: Optional[dict[str, Any]] = None,
+    ) -> dict[str, Any]:
         """Main entry point for the action plugin.
 
         Executes dmidecode command and parses output into structured
         hardware information. Requires root privileges on most systems.
 
         :param Optional[str] tmp: Temporary directory path (unused)
-        :param Optional[Dict[str, Any]] task_vars: Task variables
-        :returns Dict[str, Any]: Result with hardware information
+        :param Optional[dict[str, Any]] task_vars: Task variables
+        :returns dict[str, Any]: Result with hardware information
         """
         task_vars = task_vars or {}
         self._def_inventory_hostname(task_vars)

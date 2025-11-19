@@ -16,7 +16,7 @@
 from __future__ import annotations
 
 import re
-from typing import Any, Dict, Optional
+from typing import Any, Optional
 
 from ansible.errors import AnsibleActionFail
 from ansible.plugins.action import ActionBase
@@ -511,8 +511,8 @@ class ActionModule(WritePosixActionBase, ActionBase):
     def run(
         self,
         tmp: Optional[str] = None,
-        task_vars: Optional[Dict[str, Any]] = None,
-    ) -> Dict[str, Any]:
+        task_vars: Optional[dict[str, Any]] = None,
+    ) -> dict[str, Any]:
         """
         Main entry point for the lineinfile_dedupe action plugin.
 
@@ -522,9 +522,9 @@ class ActionModule(WritePosixActionBase, ActionBase):
 
         :param Optional[str] tmp: Temporary directory path (unused in
             modern Ansible)
-        :param Optional[Dict[str, Any]] task_vars: Task variables
+        :param Optional[dict[str, Any]] task_vars: Task variables
             dictionary
-        :returns Dict[str, Any]: Standard Ansible result dictionary
+        :returns dict[str, Any]: Standard Ansible result dictionary
         :raises AnsibleActionFail: When file operations fail, validation
             errors occur, or write operations are unsuccessful
 

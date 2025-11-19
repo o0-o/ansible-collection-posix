@@ -13,7 +13,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict
+from typing import Any
 
 from ansible.errors import AnsibleFilterError
 from ansible.module_utils.common.text.converters import to_native
@@ -56,12 +56,12 @@ author:
 class FilterModule:
     """Expose the group normalization helper as a filter."""
 
-    def filters(self) -> Dict[str, Any]:
+    def filters(self) -> dict[str, Any]:
         return {"group": self.group_filter}
 
     def group_filter(
         self, config: Any, key: str = "id"
-    ) -> Dict[str, Dict[str, Any]]:
+    ) -> dict[str, dict[str, Any]]:
         try:
             return group_info(config, key=key)
         except (ValueError, ImportError) as exc:

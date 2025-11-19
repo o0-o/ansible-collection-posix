@@ -14,7 +14,7 @@
 from __future__ import annotations
 
 import re
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Optional, Union
 
 from ansible_collections.o0_o.posix.plugins.module_utils.jc_utils import (
     jc_parse,
@@ -196,7 +196,7 @@ def _normalize_device_name(device_name: str) -> str:
     return device_name.lower().replace(" ", "_")
 
 
-def _process_bios(bios_entry: Dict[str, Any]) -> Dict[str, Any]:
+def _process_bios(bios_entry: dict[str, Any]) -> dict[str, Any]:
     """Process BIOS information entry.
 
     :param bios_entry: Raw BIOS entry from jc parser
@@ -227,7 +227,7 @@ def _process_bios(bios_entry: Dict[str, Any]) -> Dict[str, Any]:
     return bios
 
 
-def _process_bios_language(language_entry: Dict[str, Any]) -> Dict[str, Any]:
+def _process_bios_language(language_entry: dict[str, Any]) -> dict[str, Any]:
     """Process BIOS Language Information entry.
 
     :param language_entry: Raw BIOS Language entry from jc parser
@@ -254,7 +254,7 @@ def _process_bios_language(language_entry: Dict[str, Any]) -> Dict[str, Any]:
     return languages
 
 
-def _process_system(system_entry: Dict[str, Any]) -> Dict[str, Any]:
+def _process_system(system_entry: dict[str, Any]) -> dict[str, Any]:
     """Process System information entry.
 
     :param system_entry: Raw System entry from jc parser
@@ -296,7 +296,7 @@ def _process_system(system_entry: Dict[str, Any]) -> Dict[str, Any]:
     return system
 
 
-def _process_chassis(chassis_entry: Dict[str, Any]) -> Dict[str, Any]:
+def _process_chassis(chassis_entry: dict[str, Any]) -> dict[str, Any]:
     """Process Chassis information entry.
 
     :param chassis_entry: Raw Chassis entry from jc parser
@@ -358,7 +358,7 @@ def _process_chassis(chassis_entry: Dict[str, Any]) -> Dict[str, Any]:
     return chassis
 
 
-def _process_baseboard(baseboard_entry: Dict[str, Any]) -> Dict[str, Any]:
+def _process_baseboard(baseboard_entry: dict[str, Any]) -> dict[str, Any]:
     """Process Base Board information entry.
 
     :param baseboard_entry: Raw Base Board entry from jc parser
@@ -399,8 +399,8 @@ def _process_baseboard(baseboard_entry: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def _process_slots(
-    slot_entries: List[Dict[str, Any]],
-) -> Dict[str, Dict[str, Dict[str, Any]]]:
+    slot_entries: list[dict[str, Any]],
+) -> dict[str, dict[str, dict[str, Any]]]:
     """Process system slot information entries.
 
     Groups slots by type, then by descriptive key (preferred) or index
@@ -513,7 +513,7 @@ def _process_slots(
     return slots_by_type
 
 
-def _process_oem_strings(oem_entries: List[Dict[str, Any]]) -> List[str]:
+def _process_oem_strings(oem_entries: list[dict[str, Any]]) -> list[str]:
     """Process OEM Strings information entries.
 
     :param oem_entries: List of OEM string entries from jc parser
@@ -532,7 +532,7 @@ def _process_oem_strings(oem_entries: List[Dict[str, Any]]) -> List[str]:
     return oem_strings
 
 
-def _process_config_options(config_entries: List[Dict[str, Any]]) -> List[str]:
+def _process_config_options(config_entries: list[dict[str, Any]]) -> list[str]:
     """Process System Configuration Options entries.
 
     :param config_entries: List of config option entries from jc parser
@@ -552,7 +552,7 @@ def _process_config_options(config_entries: List[Dict[str, Any]]) -> List[str]:
     return options
 
 
-def _process_boot_status(boot_entries: List[Dict[str, Any]]) -> Optional[str]:
+def _process_boot_status(boot_entries: list[dict[str, Any]]) -> Optional[str]:
     """Process System Boot Information entry.
 
     :param boot_entries: List of boot info entries from jc parser
@@ -572,8 +572,8 @@ def _process_boot_status(boot_entries: List[Dict[str, Any]]) -> Optional[str]:
 
 
 def _process_memory_array(
-    array_entries: List[Dict[str, Any]],
-) -> Dict[str, Any]:
+    array_entries: list[dict[str, Any]],
+) -> dict[str, Any]:
     """Process Physical Memory Array information.
 
     Merges data from multiple arrays into baseboard memory info.
@@ -622,8 +622,8 @@ def _process_memory_array(
 
 
 def _process_memory_devices(
-    device_entries: List[Dict[str, Any]],
-) -> Dict[str, Any]:
+    device_entries: list[dict[str, Any]],
+) -> dict[str, Any]:
     """Process Memory Device information.
 
     Extracts common memory properties and individual slot info grouped by
@@ -701,8 +701,8 @@ def _process_memory_devices(
 
 
 def _process_psus(
-    psu_entries: List[Dict[str, Any]],
-) -> Dict[str, Dict[str, Any]]:
+    psu_entries: list[dict[str, Any]],
+) -> dict[str, dict[str, Any]]:
     """Process System Power Supply information entries.
 
     Groups PSUs by make + model with locations for each installed unit.
@@ -837,8 +837,8 @@ def _process_psus(
 
 
 def _process_memory_modules(
-    device_entries: List[Dict[str, Any]],
-) -> Dict[str, Dict[str, Any]]:
+    device_entries: list[dict[str, Any]],
+) -> dict[str, dict[str, Any]]:
     """Process Memory Device entries into module-centric structure.
 
     Groups memory by part number with locations for each installed module.
@@ -997,7 +997,7 @@ def _process_memory_modules(
     return modules
 
 
-def _process_interfaces(port_entries: List[Dict[str, Any]]) -> Dict[str, Any]:
+def _process_interfaces(port_entries: list[dict[str, Any]]) -> dict[str, Any]:
     """Process port connector information entries.
 
     :param port_entries: List of port connector entries from jc parser
@@ -1053,7 +1053,7 @@ def _process_interfaces(port_entries: List[Dict[str, Any]]) -> Dict[str, Any]:
     return interfaces
 
 
-def _process_ipmi(ipmi_entries: List[Dict[str, Any]]) -> Dict[str, Any]:
+def _process_ipmi(ipmi_entries: list[dict[str, Any]]) -> dict[str, Any]:
     """Process IPMI Device Information entry.
 
     :param ipmi_entries: List of IPMI device entries from jc parser
@@ -1074,8 +1074,8 @@ def _process_ipmi(ipmi_entries: List[Dict[str, Any]]) -> Dict[str, Any]:
 
 
 def _process_onboard_devices(
-    device_entries: List[Dict[str, Any]],
-) -> Dict[str, Dict[str, Any]]:
+    device_entries: list[dict[str, Any]],
+) -> dict[str, dict[str, Any]]:
     """Process Onboard Device Information entries.
 
     :param device_entries: List of onboard device entries from jc parser
@@ -1120,8 +1120,8 @@ def _process_onboard_devices(
 
 
 def _process_cache(
-    cache_entries: List[Dict[str, Any]],
-) -> Dict[int, Dict[str, Dict[str, Any]]]:
+    cache_entries: list[dict[str, Any]],
+) -> dict[int, dict[str, dict[str, Any]]]:
     """Process Cache Information entries indexed by handle.
 
     Returns cache info indexed by DMI handle for later association with
@@ -1217,9 +1217,9 @@ def _process_cache(
 
 
 def _process_processors(
-    processor_entries: List[Dict[str, Any]],
-    cache_by_handle: Dict[int, Dict[str, Any]],
-) -> tuple[Dict[str, Dict[str, Any]], Dict[str, Dict[str, Any]]]:
+    processor_entries: list[dict[str, Any]],
+    cache_by_handle: dict[int, dict[str, Any]],
+) -> tuple[dict[str, dict[str, Any]], dict[str, dict[str, Any]]]:
     """Process Processor Information entries with associated caches.
 
     Groups processors by model with locations for each installed CPU.
@@ -1521,7 +1521,7 @@ def _process_processors(
     return processors, sockets
 
 
-def dmidecode(data: Union[str, List[str], Dict[str, Any]]) -> Dict[str, Any]:
+def dmidecode(data: Union[str, list[str], dict[str, Any]]) -> dict[str, Any]:
     """Parse dmidecode command output into structured hardware dict.
 
     Uses jc parser to convert dmidecode output into a hierarchical

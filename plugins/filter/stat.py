@@ -13,7 +13,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict
+from typing import Any
 
 from ansible.errors import AnsibleFilterError
 from ansible.module_utils.common.text.converters import to_native
@@ -53,12 +53,12 @@ author:
 class FilterModule:
     """Expose the stat normalization helper as a filter."""
 
-    def filters(self) -> Dict[str, Any]:
+    def filters(self) -> dict[str, Any]:
         """Return the available filters."""
 
         return {"stat": self.stat_filter}
 
-    def stat_filter(self, config: Any) -> Dict[str, Any]:
+    def stat_filter(self, config: Any) -> dict[str, Any]:
         """Parse stat output into an ansible.builtin.stat style dict."""
 
         try:

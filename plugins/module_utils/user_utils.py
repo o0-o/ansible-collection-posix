@@ -13,19 +13,19 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict, Optional, Union
+from typing import Any, Optional, Union
 
 
 def lookup_user(
-    identifier: Union[int, str], users: Dict[str, Dict[str, Any]]
-) -> Optional[Dict[str, Any]]:
+    identifier: Union[int, str], users: dict[str, dict[str, Any]]
+) -> Optional[dict[str, Any]]:
     """Look up user by UID or username.
 
     Always returns user data with an 'id' field containing the numeric UID.
 
     :param Union[int, str] identifier: UID (int) or username (str)
-    :param Dict[str, Dict[str, Any]] users: Users dict from o0_o.posix.users
-    :returns Optional[Dict[str, Any]]: User data with 'id' field, or None
+    :param dict[str, dict[str, Any]] users: Users dict from o0_o.posix.users
+    :returns Optional[dict[str, Any]]: User data with 'id' field, or None
         if not found
     """
     if users is None:
@@ -57,16 +57,16 @@ def lookup_user(
 
 
 def lookup_group(
-    identifier: Union[int, str], groups: Dict[str, Dict[str, Any]]
-) -> Optional[Dict[str, Any]]:
+    identifier: Union[int, str], groups: dict[str, dict[str, Any]]
+) -> Optional[dict[str, Any]]:
     """Look up group by GID or group name.
 
     Always returns group data with an 'id' field containing the numeric GID.
 
     :param Union[int, str] identifier: GID (int) or group name (str)
-    :param Dict[str, Dict[str, Any]] groups: Groups dict from
+    :param dict[str, dict[str, Any]] groups: Groups dict from
         o0_o.posix.users
-    :returns Optional[Dict[str, Any]]: Group data with 'id' field, or None
+    :returns Optional[dict[str, Any]]: Group data with 'id' field, or None
         if not found
     """
     if groups is None:

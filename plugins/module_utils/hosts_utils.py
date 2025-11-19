@@ -13,22 +13,22 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Union
+from typing import Any, Union
 
 from ansible_collections.o0_o.posix.plugins.module_utils.jc_utils import (
     jc_parse,
 )
 
 
-def parse_hosts_entry(entry: Dict[str, Any]) -> Dict[str, Any]:
+def parse_hosts_entry(entry: dict[str, Any]) -> dict[str, Any]:
     """Parse a single hosts entry from jc output to normalized format.
 
     Converts jc's hosts field names to standardized format:
     - ip → address
     - hostname → hostnames (list with primary hostname and aliases)
 
-    :param Dict[str, Any] entry: Single hosts entry from jc parser
-    :returns Dict[str, Any]: Normalized entry dict
+    :param dict[str, Any] entry: Single hosts entry from jc parser
+    :returns dict[str, Any]: Normalized entry dict
     :raises ValueError: If required fields are missing
     """
     if not entry:
@@ -56,14 +56,14 @@ def parse_hosts_entry(entry: Dict[str, Any]) -> Dict[str, Any]:
     return norm_entry
 
 
-def generate_hosts_entry(entry: Dict[str, Any]) -> str:
+def generate_hosts_entry(entry: dict[str, Any]) -> str:
     """Generate a hosts file line from a normalized entry dict.
 
     Converts normalized format back to hosts line:
     - address → IP address
     - hostnames → list of hostnames (primary + aliases)
 
-    :param Dict[str, Any] entry: Normalized entry dict
+    :param dict[str, Any] entry: Normalized entry dict
     :returns str: Formatted hosts line
     :raises ValueError: If required fields are missing
     """
@@ -88,8 +88,8 @@ def generate_hosts_entry(entry: Dict[str, Any]) -> str:
 
 
 def hosts(
-    config: Union[str, Dict[str, Any], List[Dict[str, Any]]],
-) -> Union[List[Dict[str, Any]], str]:
+    config: Union[str, dict[str, Any], list[dict[str, Any]]],
+) -> Union[list[dict[str, Any]], str]:
     """Process hosts data - parse or generate based on input type.
 
     Bidirectional processor that either:

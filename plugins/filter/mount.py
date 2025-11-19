@@ -11,7 +11,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Union
+from typing import Any, Union
 
 from ansible.errors import AnsibleFilterError
 from ansible.module_utils.common.text.converters import to_native
@@ -97,14 +97,14 @@ _value:
 class FilterModule:
     """Filter for parsing mount command output."""
 
-    def filters(self) -> Dict[str, Any]:
+    def filters(self) -> dict[str, Any]:
         """Return the filter functions."""
         return {"mount": self.mount_filter}
 
     def mount_filter(
         self,
-        config: Union[str, Dict[str, Any]],
-    ) -> List[Dict[str, Any]]:
+        config: Union[str, dict[str, Any]],
+    ) -> list[dict[str, Any]]:
         """Parse mount output into structured data.
 
         Parses mount command output into normalized list of entries

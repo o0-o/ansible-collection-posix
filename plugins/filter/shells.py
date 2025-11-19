@@ -13,7 +13,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Sequence, Union
+from typing import Any, Sequence, Union
 
 from ansible.errors import AnsibleFilterError
 from ansible.module_utils.common.text.converters import to_native
@@ -94,14 +94,14 @@ _value:
 class FilterModule:
     """Expose the shells parsing helper as a filter."""
 
-    def filters(self) -> Dict[str, Any]:
+    def filters(self) -> dict[str, Any]:
         """Return the filter functions."""
         return {"shells": self.shells_filter}
 
     def shells_filter(
         self,
-        config: Union[str, Sequence[str], Dict[str, Any]],
-    ) -> List[str]:
+        config: Union[str, Sequence[str], dict[str, Any]],
+    ) -> list[str]:
         """Parse /etc/shells content into list of shell paths.
 
         Parses /etc/shells content, stripping comments and blank

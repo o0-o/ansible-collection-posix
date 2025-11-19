@@ -11,7 +11,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Union
+from typing import Any, Union
 
 from ansible.errors import AnsibleFilterError
 from ansible.module_utils.common.text.converters import to_native
@@ -153,14 +153,14 @@ _value:
 class FilterModule:
     """Filter for parsing and generating fstab file content."""
 
-    def filters(self) -> Dict[str, Any]:
+    def filters(self) -> dict[str, Any]:
         """Return the filter functions."""
         return {"fstab": self.fstab_filter}
 
     def fstab_filter(
         self,
-        config: Union[str, Dict[str, Any], List[Dict[str, Any]]],
-    ) -> Union[List[Dict[str, Any]], str]:
+        config: Union[str, dict[str, Any], list[dict[str, Any]]],
+    ) -> Union[list[dict[str, Any]], str]:
         """Parse or generate fstab content.
 
         Bidirectional filter that either:

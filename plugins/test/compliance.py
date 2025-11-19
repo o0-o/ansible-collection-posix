@@ -13,7 +13,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict
+from typing import Any
 
 from ansible_collections.o0_o.posix.plugins.module_utils import (
     is_posix as is_posix_check,
@@ -117,6 +117,6 @@ _value:
 class TestModule:
     """Jinja2 test module for standards compliance."""
 
-    def tests(self) -> Dict[str, Any]:
+    def tests(self) -> dict[str, Any]:
         """Return the test functions."""
         return {"posix": is_posix_check}

@@ -13,7 +13,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Union
+from typing import Any, Union
 
 from ansible_collections.o0_o.posix.plugins.module_utils.filter_utils import (
     normalize_source,
@@ -68,7 +68,7 @@ ATIME_OPTIONS = {
 }
 
 
-def normalize_mount_options(options: Dict[str, Any]) -> Dict[str, Any]:
+def normalize_mount_options(options: dict[str, Any]) -> dict[str, Any]:
     """Normalize mount options to use consistent boolean format.
 
     Converts options like noexec to exec=False, ro to writable=False,
@@ -116,7 +116,7 @@ def normalize_mount_options(options: Dict[str, Any]) -> Dict[str, Any]:
     return normalized
 
 
-def parse_mount_entry(entry: Dict[str, Any]) -> Dict[str, Any]:
+def parse_mount_entry(entry: dict[str, Any]) -> dict[str, Any]:
     """Parse a single mount entry from jc output to normalized format.
 
     Converts jc's mount field names to standardized format:
@@ -189,7 +189,7 @@ def parse_mount_entry(entry: Dict[str, Any]) -> Dict[str, Any]:
     return norm_entry
 
 
-def parse_mount(content: str) -> List[Dict[str, Any]]:
+def parse_mount(content: str) -> list[dict[str, Any]]:
     """Parse mount output into normalized list of entries.
 
     :param content: Mount output as string
@@ -216,7 +216,7 @@ def parse_mount(content: str) -> List[Dict[str, Any]]:
     return normalized
 
 
-def mount(config: Union[str, Dict[str, Any]]) -> List[Dict[str, Any]]:
+def mount(config: Union[str, dict[str, Any]]) -> list[dict[str, Any]]:
     """Process mount data - parse command output into structured format.
 
     Mount is unidirectional - only parses mount output.

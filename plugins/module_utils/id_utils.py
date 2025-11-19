@@ -13,7 +13,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Union
+from typing import Any, Union
 
 from ansible_collections.o0_o.posix.plugins.module_utils.jc_utils import (
     jc_parse,
@@ -23,14 +23,14 @@ VALID_KEYS = {"id", "name"}
 
 
 def id_info(
-    config: Union[str, Dict[str, Any]], key: str = "id"
-) -> Dict[str, Any]:
+    config: Union[str, dict[str, Any]], key: str = "id"
+) -> dict[str, Any]:
     """Normalize ``id`` command output for user/group lookups."""
 
     if key not in VALID_KEYS:
         raise ValueError(f"Unsupported key '{key}', expected 'id' or 'name'")
 
-    parsed: Dict[str, Any] | List[Dict[str, Any]] | Dict[str, Any]
+    parsed: dict[str, Any] | list[dict[str, Any]] | dict[str, Any]
     if isinstance(config, dict):
         if "stdout" in config or "content" in config:
             parsed = jc_parse("id", config)
@@ -55,8 +55,8 @@ def id_info(
     else:
         data = parsed or {}
 
-    users: Dict[str, Any] = {}
-    groups: Dict[str, Any] = {}
+    users: dict[str, Any] = {}
+    groups: dict[str, Any] = {}
 
     uid_info = data.get("uid") or {}
     gid_info = data.get("gid") or {}
@@ -142,8 +142,8 @@ def _stringify(value: int | None) -> str | None:
     return str(value)
 
 
-def _unique_int_list(values: List[int | None]) -> List[int]:
-    result: List[int] = []
+def _unique_int_list(values: list[int | None]) -> list[int]:
+    result: list[int] = []
     for value in values:
         if value is None or value in result:
             continue
@@ -151,8 +151,8 @@ def _unique_int_list(values: List[int | None]) -> List[int]:
     return result
 
 
-def _unique_str_list(values: List[str | None]) -> List[str]:
-    result: List[str] = []
+def _unique_str_list(values: list[str | None]) -> list[str]:
+    result: list[str] = []
     for value in values:
         if value is None:
             continue

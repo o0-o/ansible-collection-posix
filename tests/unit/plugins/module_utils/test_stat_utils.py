@@ -14,14 +14,14 @@
 from __future__ import annotations
 
 import os
-from typing import Any, Dict
+from typing import Any
 
 import pytest
 
 from ansible_collections.o0_o.posix.plugins.module_utils import stat_utils
 
 
-LINUX_ENTRY: Dict[str, Any] = {
+LINUX_ENTRY: dict[str, Any] = {
     "file": "/tmp/example",
     "size": 4096,
     "blocks": 8,
@@ -43,7 +43,7 @@ LINUX_ENTRY: Dict[str, Any] = {
 }
 
 
-BSD_ENTRY: Dict[str, Any] = {
+BSD_ENTRY: dict[str, Any] = {
     "file": "/tmp/macos",
     "unix_device": "16777220",
     "inode": "45479536",

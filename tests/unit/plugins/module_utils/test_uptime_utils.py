@@ -14,7 +14,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
-from typing import Dict, List
+
 
 import pytest
 
@@ -37,7 +37,7 @@ def test_parse_uptime_linux(
 ) -> None:
     seconds = 3 * 86400 + 2 * 3600 + 3 * 60
 
-    def fake_jc(parser: str, value: object) -> Dict[str, object]:
+    def fake_jc(parser: str, value: object) -> dict[str, object]:
         assert parser == "uptime"
         return {
             "uptime_seconds": seconds,
@@ -61,7 +61,7 @@ def test_parse_uptime_bsd(
 ) -> None:
     seconds = 10 * 86400 + 4 * 3600 + 23 * 60
 
-    def fake_jc(parser: str, value: object) -> List[Dict[str, object]]:
+    def fake_jc(parser: str, value: object) -> list[dict[str, object]]:
         assert parser == "uptime"
         return [
             {
@@ -82,7 +82,7 @@ def test_parse_uptime_bsd(
 def test_parse_uptime_minutes(
     monkeypatch: pytest.MonkeyPatch, reference: datetime
 ) -> None:
-    def fake_jc(parser: str, value: object) -> Dict[str, object]:
+    def fake_jc(parser: str, value: object) -> dict[str, object]:
         assert parser == "uptime"
         return {
             "uptime": "5 mins",

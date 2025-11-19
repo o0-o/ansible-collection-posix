@@ -11,7 +11,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Optional
 
 from ansible.errors import AnsibleConnectionFailure
 from ansible.plugins.action import ActionBase
@@ -39,13 +39,13 @@ class ActionModule(PosixActionBase, ActionBase):
     _supports_diff = False
 
     def run(
-        self, tmp: Any = None, task_vars: Optional[Dict[str, Any]] = None
-    ) -> Dict[str, Any]:
+        self, tmp: Any = None, task_vars: Optional[dict[str, Any]] = None
+    ) -> dict[str, Any]:
         """Execute the process gathering action.
 
         :param Any tmp: Temporary directory (unused)
-        :param Optional[Dict[str, Any]] task_vars: Task variables
-        :returns Dict[str, Any]: Result dict with process information
+        :param Optional[dict[str, Any]] task_vars: Task variables
+        :returns dict[str, Any]: Result dict with process information
         """
         if task_vars is None:
             task_vars = {}
@@ -179,16 +179,16 @@ class ActionModule(PosixActionBase, ActionBase):
 
     def _filter_processes(
         self,
-        processes: List[Dict[str, Any]],
-        pids: Optional[List[int]],
-        executables: Optional[List[str]],
-    ) -> List[Dict[str, Any]]:
+        processes: list[dict[str, Any]],
+        pids: Optional[list[int]],
+        executables: Optional[list[str]],
+    ) -> list[dict[str, Any]]:
         """Filter processes by PID or executable criteria.
 
-        :param List[Dict[str, Any]] processes: All processes from ps
-        :param Optional[List[int]] pids: PIDs to filter for
-        :param Optional[List[str]] executables: Executables to match
-        :returns List[Dict[str, Any]]: Filtered processes
+        :param list[dict[str, Any]] processes: All processes from ps
+        :param Optional[list[int]] pids: PIDs to filter for
+        :param Optional[list[str]] executables: Executables to match
+        :returns list[dict[str, Any]]: Filtered processes
         """
         # If no filters, return all
         if not pids and not executables:

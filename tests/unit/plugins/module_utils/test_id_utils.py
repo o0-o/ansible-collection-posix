@@ -13,13 +13,13 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict
+from typing import Any
 
 import pytest
 
 from ansible_collections.o0_o.posix.plugins.module_utils import id_info
 
-SAMPLE_ID: Dict[str, Any] = {
+SAMPLE_ID: dict[str, Any] = {
     "uid": {"id": 1000, "name": "o0-o"},
     "gid": {"id": 20, "name": "staff"},
     "groups": [

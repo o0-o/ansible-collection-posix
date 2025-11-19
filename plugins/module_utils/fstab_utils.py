@@ -13,7 +13,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Union
+from typing import Any, Union
 
 from ansible_collections.o0_o.posix.plugins.module_utils.jc_utils import (
     jc_parse,
@@ -25,7 +25,7 @@ from ansible_collections.o0_o.utils.plugins.module_utils import (
 )
 
 
-def parse_fstab_entry(entry: Dict[str, Any]) -> Dict[str, Any]:
+def parse_fstab_entry(entry: dict[str, Any]) -> dict[str, Any]:
     """Parse a single fstab entry from jc output to normalized format.
 
     Converts jc's fstab field names to standardized format:
@@ -101,7 +101,7 @@ def parse_fstab_entry(entry: Dict[str, Any]) -> Dict[str, Any]:
     return norm_entry
 
 
-def generate_fstab_entry(entry: Dict[str, Any]) -> str:
+def generate_fstab_entry(entry: dict[str, Any]) -> str:
     """Generate an fstab line from a normalized entry dict.
 
     Converts normalized format back to fstab line:
@@ -235,7 +235,7 @@ def generate_fstab_entry(entry: Dict[str, Any]) -> str:
     return f"{source}\t{mount}\t{fs_type}\t{options_str}\t{dump}\t{fsck_pass}"
 
 
-def _parse_fstab_line_fallback(line: str) -> Dict[str, Any]:
+def _parse_fstab_line_fallback(line: str) -> dict[str, Any]:
     """Fallback parser for fstab lines that jc cannot parse.
 
     Handles OpenBSD-style swap entries that omit dump and pass fields:
@@ -266,7 +266,7 @@ def _parse_fstab_line_fallback(line: str) -> Dict[str, Any]:
     return entry
 
 
-def parse_fstab(content: str) -> List[Dict[str, Any]]:
+def parse_fstab(content: str) -> list[dict[str, Any]]:
     """Parse fstab content into normalized list of entries.
 
     Parses each line individually to handle malformed entries gracefully.
@@ -314,7 +314,7 @@ def parse_fstab(content: str) -> List[Dict[str, Any]]:
     return normalized
 
 
-def generate_fstab(entries: List[Dict[str, Any]]) -> str:
+def generate_fstab(entries: list[dict[str, Any]]) -> str:
     """Generate fstab content from normalized list of entries.
 
     :param entries: List of normalized entry dicts
@@ -339,8 +339,8 @@ def generate_fstab(entries: List[Dict[str, Any]]) -> str:
 
 
 def fstab(
-    config: Union[str, Dict[str, Any], List[Dict[str, Any]]],
-) -> Union[List[Dict[str, Any]], str]:
+    config: Union[str, dict[str, Any], list[dict[str, Any]]],
+) -> Union[list[dict[str, Any]], str]:
     """Process fstab data - parse or generate based on input type.
 
     Bidirectional processor that either:

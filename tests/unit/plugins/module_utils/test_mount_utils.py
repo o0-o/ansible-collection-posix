@@ -13,7 +13,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict, List
+from typing import Any
 from unittest.mock import patch
 
 import pytest
@@ -79,7 +79,7 @@ from ansible_collections.o0_o.posix.plugins.module_utils.mount_utils import (
     ],
 )
 def test_normalize_mount_options(
-    input_options: Dict[str, Any], expected: Dict[str, Any]
+    input_options: dict[str, Any], expected: dict[str, Any]
 ) -> None:
     """Test mount option normalization to consistent boolean format."""
     result = normalize_mount_options(input_options)
@@ -163,7 +163,7 @@ def test_parse_mount_entry_rejects_non_string_options() -> None:
     [({}, "Empty mount entry"), ({"filesystem": "root"}, "mount_point")],
 )
 def test_parse_mount_entry_requires_fields(
-    entry: Dict[str, Any], error_text: str
+    entry: dict[str, Any], error_text: str
 ) -> None:
     """Missing required keys result in ValueError with context."""
 
@@ -174,7 +174,7 @@ def test_parse_mount_entry_requires_fields(
 def test_parse_mount_normalizes_each_entry() -> None:
     """parse_mount leverages jc_parse then normalizes entries."""
 
-    jc_output: List[Dict[str, Any]] = [
+    jc_output: list[dict[str, Any]] = [
         {
             "filesystem": "proc",
             "mount_point": "/proc",

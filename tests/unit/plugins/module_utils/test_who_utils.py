@@ -14,7 +14,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from typing import Dict, List
+
 
 import pytest
 
@@ -28,7 +28,7 @@ JC_PATH = (
 
 
 def test_parse_who_dict(monkeypatch: pytest.MonkeyPatch) -> None:
-    def fake_jc(parser: str, value: object) -> Dict[str, object]:
+    def fake_jc(parser: str, value: object) -> dict[str, object]:
         assert parser == "who"
         return {
             "user": "alice",
@@ -54,7 +54,7 @@ def test_parse_who_dict(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_parse_who_list(monkeypatch: pytest.MonkeyPatch) -> None:
-    def fake_jc(parser: str, value: object) -> List[Dict[str, object]]:
+    def fake_jc(parser: str, value: object) -> list[dict[str, object]]:
         assert parser == "who"
         return [
             {
@@ -93,7 +93,7 @@ def test_parse_who_openbsd_partial_time(
 ) -> None:
     """Test parsing OpenBSD who entries with month/day timestamps."""
 
-    def fake_jc(parser: str, value: object) -> List[Dict[str, object]]:
+    def fake_jc(parser: str, value: object) -> list[dict[str, object]]:
         assert parser == "who"
         return [
             {
@@ -124,7 +124,7 @@ def test_parse_who_openbsd_year_rollover(
 ) -> None:
     """Test year adjustment for OpenBSD who timestamps lacking year."""
 
-    def fake_jc(parser: str, value: object) -> List[Dict[str, object]]:
+    def fake_jc(parser: str, value: object) -> list[dict[str, object]]:
         assert parser == "who"
         return [
             {

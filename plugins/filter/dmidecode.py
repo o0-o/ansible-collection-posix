@@ -11,7 +11,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Union
+from typing import Any, Union
 
 from ansible.errors import AnsibleFilterError
 from ansible.module_utils.common.text.converters import to_native
@@ -462,14 +462,14 @@ _value:
 class FilterModule:
     """Filter for parsing dmidecode command output."""
 
-    def filters(self) -> Dict[str, Any]:
+    def filters(self) -> dict[str, Any]:
         """Return the filter functions."""
         return {"dmidecode": self.dmidecode_filter}
 
     def dmidecode_filter(
         self,
-        config: Union[str, List[str], Dict[str, Any]],
-    ) -> Dict[str, Any]:
+        config: Union[str, list[str], dict[str, Any]],
+    ) -> dict[str, Any]:
         """Parse dmidecode output into structured hardware data.
 
         Parses dmidecode command output into a hierarchical dict

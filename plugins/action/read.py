@@ -15,7 +15,7 @@ import os
 import posixpath
 import shlex
 from datetime import datetime
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Optional
 
 from ansible.errors import AnsibleActionFail
 from ansible.plugins.action import ActionBase
@@ -46,14 +46,14 @@ class ActionModule(ReadPosixActionBase, ActionBase):
     def run(
         self,
         tmp: Optional[str] = None,
-        task_vars: Optional[Dict[str, Any]] = None,
-    ) -> Dict[str, Any]:
+        task_vars: Optional[dict[str, Any]] = None,
+    ) -> dict[str, Any]:
         """Execute file inspection and return metadata.
 
         :param Optional[str] tmp: Unused temporary directory path
-        :param Optional[Dict[str, Any]] task_vars: Available Ansible
+        :param Optional[dict[str, Any]] task_vars: Available Ansible
             variables
-        :returns Dict[str, Any]: Result with file metadata under 'file'
+        :returns dict[str, Any]: Result with file metadata under 'file'
             key
         :raises AnsibleActionFail: When invalid arguments are provided
         """
@@ -125,7 +125,7 @@ class ActionModule(ReadPosixActionBase, ActionBase):
         find_hardlinks = new_args.get("find_hardlinks", False)
         find_symlinks = new_args.get("find_symlinks", False)
 
-        files: Dict[str, Optional[Dict[str, Any]]] = {}
+        files: dict[str, Optional[dict[str, Any]]] = {}
         for current_path in path_list:
             visited_paths: set[str] = set()
 
@@ -189,12 +189,12 @@ class ActionModule(ReadPosixActionBase, ActionBase):
         include_content: bool,
         include_fields: set[str],
         preferred_encoding: Optional[str],
-        task_vars: Optional[Dict[str, Any]],
+        task_vars: Optional[dict[str, Any]],
         parents: bool,
         find_hardlinks: bool,
         find_symlinks: bool,
         visited: Optional[set[str]] = None,
-    ) -> Tuple[Optional[Dict[str, Any]], Dict[str, Optional[Dict[str, Any]]]]:
+    ) -> tuple[Optional[dict[str, Any]], dict[str, Optional[dict[str, Any]]]]:
         """Gather comprehensive metadata about a file system path.
 
         :param str path: Path to inspect
@@ -203,7 +203,7 @@ class ActionModule(ReadPosixActionBase, ActionBase):
             (if "metadata" is present, all fields are included)
         :param Optional[str] preferred_encoding: Override encoding
             detection
-        :param Optional[Dict[str, Any]] task_vars: Available Ansible
+        :param Optional[dict[str, Any]] task_vars: Available Ansible
             variables
         :param bool parents: Whether to expand related paths
             discovered while gathering metadata
@@ -214,8 +214,8 @@ class ActionModule(ReadPosixActionBase, ActionBase):
             discover symbolic links targeting the inspected path.
         :param Optional[set[str]] visited: Paths already visited to
             prevent cycles
-        :returns Tuple[Optional[Dict[str, Any]], Dict[str,
-            Optional[Dict[str, Any]]]]: File metadata (or None when
+        :returns tuple[Optional[dict[str, Any]], dict[str,
+            Optional[dict[str, Any]]]]: File metadata (or None when
             missing) and additional entries to report in the top-level
             mapping.
         """
@@ -243,8 +243,8 @@ class ActionModule(ReadPosixActionBase, ActionBase):
         if not stat_data.get("exists"):
             return None, {}
 
-        info: Dict[str, Any] = {}
-        extra_paths: Dict[str, Optional[Dict[str, Any]]] = {}
+        info: dict[str, Any] = {}
+        extra_paths: dict[str, Optional[dict[str, Any]]] = {}
 
         normalized_path = posixpath.normpath(path)
 
@@ -327,7 +327,7 @@ class ActionModule(ReadPosixActionBase, ActionBase):
                             ctime, tz=local_tz
                         )
 
-        link_paths: List[str] = []
+        link_paths: list[str] = []
 
         link_target = stat_data.get("lnk_source")
         display_link = None
@@ -389,8 +389,8 @@ class ActionModule(ReadPosixActionBase, ActionBase):
             if target_inode_value is not None:
                 reference_inodes.add(target_inode_value)
 
-        hard_links: List[str] = []
-        symlink_candidates: List[str] = []
+        hard_links: list[str] = []
+        symlink_candidates: list[str] = []
         if find_hardlinks or find_symlinks:
             hard_links, symlink_candidates = self._discover_links(
                 path=path,
@@ -440,7 +440,7 @@ class ActionModule(ReadPosixActionBase, ActionBase):
 
         if should_include("links"):
             if link_paths:
-                unique_links: List[str] = []
+                unique_links: list[str] = []
                 for candidate in link_paths:
                     if candidate not in unique_links:
                         unique_links.append(candidate)
@@ -539,8 +539,8 @@ class ActionModule(ReadPosixActionBase, ActionBase):
         return info, extra_paths
 
     def _list_directory(
-        self, path: str, task_vars: Optional[Dict[str, Any]]
-    ) -> Optional[List[str]]:
+        self, path: str, task_vars: Optional[dict[str, Any]]
+    ) -> Optional[list[str]]:
         """List direct children of a directory path."""
 
         command = [
@@ -555,7 +555,7 @@ class ActionModule(ReadPosixActionBase, ActionBase):
         result = self._cmd(command, task_vars=task_vars, check_mode=False)
         if result.get("rc") != 0:
             return None
-        entries: List[str] = []
+        entries: list[str] = []
         for line in (result.get("stdout") or "").splitlines():
             stripped = line.strip()
             if not stripped:
@@ -566,10 +566,10 @@ class ActionModule(ReadPosixActionBase, ActionBase):
             return []
         return sorted(set(entries))
 
-    def _determine_type(self, stat_data: Dict[str, Any]) -> Optional[str]:
+    def _determine_type(self, stat_data: dict[str, Any]) -> Optional[str]:
         """Determine file type from stat data.
 
-        :param Dict[str, Any] stat_data: Stat module output
+        :param dict[str, Any] stat_data: Stat module output
         :returns Optional[str]: File type label or None
         """
         mapping = {
@@ -586,7 +586,7 @@ class ActionModule(ReadPosixActionBase, ActionBase):
                 return label
         return None
 
-    def _extract_inode(self, stat_data: Dict[str, Any]) -> Optional[int]:
+    def _extract_inode(self, stat_data: dict[str, Any]) -> Optional[int]:
         """Extract inode number from stat output when present."""
 
         for key in ("inode", "ino"):
@@ -602,8 +602,8 @@ class ActionModule(ReadPosixActionBase, ActionBase):
     def _stat_follow(
         self,
         path: str,
-        task_vars: Optional[Dict[str, Any]],
-    ) -> Optional[Dict[str, Any]]:
+        task_vars: Optional[dict[str, Any]],
+    ) -> Optional[dict[str, Any]]:
         """Retrieve stat data with symlink following enabled."""
 
         try:
@@ -618,12 +618,12 @@ class ActionModule(ReadPosixActionBase, ActionBase):
     def _get_mount_root(
         self,
         path: str,
-        task_vars: Optional[Dict[str, Any]],
+        task_vars: Optional[dict[str, Any]],
     ) -> Optional[str]:
         """Determine the mount point that contains the path.
 
         :param str path: Path to evaluate
-        :param Optional[Dict[str, Any]] task_vars: Available Ansible
+        :param Optional[dict[str, Any]] task_vars: Available Ansible
             variables
         :returns Optional[str]: Mount point directory or None when
             detection fails
@@ -650,13 +650,13 @@ class ActionModule(ReadPosixActionBase, ActionBase):
     def _discover_links(
         self,
         path: str,
-        task_vars: Optional[Dict[str, Any]],
+        task_vars: Optional[dict[str, Any]],
         inode: Optional[int],
         file_type: Optional[str],
         expected_total: Optional[int],
         include_hardlinks: bool,
         include_symlinks: bool,
-    ) -> Tuple[List[str], List[str]]:
+    ) -> tuple[list[str], list[str]]:
         """Discover hard link and symlink references for a path."""
 
         if not include_hardlinks and not include_symlinks:
@@ -719,7 +719,7 @@ class ActionModule(ReadPosixActionBase, ActionBase):
         if include_hardlinks and expected_total is not None:
             max_links = max(expected_total - 1, 0)
 
-        def append_unique(target: List[str], value: str) -> None:
+        def append_unique(target: list[str], value: str) -> None:
             if value not in target:
                 target.append(value)
 
@@ -734,14 +734,14 @@ class ActionModule(ReadPosixActionBase, ActionBase):
             limit: Optional[int],
             restrict_dev: bool,
             max_depth: Optional[int],
-        ) -> List[str]:
-            find_parts: List[str] = ["find", shlex.quote(root)]
+        ) -> list[str]:
+            find_parts: list[str] = ["find", shlex.quote(root)]
             if restrict_dev:
                 find_parts.append("-xdev")
             if max_depth is not None:
                 find_parts.extend(["-maxdepth", str(max_depth)])
 
-            expressions: List[str] = []
+            expressions: list[str] = []
             if include_hardlinks:
                 hard_chunks = [r"\(", f"-samefile {shlex.quote(path)}"]
                 if type_flag:
@@ -795,8 +795,8 @@ class ActionModule(ReadPosixActionBase, ActionBase):
                 pipeline = find_str
             return ["sh", "-c", pipeline, "sh"]
 
-        hard_results: List[str] = []
-        symlink_results: List[str] = []
+        hard_results: list[str] = []
+        symlink_results: list[str] = []
 
         search_plans = [
             (path_dir, expected_total, True, None, "path_dir_head"),
@@ -887,11 +887,11 @@ class ActionModule(ReadPosixActionBase, ActionBase):
     def _find_hard_links(
         self,
         path: str,
-        task_vars: Optional[Dict[str, Any]],
+        task_vars: Optional[dict[str, Any]],
         inode: Optional[int],
         file_type: Optional[str],
         expected_total: Optional[int],
-    ) -> Optional[List[str]]:
+    ) -> Optional[list[str]]:
         """Legacy hard link discovery using targeted find scans."""
 
         if expected_total is not None and expected_total <= 1:
@@ -935,8 +935,8 @@ class ActionModule(ReadPosixActionBase, ActionBase):
             limit: Optional[int],
             restrict_dev: bool = True,
             max_depth: Optional[int] = None,
-        ) -> List[str]:
-            find_parts: List[str] = ["find", root]
+        ) -> list[str]:
+            find_parts: list[str] = ["find", root]
             if restrict_dev:
                 find_parts.append("-xdev")
             if max_depth is not None:
@@ -957,7 +957,7 @@ class ActionModule(ReadPosixActionBase, ActionBase):
         if expected_total is not None:
             max_links = max(expected_total - 1, 0)
 
-        def append_unique(target: List[str], value: str) -> None:
+        def append_unique(target: list[str], value: str) -> None:
             if value not in target:
                 target.append(value)
 
@@ -967,7 +967,7 @@ class ActionModule(ReadPosixActionBase, ActionBase):
             except OSError:
                 return False
 
-        others: List[str] = []
+        others: list[str] = []
 
         def consume(
             root: str,
@@ -1068,10 +1068,10 @@ class ActionModule(ReadPosixActionBase, ActionBase):
         include_content: bool,
         include_fields: set[str],
         preferred_encoding: Optional[str],
-        task_vars: Optional[Dict[str, Any]],
+        task_vars: Optional[dict[str, Any]],
         parents: bool,
         visited: set[str],
-    ) -> Dict[str, Optional[Dict[str, Any]]]:
+    ) -> dict[str, Optional[dict[str, Any]]]:
         """Discover symlinks pointing to target and gather metadata."""
 
         if target in visited:
@@ -1123,7 +1123,7 @@ class ActionModule(ReadPosixActionBase, ActionBase):
         if not valid_symlinks:
             return {}
 
-        extra: Dict[str, Optional[Dict[str, Any]]] = {}
+        extra: dict[str, Optional[dict[str, Any]]] = {}
         for symlink_path in valid_symlinks:
             if symlink_path in visited:
                 continue
@@ -1145,7 +1145,7 @@ class ActionModule(ReadPosixActionBase, ActionBase):
 
     def _collect_parent_paths(
         self, path: str, limit: Optional[int]
-    ) -> List[str]:
+    ) -> list[str]:
         """Compute the ordered list of parent directories for a path."""
 
         if limit is not None and limit <= 0:
@@ -1155,7 +1155,7 @@ class ActionModule(ReadPosixActionBase, ActionBase):
         if normalized == posixpath.sep:
             return []
 
-        parents: List[str] = []
+        parents: list[str] = []
         current = normalized
 
         while True:
@@ -1167,7 +1167,7 @@ class ActionModule(ReadPosixActionBase, ActionBase):
                 break
             current = parent
 
-        filtered: List[str] = []
+        filtered: list[str] = []
         for candidate in parents:
             if candidate in {"", "."}:
                 continue
@@ -1187,14 +1187,14 @@ class ActionModule(ReadPosixActionBase, ActionBase):
 
     def _filter_symlinks(
         self,
-        candidates: List[str],
-        task_vars: Optional[Dict[str, Any]],
+        candidates: list[str],
+        task_vars: Optional[dict[str, Any]],
         reference_inodes: set[int],
         current_path: str,
-    ) -> List[str]:
+    ) -> list[str]:
         """Filter symlink candidates to those resolving to target."""
 
-        valid: List[str] = []
+        valid: list[str] = []
         seen: set[str] = set()
         normalized_current = posixpath.normpath(current_path)
 
@@ -1226,16 +1226,16 @@ class ActionModule(ReadPosixActionBase, ActionBase):
     def _detect_encoding(
         self,
         path: str,
-        stat_data: Dict[str, Any],
+        stat_data: dict[str, Any],
         preferred_encoding: Optional[str],
-        task_vars: Optional[Dict[str, Any]],
+        task_vars: Optional[dict[str, Any]],
     ) -> Optional[str]:
         """Detect or validate file encoding for content reading.
 
         :param str path: Path to detect encoding for
-        :param Dict[str, Any] stat_data: Stat module output
+        :param dict[str, Any] stat_data: Stat module output
         :param Optional[str] preferred_encoding: User-specified encoding
-        :param Optional[Dict[str, Any]] task_vars: Available Ansible
+        :param Optional[dict[str, Any]] task_vars: Available Ansible
             variables
         :returns Optional[str]: Detected or preferred encoding, or None
             if binary
@@ -1262,19 +1262,19 @@ class ActionModule(ReadPosixActionBase, ActionBase):
         path: str,
         include_content: bool,
         preferred_encoding: Optional[str],
-        stat_data: Dict[str, Any],
-        task_vars: Optional[Dict[str, Any]],
-    ) -> Tuple[Optional[str], Optional[str]]:
+        stat_data: dict[str, Any],
+        task_vars: Optional[dict[str, Any]],
+    ) -> tuple[Optional[str], Optional[str]]:
         """Conditionally retrieve and decode file content.
 
         :param str path: Path to read content from
         :param bool include_content: Whether content reading is
             requested
         :param Optional[str] preferred_encoding: User-specified encoding
-        :param Dict[str, Any] stat_data: Stat module output
-        :param Optional[Dict[str, Any]] task_vars: Available Ansible
+        :param dict[str, Any] stat_data: Stat module output
+        :param Optional[dict[str, Any]] task_vars: Available Ansible
             variables
-        :returns Tuple[Optional[str], Optional[str]]: Tuple of
+        :returns tuple[Optional[str], Optional[str]]: Tuple of
             (encoding, decoded_content)
         :raises AnsibleActionFail: When content decoding fails
         """

@@ -13,7 +13,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict
+from typing import Any
 
 from ansible.errors import AnsibleFilterError
 from ansible.module_utils.common.text.converters import to_native
@@ -93,10 +93,10 @@ _value:
 class FilterModule:
     """Uptime parsing filter."""
 
-    def filters(self) -> Dict[str, Any]:
+    def filters(self) -> dict[str, Any]:
         return {"uptime": self.uptime_filter}
 
-    def uptime_filter(self, value: Any) -> Dict[str, Any]:
+    def uptime_filter(self, value: Any) -> dict[str, Any]:
         """Parse uptime command output into structured data."""
         try:
             return parse_uptime(value)

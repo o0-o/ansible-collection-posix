@@ -13,7 +13,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Union
+from typing import Any, Union
 
 from ansible_collections.o0_o.posix.plugins.module_utils.jc_utils import (
     jc_parse,
@@ -23,9 +23,9 @@ VALID_KEYS = {"id", "name"}
 
 
 def passwd_info(
-    config: Union[str, Dict[str, Any], List[Dict[str, Any]]],
+    config: Union[str, dict[str, Any], list[dict[str, Any]]],
     key: str = "id",
-) -> Dict[str, Dict[str, Any]]:
+) -> dict[str, dict[str, Any]]:
     """Normalize ``/etc/passwd`` data into lookup dictionaries."""
 
     if key not in VALID_KEYS:
@@ -53,7 +53,7 @@ def passwd_info(
     if not entries:
         return {}
 
-    result: Dict[str, Dict[str, Any]] = {}
+    result: dict[str, dict[str, Any]] = {}
     for entry in entries:
         name = entry.get("name")
         if not name:

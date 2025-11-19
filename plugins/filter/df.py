@@ -11,7 +11,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Union
+from typing import Any, Union
 
 from ansible.errors import AnsibleFilterError
 from ansible.module_utils.common.text.converters import to_native
@@ -100,14 +100,14 @@ _value:
 class FilterModule:
     """Filter for parsing df command output."""
 
-    def filters(self) -> Dict[str, Any]:
+    def filters(self) -> dict[str, Any]:
         """Return the filter functions."""
         return {"df": self.df_filter}
 
     def df_filter(
         self,
-        config: Union[str, Dict[str, Any]],
-    ) -> List[Dict[str, Any]]:
+        config: Union[str, dict[str, Any]],
+    ) -> list[dict[str, Any]]:
         """Parse df output into structured data.
 
         Parses df command output into normalized list of entries with:

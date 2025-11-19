@@ -16,14 +16,14 @@ from __future__ import annotations
 import datetime
 import os
 import stat as stat_mod
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Optional, Union
 
 from ansible_collections.o0_o.posix.plugins.module_utils.jc_utils import (
     jc_parse,
 )
 
 
-def stat(config: Union[str, Dict[str, Any]]) -> Dict[str, Any]:
+def stat(config: Union[str, dict[str, Any]]) -> dict[str, Any]:
     """Parse stat command output into an Ansible-like structure.
 
     Accepts either the textual output of the ``stat`` command or a
@@ -54,13 +54,13 @@ def stat(config: Union[str, Dict[str, Any]]) -> Dict[str, Any]:
     return _normalize_stat_entry(entry)
 
 
-def _normalize_stat_entry(entry: Dict[str, Any]) -> Dict[str, Any]:
+def _normalize_stat_entry(entry: dict[str, Any]) -> dict[str, Any]:
     """Convert jc ``stat`` output into ansible.builtin.stat format."""
 
     if not entry or "file" not in entry:
         return {"exists": False}
 
-    result: Dict[str, Any] = {
+    result: dict[str, Any] = {
         "exists": True,
         "path": entry["file"],
     }
@@ -113,7 +113,7 @@ def _normalize_stat_entry(entry: Dict[str, Any]) -> Dict[str, Any]:
     return result
 
 
-def _permission_bools(mode_int: int) -> Dict[str, bool]:
+def _permission_bools(mode_int: int) -> dict[str, bool]:
     """Derive per-bit permission booleans from an octal mode."""
 
     bits = {
@@ -133,7 +133,7 @@ def _permission_bools(mode_int: int) -> Dict[str, bool]:
     return bits
 
 
-def _type_flags(entry: Dict[str, Any]) -> Dict[str, bool]:
+def _type_flags(entry: dict[str, Any]) -> dict[str, bool]:
     """Return file type boolean flags."""
 
     file_type = (entry.get("type") or "").lower()
@@ -164,7 +164,7 @@ def _type_flags(entry: Dict[str, Any]) -> Dict[str, bool]:
     }
 
 
-def _extract_mode(entry: Dict[str, Any]) -> Optional[str]:
+def _extract_mode(entry: dict[str, Any]) -> Optional[str]:
     """Return the permissions mode as a zero-padded octal string."""
 
     access = entry.get("access")
@@ -187,7 +187,7 @@ def _extract_mode(entry: Dict[str, Any]) -> Optional[str]:
     if perms[8] in ("t", "T"):
         special |= 0b001
 
-    octal_digits: List[str] = []
+    octal_digits: list[str] = []
     for chunk in (perms[0:3], perms[3:6], perms[6:9]):
         value = 0
         if chunk[0] == "r":
@@ -204,7 +204,7 @@ def _extract_mode(entry: Dict[str, Any]) -> Optional[str]:
 
 
 def _populate_time_fields(
-    entry: Dict[str, Any], result: Dict[str, Any]
+    entry: dict[str, Any], result: dict[str, Any]
 ) -> None:
     """Populate epoch and ISO8601 timestamps."""
 
@@ -229,7 +229,7 @@ def _isoformat(epoch: Union[int, float]) -> str:
     return dt.isoformat().replace("+00:00", "Z")
 
 
-def _device_value(entry: Dict[str, Any]) -> Optional[int]:
+def _device_value(entry: dict[str, Any]) -> Optional[int]:
     """Attempt to derive the device number from jc output.
 
     On BSD/macOS, jc provides unix_device which is already the st_dev
@@ -283,7 +283,7 @@ def _device_from_major_minor(device_str: str) -> Optional[int]:
         return None
 
 
-def _rdev_value(entry: Dict[str, Any]) -> Optional[int]:
+def _rdev_value(entry: dict[str, Any]) -> Optional[int]:
     """Attempt to derive the device type number from jc output.
 
     For device files (block/character), rdev represents the device

@@ -13,7 +13,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Union
+from typing import Any, Union
 
 from ansible_collections.o0_o.posix.plugins.module_utils.filter_utils import (
     normalize_source,
@@ -31,7 +31,7 @@ except ImportError:
     HAS_PARSE_SI = False
 
 
-def parse_df_entry(entry: Dict[str, Any]) -> Dict[str, Any]:
+def parse_df_entry(entry: dict[str, Any]) -> dict[str, Any]:
     """Parse a single df entry from jc output to normalized format.
 
     Converts jc's df field names to standardized format:
@@ -128,7 +128,7 @@ def parse_df_entry(entry: Dict[str, Any]) -> Dict[str, Any]:
     return norm_entry
 
 
-def parse_df(content: str) -> List[Dict[str, Any]]:
+def parse_df(content: str) -> list[dict[str, Any]]:
     """Parse df output into normalized list of entries.
 
     :param content: Df output as string
@@ -152,7 +152,7 @@ def parse_df(content: str) -> List[Dict[str, Any]]:
     return normalized
 
 
-def df(config: Union[str, Dict[str, Any]]) -> List[Dict[str, Any]]:
+def df(config: Union[str, dict[str, Any]]) -> list[dict[str, Any]]:
     """Process df data - parse command output into structured format.
 
     Returns data structure with:

@@ -19,7 +19,7 @@ import os
 import shutil
 import stat
 import tempfile
-from typing import Any, Dict, Optional
+from typing import Any, Optional
 
 from jinja2.defaults import (
     BLOCK_END_STRING,
@@ -103,7 +103,7 @@ class ActionModule(WritePosixActionBase, ActionBase):
     _supports_async = False
     _supports_diff = True
 
-    def _def_args(self) -> Dict[str, Any]:
+    def _def_args(self) -> dict[str, Any]:
         """
         Define and parse module arguments using the file argument spec.
 
@@ -111,7 +111,7 @@ class ActionModule(WritePosixActionBase, ActionBase):
         file module parameters plus template-specific options like
         Jinja2 syntax customization and raw mode forcing.
 
-        :returns Dict[str, Any]: The validated argument dictionary
+        :returns dict[str, Any]: The validated argument dictionary
             containing all parsed and validated module parameters
         :raises AnsibleActionFail: When argument validation fails
 
@@ -173,8 +173,8 @@ class ActionModule(WritePosixActionBase, ActionBase):
     def run(
         self,
         tmp: Optional[str] = None,
-        task_vars: Optional[Dict[str, Any]] = None,
-    ) -> Dict[str, Any]:
+        task_vars: Optional[dict[str, Any]] = None,
+    ) -> dict[str, Any]:
         """
         Main entry point for the template action plugin.
 
@@ -185,9 +185,9 @@ class ActionModule(WritePosixActionBase, ActionBase):
 
         :param Optional[str] tmp: Temporary directory path (unused in
             modern Ansible)
-        :param Optional[Dict[str, Any]] task_vars: Task variables
+        :param Optional[dict[str, Any]] task_vars: Task variables
             dictionary containing template context
-        :returns Dict[str, Any]: Standard Ansible result dictionary
+        :returns dict[str, Any]: Standard Ansible result dictionary
 
         :raises AnsibleActionFail: When template processing fails,
             required parameters are missing, or file operations fail

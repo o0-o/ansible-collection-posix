@@ -14,7 +14,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
-from typing import Any, Dict, Iterable, List, Optional, Sequence, Union
+from typing import Any, Iterable, Optional, Sequence, Union
 
 try:
     from dateutil import parser as dateutil_parser
@@ -30,7 +30,7 @@ from ansible_collections.o0_o.utils.plugins.module_utils import (
 )
 
 
-def _coerce_to_text(data: Union[str, Sequence[str], Dict[str, Any]]) -> str:
+def _coerce_to_text(data: Union[str, Sequence[str], dict[str, Any]]) -> str:
     if isinstance(data, str):
         return data
     if isinstance(data, dict):
@@ -45,9 +45,9 @@ def _coerce_to_text(data: Union[str, Sequence[str], Dict[str, Any]]) -> str:
 
 
 def parse_who(
-    data: Union[str, Sequence[str], Dict[str, Any]],
+    data: Union[str, Sequence[str], dict[str, Any]],
     now: Optional[datetime] = None,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Parse who command output into structured session data."""
     text = _coerce_to_text(data).strip()
     if not text:
@@ -59,7 +59,7 @@ def parse_who(
         raise ValueError(f"failed to parse who output: {exc}") from exc
 
     entries = parsed if isinstance(parsed, list) else [parsed]
-    sessions: List[Dict[str, Any]] = []
+    sessions: list[dict[str, Any]] = []
     reference_time = _resolve_reference_time(now)
 
     for entry in entries:
@@ -74,7 +74,7 @@ def parse_who(
         login_info = parse_datetime(login_dt.isoformat())
         elapsed_info = _compute_elapsed(reference_time, login_dt)
 
-        session: Dict[str, Any] = {}
+        session: dict[str, Any] = {}
         if user:
             session["user"] = user
         if tty:
@@ -109,7 +109,7 @@ def _normalise_login_datetime(value: str, reference: datetime) -> datetime:
 
 def _datetime_from_info(
     candidate: str,
-    info: Optional[Dict[str, Any]],
+    info: Optional[dict[str, Any]],
     reference: datetime,
 ) -> Optional[datetime]:
     tzinfo = reference.tzinfo or timezone.utc
@@ -172,7 +172,7 @@ def _parse_with_dateutil(
     return parsed
 
 
-def _compute_elapsed(reference: datetime, start: datetime) -> Dict[str, Any]:
+def _compute_elapsed(reference: datetime, start: datetime) -> dict[str, Any]:
     if start > reference:
         start = reference
     seconds = int((reference - start).total_seconds())

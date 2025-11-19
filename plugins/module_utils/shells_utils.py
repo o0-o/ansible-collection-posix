@@ -14,7 +14,7 @@
 from __future__ import annotations
 
 from base64 import b64decode
-from typing import Any, Iterable, List, Sequence, Union
+from typing import Any, Iterable, Sequence, Union
 
 from ansible_collections.o0_o.utils.plugins.module_utils import strip_comments
 
@@ -30,7 +30,7 @@ def _coerce_to_text(data: Union[str, Sequence[str]]) -> str:
     return ""
 
 
-def parse_shells(data: Union[str, Sequence[str], dict[str, Any]]) -> List[str]:
+def parse_shells(data: Union[str, Sequence[str], dict[str, Any]]) -> list[str]:
     """Parse /etc/shells style content into a list of shell paths.
 
     Accepts raw strings, iterable line collections, or dictionaries that

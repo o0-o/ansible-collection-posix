@@ -11,7 +11,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict, Optional
+from typing import Any, Optional
 
 from ansible.plugins.action import ActionBase
 
@@ -46,8 +46,8 @@ class ActionModule(CompliancePosixActionBase, ActionBase):
     def run(
         self,
         tmp: Optional[str] = None,
-        task_vars: Optional[Dict[str, Any]] = None,
-    ) -> Dict[str, Any]:
+        task_vars: Optional[dict[str, Any]] = None,
+    ) -> dict[str, Any]:
         """Main entry point for the action plugin.
 
         Tests if the target system is POSIX-compliant by checking for
@@ -55,8 +55,8 @@ class ActionModule(CompliancePosixActionBase, ActionBase):
         parallel execution via the run action plugin for efficiency.
 
         :param Optional[str] tmp: Temporary directory path (unused)
-        :param Optional[Dict[str, Any]] task_vars: Task variables
-        :returns Dict[str, Any]: Result with compliance information
+        :param Optional[dict[str, Any]] task_vars: Task variables
+        :returns dict[str, Any]: Result with compliance information
         """
         task_vars = task_vars or {}
         self._def_inventory_hostname(task_vars)

@@ -11,7 +11,7 @@
 
 from __future__ import annotations
 
-from typing import Dict, Generator
+from typing import Generator
 
 import pytest
 
@@ -65,7 +65,7 @@ def test_read_regular_file(monkeypatch, plugin) -> None:
     command_calls = []
 
     def mock_run_action(
-        name: str, args: Dict[str, object], task_vars=None, check_mode=None
+        name: str, args: dict[str, object], task_vars=None, check_mode=None
     ):
         if name == "o0_o.posix.stat":
             return stat_result
@@ -74,7 +74,7 @@ def test_read_regular_file(monkeypatch, plugin) -> None:
         raise AssertionError(f"Unexpected action {name}")
 
     def mock_execute_module(
-        module_name: str, module_args: Dict[str, object], task_vars=None
+        module_name: str, module_args: dict[str, object], task_vars=None
     ):
         if module_name == "o0_o.posix.slurp64":
             return {"content": slurp_content}
@@ -159,7 +159,7 @@ def test_read_symlink(monkeypatch, plugin) -> None:
     }
 
     def mock_run_action(
-        name: str, args: Dict[str, object], task_vars=None, check_mode=None
+        name: str, args: dict[str, object], task_vars=None, check_mode=None
     ):
         if name == "o0_o.posix.stat":
             return stat_result
@@ -206,7 +206,7 @@ def test_read_pipe_excludes_links(monkeypatch, plugin) -> None:
     }
 
     def mock_run_action(
-        name: str, args: Dict[str, object], task_vars=None, check_mode=None
+        name: str, args: dict[str, object], task_vars=None, check_mode=None
     ):
         if name == "o0_o.posix.stat":
             return stat_result
@@ -234,7 +234,7 @@ def test_find_symlinks_adds_entries(monkeypatch, plugin) -> None:
     symlink_path = "/data/linked"
 
     def mock_run_action(
-        name: str, args: Dict[str, object], task_vars=None, check_mode=None
+        name: str, args: dict[str, object], task_vars=None, check_mode=None
     ):
         if name != "o0_o.posix.stat":
             raise AssertionError(name)
@@ -319,7 +319,7 @@ def test_find_symlinks_for_hardlinks(monkeypatch, plugin) -> None:
     }
 
     def mock_run_action(
-        name: str, args: Dict[str, object], task_vars=None, check_mode=None
+        name: str, args: dict[str, object], task_vars=None, check_mode=None
     ):
         if name != "o0_o.posix.stat":
             raise AssertionError(name)
@@ -374,7 +374,7 @@ def test_parents_includes_parent_directories(monkeypatch, plugin) -> None:
     }
 
     def mock_run_action(
-        name: str, args: Dict[str, object], task_vars=None, check_mode=None
+        name: str, args: dict[str, object], task_vars=None, check_mode=None
     ):
         if name == "o0_o.posix.stat":
             path = args["path"]
@@ -406,7 +406,7 @@ def test_directory_content_listing(monkeypatch, plugin) -> None:
     entries = ["/opt/data/a", "/opt/data/b"]
 
     def mock_run_action(
-        name: str, args: Dict[str, object], task_vars=None, check_mode=None
+        name: str, args: dict[str, object], task_vars=None, check_mode=None
     ):
         if name == "o0_o.posix.stat":
             return {
@@ -447,7 +447,7 @@ def test_parents_limit(monkeypatch, plugin) -> None:
     }
 
     def mock_run_action(
-        name: str, args: Dict[str, object], task_vars=None, check_mode=None
+        name: str, args: dict[str, object], task_vars=None, check_mode=None
     ):
         if name == "o0_o.posix.stat":
             path = args["path"]
@@ -472,7 +472,7 @@ def test_read_missing_path(monkeypatch, plugin) -> None:
     """Test that missing path returns None instead of raising."""
 
     def mock_run_action(
-        name: str, args: Dict[str, object], task_vars=None, check_mode=None
+        name: str, args: dict[str, object], task_vars=None, check_mode=None
     ):
         if name == "o0_o.posix.stat":
             return {"stat": {"exists": False}}
@@ -517,7 +517,7 @@ def test_read_parents_symlink(monkeypatch, plugin) -> None:
     }
 
     def mock_run_action(
-        name: str, args: Dict[str, object], task_vars=None, check_mode=None
+        name: str, args: dict[str, object], task_vars=None, check_mode=None
     ):
         if name == "o0_o.posix.stat":
             path = args["path"]
@@ -525,7 +525,7 @@ def test_read_parents_symlink(monkeypatch, plugin) -> None:
         raise AssertionError(f"Unexpected action {name}")
 
     def mock_execute_module(
-        module_name: str, module_args: Dict[str, object], task_vars=None
+        module_name: str, module_args: dict[str, object], task_vars=None
     ):
         if module_name == "o0_o.posix.slurp64":
             return {"content": "target data"}
@@ -600,7 +600,7 @@ def test_read_parents_hard_links(monkeypatch, plugin) -> None:
     command_calls = []
 
     def mock_run_action(
-        name: str, args: Dict[str, object], task_vars=None, check_mode=None
+        name: str, args: dict[str, object], task_vars=None, check_mode=None
     ):
         if name == "o0_o.posix.stat":
             path = args["path"]
@@ -654,7 +654,7 @@ def test_read_xattr_fallback(monkeypatch, plugin) -> None:
     command_calls = []
 
     def mock_run_action(
-        name: str, args: Dict[str, object], task_vars=None, check_mode=None
+        name: str, args: dict[str, object], task_vars=None, check_mode=None
     ):
         if name == "o0_o.posix.stat":
             return stat_result
@@ -687,7 +687,7 @@ def test_read_flags_fallback(monkeypatch, plugin) -> None:
     stat_result = {"stat": {"exists": True, "isreg": True, "nlink": 1}}
 
     def mock_run_action(
-        name: str, args: Dict[str, object], task_vars=None, check_mode=None
+        name: str, args: dict[str, object], task_vars=None, check_mode=None
     ):
         if name == "o0_o.posix.stat":
             return stat_result
@@ -726,7 +726,7 @@ def test_read_multiple_paths(monkeypatch, plugin) -> None:
     }
 
     def mock_run_action(
-        name: str, args: Dict[str, object], task_vars=None, check_mode=None
+        name: str, args: dict[str, object], task_vars=None, check_mode=None
     ):
         if name == "o0_o.posix.stat":
             return {"stat": stat_map[args["path"]]}

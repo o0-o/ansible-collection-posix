@@ -11,7 +11,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict, Optional
+from typing import Any, Optional
 
 from ansible.plugins.action import ActionBase
 from ansible.errors import AnsibleActionFail
@@ -35,14 +35,14 @@ class ActionModule(PosixActionBase, ActionBase):
     def run(
         self,
         tmp: Optional[str] = None,
-        task_vars: Optional[Dict[str, Any]] = None,
-    ) -> Dict[str, Any]:
+        task_vars: Optional[dict[str, Any]] = None,
+    ) -> dict[str, Any]:
         """Execute locale detection and return structured results.
 
         :param Optional[str] tmp: Unused temporary directory path
-        :param Optional[Dict[str, Any]] task_vars: Available Ansible
+        :param Optional[dict[str, Any]] task_vars: Available Ansible
             variables
-        :returns Dict[str, Any]: Result with locale categories under
+        :returns dict[str, Any]: Result with locale categories under
             'locale' key
         :raises AnsibleActionFail: When locale detection fails
             completely
@@ -70,15 +70,15 @@ class ActionModule(PosixActionBase, ActionBase):
         )
         return result
 
-    def _parse_assignments(self, text: Optional[str]) -> Dict[str, str]:
+    def _parse_assignments(self, text: Optional[str]) -> dict[str, str]:
         """Parse KEY=VALUE lines into a dictionary.
 
         :param Optional[str] text: Text containing KEY=VALUE lines
-        :returns Dict[str, str]: Mapping of keys to values with quotes
+        :returns dict[str, str]: Mapping of keys to values with quotes
             stripped
         """
 
-        data: Dict[str, str] = {}
+        data: dict[str, str] = {}
         for line in (text or "").splitlines():
             if "=" not in line:
                 continue
@@ -90,13 +90,13 @@ class ActionModule(PosixActionBase, ActionBase):
         return data
 
     def _env_from_locale(
-        self, task_vars: Optional[Dict[str, Any]]
-    ) -> Dict[str, str]:
+        self, task_vars: Optional[dict[str, Any]]
+    ) -> dict[str, str]:
         """Collect locale variables from ``locale`` command output.
 
-        :param Optional[Dict[str, Any]] task_vars: Available Ansible
+        :param Optional[dict[str, Any]] task_vars: Available Ansible
             variables
-        :returns Dict[str, str]: Environment variables from locale
+        :returns dict[str, str]: Environment variables from locale
             command
         """
 
@@ -106,13 +106,13 @@ class ActionModule(PosixActionBase, ActionBase):
         return self._parse_assignments(lc.get("stdout"))
 
     def _env_from_environment(
-        self, task_vars: Optional[Dict[str, Any]]
-    ) -> Dict[str, str]:
+        self, task_vars: Optional[dict[str, Any]]
+    ) -> dict[str, str]:
         """Collect locale variables from the environment.
 
-        :param Optional[Dict[str, Any]] task_vars: Available Ansible
+        :param Optional[dict[str, Any]] task_vars: Available Ansible
             variables
-        :returns Dict[str, str]: Environment variables from env command
+        :returns dict[str, str]: Environment variables from env command
         """
 
         env_cmd = self._cmd(["env"], task_vars=task_vars, check_mode=False)
@@ -121,13 +121,13 @@ class ActionModule(PosixActionBase, ActionBase):
         return self._parse_assignments(env_cmd.get("stdout"))
 
     def _get_locale(
-        self, task_vars: Optional[Dict[str, Any]]
-    ) -> Dict[str, Any]:
+        self, task_vars: Optional[dict[str, Any]]
+    ) -> dict[str, Any]:
         """Build locale categories from command or environment data.
 
-        :param Optional[Dict[str, Any]] task_vars: Available Ansible
+        :param Optional[dict[str, Any]] task_vars: Available Ansible
             variables
-        :returns Dict[str, Any]: Locale categories mapped from
+        :returns dict[str, Any]: Locale categories mapped from
             environment vars
         :raises RuntimeError: When no locale information can be obtained
         """

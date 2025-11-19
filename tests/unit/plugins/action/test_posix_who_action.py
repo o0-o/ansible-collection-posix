@@ -14,7 +14,7 @@
 from __future__ import annotations
 
 from datetime import timedelta, timezone
-from typing import Any, Dict, Generator
+from typing import Any, Generator
 
 import pytest
 from ansible.errors import AnsibleActionFail
@@ -86,7 +86,7 @@ def test_who_parse_failure(
 
     monkeypatch.setattr(plugin, "_cmd", cmd_mock)
 
-    def raise_error(data: object, now=None) -> Dict[str, Any]:
+    def raise_error(data: object, now=None) -> dict[str, Any]:
         raise ValueError("parse")
 
     monkeypatch.setattr(

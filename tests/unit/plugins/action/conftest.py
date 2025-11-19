@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import os
 import tempfile
-from typing import Any, Dict, Optional
+from typing import Any, Optional
 from unittest.mock import MagicMock
 
 import pytest
@@ -41,8 +41,8 @@ class TestPosixActionBase(PosixActionBase, ActionBase):
     def run(
         self,
         tmp: Optional[str] = None,
-        task_vars: Optional[Dict[str, Any]] = None,
-    ) -> Dict[str, Any]:
+        task_vars: Optional[dict[str, Any]] = None,
+    ) -> dict[str, Any]:
         """Dummy run method for testing."""
         return {"changed": False}
 
@@ -55,8 +55,8 @@ class TestReadPosixActionBase(ReadPosixActionBase, ActionBase):
     def run(
         self,
         tmp: Optional[str] = None,
-        task_vars: Optional[Dict[str, Any]] = None,
-    ) -> Dict[str, Any]:
+        task_vars: Optional[dict[str, Any]] = None,
+    ) -> dict[str, Any]:
         """Dummy run method for testing."""
         return {"changed": False}
 
@@ -69,8 +69,8 @@ class TestWritePosixActionBase(WritePosixActionBase, ActionBase):
     def run(
         self,
         tmp: Optional[str] = None,
-        task_vars: Optional[Dict[str, Any]] = None,
-    ) -> Dict[str, Any]:
+        task_vars: Optional[dict[str, Any]] = None,
+    ) -> dict[str, Any]:
         """Dummy run method for testing."""
         return {"changed": False}
 

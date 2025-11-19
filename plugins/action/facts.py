@@ -11,7 +11,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict, Optional, Set
+from typing import Any, Optional, Set
 import time
 
 from ansible.errors import AnsibleActionFail, AnsibleConnectionFailure
@@ -71,12 +71,12 @@ class ActionModule(PosixActionBase, ActionBase):
     }
 
     def _gather_uname(
-        self, task_vars: Optional[Dict[str, Any]] = None
-    ) -> Dict[str, Any]:
+        self, task_vars: Optional[dict[str, Any]] = None
+    ) -> dict[str, Any]:
         """Gather kernel, hostname, and architecture from uname.
 
-        :param Optional[Dict[str, Any]] task_vars: Task variables
-        :returns Dict[str, Any]: Uname facts
+        :param Optional[dict[str, Any]] task_vars: Task variables
+        :returns dict[str, Any]: Uname facts
         """
         cmd_result = self._cmd(["uname", "-a"], task_vars=task_vars)
         uname_output = cmd_result.get("stdout", "")
@@ -103,12 +103,12 @@ class ActionModule(PosixActionBase, ActionBase):
         return facts
 
     def _gather_locale(
-        self, task_vars: Optional[Dict[str, Any]] = None
-    ) -> Dict[str, Any]:
+        self, task_vars: Optional[dict[str, Any]] = None
+    ) -> dict[str, Any]:
         """Gather locale information.
 
-        :param Optional[Dict[str, Any]] task_vars: Task variables
-        :returns Dict[str, Any]: Locale facts
+        :param Optional[dict[str, Any]] task_vars: Task variables
+        :returns dict[str, Any]: Locale facts
         """
         # Use the locale action plugin logic
         cmd_result = self._cmd(["locale"], task_vars=task_vars)
@@ -132,12 +132,12 @@ class ActionModule(PosixActionBase, ActionBase):
         return {"o0_os": {"locale": locale_facts}}
 
     def _gather_timezone(
-        self, task_vars: Optional[Dict[str, Any]] = None
-    ) -> Dict[str, Any]:
+        self, task_vars: Optional[dict[str, Any]] = None
+    ) -> dict[str, Any]:
         """Gather time and timezone information.
 
-        :param Optional[Dict[str, Any]] task_vars: Task variables
-        :returns Dict[str, Any]: Time/timezone facts
+        :param Optional[dict[str, Any]] task_vars: Task variables
+        :returns dict[str, Any]: Time/timezone facts
         """
         # Get current time
         current_epoch = int(time.time())
@@ -194,12 +194,12 @@ class ActionModule(PosixActionBase, ActionBase):
         return {"o0_os": {"time": time_facts}}
 
     def _gather_hardware(
-        self, task_vars: Optional[Dict[str, Any]] = None
-    ) -> Dict[str, Any]:
+        self, task_vars: Optional[dict[str, Any]] = None
+    ) -> dict[str, Any]:
         """Gather hardware information from dmidecode.
 
-        :param Optional[Dict[str, Any]] task_vars: Task variables
-        :returns Dict[str, Any]: Hardware facts
+        :param Optional[dict[str, Any]] task_vars: Task variables
+        :returns dict[str, Any]: Hardware facts
         """
         # Run dmidecode command
         cmd_result = self._cmd(
@@ -229,12 +229,12 @@ class ActionModule(PosixActionBase, ActionBase):
         return {"o0_hardware": hw_facts}
 
     def _gather_compliance(
-        self, task_vars: Optional[Dict[str, Any]] = None
-    ) -> Dict[str, Any]:
+        self, task_vars: Optional[dict[str, Any]] = None
+    ) -> dict[str, Any]:
         """Gather POSIX/SUS compliance information.
 
-        :param Optional[Dict[str, Any]] task_vars: Task variables
-        :returns Dict[str, Any]: Compliance facts
+        :param Optional[dict[str, Any]] task_vars: Task variables
+        :returns dict[str, Any]: Compliance facts
         """
         # Execute the compliance action plugin
         compliance_result = self._execute_module(
@@ -254,12 +254,12 @@ class ActionModule(PosixActionBase, ActionBase):
         return {"o0_os": {"compliance": compliance_data}}
 
     def _gather_mounts(
-        self, task_vars: Optional[Dict[str, Any]] = None
-    ) -> Dict[str, Any]:
+        self, task_vars: Optional[dict[str, Any]] = None
+    ) -> dict[str, Any]:
         """Gather current mount points.
 
-        :param Optional[Dict[str, Any]] task_vars: Task variables
-        :returns Dict[str, Any]: Mount facts
+        :param Optional[dict[str, Any]] task_vars: Task variables
+        :returns dict[str, Any]: Mount facts
         """
         cmd_result = self._cmd(["mount"], task_vars=task_vars)
         mount_output = cmd_result.get("stdout", "")
@@ -268,12 +268,12 @@ class ActionModule(PosixActionBase, ActionBase):
         return {"o0_storage": {"mounts": mount_facts}}
 
     def _gather_fstab(
-        self, task_vars: Optional[Dict[str, Any]] = None
-    ) -> Dict[str, Any]:
+        self, task_vars: Optional[dict[str, Any]] = None
+    ) -> dict[str, Any]:
         """Gather /etc/fstab configuration.
 
-        :param Optional[Dict[str, Any]] task_vars: Task variables
-        :returns Dict[str, Any]: Fstab facts
+        :param Optional[dict[str, Any]] task_vars: Task variables
+        :returns dict[str, Any]: Fstab facts
         """
         slurp_result = self._execute_module(
             module_name="ansible.builtin.slurp",
@@ -290,12 +290,12 @@ class ActionModule(PosixActionBase, ActionBase):
         return {"o0_storage": {"config": {"/etc/fstab": fstab_facts}}}
 
     def _gather_users(
-        self, task_vars: Optional[Dict[str, Any]] = None
-    ) -> Dict[str, Any]:
+        self, task_vars: Optional[dict[str, Any]] = None
+    ) -> dict[str, Any]:
         """Gather user and group information.
 
-        :param Optional[Dict[str, Any]] task_vars: Task variables
-        :returns Dict[str, Any]: User/group facts
+        :param Optional[dict[str, Any]] task_vars: Task variables
+        :returns dict[str, Any]: User/group facts
         """
         # Read /etc/passwd
         passwd_slurp = self._execute_module(
@@ -385,13 +385,13 @@ class ActionModule(PosixActionBase, ActionBase):
     def run(
         self,
         tmp: Optional[str] = None,
-        task_vars: Optional[Dict[str, Any]] = None,
-    ) -> Dict[str, Any]:
+        task_vars: Optional[dict[str, Any]] = None,
+    ) -> dict[str, Any]:
         """Main entry point for the action plugin.
 
         :param Optional[str] tmp: Temporary directory path
-        :param Optional[Dict[str, Any]] task_vars: Task variables
-        :returns Dict[str, Any]: Result dictionary with ansible_facts
+        :param Optional[dict[str, Any]] task_vars: Task variables
+        :returns dict[str, Any]: Result dictionary with ansible_facts
         """
         task_vars = task_vars or {}
         tmp = None

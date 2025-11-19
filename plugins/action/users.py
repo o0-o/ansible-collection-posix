@@ -11,7 +11,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Optional
 
 from ansible.errors import AnsibleActionFail
 from ansible.plugins.action import ActionBase
@@ -40,8 +40,8 @@ class ActionModule(ReadPosixActionBase, ActionBase):
     def run(
         self,
         tmp: Optional[str] = None,
-        task_vars: Optional[Dict[str, Any]] = None,
-    ) -> Dict[str, Any]:
+        task_vars: Optional[dict[str, Any]] = None,
+    ) -> dict[str, Any]:
         task_vars = task_vars or {}
         tmp = None
 
@@ -98,7 +98,7 @@ class ActionModule(ReadPosixActionBase, ActionBase):
         )
         return result
 
-    def _read_text_file(self, path: str, task_vars: Dict[str, Any]) -> str:
+    def _read_text_file(self, path: str, task_vars: dict[str, Any]) -> str:
         cmd_result = self._cmd(
             ["cat", path], task_vars=task_vars, check_mode=False
         )
@@ -112,7 +112,7 @@ class ActionModule(ReadPosixActionBase, ActionBase):
         passwd_content: str,
         group_content: str,
         key: str,
-    ) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+    ) -> tuple[dict[str, Any], dict[str, Any]]:
         users_by_id = passwd_info(passwd_content, key="id")
         users_by_name = passwd_info(passwd_content, key="name")
 
@@ -120,7 +120,7 @@ class ActionModule(ReadPosixActionBase, ActionBase):
         groups_by_name = group_info(group_content, key="name")
 
         # Build name-to-UID mapping for converting members to UIDs
-        name_to_uid: Dict[str, int] = {}
+        name_to_uid: dict[str, int] = {}
         for username, data in users_by_name.items():
             uid = data.get("id")
             if isinstance(uid, int):
@@ -148,16 +148,16 @@ class ActionModule(ReadPosixActionBase, ActionBase):
 
     def _initialize_user_groups(
         self,
-        users_by_id: Dict[str, Dict[str, Any]],
-        users_by_name: Dict[str, Dict[str, Any]],
-        groups_by_id: Dict[str, Dict[str, Any]],
-        groups_by_name: Dict[str, Dict[str, Any]],
-        name_to_uid: Dict[str, int],
+        users_by_id: dict[str, dict[str, Any]],
+        users_by_name: dict[str, dict[str, Any]],
+        groups_by_id: dict[str, dict[str, Any]],
+        groups_by_name: dict[str, dict[str, Any]],
+        name_to_uid: dict[str, int],
     ) -> None:
         self._normalize_group_member_lists(groups_by_id, groups_by_name)
 
         for uid_str, entry in users_by_id.items():
-            groups: List[int] = []
+            groups: list[int] = []
             primary_gid = entry.get("gid")
             if primary_gid is not None:
                 groups.append(primary_gid)
@@ -181,7 +181,7 @@ class ActionModule(ReadPosixActionBase, ActionBase):
             entry["groups"] = groups
 
         for name, entry in users_by_name.items():
-            groups: List[str] = []
+            groups: list[str] = []
             primary_gid = entry.get("gid")
             uid = name_to_uid.get(name)
             if primary_gid is not None:
@@ -211,12 +211,12 @@ class ActionModule(ReadPosixActionBase, ActionBase):
 
     def _augment_membership(
         self,
-        users_by_id: Dict[str, Dict[str, Any]],
-        users_by_name: Dict[str, Dict[str, Any]],
+        users_by_id: dict[str, dict[str, Any]],
+        users_by_name: dict[str, dict[str, Any]],
         group_content: str,
-        groups_by_id: Dict[str, Dict[str, Any]],
-        groups_by_name: Dict[str, Dict[str, Any]],
-        name_to_uid: Dict[str, int],
+        groups_by_id: dict[str, dict[str, Any]],
+        groups_by_name: dict[str, dict[str, Any]],
+        name_to_uid: dict[str, int],
     ) -> None:
         group_entries = jc_parse("group", group_content) or []
 
@@ -259,8 +259,8 @@ class ActionModule(ReadPosixActionBase, ActionBase):
 
     def _normalize_group_member_lists(
         self,
-        groups_by_id: Dict[str, Dict[str, Any]],
-        groups_by_name: Dict[str, Dict[str, Any]],
+        groups_by_id: dict[str, dict[str, Any]],
+        groups_by_name: dict[str, dict[str, Any]],
     ) -> None:
         # Clear members lists - we'll repopulate with UIDs only
         for entry in groups_by_id.values():
@@ -271,8 +271,8 @@ class ActionModule(ReadPosixActionBase, ActionBase):
 
     def _add_group_member(
         self,
-        groups_by_id: Dict[str, Dict[str, Any]],
-        groups_by_name: Dict[str, Dict[str, Any]],
+        groups_by_id: dict[str, dict[str, Any]],
+        groups_by_name: dict[str, dict[str, Any]],
         gid: Optional[int],
         label: Optional[str],
         member_uid: int,
@@ -302,7 +302,7 @@ class ActionModule(ReadPosixActionBase, ActionBase):
                 members.append(member_uid)
 
     def _validate_user_shells(
-        self, users: Dict[str, Dict[str, Any]], task_vars: Dict[str, Any]
+        self, users: dict[str, dict[str, Any]], task_vars: dict[str, Any]
     ) -> None:
         """Validate user shells against /etc/shells if available.
 
@@ -311,8 +311,8 @@ class ActionModule(ReadPosixActionBase, ActionBase):
         config['/etc/shells'] to be populated from a previous
         facts gather.
 
-        :param Dict[str, Dict[str, Any]] users: User mapping to augment
-        :param Dict[str, Any] task_vars: Task variables
+        :param dict[str, dict[str, Any]] users: User mapping to augment
+        :param dict[str, Any] task_vars: Task variables
         """
         # Check if config exists with /etc/shells data
         config = task_vars.get("config", {})
@@ -333,15 +333,15 @@ class ActionModule(ReadPosixActionBase, ActionBase):
                 user_data["known"] = shell in valid_shells
 
     def _gather_ssh_keys_for_users(
-        self, users: Dict[str, Dict[str, Any]], task_vars: Dict[str, Any]
+        self, users: dict[str, dict[str, Any]], task_vars: dict[str, Any]
     ) -> None:
         """Gather SSH keys for all users.
 
         Adds 'keys' dict to each user entry with 'authorized' and
         'public' keys. Handles permission issues gracefully.
 
-        :param Dict[str, Dict[str, Any]] users: User mapping to augment
-        :param Dict[str, Any] task_vars: Task variables
+        :param dict[str, dict[str, Any]] users: User mapping to augment
+        :param dict[str, Any] task_vars: Task variables
         """
         for user_key, user_data in users.items():
             home = user_data.get("home")
@@ -368,7 +368,7 @@ class ActionModule(ReadPosixActionBase, ActionBase):
             pub_keys_data = self._gather_public_keys(ssh_dir, task_vars)
 
             # Only add keys dict if we have data or empty dicts
-            keys: Dict[str, Any] = {}
+            keys: dict[str, Any] = {}
             if auth_keys_data is not None:
                 keys["authorized"] = auth_keys_data
             if pub_keys_data is not None:
@@ -383,12 +383,12 @@ class ActionModule(ReadPosixActionBase, ActionBase):
                 self._display.warning(f"[{host}] {auth_keys_warning}")
 
     def _check_directory_readable(
-        self, path: str, task_vars: Dict[str, Any]
+        self, path: str, task_vars: dict[str, Any]
     ) -> bool:
         """Check if a directory is readable.
 
         :param str path: Directory path to check
-        :param Dict[str, Any] task_vars: Task variables
+        :param dict[str, Any] task_vars: Task variables
         :returns bool: True if directory is readable
         """
         cmd_result = self._cmd(
@@ -399,8 +399,8 @@ class ActionModule(ReadPosixActionBase, ActionBase):
         return cmd_result.get("rc") == 0
 
     def _gather_authorized_keys(
-        self, ssh_dir: str, username: Optional[str], task_vars: Dict[str, Any]
-    ) -> Tuple[Optional[Dict[str, Dict[str, Any]]], Optional[str]]:
+        self, ssh_dir: str, username: Optional[str], task_vars: dict[str, Any]
+    ) -> tuple[Optional[dict[str, dict[str, Any]]], Optional[str]]:
         """Gather authorized_keys files for a user.
 
         Returns dict keyed by SSH key data with metadata about which
@@ -408,8 +408,8 @@ class ActionModule(ReadPosixActionBase, ActionBase):
 
         :param str ssh_dir: Path to .ssh directory
         :param Optional[str] username: Username for warning messages
-        :param Dict[str, Any] task_vars: Task variables
-        :returns Tuple[Optional[Dict], Optional[str]]: Authorized keys
+        :param dict[str, Any] task_vars: Task variables
+        :returns tuple[Optional[Dict], Optional[str]]: Authorized keys
             dict (keyed by key data) and optional warning message
         """
         auth_files = {
@@ -417,9 +417,9 @@ class ActionModule(ReadPosixActionBase, ActionBase):
             "authorized_keys2": f"{ssh_dir}/authorized_keys2",
         }
 
-        found_keys: Dict[str, Dict[str, Any]] = {}
-        readable_files: List[str] = []
-        unreadable_files: List[str] = []
+        found_keys: dict[str, dict[str, Any]] = {}
+        readable_files: list[str] = []
+        unreadable_files: list[str] = []
 
         for key_name, file_path in auth_files.items():
             # Check if file exists and is readable
@@ -495,15 +495,15 @@ class ActionModule(ReadPosixActionBase, ActionBase):
         return found_keys or {}, warning
 
     def _gather_public_keys(
-        self, ssh_dir: str, task_vars: Dict[str, Any]
-    ) -> Optional[Dict[str, Dict[str, Any]]]:
+        self, ssh_dir: str, task_vars: dict[str, Any]
+    ) -> Optional[dict[str, dict[str, Any]]]:
         """Gather public key (.pub) files from .ssh directory.
 
         Returns dict keyed by SSH key data (only first line of each .pub
         file is used).
 
         :param str ssh_dir: Path to .ssh directory
-        :param Dict[str, Any] task_vars: Task variables
+        :param dict[str, Any] task_vars: Task variables
         :returns Optional[Dict]: Dict mapping key data to metadata, or
             None if .ssh not readable
         """
@@ -537,7 +537,7 @@ class ActionModule(ReadPosixActionBase, ActionBase):
             # No .pub files found
             return {}
 
-        pub_keys: Dict[str, Dict[str, Any]] = {}
+        pub_keys: dict[str, dict[str, Any]] = {}
         for pub_file in pub_files:
             # Extract filename without path
             import os
@@ -577,21 +577,21 @@ class ActionModule(ReadPosixActionBase, ActionBase):
         return pub_keys
 
     def _gather_home_metadata(
-        self, users: Dict[str, Dict[str, Any]], task_vars: Dict[str, Any]
-    ) -> Dict[str, Dict[str, Any]]:
+        self, users: dict[str, dict[str, Any]], task_vars: dict[str, Any]
+    ) -> dict[str, dict[str, Any]]:
         """Gather metadata for all user home directories.
 
         Creates homes dict keyed by home path with file metadata and
         residents list. For symlinks, users are listed in both the
         link and target entries.
 
-        :param Dict[str, Dict[str, Any]] users: User mapping
-        :param Dict[str, Any] task_vars: Task variables
-        :returns Dict[str, Dict[str, Any]]: Home paths with metadata
+        :param dict[str, dict[str, Any]] users: User mapping
+        :param dict[str, Any] task_vars: Task variables
+        :returns dict[str, dict[str, Any]]: Home paths with metadata
         """
         # Collect unique home paths and build residents mapping
         home_paths = set()
-        home_to_residents: Dict[str, List[int]] = {}
+        home_to_residents: dict[str, list[int]] = {}
 
         for user_data in users.values():
             home = user_data.get("home")
@@ -621,7 +621,7 @@ class ActionModule(ReadPosixActionBase, ActionBase):
             task_vars=task_vars,
         )
 
-        homes: Dict[str, Dict[str, Any]] = {}
+        homes: dict[str, dict[str, Any]] = {}
         if not read_result.get("failed") and "paths" in read_result:
             for home_path, home_data in read_result["paths"].items():
                 if home_data:
@@ -680,17 +680,17 @@ class ActionModule(ReadPosixActionBase, ActionBase):
         return homes
 
     def _gather_shell_binaries(
-        self, users: Dict[str, Dict[str, Any]], task_vars: Dict[str, Any]
-    ) -> Dict[str, Dict[str, Any]]:
+        self, users: dict[str, dict[str, Any]], task_vars: dict[str, Any]
+    ) -> dict[str, dict[str, Any]]:
         """Gather metadata for shell binaries used by users.
 
         Creates shells dict keyed by shell path with file metadata.
         Only adds shells that don't already exist in shells from
         previous facts gathering.
 
-        :param Dict[str, Dict[str, Any]] users: User mapping
-        :param Dict[str, Any] task_vars: Task variables
-        :returns Dict[str, Dict[str, Any]]: Shell paths with metadata
+        :param dict[str, dict[str, Any]] users: User mapping
+        :param dict[str, Any] task_vars: Task variables
+        :returns dict[str, dict[str, Any]]: Shell paths with metadata
         """
         # Start with existing shells if available
         existing_shells = task_vars.get("shells", {})

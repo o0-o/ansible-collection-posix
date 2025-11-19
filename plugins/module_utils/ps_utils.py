@@ -12,7 +12,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta
-from typing import Any, Dict, List, Union
+from typing import Any, Union
 
 from ansible_collections.o0_o.posix.plugins.module_utils.jc_utils import (
     jc_parse,
@@ -26,7 +26,7 @@ from ansible_collections.o0_o.utils.plugins.module_utils import (
 __all__ = ["ps", "restructure_process", "parse_stat"]
 
 
-def parse_stat(stat_str: str) -> Dict[str, Any]:
+def parse_stat(stat_str: str) -> dict[str, Any]:
     """Parse ps stat field into structured status information.
 
     The stat field contains a multi-character code indicating the
@@ -48,7 +48,7 @@ def parse_stat(stat_str: str) -> Dict[str, Any]:
     - X: Dead - defunct/shouldn't appear (rare internal state)
 
     :param str stat_str: Raw stat field from ps
-    :returns Dict[str, Any]: Structured status information
+    :returns dict[str, Any]: Structured status information
     """
     if not stat_str:
         return {}
@@ -90,7 +90,7 @@ def parse_stat(stat_str: str) -> Dict[str, Any]:
     return status
 
 
-def ps(config: Union[str, Dict[str, Any]]) -> List[Dict[str, Any]]:
+def ps(config: Union[str, dict[str, Any]]) -> list[dict[str, Any]]:
     """Process ps data - parse command output into structured format.
 
     Parses ps command output and restructures it with:
@@ -131,11 +131,11 @@ def ps(config: Union[str, Dict[str, Any]]) -> List[Dict[str, Any]]:
     return restructured_processes
 
 
-def restructure_process(proc: Dict[str, Any]) -> Dict[str, Any]:
+def restructure_process(proc: dict[str, Any]) -> dict[str, Any]:
     """Restructure process dict with organized and parsed fields.
 
-    :param Dict[str, Any] proc: Raw process dict from jc
-    :returns Dict[str, Any]: Restructured process dict
+    :param dict[str, Any] proc: Raw process dict from jc
+    :returns dict[str, Any]: Restructured process dict
     """
     restructured = {
         "id": proc.get("pid"),
