@@ -64,12 +64,12 @@ class ActionModule(CompliancePosixActionBase, ActionBase):
         result = super().run(tmp, task_vars)
         del tmp  # unused
 
-        # Get tagged commands from mixin
-        tagged_commands = self._get_compliance_commands()
+        # Get tagged commands from mixin (returns dict)
+        commands = self._get_compliance_commands()
 
         # Execute all commands in parallel via run plugin (using dict mode)
         run_result = self._run(
-            dict(tagged_commands),
+            commands,
             parallel=True,
             fail_fast=False,
             task_vars=task_vars,
@@ -77,10 +77,10 @@ class ActionModule(CompliancePosixActionBase, ActionBase):
         )
 
         # Dict mode returns results already keyed by tag
-        tagged_results = run_result["commands"]
+        commands_results = run_result["commands"]
 
         # Process via mixin method
-        compliance = self._process_compliance_results(tagged_results)
+        compliance = self._process_compliance_results(commands_results)
 
         # Format message
         result["msg"] = self._format_compliance_message(compliance)

@@ -14,7 +14,7 @@
 from __future__ import annotations
 
 from copy import deepcopy
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict
 
 from ansible_collections.o0_o.posix.plugins.module_utils.posix_action_base import (  # noqa: E501
     PosixActionBase,
@@ -86,25 +86,25 @@ class CompliancePosixActionBase(PosixActionBase):
         "202405": {"version": {"id": "2024", "name": "POSIX.1-2024"}},
     }
 
-    def _get_compliance_commands(self) -> List[Tuple[str, List[str]]]:
+    def _get_compliance_commands(self) -> dict[str, list[str]]:
         """Return tagged commands needed for compliance facts.
 
-        Returns list of (tag, command) tuples for batching. Each
+        Returns dict mapping tags to commands for batching. Each
         command queries a specific getconf variable needed for
         determining POSIX, X/Open, and SUS compliance.
 
-        :returns: List of (tag, command) tuples
+        :returns dict[str, list[str]]: Dict mapping tags to commands
         """
-        return [
-            ("posix_version", ["getconf", "_POSIX_VERSION"]),
-            ("posix2_version", ["getconf", "_POSIX2_VERSION"]),
-            ("xopen_unix", ["getconf", "_XOPEN_UNIX"]),
-            ("xopen_version", ["getconf", "_XOPEN_VERSION"]),
-            ("xopen_xcu_version", ["getconf", "_XOPEN_XCU_VERSION"]),
-        ]
+        return {
+            "posix_version": ["getconf", "_POSIX_VERSION"],
+            "posix2_version": ["getconf", "_POSIX2_VERSION"],
+            "xopen_unix": ["getconf", "_XOPEN_UNIX"],
+            "xopen_version": ["getconf", "_XOPEN_VERSION"],
+            "xopen_xcu_version": ["getconf", "_XOPEN_XCU_VERSION"],
+        }
 
     def _process_compliance_results(
-        self, tagged_results: Dict[str, Dict[str, Any]]
+        self, commands_results: Dict[str, Dict[str, Any]]
     ) -> Dict[str, Any]:
         """Process command results into compliance facts.
 
@@ -112,7 +112,7 @@ class CompliancePosixActionBase(PosixActionBase):
         processes them into a structured compliance dictionary with
         POSIX, SUS, and XSI information.
 
-        :param Dict[str, Dict[str, Any]] tagged_results: Dictionary
+        :param Dict[str, Dict[str, Any]] commands_results: Dictionary
             mapping tag -> command result (each result has rc, stdout,
             stderr, cmd keys)
         :returns Dict[str, Any]: Compliance facts dictionary
@@ -121,7 +121,7 @@ class CompliancePosixActionBase(PosixActionBase):
 
         # Extract values from results (treat errors as "undefined")
         values = {}
-        for tag, result in tagged_results.items():
+        for tag, result in commands_results.items():
             if result["rc"] == 0:
                 values[tag] = result["stdout"].strip()
             else:
