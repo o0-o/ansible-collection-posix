@@ -35,9 +35,6 @@ from ansible_collections.o0_o.posix.plugins.module_utils.fstab_utils import (
 from ansible_collections.o0_o.posix.plugins.module_utils.jc_utils import (
     jc_parse,
 )
-from ansible_collections.o0_o.posix.plugins.module_utils.compliance_utils import (  # noqa: E501
-    is_posix,
-)
 from ansible_collections.o0_o.posix.plugins.module_utils.dev_utils import (
     device_from_hex_major_minor,
     device_from_major_minor,
@@ -69,6 +66,16 @@ from ansible_collections.o0_o.posix.plugins.module_utils.ps_utils import (
 )
 from ansible_collections.o0_o.posix.plugins.module_utils.shells_utils import (
     parse_shells,
+)
+from ansible_collections.o0_o.posix.plugins.module_utils.timezone_utils import (  # noqa: E501
+    parse_posix_tz,
+    parse_etc_timezone,
+    parse_localtime_symlink,
+    parse_systemsetup_output,
+    parse_timedatectl_output,
+    parse_date_abbr,
+    parse_posix_candidate,
+    merge_timezone_config,
 )
 from ansible_collections.o0_o.posix.plugins.module_utils.uptime_utils import (
     parse_uptime,
@@ -120,7 +127,6 @@ __all__ = [
     "parse_hosts_entry",
     "generate_hosts_entry",
     "jc_parse",
-    "is_posix",
     "id_info",
     "group_info",
     "normalize_group_members",
@@ -129,6 +135,14 @@ __all__ = [
     "parse_mount",
     "parse_mount_entry",
     "parse_shells",
+    "parse_posix_tz",
+    "parse_etc_timezone",
+    "parse_localtime_symlink",
+    "parse_systemsetup_output",
+    "parse_timedatectl_output",
+    "parse_date_abbr",
+    "parse_posix_candidate",
+    "merge_timezone_config",
     "parse_uptime",
     "parse_who",
     "ps",

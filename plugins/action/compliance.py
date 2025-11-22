@@ -67,23 +67,17 @@ class ActionModule(CompliancePosixActionBase, ActionBase):
         # Get tagged commands from mixin
         tagged_commands = self._get_compliance_commands()
 
-        # Execute all commands in parallel via run plugin
-        commands = [cmd for tag, cmd in tagged_commands]
+        # Execute all commands in parallel via run plugin (using dict mode)
         run_result = self._run(
-            commands,
+            dict(tagged_commands),
             parallel=True,
             fail_fast=False,
             task_vars=task_vars,
             check_mode=False,  # Always run getconf even in check mode
         )
 
-        # Map results back to tags
-        tagged_results = {}
-        for (tag, command), cmd_result in zip(
-            tagged_commands, run_result["commands"]
-        ):
-            del command  # Unused in this loop
-            tagged_results[tag] = cmd_result
+        # Dict mode returns results already keyed by tag
+        tagged_results = run_result["commands"]
 
         # Process via mixin method
         compliance = self._process_compliance_results(tagged_results)
