@@ -38,15 +38,15 @@ class ReadPosixActionBase(PosixActionBase):
     def _read(
         self,
         path: Optional[str] = None,
-        paths: Optional[List[str]] = None,
-        include: Optional[List[str]] = None,
+        paths: Optional[list[str]] = None,
+        include: Optional[list[str]] = None,
         encoding: Optional[str] = None,
         parents: Optional[bool] = None,
         find_hardlinks: bool = False,
         find_symlinks: bool = False,
-        task_vars: Optional[Dict[str, Any]] = None,
+        task_vars: Optional[dict[str, Any]] = None,
         check_mode: Optional[bool] = None,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Run the read action plugin to gather file metadata and
         content.
@@ -57,8 +57,8 @@ class ReadPosixActionBase(PosixActionBase):
 
         :param Optional[str] path: Absolute path to the file to
             inspect
-        :param Optional[List[str]] paths: List of paths to inspect
-        :param Optional[List[str]] include: List of field names to
+        :param Optional[list[str]] paths: List of paths to inspect
+        :param Optional[list[str]] include: List of field names to
             include (metadata, content, type, name, parent, mode,
             owner, group, writable, links, modified, created, acl,
             xattrs, flags, selinux)
@@ -107,9 +107,9 @@ class ReadPosixActionBase(PosixActionBase):
         get_mime: bool = True,
         get_attributes: bool = True,
         checksum_algorithm: str = "sha1",
-        task_vars: Optional[Dict[str, Any]] = None,
+        task_vars: Optional[dict[str, Any]] = None,
         check_mode: Optional[bool] = None,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Run the stat action plugin to gather file status
         information.
@@ -155,8 +155,8 @@ class ReadPosixActionBase(PosixActionBase):
         )
 
     def _cat(
-        self, src: str, task_vars: Optional[Dict[str, Any]] = None
-    ) -> Dict[str, Any]:
+        self, src: str, task_vars: Optional[dict[str, Any]] = None
+    ) -> dict[str, Any]:
         """
         Fallback method to read the contents of a file using 'cat'.
 
@@ -186,8 +186,8 @@ class ReadPosixActionBase(PosixActionBase):
         self,
         src: str,
         encoding: str = "utf-8",
-        task_vars: Optional[Dict[str, Any]] = None,
-    ) -> Dict[str, Any]:
+        task_vars: Optional[dict[str, Any]] = None,
+    ) -> dict[str, Any]:
         """Run the fallback-compatible slurp64 action plugin.
 
         Reads remote files using the o0_o.posix.slurp64 action plugin
@@ -195,7 +195,7 @@ class ReadPosixActionBase(PosixActionBase):
 
         :param str src: Path to the file on the remote host
         :param str encoding: File encoding (default: utf-8)
-        :param Optional[Dict[str, Any]] task_vars: Task variables
+        :param Optional[dict[str, Any]] task_vars: Task variables
         :returns Dict[str, Any]: Result dictionary from slurp64
         """
         return self._run_action(
@@ -205,7 +205,7 @@ class ReadPosixActionBase(PosixActionBase):
         )
 
     def _get_symlink_target(
-        self, path: str, task_vars: Optional[Dict[str, Any]] = None
+        self, path: str, task_vars: Optional[dict[str, Any]] = None
     ) -> Optional[str]:
         """Get the immediate target of a symlink using readlink.
 
@@ -213,7 +213,7 @@ class ReadPosixActionBase(PosixActionBase):
         may be relative or absolute.
 
         :param str path: Path to the symlink
-        :param Optional[Dict[str, Any]] task_vars: Available Ansible
+        :param Optional[dict[str, Any]] task_vars: Available Ansible
             variables
         :returns Optional[str]: Target path or None if unavailable
         """
@@ -229,7 +229,7 @@ class ReadPosixActionBase(PosixActionBase):
         return None
 
     def _get_symlink_source(
-        self, path: str, task_vars: Optional[Dict[str, Any]] = None
+        self, path: str, task_vars: Optional[dict[str, Any]] = None
     ) -> Optional[str]:
         """Get the fully resolved target of a symlink.
 
@@ -237,7 +237,7 @@ class ReadPosixActionBase(PosixActionBase):
         Uses readlink -f which is available on both GNU and BSD systems.
 
         :param str path: Path to the symlink
-        :param Optional[Dict[str, Any]] task_vars: Available Ansible
+        :param Optional[dict[str, Any]] task_vars: Available Ansible
             variables
         :returns Optional[str]: Resolved target path or None
         """
@@ -252,81 +252,145 @@ class ReadPosixActionBase(PosixActionBase):
 
         return None
 
-    def _stat_with_jc(
+    def _get_stat_commands_stage1(
         self,
-        module_args: Optional[Dict[str, Any]] = None,
-        task_vars: Optional[Dict[str, Any]] = None,
-    ) -> Dict[str, Any]:
-        """Gather file metadata using stat command and jc parser.
+        path: str,
+        get_mime: bool,
+    ) -> list[tuple[str, list[str]]]:
+        """Generate stage 1 discovery commands with tags.
 
-        Uses batched command execution to minimize SSH round trips,
-        reducing latency from 16-20 individual commands to 2-3 batches.
+        Returns tagged commands for initial file discovery including
+        stat output, symlink targets, executability, and optionally
+        MIME type.
 
-        :param Optional[Dict[str, Any]] module_args: Module arguments
-            dictionary containing command parameters
-        :param Optional[Dict[str, Any]] task_vars: Task variables
-            dictionary
-        :returns Dict[str, Any]: Result dictionary with stat
-            information
-        :raises RuntimeError: When batch commands fail or parsing fails
-        :raises ValueError: When jc output validation fails
+        :param str path: File path to stat
+        :param bool get_mime: Whether to include MIME type detection
+        :returns list[tuple[str, list[str]]]: List of (tag, command)
+            tuples
         """
-        path = module_args["path"]
-        follow = module_args["follow"]
-        get_checksum = module_args["get_checksum"]
-        get_mime = module_args["get_mime"]
-        get_attributes = module_args["get_attributes"]
-        checksum_algorithm = module_args["checksum_algorithm"]
-        stat_result = {"exists": False}
-
-        # BATCH 1: Initial discovery - run these commands together
-        # to gather basic file information and determine file type
-        batch1_commands = [
-            ["stat", path],  # Main stat output
-            ["readlink", path],  # Symlink target (may fail)
-            ["readlink", "-f", path],  # Resolved target (may fail)
-            ["test", "-x", path],  # Executability check
+        commands = [
+            ("stat_main", ["stat", path]),
+            ("readlink", ["readlink", path]),
+            ("readlink_f", ["readlink", "-f", path]),
+            ("test_x", ["test", "-x", path]),
         ]
 
-        # Add MIME type command if requested
         if get_mime:
-            batch1_commands.append(["file", "-b", "--mime", path])
+            commands.append(("mime", ["file", "-b", "--mime", path]))
 
-        batch1_result = self._run(
-            commands=batch1_commands,
-            task_vars=task_vars,
-            check_mode=False,
-        )
+        return commands
 
-        if batch1_result.get("failed"):
-            raise RuntimeError(
-                f"Batch 1 commands failed: {batch1_result.get('msg')}"
+    def _get_stat_commands_stage2(
+        self,
+        path: str,
+        username: str,
+        groupname: str,
+        is_symlink: bool,
+        follow: bool,
+        file_type_char: str,
+        is_regular_file: bool = False,
+        get_checksum: bool = False,
+        checksum_algorithm: str = "sha1",
+        get_attributes: bool = False,
+    ) -> list[tuple[str, list[str]]]:
+        """Generate stage 2 commands based on stage 1 results.
+
+        Returns tagged commands for uid/gid lookup, conditional
+        commands based on file type, and optional checksum/attributes.
+
+        :param str path: File path
+        :param str username: Owner username from stage 1
+        :param str groupname: Owner groupname from stage 1
+        :param bool is_symlink: Whether file is symlink (from stage 1)
+        :param bool follow: Whether to follow symlinks
+        :param str file_type_char: File type character from flags
+        :param bool is_regular_file: Whether file is regular (from stage 1)
+        :param bool get_checksum: Whether to get checksum
+        :param str checksum_algorithm: Checksum algorithm to use
+        :param bool get_attributes: Whether to get filesystem attributes
+        :returns list[tuple[str, list[str]]]: List of (tag, command)
+            tuples
+        """
+        commands = [
+            ("uid", ["id", "-u", username]),
+            ("gid", ["id", "-g", username] if username else ["id", "-g"]),
+        ]
+
+        if is_symlink and follow:
+            commands.append(("stat_follow", ["stat", "-L", path]))
+
+        if file_type_char in ("b", "c"):
+            commands.append(("device_type", ["stat", "-c", "%t,%T", path]))
+
+        # Checksum (only for regular files)
+        if get_checksum and is_regular_file:
+            # Try GNU coreutils commands
+            cmd_map = {
+                "md5": "md5sum",
+                "sha1": "sha1sum",
+                "sha224": "sha224sum",
+                "sha256": "sha256sum",
+                "sha384": "sha384sum",
+                "sha512": "sha512sum",
+            }
+            gnu_cmd = cmd_map.get(checksum_algorithm)
+            if gnu_cmd:
+                commands.append(("checksum_gnu", [gnu_cmd, path]))
+            # Also try BSD commands as fallback
+            commands.append(
+                (
+                    "checksum_bsd_shasum",
+                    [
+                        "shasum",
+                        "-a",
+                        checksum_algorithm.replace("sha", ""),
+                        path,
+                    ],
+                )
             )
+            commands.append(("checksum_bsd_md5", ["md5", "-q", path]))
 
-        # Extract individual command results
-        results = batch1_result.get("results", [])
-        expected_count = 5 if get_mime else 4
-        if len(results) < expected_count:
-            raise ValueError(
-                f"Expected {expected_count} results from batch 1, "
-                f"got {len(results)}"
-            )
+        # Filesystem attributes
+        if get_attributes:
+            # Try lsattr first (Linux)
+            commands.append(("attrs_lsattr", ["lsattr", "-d", path]))
+            # Try ls -ldO as fallback (BSD/macOS)
+            commands.append(("attrs_ls", ["ls", "-ldO", path]))
 
-        stat_output_result = results[0]
-        readlink_result = results[1]
-        readlink_f_result = results[2]
-        test_x_result = results[3]
-        mime_result = results[4] if get_mime else None
+        return commands
+
+    def _process_stat_stage1(
+        self,
+        tagged_results: dict[str, dict[str, Any]],
+        path: str,
+        follow: bool,
+    ) -> tuple[dict[str, Any], dict[str, Any]]:
+        """Process stage 1 results and extract parameters for stage 2.
+
+        Parses stat command output with jc, validates the results, and
+        extracts basic file metadata. Returns both a partial stat
+        dictionary and parameters needed to generate stage 2 commands.
+
+        :param dict[str, dict[str, Any]] tagged_results: Stage 1
+            command results by tag
+        :param str path: Original file path
+        :param bool follow: Whether to follow symlinks
+        :returns tuple[dict[str, Any], dict[str, Any]]: Returns
+            (partial_stat, stage2_params) where partial_stat contains
+            basic file metadata and stage2_params contains values needed
+            for stage 2 command generation
+        :raises ValueError: When stat command fails or jc parsing fails
+        """
+        stat_result = {"exists": False}
 
         # Check if file exists (stat command succeeded)
+        stat_output_result = tagged_results.get("stat_main", {})
         if stat_output_result.get("rc") != 0:
             # File doesn't exist or other error
-            return stat_result
+            return stat_result, {}
 
         stat_result = {
             "exists": True,
-            # Platform-specific fields - set defaults for
-            # compatibility with builtin.stat
             "attr_flags": "",
             "attributes": [],
         }
@@ -339,7 +403,7 @@ class ReadPosixActionBase(PosixActionBase):
         except Exception as e:
             raise ValueError(f"Failed to parse stat output for {path}: {e}")
 
-        # jc audit
+        # Validate jc output
         if (
             not parsed
             or not isinstance(parsed, list)
@@ -347,9 +411,11 @@ class ReadPosixActionBase(PosixActionBase):
             or not isinstance(parsed[0], dict)
         ):
             raise ValueError("jc stat parser returned empty result")
+
         jc_data = parsed[0]
         self._display.vvv(to_text(jc_data))
 
+        # Validate required fields
         for field in ["file", "flags", "user", "group"]:
             if jc_data.get(field) is None or not isinstance(
                 jc_data.get(field), str
@@ -374,7 +440,18 @@ class ReadPosixActionBase(PosixActionBase):
                     f"{to_text(value)}"
                 )
 
-        # birth_time_epoch is optional - not all systems support it
+        # Extract basic metadata
+        result_path = jc_data.get("file")
+        if not result_path or not result_path.strip():
+            result_path = path
+
+        stat_result["path"] = result_path
+        stat_result["size"] = jc_data["size"]
+        stat_result["nlink"] = jc_data.get("links")
+        stat_result["inode"] = jc_data.get("inode")
+        stat_result["dev"] = device_value(jc_data)
+
+        # Handle BSD vs Linux block size differences
         birth_time = jc_data.get("birth_time_epoch")
         if birth_time is not None and not isinstance(birth_time, Number):
             raise ValueError(
@@ -382,29 +459,8 @@ class ReadPosixActionBase(PosixActionBase):
                 f"{to_text(birth_time)}"
             )
 
-        # 1:1s - use file from jc output, fallback to input path if
-        # empty
-        result_path = jc_data.get("file")
-        if not result_path or not result_path.strip():
-            # jc parsing error - use the input path instead
-            result_path = path
-        stat_result["path"] = result_path
-        stat_result["size"] = jc_data["size"]
-        stat_result["nlink"] = jc_data.get("links")
-        stat_result["inode"] = jc_data.get("inode")
-        stat_result["dev"] = device_value(jc_data)
-
-        # BSD stat uses different field names than Linux
-        # BSD: block_size is filesystem block size, blocks is allocated
-        # Linux: io_blocks is filesystem block size, blocks is allocated
         is_bsd = "unix_device" in jc_data
         if is_bsd:
-            # Workaround for jc parser bug on OpenBSD: All fields after
-            # the timestamps are shifted. The jc parser misaligns:
-            #   birth_time <- block_size (as string)
-            #   block_size <- blocks
-            #   blocks <- unix_flags (usually 0)
-            #   unix_flags <- path
             blocks_value = jc_data.get("blocks", 0)
             block_size_value = jc_data.get("block_size", 512)
 
@@ -412,12 +468,8 @@ class ReadPosixActionBase(PosixActionBase):
                 birth_time_str = jc_data.get("birth_time")
                 if birth_time_str and isinstance(birth_time_str, str):
                     try:
-                        # birth_time field contains the actual
-                        # block_size
                         parsed_block_size = int(birth_time_str)
                         if parsed_block_size > 0:
-                            # block_size field contains the actual
-                            # blocks
                             blocks_value = block_size_value
                             block_size_value = parsed_block_size
                     except (ValueError, TypeError):
@@ -426,7 +478,6 @@ class ReadPosixActionBase(PosixActionBase):
             stat_result["blocks"] = blocks_value
             stat_result["block_size"] = block_size_value
         else:
-            # Linux: blocks and io_blocks fields
             stat_result["blocks"] = jc_data.get("blocks", 0)
             block_size = jc_data.get("io_blocks") or jc_data.get("block_size")
             if block_size:
@@ -436,86 +487,138 @@ class ReadPosixActionBase(PosixActionBase):
                     "jc stat result missing block_size or io_blocks"
                 )
 
-        # Convert to float for consistency with builtin.stat
+        # Timestamps
         stat_result["atime"] = float(jc_data["access_time_epoch"])
         stat_result["mtime"] = float(jc_data["modify_time_epoch"])
         stat_result["ctime"] = float(jc_data["change_time_epoch"])
 
-        # Only set birthtime if actually supported (BSD/macOS, not
-        # Linux ext4). On Linux ext4, birth_time_epoch might be 0 or
-        # equal to ctime. On OpenBSD, it may be None.
         if birth_time and birth_time > 0:
-            # On BSD/macOS, always trust birth_time_epoch.
-            # On Linux, only if different from ctime.
             if is_bsd or birth_time != jc_data["change_time_epoch"]:
                 stat_result["birthtime"] = float(birth_time)
 
-        # File type flags - check if symlink first
+        # Extract file type info
         flags = jc_data["flags"]
         flags_re = re.compile(r"^[\-dlcbsp][-rwxSsTt]{9}$")
         if not flags_re.match(flags):
             raise ValueError(f"jc flags result invalid: {flags}")
 
         is_symlink = flags.startswith("l")
+        file_type_char = flags[0]
         username = jc_data["user"]
         groupname = jc_data["group"]
 
-        # BATCH 2: Commands that depend on stat parsing
-        # Always need uid/gid lookups
-        batch2_commands = [
-            ["id", "-u", username],
-            ["id", "-g", username] if username else ["id", "-g"],
-        ]
+        # Store owner names
+        stat_result["pw_name"] = username
+        stat_result["gr_name"] = groupname
 
-        # Add stat -L if following symlink
-        batch2_stat_l_idx = None
-        if is_symlink and follow:
-            batch2_stat_l_idx = len(batch2_commands)
-            batch2_commands.append(["stat", "-L", path])
+        # BSD unix_flags
+        if is_bsd:
+            stat_result["flags"] = 0
+            unix_flags = jc_data.get("unix_flags")
+            if unix_flags and isinstance(unix_flags, str):
+                if unix_flags.replace("/", "").replace("x", "").isalnum():
+                    try:
+                        hex_str = unix_flags.lower().replace("0x", "")
+                        if all(c in "0123456789abcdef" for c in hex_str):
+                            stat_result["flags"] = int(hex_str, 16)
+                    except (ValueError, TypeError):
+                        pass
 
-        # Add device type check if block or char device
-        batch2_device_idx = None
-        file_type_char = flags[0]
-        if file_type_char in ("b", "c"):
-            batch2_device_idx = len(batch2_commands)
-            batch2_commands.append(["stat", "-c", "%t,%T", path])
+        # Prepare parameters for stage 2
+        is_regular_file = flags.startswith("-")
 
-        # Execute batch 2
-        batch2_result = self._run(
-            commands=batch2_commands,
-            task_vars=task_vars,
-            check_mode=False,
-        )
+        stage2_params = {
+            "username": username,
+            "groupname": groupname,
+            "is_symlink": is_symlink,
+            "follow": follow,
+            "file_type_char": file_type_char,
+            "is_regular_file": is_regular_file,
+            "jc_data": jc_data,  # Pass full jc_data for stage 2
+            "flags": flags,
+            "is_bsd": is_bsd,
+        }
 
-        if batch2_result.get("failed"):
-            raise ValueError(
-                f"Batch 2 commands failed: {batch2_result.get('msg')}"
-            )
+        return stat_result, stage2_params
 
-        batch2_results = batch2_result.get("results", [])
-        uid_result = batch2_results[0]
-        gid_result = batch2_results[1]
+    def _process_stat_stage2(
+        self,
+        tagged_results: dict[str, dict[str, Any]],
+        stage1_tagged_results: dict[str, dict[str, Any]],
+        partial_stat: dict[str, Any],
+        stage2_params: dict[str, Any],
+        path: str,
+        get_checksum: bool,
+        checksum_algorithm: str,
+        get_mime: bool,
+        get_attributes: bool,
+        task_vars: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Process stage 2 results and finalize stat dictionary.
 
-        # Set device_type using batch2 device result if available
-        device_result_for_type = None
-        if batch2_device_idx is not None:
-            device_result_for_type = batch2_results[batch2_device_idx]
+        Takes stage 2 command results and merges them with partial
+        stat from stage 1 to create the final complete stat structure
+        matching ansible.builtin.stat format.
+
+        :param dict[str, dict[str, Any]] tagged_results: Stage 2
+            command results by tag
+        :param dict[str, dict[str, Any]] stage1_tagged_results: Stage 1
+            results for re-use
+        :param dict[str, Any] partial_stat: Partial stat from stage 1
+        :param dict[str, Any] stage2_params: Parameters from stage 1
+        :param str path: File path
+        :param bool get_checksum: Whether to compute checksum
+        :param str checksum_algorithm: Checksum algorithm
+        :param bool get_mime: Whether MIME was requested
+        :param bool get_attributes: Whether to get attributes
+        :param dict[str, Any] task_vars: Task variables
+        :returns dict[str, Any]: Complete stat dictionary
+        :raises ValueError: When required commands fail
+        """
+        stat_result = partial_stat.copy()
+
+        # Extract stage 2 parameters
+        jc_data = stage2_params["jc_data"]
+        flags = stage2_params["flags"]
+        is_symlink = stage2_params["is_symlink"]
+        follow = stage2_params["follow"]
+
+        # Get uid/gid from stage 2 results
+        uid_result = tagged_results.get("uid", {})
+        gid_result = tagged_results.get("gid", {})
+
+        if uid_result.get("rc") == 0:
+            uid_str = uid_result.get("stdout", "").strip()
+            if uid_str and uid_str.isdigit():
+                stat_result["uid"] = int(uid_str)
+        else:
+            username = stage2_params["username"]
+            raise ValueError(f"Unable to determine uid of {username}")
+
+        if gid_result.get("rc") == 0:
+            gid_str = gid_result.get("stdout", "").strip()
+            if gid_str and gid_str.isdigit():
+                stat_result["gid"] = int(gid_str)
+        else:
+            groupname = stage2_params["groupname"]
+            raise ValueError(f"Unable to determine gid of {groupname}")
+
+        # Get device_type if requested
+        device_result_for_type = tagged_results.get("device_type")
         stat_result["device_type"] = self._stat_device_type(
             jc_data, device_result=device_result_for_type
         )
 
-        # If symlink and follow=true, stat the target for type info
+        # Handle symlink following
         target_jc_data = None
         if is_symlink and follow:
-            # Get result from batch 2
-            if batch2_stat_l_idx is None:
-                raise ValueError("stat -L should have been in batch 2")
-            target_stat_result = batch2_results[batch2_stat_l_idx]
+            stat_follow_result = tagged_results.get("stat_follow")
+            if not stat_follow_result:
+                raise ValueError("stat -L should have been in stage 2")
 
-            # Parse target's stat output
             try:
                 target_parsed = jc_parse(
-                    "stat", target_stat_result.get("stdout", "")
+                    "stat", stat_follow_result.get("stdout", "")
                 )
                 if not target_parsed or not isinstance(target_parsed, list):
                     raise ValueError(
@@ -526,18 +629,14 @@ class ReadPosixActionBase(PosixActionBase):
                     raise ValueError(
                         "jc stat parser returned invalid result for target"
                     )
-                # Validate required fields in target data
                 if not target_jc_data.get("flags") or not isinstance(
                     target_jc_data.get("flags"), str
                 ):
                     raise ValueError(
                         "jc stat result for target missing flags field"
                     )
-                # Check if target is still a symlink (broken symlink)
-                # On some systems, stat -L on broken symlink returns
-                # the symlink itself rather than failing
+                # Check for broken symlink
                 if target_jc_data["flags"].startswith("l"):
-                    # Broken symlink - target doesn't exist
                     return {"exists": False}
             except ValueError:
                 raise
@@ -546,10 +645,9 @@ class ReadPosixActionBase(PosixActionBase):
                     f"Failed to parse stat output for target {path}: {e}"
                 )
 
-        # Use target's flags if following symlink, else use original
+        # Set file type flags
         type_flags = target_jc_data["flags"] if target_jc_data else flags
 
-        # Set file type based on appropriate flags
         stat_result["isdir"] = type_flags.startswith("d")
         stat_result["islnk"] = type_flags.startswith("l")
         stat_result["isreg"] = type_flags.startswith("-")
@@ -558,28 +656,24 @@ class ReadPosixActionBase(PosixActionBase):
         stat_result["isfifo"] = type_flags.startswith("p")
         stat_result["issock"] = type_flags.startswith("s")
 
-        # Check executability using test -x (more accurate than parsing)
-        # Use result from batch 1
+        # Check executability from stage 1
+        test_x_result = stage1_tagged_results.get("test_x", {})
         is_executable = test_x_result.get("rc") == 0
 
-        # Mode - convert flags to 4-digit octal
-        # When following a symlink, use target's mode. Otherwise use the
-        # actual permissions from the file/symlink itself.
+        # Mode
         mode_flags = target_jc_data["flags"] if target_jc_data else flags
         stat_result["mode"] = self._stat_mode_from_flags(mode_flags)
 
-        # Permission booleans - rusr, wusr, xusr, rgrp, wgrp, xgrp, etc.
-        # When following a symlink, use target's permissions. Otherwise
-        # use actual permissions from the file/symlink.
+        # Permission booleans
         permission_bools = self._stat_permission_booleans(mode_flags)
-        # Override executable with test result for accuracy
         permission_bools["executable"] = is_executable
         stat_result.update(permission_bools)
 
-        # Symlink targets - get immediate and resolved targets
-        # Use is_symlink (original) not islnk (may be target type)
-        # Use results from batch 1
+        # Symlink targets from stage 1
         if is_symlink:
+            readlink_result = stage1_tagged_results.get("readlink", {})
+            readlink_f_result = stage1_tagged_results.get("readlink_f", {})
+
             if readlink_result.get("rc") == 0:
                 lnk_target = readlink_result.get("stdout", "").strip()
                 if lnk_target:
@@ -590,148 +684,160 @@ class ReadPosixActionBase(PosixActionBase):
                 if lnk_source:
                     stat_result["lnk_source"] = lnk_source
 
-        # Owner/group - get names and lookup numeric IDs
-        # (username and groupname extracted earlier from jc_data)
-        stat_result["pw_name"] = username
-        stat_result["gr_name"] = groupname
-
-        # Use uid/gid results from batch 2
-        if uid_result.get("rc") == 0:
-            uid_str = uid_result.get("stdout", "").strip()
-            if uid_str and uid_str.isdigit():
-                stat_result["uid"] = int(uid_str)
-        else:
-            raise ValueError(f"Unable to determine uid of {username}")
-
-        if gid_result.get("rc") == 0:
-            gid_str = gid_result.get("stdout", "").strip()
-            if gid_str and gid_str.isdigit():
-                stat_result["gid"] = int(gid_str)
-        else:
-            raise ValueError(f"Unable to determine gid of {groupname}")
-
-        # Unix flags (BSD) - validate it's hex string before converting
-        # On BSD systems, default to 0 to match builtin.stat behavior
-        if is_bsd:
-            stat_result["flags"] = 0  # Default for BSD systems
-            unix_flags = jc_data.get("unix_flags")
-            if unix_flags and isinstance(unix_flags, str):
-                # Only process if it looks like a hex value (not a path)
-                if unix_flags.replace("/", "").replace("x", "").isalnum():
-                    try:
-                        # Remove any 0x prefix if present
-                        hex_str = unix_flags.lower().replace("0x", "")
-                        # Validate all characters are valid hex digits
-                        if all(c in "0123456789abcdef" for c in hex_str):
-                            stat_result["flags"] = int(hex_str, 16)
-                    except (ValueError, TypeError):
-                        # Keep default value 0
-                        pass
-
-        # Get checksum if requested (only for regular files)
+        # Checksum for regular files (from stage 2 results)
         if get_checksum and stat_result["isreg"]:
-            checksum = self._get_checksum(path, checksum_algorithm, task_vars)
+            checksum = self._parse_checksum_from_results(
+                tagged_results, checksum_algorithm
+            )
             if checksum:
                 stat_result["checksum"] = checksum
             else:
-                # Warn if checksum algorithm not available on target
                 self._display.warning(
                     f"[{self.inventory_hostname}] Checksum algorithm "
                     f"'{checksum_algorithm}' not available on target system. "
                     f"Checksum field will be omitted."
                 )
 
-        # Get MIME type if requested
-        # Use result from batch 1
-        if get_mime and mime_result:
-            if mime_result.get("rc") == 0:
-                output = mime_result.get("stdout", "").strip()
-                if output:
-                    # Parse: "text/plain; charset=us-ascii"
-                    mime_info: Dict[str, str] = {}
-                    parts = output.split(";", 1)
-                    if parts:
-                        mimetype = parts[0].strip()
-                        # Normalize application/x-not-regular-file
-                        # to "unknown" (match builtin.stat on OpenBSD)
-                        if mimetype == "application/x-not-regular-file":
-                            mime_info["mimetype"] = "unknown"
+        # MIME type from stage 1
+        if get_mime:
+            mime_result = stage1_tagged_results.get("mime")
+            if mime_result:
+                if mime_result.get("rc") == 0:
+                    output = mime_result.get("stdout", "").strip()
+                    if output:
+                        mime_info: dict[str, str] = {}
+                        parts = output.split(";", 1)
+                        if parts:
+                            mimetype = parts[0].strip()
+                            if mimetype == "application/x-not-regular-file":
+                                mime_info["mimetype"] = "unknown"
+                            else:
+                                mime_info["mimetype"] = mimetype
+
+                        if len(parts) > 1:
+                            charset_part = parts[1].strip()
+                            if charset_part.startswith("charset="):
+                                mime_info["charset"] = charset_part[8:].strip()
+
+                        if "charset" not in mime_info:
+                            mime_info["charset"] = "unknown"
+
+                        if mime_info:
+                            stat_result.update(mime_info)
                         else:
-                            mime_info["mimetype"] = mimetype
-
-                    if len(parts) > 1:
-                        charset_part = parts[1].strip()
-                        if charset_part.startswith("charset="):
-                            mime_info["charset"] = charset_part[8:].strip()
-
-                    # Always include charset, default to "unknown"
-                    if "charset" not in mime_info:
-                        mime_info["charset"] = "unknown"
-
-                    if mime_info:
-                        stat_result.update(mime_info)
+                            raise ValueError("MIME info is empty")
                     else:
-                        raise ValueError("MIME info is empty")
+                        raise ValueError("MIME output is empty")
                 else:
-                    raise ValueError("MIME output is empty")
-            else:
-                raise ValueError(
-                    f"MIME command failed: {mime_result.get('stderr', '')}"
-                )
+                    raise ValueError(
+                        f"MIME command failed: {mime_result.get('stderr', '')}"
+                    )
 
-        # Note: generation and version fields are excluded in raw mode
-        # These require ioctl/statx system calls not available via
-        # stat command. See class docstring for raw mode limitations.
-
-        # Get extended attributes if requested
+        # Extended attributes (from stage 2 results)
         if get_attributes:
-            # Get filesystem flags
-            flags_output = self._get_flags(path, task_vars)
+            flags_output = self._parse_attributes_from_results(tagged_results)
             if flags_output:
-                # Set attr_flags to raw flag chars (Linux lsattr)
                 attr_flags_raw = self._extract_attr_flags(flags_output)
                 if attr_flags_raw:
                     stat_result["attr_flags"] = attr_flags_raw
 
-                # Parse flags into attribute names (Linux only)
-                # Skip on BSD/macOS to match builtin.stat behavior
-                if attr_flags_raw:  # Only if lsattr format (Linux)
+                if attr_flags_raw:
                     attrs = self._normalize_flags(flags_output)
                     if attrs:
                         stat_result["attributes"] = attrs
 
-            # Get extended attributes
-            xattrs_output = self._get_xattrs(path, task_vars)
-            if xattrs_output:
-                attr_names, acl_entries, selinux_val = self._process_xattrs(
-                    xattrs_output
-                )
-                if attr_names:
-                    stat_result["xattrs"] = attr_names
-                if selinux_val:
-                    stat_result["selinux"] = selinux_val
-                for acl_entry in acl_entries:
-                    self._merge_acl(stat_result, acl_entry)
-
-            # Get ACL information
-            acl_info = self._get_acl(path, task_vars)
-            if acl_info:
-                self._merge_acl(stat_result, acl_info)
-
         return stat_result
+
+    def _parse_checksum_from_results(
+        self,
+        tagged_results: dict[str, dict[str, Any]],
+        algorithm: str,
+    ) -> Optional[str]:
+        """Parse checksum from stage 2 command results.
+
+        Tries to extract checksum from various command results (GNU
+        coreutils, BSD shasum, BSD md5) based on which commands
+        succeeded.
+
+        :param dict[str, dict[str, Any]] tagged_results: Stage 2 results
+        :param str algorithm: Checksum algorithm requested
+        :returns Optional[str]: Hex checksum string or None
+        """
+        # Try GNU coreutils command first
+        gnu_result = tagged_results.get("checksum_gnu", {})
+        if gnu_result.get("rc") == 0:
+            output = gnu_result.get("stdout", "").strip()
+            if output:
+                # GNU format: "checksum  filename"
+                parts = output.split()
+                if parts:
+                    return parts[0]
+
+        # Try BSD shasum command
+        if algorithm.startswith("sha"):
+            shasum_result = tagged_results.get("checksum_bsd_shasum", {})
+            if shasum_result.get("rc") == 0:
+                output = shasum_result.get("stdout", "").strip()
+                if output:
+                    parts = output.split()
+                    if parts:
+                        return parts[0]
+
+        # Try BSD md5 command
+        if algorithm == "md5":
+            md5_result = tagged_results.get("checksum_bsd_md5", {})
+            if md5_result.get("rc") == 0:
+                output = md5_result.get("stdout", "").strip()
+                if output:
+                    # BSD md5 outputs just the hash
+                    return output
+
+        return None
+
+    def _parse_attributes_from_results(
+        self,
+        tagged_results: dict[str, dict[str, Any]],
+    ) -> Optional[str]:
+        """Parse filesystem attributes from stage 2 command results.
+
+        Tries to extract attributes from lsattr (Linux) or ls -ldO
+        (BSD/macOS) command results.
+
+        :param dict[str, dict[str, Any]] tagged_results: Stage 2 results
+        :returns Optional[str]: Attribute flags string or None
+        """
+        # Try lsattr first (Linux)
+        lsattr_result = tagged_results.get("attrs_lsattr", {})
+        if lsattr_result.get("rc") == 0:
+            stdout = lsattr_result.get("stdout", "")
+            parts = stdout.split()
+            if parts:
+                return parts[0]
+
+        # Try ls -ldO fallback (BSD/macOS)
+        ls_result = tagged_results.get("attrs_ls", {})
+        if ls_result.get("rc") == 0:
+            stdout = ls_result.get("stdout", "")
+            parts = stdout.split()
+            if len(parts) >= 5:
+                flags = parts[4]
+                if flags != "-":
+                    return flags
+
+        return None
 
     def _get_checksum(
         self,
         path: str,
         algorithm: str,
-        task_vars: Optional[Dict[str, Any]],
+        task_vars: Optional[dict[str, Any]],
     ) -> Optional[str]:
         """Compute file checksum using available hash commands.
 
         :param str path: File path to checksum
         :param str algorithm: Hash algorithm (md5, sha1, sha224, sha256,
             sha384, sha512)
-        :param Optional[Dict[str, Any]] task_vars: Available Ansible
+        :param Optional[dict[str, Any]] task_vars: Available Ansible
             variables
         :returns Optional[str]: Hex checksum string or None
         """
@@ -804,14 +910,14 @@ class ReadPosixActionBase(PosixActionBase):
         return None
 
     def _get_mime(
-        self, path: str, task_vars: Optional[Dict[str, Any]]
-    ) -> Optional[Dict[str, str]]:
+        self, path: str, task_vars: Optional[dict[str, Any]]
+    ) -> Optional[dict[str, str]]:
         """Detect MIME type and charset.
 
         :param str path: File path to inspect
-        :param Optional[Dict[str, Any]] task_vars: Available Ansible
+        :param Optional[dict[str, Any]] task_vars: Available Ansible
             variables
-        :returns Optional[Dict[str, str]]: Dict with mimetype and
+        :returns Optional[dict[str, str]]: Dict with mimetype and
             charset or None
         """
         result = self._cmd(
@@ -827,7 +933,7 @@ class ReadPosixActionBase(PosixActionBase):
             return None
 
         # Parse: "text/plain; charset=us-ascii"
-        mime_info: Dict[str, str] = {}
+        mime_info: dict[str, str] = {}
         parts = output.split(";", 1)
         if parts:
             mimetype = parts[0].strip()
@@ -851,8 +957,8 @@ class ReadPosixActionBase(PosixActionBase):
 
     def _stat_device_type(
         self,
-        jc_data: Dict[str, Any],
-        device_result: Optional[Dict[str, Any]] = None,
+        jc_data: dict[str, Any],
+        device_result: Optional[dict[str, Any]] = None,
     ) -> int:
         """Get device type (rdev) with intelligent fallback detection.
 
@@ -862,7 +968,7 @@ class ReadPosixActionBase(PosixActionBase):
         command execution.
 
         :param Dict[str, Any] jc_data: Parsed jc stat output
-        :param Optional[Dict[str, Any]] device_result: Result from
+        :param Optional[dict[str, Any]] device_result: Result from
             stat -c "%t,%T" command (if device file)
         :returns int: Device type number (rdev), 0 for non-device
             files
@@ -953,7 +1059,7 @@ class ReadPosixActionBase(PosixActionBase):
 
         return f"{mode:04o}"
 
-    def _stat_permission_booleans(self, flags: str) -> Dict[str, bool]:
+    def _stat_permission_booleans(self, flags: str) -> dict[str, bool]:
         """Parse permission booleans from flags string.
 
         :param str flags: Permission flags string (e.g., "-rw-r--r--")
@@ -962,7 +1068,7 @@ class ReadPosixActionBase(PosixActionBase):
         if not flags or len(flags) < 10:
             return {}
 
-        perms: Dict[str, bool] = {}
+        perms: dict[str, bool] = {}
 
         # Owner permissions
         perms["rusr"] = flags[1] == "r"
@@ -990,7 +1096,7 @@ class ReadPosixActionBase(PosixActionBase):
 
         return perms
 
-    def _validate_jc_stat_result(self, jc_data: Dict[str, Any]) -> None:
+    def _validate_jc_stat_result(self, jc_data: dict[str, Any]) -> None:
         """Validate that jc stat result has required fields.
 
         :param Dict[str, Any] jc_data: Parsed jc stat output
@@ -1034,14 +1140,14 @@ class ReadPosixActionBase(PosixActionBase):
             raise ValueError(f"jc flags result invalid: {flags}")
 
     def _get_acl(
-        self, path: str, task_vars: Optional[Dict[str, Any]]
-    ) -> Optional[Dict[str, Any]]:
+        self, path: str, task_vars: Optional[dict[str, Any]]
+    ) -> Optional[dict[str, Any]]:
         """Retrieve ACL information for a path.
 
         :param str path: Path to get ACLs for
-        :param Optional[Dict[str, Any]] task_vars: Available Ansible
+        :param Optional[dict[str, Any]] task_vars: Available Ansible
             variables
-        :returns Optional[Dict[str, Any]]: ACL metadata with type or
+        :returns Optional[dict[str, Any]]: ACL metadata with type or
             None
         """
         result = self._cmd(["getfacl", "-p", path], task_vars=task_vars)
@@ -1063,12 +1169,12 @@ class ReadPosixActionBase(PosixActionBase):
         return None
 
     def _get_xattrs(
-        self, path: str, task_vars: Optional[Dict[str, Any]]
+        self, path: str, task_vars: Optional[dict[str, Any]]
     ) -> Optional[str]:
         """Retrieve extended attributes for a path.
 
         :param str path: Path to get extended attributes for
-        :param Optional[Dict[str, Any]] task_vars: Available Ansible
+        :param Optional[dict[str, Any]] task_vars: Available Ansible
             variables
         :returns Optional[str]: Extended attributes or None if
             unavailable
@@ -1089,12 +1195,12 @@ class ReadPosixActionBase(PosixActionBase):
         return None
 
     def _get_flags(
-        self, path: str, task_vars: Optional[Dict[str, Any]]
+        self, path: str, task_vars: Optional[dict[str, Any]]
     ) -> Optional[str]:
         """Retrieve filesystem flags for a path.
 
         :param str path: Path to get flags for
-        :param Optional[Dict[str, Any]] task_vars: Available Ansible
+        :param Optional[dict[str, Any]] task_vars: Available Ansible
             variables
         :returns Optional[str]: Filesystem flags or None if unavailable
         """
@@ -1127,11 +1233,11 @@ class ReadPosixActionBase(PosixActionBase):
         :returns Tuple[List[str], List[Dict[str, Any]], Optional[str]]:
             Tuple of (attribute names, ACL records, SELinux value)
         """
-        names: List[str] = []
-        acl_records: Dict[str, Dict[str, Any]] = {}
+        names: list[str] = []
+        acl_records: dict[str, Dict[str, Any]] = {}
         selinux_value: Optional[str] = None
 
-        def place_acl(record_type: str) -> Dict[str, Any]:
+        def place_acl(record_type: str) -> dict[str, Any]:
             entry = acl_records.setdefault(record_type, {"type": record_type})
             return entry
 
@@ -1195,7 +1301,7 @@ class ReadPosixActionBase(PosixActionBase):
         acl_list = [value for value in acl_records.values() if len(value) > 1]
         return names, acl_list, selinux_value
 
-    def _merge_acl(self, info: Dict[str, Any], entry: Dict[str, Any]) -> None:
+    def _merge_acl(self, info: dict[str, Any], entry: dict[str, Any]) -> None:
         """Merge ACL details into result dictionary with type tracking.
 
         :param Dict[str, Any] info: Stat dictionary to merge ACL into
@@ -1287,7 +1393,7 @@ class ReadPosixActionBase(PosixActionBase):
         )
         return flag_chars
 
-    def _normalize_flags(self, value: str) -> List[str]:
+    def _normalize_flags(self, value: str) -> list[str]:
         """Parse filesystem flags into attribute names.
 
         Handles multiple formats:
