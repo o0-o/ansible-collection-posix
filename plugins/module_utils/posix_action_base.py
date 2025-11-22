@@ -168,19 +168,23 @@ class PosixActionBase:
 
     def _def_inventory_hostname(
         self, task_vars: Optional[Dict[str, Any]] = None
-    ) -> None:
-        """Define the inventory hostname for log/warning messages.
+    ) -> str:
+        """Get/define the inventory hostname for log/warning messages.
 
         Prefers the value from ``task_vars`` when provided, then falls
         back to the task's vars mapping. Defaults to ``localhost`` when
         no value can be determined (e.g., local actions).
 
+        Sets self.inventory_hostname and returns the value.
+
         :param task_vars: Optional task vars mapping
+        :returns str: The inventory hostname or 'localhost' as fallback
         """
         if isinstance(task_vars, dict):
             host = task_vars.get("inventory_hostname")
             if host:
                 self.inventory_hostname = str(host)
+                return self.inventory_hostname
 
         try:
             mapping = getattr(self._task, "vars", None)
@@ -188,12 +192,12 @@ class PosixActionBase:
                 host = mapping.get("inventory_hostname")
                 if host:
                     self.inventory_hostname = str(host)
+                    return self.inventory_hostname
         except Exception:
             pass
 
         self.inventory_hostname = "localhost"
-
-        return
+        return self.inventory_hostname
 
     def _get_target_timezone(
         self, task_vars: Optional[Dict[str, Any]] = None
@@ -245,9 +249,9 @@ class PosixActionBase:
             ["date", "+%z"], task_vars=task_vars, check_mode=False
         )
         if offset_cmd.get("rc") != 0:
-            host = self._get_inventory_hostname(task_vars)
             self._display.vvv(
-                f"[{host}] Failed to get timezone offset, assuming UTC"
+                f"[{self.inventory_hostname}] Failed to get timezone offset, "
+                f"assuming UTC"
             )
             return timezone.utc
 
@@ -258,9 +262,8 @@ class PosixActionBase:
         try:
             return self._parse_timezone_offset(offset_str)
         except ValueError as e:
-            host = self._get_inventory_hostname(task_vars)
             self._display.vvv(
-                f"[{host}] Failed to parse timezone offset "
+                f"[{self.inventory_hostname}] Failed to parse timezone offset "
                 f"'{offset_str}': {e}, assuming UTC"
             )
             return timezone.utc
@@ -401,10 +404,9 @@ class PosixActionBase:
         self,
         commands: List[Union[str, List[str]]],
         chdir: Optional[str] = None,
-        creates: Optional[str] = None,
-        removes: Optional[str] = None,
         parallel: bool = True,
         fail_fast: bool = False,
+        force_raw: bool = False,
         task_vars: Optional[Dict[str, Any]] = None,
         check_mode: Optional[bool] = None,
     ) -> Dict[str, Any]:
@@ -420,12 +422,12 @@ class PosixActionBase:
             execute. Each can be a shell string or list of arguments
         :param Optional[str] chdir: Change to this directory before
             executing commands
-        :param Optional[str] creates: Skip commands if this path exists
-        :param Optional[str] removes: Skip commands if this path does
             not exist
         :param bool parallel: Execute commands in parallel using
             background jobs (default True)
         :param bool fail_fast: Stop on first command failure (default
+            False)
+        :param bool force_raw: Force raw mode bypassing Python (default
             False)
         :param Optional[dict] task_vars: Dictionary of task variables
         :param Optional[bool] check_mode: Optional override for Ansible
@@ -439,14 +441,11 @@ class PosixActionBase:
             "commands": commands,
             "parallel": parallel,
             "fail_fast": fail_fast,
+            "_force_raw": force_raw,
         }
 
         if chdir:
             args["chdir"] = chdir
-        if creates:
-            args["creates"] = creates
-        if removes:
-            args["removes"] = removes
 
         return self._run_action(
             "o0_o.posix.run",
@@ -503,7 +502,7 @@ class PosixActionBase:
         """
         quoted = shlex.quote(cmd)
         shell_cmd = f"unalias -a 2>/dev/null; command -v {quoted}"
-        cmd_result = self._cmd(["sh", "-c", shell_cmd], task_vars=task_vars)
+        cmd_result = self._cmd(shell_cmd, task_vars=task_vars)
         stdout = cmd_result.get("stdout", "").strip()
 
         if cmd_result["rc"] == 0 and stdout:

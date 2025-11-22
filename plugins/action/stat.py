@@ -22,17 +22,18 @@ from ansible_collections.o0_o.posix.plugins.module_utils import (
 
 
 class ActionModule(ReadPosixActionBase, ActionBase):
-    """Gather file metadata using stat with jc fallback.
+    """Gather file metadata using POSIX stat command and jc parser.
 
-    This action plugin provides file metadata gathering that
-    automatically falls back to parsing stat command output with jc
-    when Python is not available on the remote host.
+    This action plugin provides portable file metadata gathering using
+    the stat command with jc parsing. Uses multi-stage command batching
+    for efficiency, minimizing SSH round trips.
 
-    Raw mode limitations (when _force_raw=true or Python unavailable):
+    Implementation notes:
     - Timestamps have second precision only (not millisecond)
     - The 'version' field is not available (requires ioctl/statx)
     - The 'generation' field is not available on Linux
       (requires ioctl, BSD/macOS may support via stat -f %v)
+    - Compatible with ansible.builtin.stat return structure
     """
 
     TRANSFERS_FILES = False
@@ -55,9 +56,11 @@ class ActionModule(ReadPosixActionBase, ActionBase):
         :raises AnsibleActionFail: When invalid arguments are provided
         """
         task_vars = task_vars or {}
-        tmp = None
+        self._def_inventory_hostname(task_vars)
 
         result = super().run(tmp, task_vars)
+        del tmp  # unused
+
         result["invocation"] = self._task.args.copy()
         result["changed"] = False
 
@@ -94,45 +97,109 @@ class ActionModule(ReadPosixActionBase, ActionBase):
             },
             "_force_raw": {"type": "bool", "default": False},
         }
-        validation_result, new_module_args = self.validate_argument_spec(
+        validation_result, new_args = self.validate_argument_spec(
             argument_spec=argument_spec
         )
-        self.force_raw = new_module_args.pop("_force_raw")
 
-        # Try ansible.builtin.stat first
-        if not self.force_raw:
-            builtin_module_args = new_module_args.copy()
-            ansible_stat_mod = self._execute_module(
-                module_name="ansible.builtin.stat",
-                module_args=builtin_module_args,
+        # Extract arguments
+        path = new_args["path"]
+        follow = new_args["follow"]
+        get_checksum = new_args["get_checksum"]
+        get_mime = new_args["get_mime"]
+        get_attributes = new_args["get_attributes"]
+        checksum_algorithm = new_args["checksum_algorithm"]
+        force_raw = new_args["_force_raw"]
+
+        # === STAGE 1: Initial discovery ===
+        # Get stage 1 commands from mixin
+        stage1_commands = self._get_stat_commands_stage1(path, get_mime)
+
+        # Execute stage 1
+        stage1_result = self._run(
+            commands=[cmd for tag, cmd in stage1_commands],
+            force_raw=force_raw,
+            task_vars=task_vars,
+            check_mode=False,
+        )
+
+        # Note: Don't check stage1_result.get("failed") because some commands
+        # are expected to fail (e.g., readlink on non-symlinks). The
+        # processing methods will handle missing data appropriately.
+
+        # Get raw flag from run result
+        result["raw"] = stage1_result.get("raw", False)
+
+        # Map results to tags
+        stage1_tagged_results = {}
+        for (tag, cmd), cmd_result in zip(
+            stage1_commands, stage1_result["commands"]
+        ):
+            stage1_tagged_results[tag] = cmd_result
+
+        # Process stage 1
+        try:
+            partial_stat, stage2_params = self._process_stat_stage1(
+                stage1_tagged_results, path, follow
+            )
+        except (ValueError, RuntimeError) as e:
+            raise AnsibleActionFail(str(e)) from e
+
+        # Early return if file doesn't exist
+        if not partial_stat.get("exists"):
+            result["stat"] = partial_stat
+            return result
+
+        # === STAGE 2: Conditional commands based on stage 1 ===
+        # Get stage 2 commands from mixin
+        stage2_commands = self._get_stat_commands_stage2(
+            path=path,
+            username=stage2_params["username"],
+            groupname=stage2_params["groupname"],
+            is_symlink=stage2_params["is_symlink"],
+            follow=follow,
+            file_type_char=stage2_params["file_type_char"],
+            is_regular_file=stage2_params["is_regular_file"],
+            get_checksum=get_checksum,
+            checksum_algorithm=checksum_algorithm,
+            get_attributes=get_attributes,
+        )
+
+        # Execute stage 2
+        stage2_result = self._run(
+            commands=[cmd for tag, cmd in stage2_commands],
+            force_raw=force_raw,
+            task_vars=task_vars,
+            check_mode=False,
+        )
+
+        # Note: Don't check stage2_result.get("failed") because some commands
+        # are expected to fail (e.g., checksum commands on systems without
+        # those tools). The processing methods will handle missing data.
+
+        # Map results to tags
+        stage2_tagged_results = {}
+        for (tag, cmd), cmd_result in zip(
+            stage2_commands, stage2_result["commands"]
+        ):
+            stage2_tagged_results[tag] = cmd_result
+
+        # === FINAL PROCESSING ===
+        # Process stage 2 and finalize stat
+        try:
+            stat_result = self._process_stat_stage2(
+                tagged_results=stage2_tagged_results,
+                stage1_tagged_results=stage1_tagged_results,
+                partial_stat=partial_stat,
+                stage2_params=stage2_params,
+                path=path,
+                get_checksum=get_checksum,
+                checksum_algorithm=checksum_algorithm,
+                get_mime=get_mime,
+                get_attributes=get_attributes,
                 task_vars=task_vars,
             )
-            ansible_stat_mod.pop("invocation", None)
+        except (ValueError, RuntimeError) as e:
+            raise AnsibleActionFail(str(e)) from e
 
-            if not self._is_interpreter_missing(ansible_stat_mod):
-                result.update(ansible_stat_mod)
-                result["raw"] = False
-            else:
-                host = self._get_inventory_hostname(task_vars)
-                self._display.warning(
-                    f"[{host}] Ansible command module failed; "
-                    "falling back to raw command."
-                )
-                self.force_raw = True
-
-        if self.force_raw:
-            # Fall back to stat command with jc
-            result = {
-                "changed": False,
-                "raw": True,
-            }
-            try:
-                result["stat"] = self._stat_with_jc(
-                    new_module_args, task_vars=task_vars
-                )
-            except (ValueError, RuntimeError) as e:
-                raise AnsibleActionFail(str(e))
-
-        self._remove_tmp_path(self._connection._shell.tmpdir)
-
+        result["stat"] = stat_result
         return result

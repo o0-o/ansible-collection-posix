@@ -9,132 +9,137 @@
 #
 # This file is part of the o0_o.posix Ansible Collection.
 
-- name: Create test file for mode comparison
+- name: Create test file for builtin comparison
   ansible.builtin.copy:
     src: files/test.txt
     dest: "{{ stat_test_dir }}/compare_test.txt"
     mode: '0644'
   check_mode: false
 
-- name: Stat with builtin mode
-  o0_o.posix.stat:
+- name: Stat with ansible.builtin.stat
+  ansible.builtin.stat:
     path: "{{ stat_test_dir }}/compare_test.txt"
-    _force_raw: false
+    checksum_algorithm: sha256
   register: stat_builtin_reg
 
-- name: Stat with raw mode
+- name: Stat with o0_o.posix.stat
   o0_o.posix.stat:
     path: "{{ stat_test_dir }}/compare_test.txt"
-    _force_raw: true
-  register: stat_raw_reg
+    checksum_algorithm: sha256
+  register: stat_posix_reg
 
-- name: Verify both modes return same file type flags
+- name: Verify both implementations return same file type flags
   ansible.builtin.assert:
     that:
-      - stat_builtin_reg['stat']['isreg'] == stat_raw_reg['stat']['isreg']
-      - stat_builtin_reg['stat']['isdir'] == stat_raw_reg['stat']['isdir']
-      - stat_builtin_reg['stat']['islnk'] == stat_raw_reg['stat']['islnk']
-      - stat_builtin_reg['stat']['isblk'] == stat_raw_reg['stat']['isblk']
-      - stat_builtin_reg['stat']['ischr'] == stat_raw_reg['stat']['ischr']
-      - stat_builtin_reg['stat']['isfifo'] == stat_raw_reg['stat']['isfifo']
-      - stat_builtin_reg['stat']['issock'] == stat_raw_reg['stat']['issock']
-    msg: File type flags should match between modes
+      - stat_builtin_reg['stat']['isreg'] == stat_posix_reg['stat']['isreg']
+      - stat_builtin_reg['stat']['isdir'] == stat_posix_reg['stat']['isdir']
+      - stat_builtin_reg['stat']['islnk'] == stat_posix_reg['stat']['islnk']
+      - stat_builtin_reg['stat']['isblk'] == stat_posix_reg['stat']['isblk']
+      - stat_builtin_reg['stat']['ischr'] == stat_posix_reg['stat']['ischr']
+      - stat_builtin_reg['stat']['isfifo'] == stat_posix_reg['stat']['isfifo']
+      - stat_builtin_reg['stat']['issock'] == stat_posix_reg['stat']['issock']
+    msg: File type flags should match between implementations
 
-- name: Verify both modes return same mode
+- name: Verify both implementations return same mode
   ansible.builtin.assert:
     that:
-      - stat_builtin_reg['stat']['mode'] == stat_raw_reg['stat']['mode']
+      - stat_builtin_reg['stat']['mode'] == stat_posix_reg['stat']['mode']
       - stat_builtin_reg['stat']['mode'] == '0644'
-    msg: Mode should match between modes
+    msg: Mode should match between implementations
 
-- name: Verify both modes return same permission booleans
+- name: Verify both implementations return same permission booleans
   ansible.builtin.assert:
     that:
-      - stat_builtin_reg['stat']['rusr'] == stat_raw_reg['stat']['rusr']
-      - stat_builtin_reg['stat']['wusr'] == stat_raw_reg['stat']['wusr']
-      - stat_builtin_reg['stat']['xusr'] == stat_raw_reg['stat']['xusr']
-      - stat_builtin_reg['stat']['rgrp'] == stat_raw_reg['stat']['rgrp']
-      - stat_builtin_reg['stat']['wgrp'] == stat_raw_reg['stat']['wgrp']
-      - stat_builtin_reg['stat']['xgrp'] == stat_raw_reg['stat']['xgrp']
-      - stat_builtin_reg['stat']['roth'] == stat_raw_reg['stat']['roth']
-      - stat_builtin_reg['stat']['woth'] == stat_raw_reg['stat']['woth']
-      - stat_builtin_reg['stat']['xoth'] == stat_raw_reg['stat']['xoth']
-    msg: Permission booleans should match between modes
+      - stat_builtin_reg['stat']['rusr'] == stat_posix_reg['stat']['rusr']
+      - stat_builtin_reg['stat']['wusr'] == stat_posix_reg['stat']['wusr']
+      - stat_builtin_reg['stat']['xusr'] == stat_posix_reg['stat']['xusr']
+      - stat_builtin_reg['stat']['rgrp'] == stat_posix_reg['stat']['rgrp']
+      - stat_builtin_reg['stat']['wgrp'] == stat_posix_reg['stat']['wgrp']
+      - stat_builtin_reg['stat']['xgrp'] == stat_posix_reg['stat']['xgrp']
+      - stat_builtin_reg['stat']['roth'] == stat_posix_reg['stat']['roth']
+      - stat_builtin_reg['stat']['woth'] == stat_posix_reg['stat']['woth']
+      - stat_builtin_reg['stat']['xoth'] == stat_posix_reg['stat']['xoth']
+    msg: Permission booleans should match between implementations
 
-- name: Verify both modes return same uid/gid
+- name: Verify both implementations return same uid/gid
   ansible.builtin.assert:
     that:
-      - stat_builtin_reg['stat']['uid'] == stat_raw_reg['stat']['uid']
-      - stat_builtin_reg['stat']['gid'] == stat_raw_reg['stat']['gid']
-      - stat_builtin_reg['stat']['pw_name'] == stat_raw_reg['stat']['pw_name']
-      - stat_builtin_reg['stat']['gr_name'] == stat_raw_reg['stat']['gr_name']
-    msg: Owner/group info should match between modes
+      - stat_builtin_reg['stat']['uid'] == stat_posix_reg['stat']['uid']
+      - stat_builtin_reg['stat']['gid'] == stat_posix_reg['stat']['gid']
+      - >-
+        stat_builtin_reg['stat']['pw_name'] ==
+        stat_posix_reg['stat']['pw_name']
+      - >-
+        stat_builtin_reg['stat']['gr_name'] ==
+        stat_posix_reg['stat']['gr_name']
+    msg: Owner/group info should match between implementations
 
-- name: Verify both modes return same size
+- name: Verify both implementations return same size
   ansible.builtin.assert:
     that:
-      - stat_builtin_reg['stat']['size'] == stat_raw_reg['stat']['size']
-    msg: File size should match between modes
+      - stat_builtin_reg['stat']['size'] == stat_posix_reg['stat']['size']
+    msg: File size should match between implementations
 
-- name: Verify both modes return float timestamps
+- name: Verify both implementations return float timestamps
   ansible.builtin.assert:
     that:
       - stat_builtin_reg['stat']['atime'] is float
       - stat_builtin_reg['stat']['mtime'] is float
       - stat_builtin_reg['stat']['ctime'] is float
-      - stat_raw_reg['stat']['atime'] is float
-      - stat_raw_reg['stat']['mtime'] is float
-      - stat_raw_reg['stat']['ctime'] is float
-    msg: Timestamps should be float in both modes
+      - stat_posix_reg['stat']['atime'] is float
+      - stat_posix_reg['stat']['mtime'] is float
+      - stat_posix_reg['stat']['ctime'] is float
+    msg: Timestamps should be float in both implementations
 
-- name: Verify both modes have same checksum
+- name: Verify both implementations have same checksum
   ansible.builtin.assert:
     that:
       - >-
         stat_builtin_reg['stat']['checksum'] ==
-        stat_raw_reg['stat']['checksum']
-    msg: Checksums should match between modes
+        stat_posix_reg['stat']['checksum']
+    msg: Checksums should match between implementations
 
-- name: Verify both modes have same MIME type
+- name: Verify both implementations have same MIME type
   ansible.builtin.assert:
     that:
       - >-
         stat_builtin_reg['stat']['mimetype']
-        == stat_raw_reg['stat']['mimetype']
+        == stat_posix_reg['stat']['mimetype']
       - >-
         stat_builtin_reg['stat']['charset']
-        == stat_raw_reg['stat']['charset']
-    msg: MIME type and charset should match between modes
+        == stat_posix_reg['stat']['charset']
+    msg: MIME type and charset should match between implementations
 
-- name: Verify both modes have platform-specific fields
+- name: Verify o0_o.posix.stat has platform-specific fields
   ansible.builtin.assert:
     that:
-      - stat_builtin_reg['stat']['attr_flags'] is defined
-      - stat_builtin_reg['stat']['attributes'] is defined
-      - stat_raw_reg['stat']['attr_flags'] is defined
-      - stat_raw_reg['stat']['attributes'] is defined
-    msg: Platform-specific fields should exist in both modes
-
-- name: Verify builtin mode has generation and version fields
-  ansible.builtin.assert:
-    that:
-      - stat_builtin_reg['stat']['generation'] is defined
-      - stat_builtin_reg['stat']['version'] is defined
+      - stat_posix_reg['stat']['attr_flags'] is defined
+      - stat_posix_reg['stat']['attributes'] is defined
     msg: >-
-      Builtin mode should have generation and version fields
-      (raw mode excludes these as they require ioctl/statx)
+      o0_o.posix.stat should have platform-specific attribute fields
 
-- name: Count keys in builtin mode
+- name: Count keys in builtin.stat
   ansible.builtin.set_fact:
     builtin_key_count: "{{ stat_builtin_reg['stat'].keys() | length }}"
 
-- name: Count keys in raw mode
+- name: Count keys in o0_o.posix.stat
   ansible.builtin.set_fact:
-    raw_key_count: "{{ stat_raw_reg['stat'].keys() | length }}"
+    posix_key_count: "{{ stat_posix_reg['stat'].keys() | length }}"
 
-- name: Verify both modes return similar number of keys
+- name: Verify both implementations return comprehensive stat data
   ansible.builtin.assert:
     that:
       - builtin_key_count | int >= 40
-      - raw_key_count | int >= 40
-    msg: Both modes should return comprehensive stat data
+      - posix_key_count | int >= 40
+    msg: Both implementations should return comprehensive stat data
+
+- name: >-
+    Verify builtin.stat has fields that o0_o.posix.stat does not
+    (generation, version)
+  ansible.builtin.assert:
+    that:
+      - stat_builtin_reg['stat']['version'] is defined
+      - stat_builtin_reg['stat']['generation'] is defined
+    msg: >-
+      builtin.stat should have generation and version fields
+      (o0_o.posix.stat omits these as they require ioctl/statx)
