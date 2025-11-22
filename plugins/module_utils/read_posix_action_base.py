@@ -256,7 +256,7 @@ class ReadPosixActionBase(PosixActionBase):
         self,
         path: str,
         get_mime: bool,
-    ) -> list[tuple[str, list[str]]]:
+    ) -> dict[str, list[str]]:
         """Generate stage 1 discovery commands with tags.
 
         Returns tagged commands for initial file discovery including
@@ -265,18 +265,17 @@ class ReadPosixActionBase(PosixActionBase):
 
         :param str path: File path to stat
         :param bool get_mime: Whether to include MIME type detection
-        :returns list[tuple[str, list[str]]]: List of (tag, command)
-            tuples
+        :returns dict[str, list[str]]: Dict mapping tags to commands
         """
-        commands = [
-            ("stat_main", ["stat", path]),
-            ("readlink", ["readlink", path]),
-            ("readlink_f", ["readlink", "-f", path]),
-            ("test_x", ["test", "-x", path]),
-        ]
+        commands = {
+            "stat_main": ["stat", path],
+            "readlink": ["readlink", path],
+            "readlink_f": ["readlink", "-f", path],
+            "test_x": ["test", "-x", path],
+        }
 
         if get_mime:
-            commands.append(("mime", ["file", "-b", "--mime", path]))
+            commands["mime"] = ["file", "-b", "--mime", path]
 
         return commands
 
@@ -292,7 +291,7 @@ class ReadPosixActionBase(PosixActionBase):
         get_checksum: bool = False,
         checksum_algorithm: str = "sha1",
         get_attributes: bool = False,
-    ) -> list[tuple[str, list[str]]]:
+    ) -> dict[str, list[str]]:
         """Generate stage 2 commands based on stage 1 results.
 
         Returns tagged commands for uid/gid lookup, conditional
@@ -308,19 +307,18 @@ class ReadPosixActionBase(PosixActionBase):
         :param bool get_checksum: Whether to get checksum
         :param str checksum_algorithm: Checksum algorithm to use
         :param bool get_attributes: Whether to get filesystem attributes
-        :returns list[tuple[str, list[str]]]: List of (tag, command)
-            tuples
+        :returns dict[str, list[str]]: Dict mapping tags to commands
         """
-        commands = [
-            ("uid", ["id", "-u", username]),
-            ("gid", ["id", "-g", username] if username else ["id", "-g"]),
-        ]
+        commands = {
+            "uid": ["id", "-u", username],
+            "gid": ["id", "-g", username] if username else ["id", "-g"],
+        }
 
         if is_symlink and follow:
-            commands.append(("stat_follow", ["stat", "-L", path]))
+            commands["stat_follow"] = ["stat", "-L", path]
 
         if file_type_char in ("b", "c"):
-            commands.append(("device_type", ["stat", "-c", "%t,%T", path]))
+            commands["device_type"] = ["stat", "-c", "%t,%T", path]
 
         # Checksum (only for regular files)
         if get_checksum and is_regular_file:
@@ -335,27 +333,22 @@ class ReadPosixActionBase(PosixActionBase):
             }
             gnu_cmd = cmd_map.get(checksum_algorithm)
             if gnu_cmd:
-                commands.append(("checksum_gnu", [gnu_cmd, path]))
+                commands["checksum_gnu"] = [gnu_cmd, path]
             # Also try BSD commands as fallback
-            commands.append(
-                (
-                    "checksum_bsd_shasum",
-                    [
-                        "shasum",
-                        "-a",
-                        checksum_algorithm.replace("sha", ""),
-                        path,
-                    ],
-                )
-            )
-            commands.append(("checksum_bsd_md5", ["md5", "-q", path]))
+            commands["checksum_bsd_shasum"] = [
+                "shasum",
+                "-a",
+                checksum_algorithm.replace("sha", ""),
+                path,
+            ]
+            commands["checksum_bsd_md5"] = ["md5", "-q", path]
 
         # Filesystem attributes
         if get_attributes:
             # Try lsattr first (Linux)
-            commands.append(("attrs_lsattr", ["lsattr", "-d", path]))
+            commands["attrs_lsattr"] = ["lsattr", "-d", path]
             # Try ls -ldO as fallback (BSD/macOS)
-            commands.append(("attrs_ls", ["ls", "-ldO", path]))
+            commands["attrs_ls"] = ["ls", "-ldO", path]
 
         return commands
 

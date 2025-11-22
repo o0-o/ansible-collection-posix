@@ -111,12 +111,12 @@ class ActionModule(ReadPosixActionBase, ActionBase):
         force_raw = new_args["_force_raw"]
 
         # === STAGE 1: Initial discovery ===
-        # Get stage 1 commands from mixin
+        # Get stage 1 commands from mixin (returns dict)
         stage1_commands = self._get_stat_commands_stage1(path, get_mime)
 
         # Execute stage 1 (using dict mode for automatic keying)
         stage1_result = self._run(
-            commands=dict(stage1_commands),
+            commands=stage1_commands,
             force_raw=force_raw,
             task_vars=task_vars,
             check_mode=False,
@@ -130,12 +130,12 @@ class ActionModule(ReadPosixActionBase, ActionBase):
         result["raw"] = stage1_result.get("raw", False)
 
         # Dict mode returns results already keyed by tag
-        stage1_tagged_results = stage1_result["commands"]
+        stage1_commands_results = stage1_result["commands"]
 
         # Process stage 1
         try:
             partial_stat, stage2_params = self._process_stat_stage1(
-                stage1_tagged_results, path, follow
+                stage1_commands_results, path, follow
             )
         except (ValueError, RuntimeError) as e:
             raise AnsibleActionFail(str(e)) from e
@@ -146,7 +146,7 @@ class ActionModule(ReadPosixActionBase, ActionBase):
             return result
 
         # === STAGE 2: Conditional commands based on stage 1 ===
-        # Get stage 2 commands from mixin
+        # Get stage 2 commands from mixin (returns dict)
         stage2_commands = self._get_stat_commands_stage2(
             path=path,
             username=stage2_params["username"],
@@ -162,7 +162,7 @@ class ActionModule(ReadPosixActionBase, ActionBase):
 
         # Execute stage 2 (using dict mode for automatic keying)
         stage2_result = self._run(
-            commands=dict(stage2_commands),
+            commands=stage2_commands,
             force_raw=force_raw,
             task_vars=task_vars,
             check_mode=False,
@@ -173,14 +173,14 @@ class ActionModule(ReadPosixActionBase, ActionBase):
         # those tools). The processing methods will handle missing data.
 
         # Dict mode returns results already keyed by tag
-        stage2_tagged_results = stage2_result["commands"]
+        stage2_commands_results = stage2_result["commands"]
 
         # === FINAL PROCESSING ===
         # Process stage 2 and finalize stat
         try:
             stat_result = self._process_stat_stage2(
-                tagged_results=stage2_tagged_results,
-                stage1_tagged_results=stage1_tagged_results,
+                tagged_results=stage2_commands_results,
+                stage1_tagged_results=stage1_commands_results,
                 partial_stat=partial_stat,
                 stage2_params=stage2_params,
                 path=path,
