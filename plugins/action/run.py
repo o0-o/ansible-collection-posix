@@ -206,8 +206,7 @@ class ActionModule(PosixActionBase, ActionBase):
         """
         argument_spec = {
             "commands": {
-                "type": "list",
-                "elements": "raw",  # Accept str or list
+                "type": "raw",  # Accept list or dict
                 "required": True,
             },
             "chdir": {"type": "path"},
@@ -220,7 +219,18 @@ class ActionModule(PosixActionBase, ActionBase):
         validation_result, new_module_args = self.validate_argument_spec(
             argument_spec=argument_spec
         )
-        self.commands = new_module_args["commands"]
+
+        commands_input = new_module_args["commands"]
+
+        # Detect dict mode and extract keys/commands
+        self.is_dict_mode = isinstance(commands_input, dict)
+        if self.is_dict_mode:
+            self.command_keys = list(commands_input.keys())
+            self.commands = list(commands_input.values())
+        else:
+            self.command_keys = None
+            self.commands = commands_input
+
         self.chdir = new_module_args["chdir"]
         self.parallel = new_module_args["parallel"]
         self.fail_fast = new_module_args["fail_fast"]
@@ -303,10 +313,22 @@ class ActionModule(PosixActionBase, ActionBase):
                 )
                 return self.result
 
+            # Convert to dict if dict mode
+            if self.is_dict_mode:
+                command_results = self.result["commands"]
+                self.result["commands"] = dict(
+                    zip(self.command_keys, command_results)
+                )
+
             # Check if any command failed
+            command_results = (
+                self.result["commands"].values()
+                if self.is_dict_mode
+                else self.result["commands"]
+            )
             any_failed = any(
                 r.get("rc") is None or r.get("rc") != 0
-                for r in self.result["commands"]
+                for r in command_results
             )
 
             self.result.update(

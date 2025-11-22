@@ -402,14 +402,16 @@ class PosixActionBase:
 
     def _run(
         self,
-        commands: List[Union[str, List[str]]],
+        commands: Union[
+            List[Union[str, List[str]]], Dict[str, Union[str, List[str]]]
+        ],
         chdir: Optional[str] = None,
         parallel: bool = True,
         fail_fast: bool = False,
         force_raw: bool = False,
         task_vars: Optional[Dict[str, Any]] = None,
         check_mode: Optional[bool] = None,
-    ) -> Dict[str, Any]:
+    ) -> Union[List[Dict[str, Any]], Dict[str, Dict[str, Any]]]:
         """
         Run multiple commands in a single SSH round trip using the run
         action plugin.
@@ -418,11 +420,13 @@ class PosixActionBase:
         remote execution instead of multiple individual SSH round trips.
         Commands execute in parallel by default for maximum efficiency.
 
-        :param List[Union[str, List[str]]] commands: List of commands to
-            execute. Each can be a shell string or list of arguments
+        :param Union[List[Union[str, List[str]]], Dict[str, Union[str,
+            List[str]]]] commands: Commands to execute. Can be either:
+            - List of commands (returns list of results)
+            - Dict mapping keys to commands (returns dict mapping same
+              keys to results)
         :param Optional[str] chdir: Change to this directory before
             executing commands
-            not exist
         :param bool parallel: Execute commands in parallel using
             background jobs (default True)
         :param bool fail_fast: Stop on first command failure (default
@@ -432,8 +436,9 @@ class PosixActionBase:
         :param Optional[dict] task_vars: Dictionary of task variables
         :param Optional[bool] check_mode: Optional override for Ansible
             check mode
-        :returns dict: Result dictionary with 'commands' list containing
-            individual command outputs
+        :returns Union[List[Dict[str, Any]], Dict[str, Dict[str, Any]]]:
+            If commands is a list, returns list of command results.
+            If commands is a dict, returns dict mapping keys to results.
         """
         task_vars = task_vars or {}
 

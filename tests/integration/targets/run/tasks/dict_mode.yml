@@ -1,0 +1,182 @@
+# vim: ts=2:sw=2:sts=2:et:ft=yaml.ansible
+# -*- mode: yaml; yaml-indent-offset: 2; indent-tabs-mode: nil; -*-
+---
+# GNU General Public License v3.0+
+# SPDX-License-Identifier: GPL-3.0-or-later
+# (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
+#
+# Copyright (c) 2025 oØ.o (@o0-o)
+#
+# This file is part of the o0_o.posix Ansible Collection.
+
+- name: Test dict mode returns dict results
+  o0_o.posix.run:
+    commands:
+      kernel: uname -s
+      machine: uname -m
+      hostname: hostname
+    _force_raw: "{{ _force_raw }}"
+  register: dict_mode_reg
+
+- name: Assert dict mode returns mapping
+  ansible.builtin.assert:
+    that:
+      - dict_mode_reg['commands'] is mapping
+  when: not ansible_check_mode
+
+- name: Assert dict keys match input
+  ansible.builtin.assert:
+    that:
+      - "'kernel' in dict_mode_reg['commands']"
+      - "'machine' in dict_mode_reg['commands']"
+      - "'hostname' in dict_mode_reg['commands']"
+      - dict_mode_reg['commands'].keys() | list | length == 3
+  when: not ansible_check_mode
+
+- name: Assert each command result is properly structured
+  ansible.builtin.assert:
+    that:
+      - dict_mode_reg['commands']['kernel']['rc'] == 0
+      - dict_mode_reg['commands']['machine']['rc'] == 0
+      - dict_mode_reg['commands']['hostname']['rc'] == 0
+      - dict_mode_reg['commands']['kernel']['cmd'] == 'uname -s'
+      - dict_mode_reg['commands']['machine']['cmd'] == 'uname -m'
+      - dict_mode_reg['commands']['hostname']['cmd'] == 'hostname'
+  when: not ansible_check_mode
+
+- name: Assert dict mode has stdout in each result
+  ansible.builtin.assert:
+    that:
+      - dict_mode_reg['commands']['kernel']['stdout'] | length > 0
+      - dict_mode_reg['commands']['machine']['stdout'] | length > 0
+      - dict_mode_reg['commands']['hostname']['stdout'] | length > 0
+  when: not ansible_check_mode
+
+- name: Assert raw execution is as intended
+  ansible.builtin.assert:
+    that:
+      - dict_mode_reg['raw'] == _force_raw
+
+- name: Test dict mode with mixed string and list commands
+  o0_o.posix.run:
+    commands:
+      string_cmd: echo foo
+      list_cmd: ['echo', 'bar with spaces']
+      printf_cmd: printf baz
+    parallel: false
+    _force_raw: "{{ _force_raw }}"
+  register: dict_mixed_reg
+
+- name: Assert dict mode with mixed commands
+  ansible.builtin.assert:
+    that:
+      - dict_mixed_reg['commands'] is mapping
+      - dict_mixed_reg['commands']['string_cmd']['stdout'] | trim == 'foo'
+      - >-
+        dict_mixed_reg['commands']['list_cmd']['stdout'] | trim
+        == 'bar with spaces'
+      - dict_mixed_reg['commands']['printf_cmd']['stdout'] | trim == 'baz'
+  when: not ansible_check_mode
+
+- name: Assert raw execution is as intended
+  ansible.builtin.assert:
+    that:
+      - dict_mixed_reg['raw'] == _force_raw
+
+- name: Test dict mode with single command
+  o0_o.posix.run:
+    commands:
+      only_one: echo single
+    _force_raw: "{{ _force_raw }}"
+  register: dict_single_reg
+
+- name: Assert single command dict mode
+  ansible.builtin.assert:
+    that:
+      - dict_single_reg['commands'] is mapping
+      - dict_single_reg['commands'].keys() | list | length == 1
+      - dict_single_reg['commands']['only_one']['stdout'] | trim == 'single'
+  when: not ansible_check_mode
+
+- name: Assert raw execution is as intended
+  ansible.builtin.assert:
+    that:
+      - dict_single_reg['raw'] == _force_raw
+
+- name: Test dict mode preserves order
+  o0_o.posix.run:
+    commands:
+      first: echo 1
+      second: echo 2
+      third: echo 3
+    parallel: false
+    _force_raw: "{{ _force_raw }}"
+  register: dict_order_reg
+
+- name: Assert dict mode results accessible by key
+  ansible.builtin.assert:
+    that:
+      - dict_order_reg['commands']['first']['stdout'] | trim == '1'
+      - dict_order_reg['commands']['second']['stdout'] | trim == '2'
+      - dict_order_reg['commands']['third']['stdout'] | trim == '3'
+  when: not ansible_check_mode
+
+- name: Assert raw execution is as intended
+  ansible.builtin.assert:
+    that:
+      - dict_order_reg['raw'] == _force_raw
+
+- name: Test dict mode with stderr
+  o0_o.posix.run:
+    commands:
+      stdout_only: echo stdout_test
+      stderr_only: printf stderr_test 1>&2
+      both: echo both_out; printf both_err 1>&2
+    parallel: false
+    _force_raw: "{{ _force_raw }}"
+  register: dict_stderr_reg
+
+- name: Assert dict mode stderr handling
+  ansible.builtin.assert:
+    that:
+      - >-
+        dict_stderr_reg['commands']['stdout_only']['stdout'] | trim
+        == 'stdout_test'
+      - dict_stderr_reg['commands']['stdout_only']['stderr'] | trim == ''
+      - dict_stderr_reg['commands']['stderr_only']['stdout'] | trim == ''
+      - >-
+        dict_stderr_reg['commands']['stderr_only']['stderr'] | trim
+        == 'stderr_test'
+      - >-
+        dict_stderr_reg['commands']['both']['stdout'] | trim
+        == 'both_out'
+      - dict_stderr_reg['commands']['both']['stderr'] | trim == 'both_err'
+  when: not ansible_check_mode
+
+- name: Assert raw execution is as intended
+  ansible.builtin.assert:
+    that:
+      - dict_stderr_reg['raw'] == _force_raw
+
+- name: Test list mode still works (backwards compatibility)
+  o0_o.posix.run:
+    commands:
+      - echo list1
+      - echo list2
+    _force_raw: "{{ _force_raw }}"
+  register: list_compat_reg
+
+- name: Assert list mode returns list not mapping
+  ansible.builtin.assert:
+    that:
+      - list_compat_reg['commands'] is not mapping
+      - list_compat_reg['commands'] is sequence
+      - list_compat_reg['commands'] | length == 2
+      - list_compat_reg['commands'][0]['stdout'] | trim == 'list1'
+      - list_compat_reg['commands'][1]['stdout'] | trim == 'list2'
+  when: not ansible_check_mode
+
+- name: Assert raw execution is as intended
+  ansible.builtin.assert:
+    that:
+      - list_compat_reg['raw'] == _force_raw

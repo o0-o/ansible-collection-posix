@@ -114,9 +114,9 @@ class ActionModule(ReadPosixActionBase, ActionBase):
         # Get stage 1 commands from mixin
         stage1_commands = self._get_stat_commands_stage1(path, get_mime)
 
-        # Execute stage 1
+        # Execute stage 1 (using dict mode for automatic keying)
         stage1_result = self._run(
-            commands=[cmd for tag, cmd in stage1_commands],
+            commands=dict(stage1_commands),
             force_raw=force_raw,
             task_vars=task_vars,
             check_mode=False,
@@ -129,12 +129,8 @@ class ActionModule(ReadPosixActionBase, ActionBase):
         # Get raw flag from run result
         result["raw"] = stage1_result.get("raw", False)
 
-        # Map results to tags
-        stage1_tagged_results = {}
-        for (tag, cmd), cmd_result in zip(
-            stage1_commands, stage1_result["commands"]
-        ):
-            stage1_tagged_results[tag] = cmd_result
+        # Dict mode returns results already keyed by tag
+        stage1_tagged_results = stage1_result["commands"]
 
         # Process stage 1
         try:
@@ -164,9 +160,9 @@ class ActionModule(ReadPosixActionBase, ActionBase):
             get_attributes=get_attributes,
         )
 
-        # Execute stage 2
+        # Execute stage 2 (using dict mode for automatic keying)
         stage2_result = self._run(
-            commands=[cmd for tag, cmd in stage2_commands],
+            commands=dict(stage2_commands),
             force_raw=force_raw,
             task_vars=task_vars,
             check_mode=False,
@@ -176,12 +172,8 @@ class ActionModule(ReadPosixActionBase, ActionBase):
         # are expected to fail (e.g., checksum commands on systems without
         # those tools). The processing methods will handle missing data.
 
-        # Map results to tags
-        stage2_tagged_results = {}
-        for (tag, cmd), cmd_result in zip(
-            stage2_commands, stage2_result["commands"]
-        ):
-            stage2_tagged_results[tag] = cmd_result
+        # Dict mode returns results already keyed by tag
+        stage2_tagged_results = stage2_result["commands"]
 
         # === FINAL PROCESSING ===
         # Process stage 2 and finalize stat
