@@ -43,146 +43,6 @@ class ActionModule(ReadPosixActionBase, ActionBase):
     _supports_async = False
     _supports_diff = False
 
-    def run(
-        self,
-        tmp: Optional[str] = None,
-        task_vars: Optional[dict[str, Any]] = None,
-    ) -> dict[str, Any]:
-        """Execute file inspection and return metadata.
-
-        :param Optional[str] tmp: Unused temporary directory path
-        :param Optional[dict[str, Any]] task_vars: Available Ansible
-            variables
-        :returns dict[str, Any]: Result with file metadata under 'file'
-            key
-        :raises AnsibleActionFail: When invalid arguments are provided
-        """
-        task_vars = task_vars or {}
-        tmp = None
-
-        result = super().run(tmp, task_vars)
-
-        argument_spec = {
-            "paths": {
-                "type": "list",
-                "required": True,
-                "elements": "str",
-                "aliases": ["path"],
-            },
-            "include": {
-                "type": "list",
-                "elements": "str",
-                "default": ["metadata"],
-                "choices": [
-                    "content",
-                    "metadata",
-                    "type",
-                    "name",
-                    "parent",
-                    "mode",
-                    "owner",
-                    "group",
-                    "writable",
-                    "links",
-                    "modified",
-                    "created",
-                    "acl",
-                    "xattrs",
-                    "flags",
-                    "selinux",
-                ],
-            },
-            "encoding": {"type": "str"},
-            "parents": {"type": "raw", "default": False},
-            "find_hardlinks": {"type": "bool", "default": False},
-            "find_symlinks": {"type": "bool", "default": False},
-            "_force_raw": {"type": "bool", "default": False},
-        }
-        validation_result, new_args = self.validate_argument_spec(
-            argument_spec=argument_spec
-        )
-        self.force_raw = new_args.pop("_force_raw", False)
-
-        path_list = new_args["paths"]
-
-        # Convert include list to set for fast lookup
-        include_fields = set(new_args["include"])
-        include_content = "content" in include_fields
-        preferred_encoding = new_args.get("encoding")
-        parents_option = truthy_or_integer(
-            new_args["parents"], zero_is_false=True, only_positive=True
-        )
-        parents = False
-        parent_limit: Optional[int] = 0
-        if parents_option is True:
-            parents = True
-            parent_limit = None
-        elif parents_option is False:
-            parent_limit = 0
-        else:
-            parents = True
-            parent_limit = parents_option
-        find_hardlinks = new_args.get("find_hardlinks", False)
-        find_symlinks = new_args.get("find_symlinks", False)
-
-        files: dict[str, Optional[dict[str, Any]]] = {}
-        for current_path in path_list:
-            visited_paths: set[str] = set()
-
-            info, extra_entries = self._gather_file_info(
-                path=current_path,
-                include_content=include_content,
-                include_fields=include_fields,
-                preferred_encoding=preferred_encoding,
-                task_vars=task_vars,
-                parents=parents,
-                find_hardlinks=find_hardlinks,
-                find_symlinks=find_symlinks,
-                visited=visited_paths,
-            )
-            files[current_path] = info
-            for extra_path, extra_info in extra_entries.items():
-                if extra_path in files:
-                    continue
-                files[extra_path] = extra_info
-
-        if parent_limit is None:
-            parent_paths_iter = self._collect_parent_paths(current_path, None)
-        elif parent_limit > 0:
-            parent_paths_iter = self._collect_parent_paths(
-                current_path, parent_limit
-            )
-        else:
-            parent_paths_iter = []
-
-        for parent_path in parent_paths_iter:
-            if parent_path in files:
-                continue
-            parent_info, parent_extra = self._gather_file_info(
-                path=parent_path,
-                include_content=False,
-                include_fields=include_fields,
-                preferred_encoding=None,
-                task_vars=task_vars,
-                parents=False,
-                find_hardlinks=False,
-                find_symlinks=False,
-                visited=visited_paths,
-            )
-            if parent_info is not None:
-                files[parent_path] = parent_info
-            for extra_path, extra_info in parent_extra.items():
-                if extra_path not in files:
-                    files[extra_path] = extra_info
-
-        result.update(
-            {
-                "changed": False,
-                "paths": files,
-            }
-        )
-        return result
-
     def _gather_file_info(
         self,
         path: str,
@@ -612,7 +472,7 @@ class ActionModule(ReadPosixActionBase, ActionBase):
                 follow=True,
                 task_vars=task_vars,
             )
-        except AnsibleActionFail:
+        except (AnsibleActionFail, ValueError, RuntimeError):
             return None
 
     def _get_mount_root(
@@ -1083,7 +943,7 @@ class ActionModule(ReadPosixActionBase, ActionBase):
                 follow=False,
                 task_vars=task_vars,
             )
-        except AnsibleActionFail:
+        except (AnsibleActionFail, ValueError, RuntimeError):
             return {}
 
         target_stat = stat_result.get("stat", {})
@@ -1307,3 +1167,144 @@ class ActionModule(ReadPosixActionBase, ActionBase):
         if not content_data:
             return encoding, None
         return encoding, content_data
+
+    def run(
+        self,
+        tmp: Optional[str] = None,
+        task_vars: Optional[dict[str, Any]] = None,
+    ) -> dict[str, Any]:
+        """Execute file inspection and return metadata.
+
+        :param Optional[str] tmp: Unused temporary directory path
+        :param Optional[dict[str, Any]] task_vars: Available Ansible
+            variables
+        :returns dict[str, Any]: Result with file metadata under 'file'
+            key
+        :raises AnsibleActionFail: When invalid arguments are provided
+        """
+        task_vars = task_vars or {}
+        self._def_inventory_hostname(task_vars)
+
+        result = super(ActionModule, self).run(tmp, task_vars=task_vars)
+        del tmp  # unused
+
+        result["invocation"] = self._task.args.copy()
+
+        argument_spec = {
+            "paths": {
+                "type": "list",
+                "required": True,
+                "elements": "str",
+                "aliases": ["path"],
+            },
+            "include": {
+                "type": "list",
+                "elements": "str",
+                "default": ["metadata"],
+                "choices": [
+                    "content",
+                    "metadata",
+                    "type",
+                    "name",
+                    "parent",
+                    "mode",
+                    "owner",
+                    "group",
+                    "writable",
+                    "links",
+                    "modified",
+                    "created",
+                    "acl",
+                    "xattrs",
+                    "flags",
+                    "selinux",
+                ],
+            },
+            "encoding": {"type": "str"},
+            "parents": {"type": "raw", "default": False},
+            "find_hardlinks": {"type": "bool", "default": False},
+            "find_symlinks": {"type": "bool", "default": False},
+        }
+        validation_result, new_args = self.validate_argument_spec(
+            argument_spec=argument_spec
+        )
+
+        path_list = new_args["paths"]
+
+        # Convert include list to set for fast lookup
+        include_fields = set(new_args["include"])
+        include_content = "content" in include_fields
+        preferred_encoding = new_args.get("encoding")
+        parents_option = truthy_or_integer(
+            new_args["parents"], zero_is_false=True, only_positive=True
+        )
+        parents = False
+        parent_limit: Optional[int] = 0
+        if parents_option is True:
+            parents = True
+            parent_limit = None
+        elif parents_option is False:
+            parent_limit = 0
+        else:
+            parents = True
+            parent_limit = parents_option
+        find_hardlinks = new_args.get("find_hardlinks", False)
+        find_symlinks = new_args.get("find_symlinks", False)
+
+        files: dict[str, Optional[dict[str, Any]]] = {}
+        for current_path in path_list:
+            visited_paths: set[str] = set()
+
+            info, extra_entries = self._gather_file_info(
+                path=current_path,
+                include_content=include_content,
+                include_fields=include_fields,
+                preferred_encoding=preferred_encoding,
+                task_vars=task_vars,
+                parents=parents,
+                find_hardlinks=find_hardlinks,
+                find_symlinks=find_symlinks,
+                visited=visited_paths,
+            )
+            files[current_path] = info
+            for extra_path, extra_info in extra_entries.items():
+                if extra_path in files:
+                    continue
+                files[extra_path] = extra_info
+
+        if parent_limit is None:
+            parent_paths_iter = self._collect_parent_paths(current_path, None)
+        elif parent_limit > 0:
+            parent_paths_iter = self._collect_parent_paths(
+                current_path, parent_limit
+            )
+        else:
+            parent_paths_iter = []
+
+        for parent_path in parent_paths_iter:
+            if parent_path in files:
+                continue
+            parent_info, parent_extra = self._gather_file_info(
+                path=parent_path,
+                include_content=False,
+                include_fields=include_fields,
+                preferred_encoding=None,
+                task_vars=task_vars,
+                parents=False,
+                find_hardlinks=False,
+                find_symlinks=False,
+                visited=visited_paths,
+            )
+            if parent_info is not None:
+                files[parent_path] = parent_info
+            for extra_path, extra_info in parent_extra.items():
+                if extra_path not in files:
+                    files[extra_path] = extra_info
+
+        result.update(
+            {
+                "changed": False,
+                "paths": files,
+            }
+        )
+        return result

@@ -111,12 +111,12 @@ class ReadPosixActionBase(PosixActionBase):
         check_mode: Optional[bool] = None,
     ) -> dict[str, Any]:
         """
-        Run the stat action plugin to gather file status
-        information.
+        Gather file status information using staged command approach.
 
         Retrieves file status information similar to the stat
         command, including permissions, ownership, timestamps,
-        checksums, and more.
+        checksums, and more. Uses a two-stage command execution
+        pattern for efficient remote operations.
 
         :param str path: Path to the file to stat
         :param bool follow: Follow symbolic links (default False)
@@ -131,28 +131,79 @@ class ReadPosixActionBase(PosixActionBase):
         :param Optional[bool] check_mode: Optional override for Ansible
             check mode
         :returns dict: Result dictionary with stat information
-
-        .. note::
-           The _force_raw flag is automatically added by _run_action if
-           self.force_raw is True, so no need to pass it explicitly.
         """
         task_vars = task_vars or {}
+        result: dict[str, Any] = {"changed": False}
 
-        args = {
-            "path": path,
-            "follow": follow,
-            "get_checksum": get_checksum,
-            "get_mime": get_mime,
-            "get_attributes": get_attributes,
-            "checksum_algorithm": checksum_algorithm,
-        }
+        # === STAGE 1: Initial discovery ===
+        # Get stage 1 commands from mixin (returns dict)
+        stage1_commands = self._get_stat_commands_stage1(path, get_mime)
 
-        return self._run_action(
-            "o0_o.posix.stat",
-            args,
+        # Execute stage 1 (using dict mode for automatic keying)
+        stage1_result = self._run(
+            commands=stage1_commands,
             task_vars=task_vars,
-            check_mode=check_mode,
+            check_mode=False,
         )
+
+        # Get raw flag from run result
+        result["raw"] = stage1_result.get("raw", False)
+
+        # Dict mode returns results already keyed by tag
+        stage1_commands_results = stage1_result["commands"]
+
+        # Process stage 1
+        partial_stat, stage2_params = self._process_stat_stage1(
+            stage1_commands_results, path, follow
+        )
+
+        # Early return if file doesn't exist
+        if not partial_stat.get("exists"):
+            result["stat"] = partial_stat
+            return result
+
+        # === STAGE 2: Conditional commands based on stage 1 ===
+        # Get stage 2 commands from mixin (returns dict)
+        stage2_commands = self._get_stat_commands_stage2(
+            path=path,
+            username=stage2_params["username"],
+            groupname=stage2_params["groupname"],
+            is_symlink=stage2_params["is_symlink"],
+            follow=follow,
+            file_type_char=stage2_params["file_type_char"],
+            is_regular_file=stage2_params["is_regular_file"],
+            get_checksum=get_checksum,
+            checksum_algorithm=checksum_algorithm,
+            get_attributes=get_attributes,
+        )
+
+        # Execute stage 2 (using dict mode for automatic keying)
+        stage2_result = self._run(
+            commands=stage2_commands,
+            task_vars=task_vars,
+            check_mode=False,
+        )
+
+        # Dict mode returns results already keyed by tag
+        stage2_commands_results = stage2_result["commands"]
+
+        # === FINAL PROCESSING ===
+        # Process stage 2 and finalize stat
+        stat_result = self._process_stat_stage2(
+            tagged_results=stage2_commands_results,
+            stage1_tagged_results=stage1_commands_results,
+            partial_stat=partial_stat,
+            stage2_params=stage2_params,
+            path=path,
+            get_checksum=get_checksum,
+            checksum_algorithm=checksum_algorithm,
+            get_mime=get_mime,
+            get_attributes=get_attributes,
+            task_vars=task_vars,
+        )
+
+        result["stat"] = stat_result
+        return result
 
     def _cat(
         self, src: str, task_vars: Optional[dict[str, Any]] = None
