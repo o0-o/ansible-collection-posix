@@ -19,7 +19,6 @@
 - name: Test path using dest alias
   o0_o.posix.stat:
     dest: "{{ stat_test_dir }}/alias_test.txt"
-    _force_raw: "{{ _force_raw }}"
   register: stat_dest_reg
 
 - name: Verify dest alias works
@@ -31,7 +30,6 @@
 - name: Test path using name alias
   o0_o.posix.stat:
     name: "{{ stat_test_dir }}/alias_test.txt"
-    _force_raw: "{{ _force_raw }}"
   register: stat_name_reg
 
 - name: Verify name alias works
@@ -44,7 +42,6 @@
   o0_o.posix.stat:
     path: "{{ stat_test_dir }}/alias_test.txt"
     checksum: sha256
-    _force_raw: "{{ _force_raw }}"
   register: stat_checksum_alias_reg
 
 - name: Verify checksum alias works
@@ -58,7 +55,6 @@
   o0_o.posix.stat:
     path: "{{ stat_test_dir }}/alias_test.txt"
     checksum_algo: md5
-    _force_raw: "{{ _force_raw }}"
   register: stat_checksum_algo_reg
 
 - name: Verify checksum_algo alias works
@@ -72,7 +68,6 @@
   o0_o.posix.stat:
     path: "{{ stat_test_dir }}/alias_test.txt"
     mime: true
-    _force_raw: "{{ _force_raw }}"
   register: stat_mime_alias_reg
 
 - name: Verify mime alias works
@@ -85,7 +80,6 @@
   o0_o.posix.stat:
     path: "{{ stat_test_dir }}/alias_test.txt"
     mime_type: true
-    _force_raw: "{{ _force_raw }}"
   register: stat_mime_type_reg
 
 - name: Verify mime_type alias works
@@ -98,7 +92,6 @@
   o0_o.posix.stat:
     path: "{{ stat_test_dir }}/alias_test.txt"
     attr: true
-    _force_raw: "{{ _force_raw }}"
   register: stat_attr_reg
 
 - name: Verify attr alias works
@@ -111,7 +104,6 @@
   o0_o.posix.stat:
     path: "{{ stat_test_dir }}/alias_test.txt"
     attributes: true
-    _force_raw: "{{ _force_raw }}"
   register: stat_attributes_reg
 
 - name: Verify attributes alias works

@@ -120,14 +120,12 @@
     - name: Test raw mode on OpenBSD
       o0_o.posix.stat:
         path: "{{ stat_test_dir }}/platform_test.txt"
-        _force_raw: true
       register: stat_openbsd_raw_reg
 
     - name: Verify raw mode works on OpenBSD
       ansible.builtin.assert:
         that:
           - stat_openbsd_raw_reg['stat']['exists']
-          - stat_openbsd_raw_reg['raw']
         msg: Raw mode should work on OpenBSD
 
 - name: Cross-platform MIME tests

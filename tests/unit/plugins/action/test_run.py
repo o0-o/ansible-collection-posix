@@ -45,7 +45,6 @@ def test_run_list_mode(plugin) -> None:
     """Test run with list input returns list output."""
     plugin._task.args = {
         "commands": ["echo foo", "echo bar"],
-        "_force_raw": False,
     }
 
     # Mock _cmd to return batch output
@@ -76,7 +75,6 @@ def test_run_dict_mode(plugin) -> None:
     """Test run with dict input returns dict output."""
     plugin._task.args = {
         "commands": {"first": "echo foo", "second": "echo bar"},
-        "_force_raw": False,
     }
 
     # Mock _cmd to return batch output
@@ -112,7 +110,6 @@ def test_run_dict_mode_preserves_keys(plugin) -> None:
             "machine": "uname -m",
             "hostname": "hostname",
         },
-        "_force_raw": False,
     }
 
     # Mock _cmd to return batch output
@@ -146,7 +143,6 @@ def test_run_dict_mode_single_command(plugin) -> None:
     """Test dict mode with single command."""
     plugin._task.args = {
         "commands": {"only_one": "echo test"},
-        "_force_raw": False,
     }
 
     # Mock _cmd to return batch output
@@ -175,7 +171,6 @@ def test_run_dict_mode_with_failures(plugin) -> None:
     """Test dict mode properly handles command failures."""
     plugin._task.args = {
         "commands": {"pass": "true", "fail": "false"},
-        "_force_raw": False,
     }
 
     # Mock _cmd to return batch output with one failure

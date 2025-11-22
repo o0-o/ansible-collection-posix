@@ -19,14 +19,7 @@
 - name: Stat the test file
   o0_o.posix.stat:
     path: "{{ stat_test_dir }}/test.txt"
-    _force_raw: "{{ _force_raw }}"
   register: stat_reg
-
-- name: Assert raw is expected value
-  ansible.builtin.assert:
-    that:
-      - stat_reg['raw'] == _force_raw
-    msg: Raw flag should match force_raw parameter
 
 - name: Verify basic stat fields exist
   ansible.builtin.assert:
@@ -92,7 +85,6 @@
 - name: Test non-existent file
   o0_o.posix.stat:
     path: "{{ stat_test_dir }}/nonexistent.txt"
-    _force_raw: "{{ _force_raw }}"
   register: stat_noexist_reg
 
 - name: Verify non-existent file returns exists=false

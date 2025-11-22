@@ -36,8 +36,6 @@
 
     - name: Run stat test suite
       vars:
-        loop_list: >-
-          {{ [true, false] | ansible.builtin.product([true, false]) }}
         test_sets:
           - basic_stat.yml
           - file_types.yml
@@ -48,21 +46,14 @@
           - compare_modes.yml
       block:
 
-        - name: Run test set with permutations of force_raw and check_mode
+        - name: Run test set with permutations of check_mode
           ansible.builtin.include_tasks: "{{ item[0] }}"
-          loop: "{{ test_sets | ansible.builtin.product(loop_list) }}"
+          loop: "{{ test_sets | ansible.builtin.product([true, false]) }}"
           vars:
-            _force_raw: "{{ item[1][0] }}"
-            ansible_check_mode: "{{ item[1][1] }}"
+            ansible_check_mode: "{{ item[1] }}"
 
-    - name: Run timestamp tests (only permute by raw mode, not check_mode)
+    - name: Run timestamp tests (not permuted)
       ansible.builtin.include_tasks: timestamps.yml
-      loop: [true, false]
-      vars:
-        _force_raw: "{{ item }}"
-
-    - name: Compare builtin passthrough mode with raw mode
-      ansible.builtin.include_tasks: raw_mode_comparison.yml
 
     - name: Run platform-specific tests (not permuted)
       ansible.builtin.include_tasks: platform_specific.yml

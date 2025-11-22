@@ -95,7 +95,6 @@ class ActionModule(ReadPosixActionBase, ActionBase):
                 ],
                 "aliases": ["checksum", "checksum_algo"],
             },
-            "_force_raw": {"type": "bool", "default": False},
         }
         validation_result, new_args = self.validate_argument_spec(
             argument_spec=argument_spec
@@ -108,7 +107,6 @@ class ActionModule(ReadPosixActionBase, ActionBase):
         get_mime = new_args["get_mime"]
         get_attributes = new_args["get_attributes"]
         checksum_algorithm = new_args["checksum_algorithm"]
-        force_raw = new_args["_force_raw"]
 
         # === STAGE 1: Initial discovery ===
         # Get stage 1 commands from mixin (returns dict)
@@ -117,7 +115,6 @@ class ActionModule(ReadPosixActionBase, ActionBase):
         # Execute stage 1 (using dict mode for automatic keying)
         stage1_result = self._run(
             commands=stage1_commands,
-            force_raw=force_raw,
             task_vars=task_vars,
             check_mode=False,
         )
@@ -163,7 +160,6 @@ class ActionModule(ReadPosixActionBase, ActionBase):
         # Execute stage 2 (using dict mode for automatic keying)
         stage2_result = self._run(
             commands=stage2_commands,
-            force_raw=force_raw,
             task_vars=task_vars,
             check_mode=False,
         )

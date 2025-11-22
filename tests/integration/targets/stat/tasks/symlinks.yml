@@ -27,7 +27,6 @@
   o0_o.posix.stat:
     path: "{{ stat_test_dir }}/symlink_to_file.txt"
     follow: false
-    _force_raw: "{{ _force_raw }}"
   register: stat_symlink_nofollow_reg
 
 - name: Verify symlink properties without following
@@ -42,7 +41,6 @@
   o0_o.posix.stat:
     path: "{{ stat_test_dir }}/symlink_to_file.txt"
     follow: true
-    _force_raw: "{{ _force_raw }}"
   register: stat_symlink_follow_reg
 
 - name: Verify target properties when following
@@ -57,7 +55,6 @@
   o0_o.posix.stat:
     path: "{{ stat_test_dir }}/symlink_to_file.txt"
     follow: true
-    _force_raw: "{{ _force_raw }}"
   register: stat_symlink_explicit_follow_reg
 
 - name: Verify explicit follow=true is consistent
@@ -83,7 +80,6 @@
   o0_o.posix.stat:
     path: "{{ stat_test_dir }}/broken_symlink.txt"
     follow: false
-    _force_raw: "{{ _force_raw }}"
   register: stat_broken_nofollow_reg
 
 - name: Verify broken symlink exists when not following
@@ -97,7 +93,6 @@
   o0_o.posix.stat:
     path: "{{ stat_test_dir }}/broken_symlink.txt"
     follow: true
-    _force_raw: "{{ _force_raw }}"
   register: stat_broken_follow_reg
 
 - name: Verify broken symlink target does not exist
@@ -124,7 +119,6 @@
   o0_o.posix.stat:
     path: "{{ stat_test_dir }}/symlink_to_dir"
     follow: false
-    _force_raw: "{{ _force_raw }}"
   register: stat_dirsymlink_nofollow_reg
 
 - name: Verify symlink to directory is identified as symlink
@@ -139,7 +133,6 @@
   o0_o.posix.stat:
     path: "{{ stat_test_dir }}/symlink_to_dir"
     follow: true
-    _force_raw: "{{ _force_raw }}"
   register: stat_dirsymlink_follow_reg
 
 - name: Verify symlink target is identified as directory

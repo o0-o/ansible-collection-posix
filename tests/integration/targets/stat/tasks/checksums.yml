@@ -19,7 +19,6 @@
 - name: Test SHA1 checksum (default)
   o0_o.posix.stat:
     path: "{{ stat_test_dir }}/checksum_test.txt"
-    _force_raw: "{{ _force_raw }}"
   register: stat_sha1_reg
 
 - name: Verify SHA1 checksum present and correct length
@@ -33,7 +32,6 @@
   o0_o.posix.stat:
     path: "{{ stat_test_dir }}/checksum_test.txt"
     checksum_algorithm: md5
-    _force_raw: "{{ _force_raw }}"
   register: stat_md5_reg
 
 - name: Verify MD5 checksum present and correct length
@@ -47,7 +45,6 @@
   o0_o.posix.stat:
     path: "{{ stat_test_dir }}/checksum_test.txt"
     checksum_algorithm: sha256
-    _force_raw: "{{ _force_raw }}"
   register: stat_sha256_reg
 
 - name: Verify SHA256 checksum present and correct length
@@ -61,7 +58,6 @@
   o0_o.posix.stat:
     path: "{{ stat_test_dir }}/checksum_test.txt"
     checksum_algorithm: sha224
-    _force_raw: "{{ _force_raw }}"
   register: stat_sha224_reg
 
 - name: Verify SHA224 checksum present and correct length
@@ -75,7 +71,6 @@
   o0_o.posix.stat:
     path: "{{ stat_test_dir }}/checksum_test.txt"
     checksum_algorithm: sha384
-    _force_raw: "{{ _force_raw }}"
   register: stat_sha384_reg
 
 - name: Verify SHA384 checksum present and correct length
@@ -89,7 +84,6 @@
   o0_o.posix.stat:
     path: "{{ stat_test_dir }}/checksum_test.txt"
     checksum_algorithm: sha512
-    _force_raw: "{{ _force_raw }}"
   register: stat_sha512_reg
 
 - name: Verify SHA512 checksum present and correct length
@@ -103,7 +97,6 @@
   o0_o.posix.stat:
     path: "{{ stat_test_dir }}/checksum_test.txt"
     get_checksum: false
-    _force_raw: "{{ _force_raw }}"
   register: stat_nochecksum_reg
 
 - name: Verify checksum not present when disabled
@@ -115,7 +108,6 @@
 - name: Test checksum not present for directory
   o0_o.posix.stat:
     path: "{{ stat_test_dir }}"
-    _force_raw: "{{ _force_raw }}"
   register: stat_dir_checksum_reg
 
 - name: Verify checksum not computed for directory

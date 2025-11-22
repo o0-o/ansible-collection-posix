@@ -24,7 +24,6 @@
               - echo after
             parallel: false
             fail_fast: true
-            _force_raw: "{{ _force_raw }}"
 
       rescue:
 
@@ -46,7 +45,6 @@
               - echo third
             parallel: false
             fail_fast: false
-            _force_raw: "{{ _force_raw }}"
 
       rescue:
 
@@ -72,7 +70,6 @@
           o0_o.posix.run:
             commands:
               - nonexistent_command_xyz123
-            _force_raw: "{{ _force_raw }}"
 
       rescue:
 
@@ -90,7 +87,6 @@
             commands:
               - echo test
             chdir: /nonexistent/directory
-            _force_raw: "{{ _force_raw }}"
 
       rescue:
 
@@ -105,7 +101,6 @@
     - name: Run without commands parameter
       o0_o.posix.run:
         parallel: false
-        _force_raw: "{{ _force_raw }}"
 
   rescue:
 

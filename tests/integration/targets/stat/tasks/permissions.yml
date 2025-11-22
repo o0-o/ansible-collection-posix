@@ -19,7 +19,6 @@
 - name: Stat file with 0644
   o0_o.posix.stat:
     path: "{{ stat_test_dir }}/perm_test_0644.txt"
-    _force_raw: "{{ _force_raw }}"
   register: stat_0644_reg
 
 - name: Verify 0644 permissions
@@ -47,7 +46,6 @@
 - name: Stat file with 0755
   o0_o.posix.stat:
     path: "{{ stat_test_dir }}/perm_test_0755.txt"
-    _force_raw: "{{ _force_raw }}"
   register: stat_0755_reg
 
 - name: Verify 0755 permissions
@@ -78,7 +76,6 @@
 - name: Stat file with 0600
   o0_o.posix.stat:
     path: "{{ stat_test_dir }}/perm_test_0600.txt"
-    _force_raw: "{{ _force_raw }}"
   register: stat_0600_reg
 
 - name: Verify 0600 permissions
@@ -106,7 +103,6 @@
 - name: Stat file with setuid
   o0_o.posix.stat:
     path: "{{ stat_test_dir }}/perm_test_setuid.txt"
-    _force_raw: "{{ _force_raw }}"
   register: stat_setuid_reg
 
 - name: Verify setuid bit
@@ -127,7 +123,6 @@
 - name: Stat file with setgid
   o0_o.posix.stat:
     path: "{{ stat_test_dir }}/perm_test_setgid.txt"
-    _force_raw: "{{ _force_raw }}"
   register: stat_setgid_reg
 
 - name: Verify setgid bit
@@ -148,7 +143,6 @@
 - name: Stat directory with sticky bit
   o0_o.posix.stat:
     path: "{{ stat_test_dir }}/sticky_dir"
-    _force_raw: "{{ _force_raw }}"
   register: stat_sticky_reg
 
 - name: Verify sticky bit

@@ -19,7 +19,6 @@
 - name: Stat the directory
   o0_o.posix.stat:
     path: "{{ stat_test_dir }}/testdir"
-    _force_raw: "{{ _force_raw }}"
   register: stat_dir_reg
 
 - name: Verify directory flags
@@ -49,7 +48,6 @@
   o0_o.posix.stat:
     path: "{{ stat_test_dir }}/symlink.txt"
     follow: false
-    _force_raw: "{{ _force_raw }}"
   register: stat_symlink_reg
 
 - name: Verify symlink flags (when not following)
@@ -65,7 +63,6 @@
   o0_o.posix.stat:
     path: "{{ stat_test_dir }}/symlink.txt"
     follow: true
-    _force_raw: "{{ _force_raw }}"
   register: stat_symlink_follow_reg
 
 - name: Verify symlink target flags (when following)
@@ -79,7 +76,6 @@
 - name: Stat character device /dev/null
   o0_o.posix.stat:
     path: /dev/null
-    _force_raw: "{{ _force_raw }}"
   register: stat_chr_reg
 
 - name: Verify character device flags

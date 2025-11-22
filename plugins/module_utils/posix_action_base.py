@@ -408,7 +408,6 @@ class PosixActionBase:
         chdir: Optional[str] = None,
         parallel: bool = True,
         fail_fast: bool = False,
-        force_raw: bool = False,
         task_vars: Optional[Dict[str, Any]] = None,
         check_mode: Optional[bool] = None,
     ) -> Union[List[Dict[str, Any]], Dict[str, Dict[str, Any]]]:
@@ -431,8 +430,6 @@ class PosixActionBase:
             background jobs (default True)
         :param bool fail_fast: Stop on first command failure (default
             False)
-        :param bool force_raw: Force raw mode bypassing Python (default
-            False)
         :param Optional[dict] task_vars: Dictionary of task variables
         :param Optional[bool] check_mode: Optional override for Ansible
             check mode
@@ -446,7 +443,6 @@ class PosixActionBase:
             "commands": commands,
             "parallel": parallel,
             "fail_fast": fail_fast,
-            "_force_raw": force_raw,
         }
 
         if chdir:

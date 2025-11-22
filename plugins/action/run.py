@@ -213,7 +213,6 @@ class ActionModule(PosixActionBase, ActionBase):
             "parallel": {"type": "bool", "default": True},
             "fail_fast": {"type": "bool", "default": False},
             "strip": {"type": "bool", "default": True},
-            "_force_raw": {"type": "bool", "default": False},
         }
 
         validation_result, new_module_args = self.validate_argument_spec(
@@ -235,7 +234,6 @@ class ActionModule(PosixActionBase, ActionBase):
         self.parallel = new_module_args["parallel"]
         self.fail_fast = new_module_args["fail_fast"]
         self.strip = new_module_args["strip"]
-        self.force_raw = new_module_args["_force_raw"]
 
         return new_module_args
 

@@ -19,7 +19,6 @@
           - sleep 0.5; echo one
           - sleep 0.5; echo two
           - sleep 0.5; echo three
-        _force_raw: "{{ _force_raw }}"
       register: parallel_default_reg
 
     - name: Assert parallel execution completed all commands
@@ -32,12 +31,6 @@
           - parallel_default_reg['commands'][0]['stdout'] | trim == 'one'
           - parallel_default_reg['commands'][1]['stdout'] | trim == 'two'
           - parallel_default_reg['commands'][2]['stdout'] | trim == 'three'
-
-    - name: Assert raw execution is as intended
-      ansible.builtin.assert:
-        that:
-          - parallel_default_reg['raw'] == _force_raw
-
     - name: Assert timing suggests parallel execution
       ansible.builtin.assert:
         that:
@@ -53,7 +46,6 @@
           - echo parallel_2
           - echo parallel_3
         parallel: true
-        _force_raw: "{{ _force_raw }}"
       register: parallel_explicit_reg
 
     - name: Assert explicit parallel execution
@@ -69,12 +61,6 @@
           - >-
             parallel_explicit_reg['commands'][2]['stdout'] | trim
             == 'parallel_3'
-
-    - name: Assert raw execution is as intended
-      ansible.builtin.assert:
-        that:
-          - parallel_explicit_reg['raw'] == _force_raw
-
     - name: Test sequential execution (parallel=false)
       o0_o.posix.run:
         commands:
@@ -82,7 +68,6 @@
           - sleep 0.3; echo seq_2
           - sleep 0.3; echo seq_3
         parallel: false
-        _force_raw: "{{ _force_raw }}"
       register: sequential_reg
 
     - name: Assert sequential execution completed
@@ -92,12 +77,6 @@
           - sequential_reg['commands'][0]['stdout'] | trim == 'seq_1'
           - sequential_reg['commands'][1]['stdout'] | trim == 'seq_2'
           - sequential_reg['commands'][2]['stdout'] | trim == 'seq_3'
-
-    - name: Assert raw execution is as intended
-      ansible.builtin.assert:
-        that:
-          - sequential_reg['raw'] == _force_raw
-
     - name: Test parallel with mixed success/failure
       o0_o.posix.run:
         commands:
@@ -105,7 +84,6 @@
           - 'false'
           - echo success_2
         parallel: true
-        _force_raw: "{{ _force_raw }}"
       register: parallel_mixed_reg
       ignore_errors: true
 
@@ -119,8 +97,3 @@
           - parallel_mixed_reg['commands'][2]['rc'] == 0
           - parallel_mixed_reg['commands'][0]['stdout'] | trim == 'success_1'
           - parallel_mixed_reg['commands'][2]['stdout'] | trim == 'success_2'
-
-    - name: Assert raw execution is as intended
-      ansible.builtin.assert:
-        that:
-          - parallel_mixed_reg['raw'] == _force_raw

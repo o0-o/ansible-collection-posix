@@ -15,7 +15,6 @@
       kernel: uname -s
       machine: uname -m
       hostname: hostname
-    _force_raw: "{{ _force_raw }}"
   register: dict_mode_reg
 
 - name: Assert dict mode returns mapping
@@ -52,11 +51,6 @@
       - dict_mode_reg['commands']['hostname']['stdout'] | length > 0
   when: not ansible_check_mode
 
-- name: Assert raw execution is as intended
-  ansible.builtin.assert:
-    that:
-      - dict_mode_reg['raw'] == _force_raw
-
 - name: Test dict mode with mixed string and list commands
   o0_o.posix.run:
     commands:
@@ -64,7 +58,6 @@
       list_cmd: ['echo', 'bar with spaces']
       printf_cmd: printf baz
     parallel: false
-    _force_raw: "{{ _force_raw }}"
   register: dict_mixed_reg
 
 - name: Assert dict mode with mixed commands
@@ -78,16 +71,10 @@
       - dict_mixed_reg['commands']['printf_cmd']['stdout'] | trim == 'baz'
   when: not ansible_check_mode
 
-- name: Assert raw execution is as intended
-  ansible.builtin.assert:
-    that:
-      - dict_mixed_reg['raw'] == _force_raw
-
 - name: Test dict mode with single command
   o0_o.posix.run:
     commands:
       only_one: echo single
-    _force_raw: "{{ _force_raw }}"
   register: dict_single_reg
 
 - name: Assert single command dict mode
@@ -98,11 +85,6 @@
       - dict_single_reg['commands']['only_one']['stdout'] | trim == 'single'
   when: not ansible_check_mode
 
-- name: Assert raw execution is as intended
-  ansible.builtin.assert:
-    that:
-      - dict_single_reg['raw'] == _force_raw
-
 - name: Test dict mode preserves order
   o0_o.posix.run:
     commands:
@@ -110,7 +92,6 @@
       second: echo 2
       third: echo 3
     parallel: false
-    _force_raw: "{{ _force_raw }}"
   register: dict_order_reg
 
 - name: Assert dict mode results accessible by key
@@ -121,11 +102,6 @@
       - dict_order_reg['commands']['third']['stdout'] | trim == '3'
   when: not ansible_check_mode
 
-- name: Assert raw execution is as intended
-  ansible.builtin.assert:
-    that:
-      - dict_order_reg['raw'] == _force_raw
-
 - name: Test dict mode with stderr
   o0_o.posix.run:
     commands:
@@ -133,7 +109,6 @@
       stderr_only: printf stderr_test 1>&2
       both: echo both_out; printf both_err 1>&2
     parallel: false
-    _force_raw: "{{ _force_raw }}"
   register: dict_stderr_reg
 
 - name: Assert dict mode stderr handling
@@ -153,17 +128,11 @@
       - dict_stderr_reg['commands']['both']['stderr'] | trim == 'both_err'
   when: not ansible_check_mode
 
-- name: Assert raw execution is as intended
-  ansible.builtin.assert:
-    that:
-      - dict_stderr_reg['raw'] == _force_raw
-
 - name: Test list mode still works (backwards compatibility)
   o0_o.posix.run:
     commands:
       - echo list1
       - echo list2
-    _force_raw: "{{ _force_raw }}"
   register: list_compat_reg
 
 - name: Assert list mode returns list not mapping
@@ -176,7 +145,3 @@
       - list_compat_reg['commands'][1]['stdout'] | trim == 'list2'
   when: not ansible_check_mode
 
-- name: Assert raw execution is as intended
-  ansible.builtin.assert:
-    that:
-      - list_compat_reg['raw'] == _force_raw

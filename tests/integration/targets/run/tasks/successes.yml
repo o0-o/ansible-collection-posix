@@ -15,7 +15,6 @@
       - echo hello
       - echo world
     parallel: false
-    _force_raw: "{{ _force_raw }}"
   register: sequential_reg
 
 - name: Assert sequential command output
@@ -35,11 +34,6 @@
       - sequential_reg['commands'][1]['stdout'] | trim == 'world'
   when: not ansible_check_mode
 
-- name: Assert raw execution is as intended
-  ansible.builtin.assert:
-    that:
-      - sequential_reg['raw'] == _force_raw
-
 - name: Test timing fields present
   ansible.builtin.assert:
     that:
@@ -55,7 +49,6 @@
       - ['echo', 'bar with spaces']
       - printf baz
     parallel: false
-    _force_raw: "{{ _force_raw }}"
   register: mixed_reg
 
 - name: Assert mixed command output
@@ -67,18 +60,12 @@
       - mixed_reg['commands'][2]['stdout'] | trim == 'baz'
   when: not ansible_check_mode
 
-- name: Assert raw execution is as intended
-  ansible.builtin.assert:
-    that:
-      - mixed_reg['raw'] == _force_raw
-
 - name: Test shell operators preserved in string commands
   o0_o.posix.run:
     commands:
       - echo foo; echo bar
       - echo baz | cat
     parallel: false
-    _force_raw: "{{ _force_raw }}"
   register: operators_reg
 
 - name: Assert shell operators work correctly
@@ -90,11 +77,6 @@
       - operators_reg['commands'][1]['stdout'] | trim == 'baz'
   when: not ansible_check_mode
 
-- name: Assert raw execution is as intended
-  ansible.builtin.assert:
-    that:
-      - operators_reg['raw'] == _force_raw
-
 - name: Test stderr redirection in commands
   o0_o.posix.run:
     commands:
@@ -102,7 +84,6 @@
       - printf stderr_test 1>&2
       - echo both_test; printf both_stderr 1>&2
     parallel: false
-    _force_raw: "{{ _force_raw }}"
   register: stderr_reg
 
 - name: Assert stderr handling
@@ -116,16 +97,10 @@
       - stderr_reg['commands'][2]['stderr'] | trim == 'both_stderr'
   when: not ansible_check_mode
 
-- name: Assert raw execution is as intended
-  ansible.builtin.assert:
-    that:
-      - stderr_reg['raw'] == _force_raw
-
 - name: Test empty commands list handling
   o0_o.posix.run:
     commands:
       - 'true'
-    _force_raw: "{{ _force_raw }}"
   register: empty_output_reg
 
 - name: Assert empty output handled correctly
@@ -136,7 +111,3 @@
       - empty_output_reg['commands'][0]['stdout'] == ''
   when: not ansible_check_mode
 
-- name: Assert raw execution is as intended
-  ansible.builtin.assert:
-    that:
-      - empty_output_reg['raw'] == _force_raw
