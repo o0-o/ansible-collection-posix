@@ -1,0 +1,9 @@
+---
+minor_changes:
+  - read - Added support for extended metadata fields including timestamps (modified, created, changed), ACLs, extended attributes, filesystem flags, and SELinux context (https://github.com/o0-o/ansible-collection-posix/pull/XXX).
+  - read - Refactored to use batched command execution for improved performance when inspecting multiple paths (https://github.com/o0-o/ansible-collection-posix/pull/XXX).
+  - read - Made extended metadata fields opt-in only to avoid issues with special files like FIFOs that can hang when queried for extended attributes (https://github.com/o0-o/ansible-collection-posix/pull/XXX).
+  - read - Integrated with utils collection's format_epoch_timestamp for structured timestamp output with human-readable formatting (https://github.com/o0-o/ansible-collection-posix/pull/XXX).
+
+bugfixes:
+  - command - Fixed KeyError on systems without Python (like OpenBSD) by gracefully handling missing 'invocation' key in module results (https://github.com/o0-o/ansible-collection-posix/issues/XXX).

@@ -11,10 +11,7 @@
 
 from __future__ import annotations
 
-import os
-import posixpath
-import shlex
-from datetime import datetime
+from os.path import dirname, isabs, join, normpath
 from typing import Any, Optional
 
 from ansible.errors import AnsibleActionFail
@@ -24,18 +21,13 @@ from ansible_collections.o0_o.posix.plugins.module_utils import (
     ReadPosixActionBase,
 )
 from ansible_collections.o0_o.utils.plugins.module_utils import (
-    format_epoch_timestamp,
     truthy_or_integer,
+    truthy_or_string,
 )
 
 
 class ActionModule(ReadPosixActionBase, ActionBase):
-    """Inspect file metadata and optionally return printable content.
-
-    Gathers comprehensive metadata about files, directories, links, and
-    special devices on POSIX systems. Supports content retrieval with
-    encoding detection and recursive link traversal.
-    """
+    """Minimal read module demonstrating clean batched architecture."""
 
     TRANSFERS_FILES = False
     _requires_connection = True
@@ -43,1130 +35,136 @@ class ActionModule(ReadPosixActionBase, ActionBase):
     _supports_async = False
     _supports_diff = False
 
-    def _gather_file_info(
-        self,
-        path: str,
-        include_content: bool,
-        include_fields: set[str],
-        preferred_encoding: Optional[str],
-        task_vars: Optional[dict[str, Any]],
-        parents: bool,
-        find_hardlinks: bool,
-        find_symlinks: bool,
-        visited: Optional[set[str]] = None,
-    ) -> tuple[Optional[dict[str, Any]], dict[str, Optional[dict[str, Any]]]]:
-        """Gather comprehensive metadata about a file system path.
-
-        :param str path: Path to inspect
-        :param bool include_content: Whether to read file content
-        :param set[str] include_fields: Set of field names to include
-            (if "metadata" is present, all fields are included)
-        :param Optional[str] preferred_encoding: Override encoding
-            detection
-        :param Optional[dict[str, Any]] task_vars: Available Ansible
-            variables
-        :param bool parents: Whether to expand related paths
-            discovered while gathering metadata
-        :param bool find_hardlinks: Perform a full filesystem scan
-            to enumerate hard link paths. This is extremely expensive
-            on anything but very small mounts such as /dev.
-        :param bool find_symlinks: Perform a full filesystem scan to
-            discover symbolic links targeting the inspected path.
-        :param Optional[set[str]] visited: Paths already visited to
-            prevent cycles
-        :returns tuple[Optional[dict[str, Any]], dict[str,
-            Optional[dict[str, Any]]]]: File metadata (or None when
-            missing) and additional entries to report in the top-level
-            mapping.
-        """
-        visited = set(visited or set())
-        if path in visited:
-            return None, {}
-        visited.add(path)
-
-        # Request extended attributes from stat if any are needed
-        def should_include(field: str) -> bool:
-            return "metadata" in include_fields or field in include_fields
-
-        get_attributes = any(
-            should_include(field)
-            for field in ["acl", "xattrs", "flags", "selinux"]
-        )
-
-        stat_result = self._stat(
-            path=path,
-            follow=False,
-            get_attributes=get_attributes,
-            task_vars=task_vars,
-        )
-        stat_data = stat_result.get("stat", {})
-        if not stat_data.get("exists"):
-            return None, {}
-
-        info: dict[str, Any] = {}
-        extra_paths: dict[str, Optional[dict[str, Any]]] = {}
-
-        normalized_path = posixpath.normpath(path)
-
-        file_type = self._determine_type(stat_data)
-        if file_type and should_include("type"):
-            info["type"] = file_type
-
-        if should_include("name"):
-            if normalized_path == posixpath.sep:
-                info["name"] = posixpath.sep
-            else:
-                info["name"] = (
-                    posixpath.basename(normalized_path) or normalized_path
-                )
-
-        if should_include("parent"):
-            if normalized_path != posixpath.sep:
-                parent_dir = (
-                    posixpath.dirname(normalized_path) or posixpath.sep
-                )
-                info["parent"] = parent_dir
-
-        if should_include("mode"):
-            mode = stat_data.get("mode")
-            if mode:
-                info["mode"] = mode
-
-        if should_include("owner"):
-            # Prefer numeric ID (matches process handling)
-            owner = stat_data.get("uid")
-            if owner is None:
-                owner = stat_data.get("pw_name")
-            if owner is not None:
-                info["owner"] = owner
-
-        if should_include("group"):
-            # Prefer numeric ID (matches process handling)
-            group = stat_data.get("gid")
-            if group is None:
-                group = stat_data.get("gr_name")
-            if group is not None:
-                info["group"] = group
-
-        if should_include("writable"):
-            writeable = stat_data.get("writeable")
-            if writeable is None:
-                writeable = stat_data.get("writable")
-            if writeable is not None:
-                info["writable"] = bool(writeable)
-
-        # Add modified and created time if available
-        if (
-            should_include("metadata")
-            or should_include("modified")
-            or should_include("created")
-        ):
-            # Get local timezone for timestamp formatting
-            local_tz = datetime.now().astimezone().tzinfo
-
-            # Format mtime as modified with utils datetime structure
-            if should_include("metadata") or should_include("modified"):
-                mtime = stat_data.get("mtime")
-                if mtime is not None:
-                    info["modified"] = format_epoch_timestamp(
-                        mtime, tz=local_tz
-                    )
-
-            # Format birthtime or ctime as created with utils datetime
-            # structure
-            if should_include("metadata") or should_include("created"):
-                birthtime = stat_data.get("birthtime")
-                if birthtime is not None:
-                    info["created"] = format_epoch_timestamp(
-                        birthtime, tz=local_tz
-                    )
-                else:
-                    ctime = stat_data.get("ctime")
-                    if ctime is not None:
-                        info["created"] = format_epoch_timestamp(
-                            ctime, tz=local_tz
-                        )
-
-        link_paths: list[str] = []
-
-        link_target = stat_data.get("lnk_source")
-        display_link = None
-        if link_target:
-            # Use lnk_target from stat (immediate target) if available,
-            # otherwise use lnk_source (resolved target)
-            immediate_target = stat_data.get("lnk_target")
-            if immediate_target:
-                # Normalize relative paths
-                if posixpath.isabs(immediate_target):
-                    display_link = posixpath.normpath(immediate_target)
-                else:
-                    base_dir = posixpath.dirname(path) or "."
-                    combined = posixpath.join(base_dir, immediate_target)
-                    display_link = posixpath.normpath(combined)
-            else:
-                # Fall back to resolved target
-                display_link = posixpath.normpath(link_target)
-        if display_link:
-            nested_info, nested_extra = self._gather_file_info(
-                path=link_target,
-                include_content=include_content,
-                include_fields=include_fields,
-                preferred_encoding=preferred_encoding,
-                task_vars=task_vars,
-                parents=parents,
-                find_hardlinks=find_hardlinks,
-                find_symlinks=find_symlinks,
-                visited=visited,
-            )
-            extra_paths.update(nested_extra)
-            if display_link not in extra_paths:
-                extra_paths[display_link] = nested_info
-            link_paths.append(display_link)
-
-        nlink_raw = stat_data.get("nlink")
-        try:
-            nlink_value = int(nlink_raw) if nlink_raw is not None else None
-        except (TypeError, ValueError):
-            nlink_value = None
-
-        other_link_count = 0
-        if nlink_value is not None and nlink_value > 0:
-            other_link_count = max(nlink_value - 1, 0)
-
-        inode_value = self._extract_inode(stat_data)
-
-        reference_inodes: set[int] = set()
-        if inode_value is not None:
-            reference_inodes.add(inode_value)
-
-        target_inode_value = None
-        if find_symlinks:
-            follow_stat = self._stat_follow(path, task_vars)
-            follow_stat_data = (
-                follow_stat.get("stat", {}) if follow_stat else {}
-            )
-            target_inode_value = self._extract_inode(follow_stat_data)
-            if target_inode_value is not None:
-                reference_inodes.add(target_inode_value)
-
-        hard_links: list[str] = []
-        symlink_candidates: list[str] = []
-        if find_hardlinks or find_symlinks:
-            hard_links, symlink_candidates = self._discover_links(
-                path=path,
-                task_vars=task_vars,
-                inode=inode_value,
-                file_type=file_type,
-                expected_total=nlink_value,
-                include_hardlinks=find_hardlinks,
-                include_symlinks=find_symlinks,
-            )
-
-        if hard_links and find_hardlinks:
-            for hard_path in hard_links:
-                display_hard = posixpath.normpath(hard_path)
-                if parents:
-                    if hard_path in visited:
-                        continue
-                    hard_info, nested_extra = self._gather_file_info(
-                        path=hard_path,
-                        include_content=include_content,
-                        include_fields=include_fields,
-                        preferred_encoding=preferred_encoding,
-                        task_vars=task_vars,
-                        parents=True,
-                        find_hardlinks=find_hardlinks,
-                        find_symlinks=find_symlinks,
-                        visited=visited,
-                    )
-                    extra_paths.update(nested_extra)
-                    if display_hard not in extra_paths:
-                        extra_paths[display_hard] = hard_info
-                link_paths.append(display_hard)
-
-            if find_symlinks:
-                for hard_path in hard_links:
-                    extra_paths.update(
-                        self._collect_symlink_refs(
-                            target=hard_path,
-                            include_content=include_content,
-                            include_fields=include_fields,
-                            preferred_encoding=preferred_encoding,
-                            task_vars=task_vars,
-                            parents=parents,
-                            visited=visited,
-                        )
-                    )
-
-        if should_include("links"):
-            if link_paths:
-                unique_links: list[str] = []
-                for candidate in link_paths:
-                    if candidate not in unique_links:
-                        unique_links.append(candidate)
-                info["links"] = unique_links
-            elif other_link_count > 0:
-                info["links"] = other_link_count
-
-        if find_symlinks and symlink_candidates:
-            valid_symlinks = self._filter_symlinks(
-                candidates=symlink_candidates,
-                task_vars=task_vars,
-                reference_inodes=reference_inodes,
-                current_path=path,
-            )
-            for symlink_path in valid_symlinks:
-                if symlink_path in visited:
-                    continue
-                symlink_info, nested_extra = self._gather_file_info(
-                    path=symlink_path,
-                    include_content=include_content,
-                    include_fields=include_fields,
-                    preferred_encoding=preferred_encoding,
-                    task_vars=task_vars,
-                    parents=parents,
-                    find_hardlinks=False,
-                    find_symlinks=False,
-                    visited=visited,
-                )
-                extra_paths.update(nested_extra)
-                extra_paths[symlink_path] = symlink_info
-
-        if find_symlinks and link_target and not parents and find_hardlinks:
-            extra_paths.update(
-                self._collect_symlink_refs(
-                    target=link_target,
-                    include_content=include_content,
-                    include_fields=include_fields,
-                    preferred_encoding=preferred_encoding,
-                    task_vars=task_vars,
-                    parents=parents,
-                    visited=visited,
-                )
-            )
-
-        # Use stat's already-processed extended attributes
-        if should_include("selinux"):
-            selinux = stat_data.get("selinux")
-            if selinux:
-                info["selinux"] = selinux
-
-        if should_include("flags"):
-            # Prefer stat's processed attributes list
-            attributes = stat_data.get("attributes")
-            if attributes:
-                info["flags"] = attributes
-            else:
-                # Fallback to raw attr_flags if attributes not present
-                attr_flags = stat_data.get("attr_flags")
-                if attr_flags:
-                    info["flags"] = self._normalize_flags(attr_flags)
-
-        if should_include("xattrs"):
-            # Use stat's already-processed xattrs list
-            xattrs = stat_data.get("xattrs")
-            if xattrs:
-                info["xattrs"] = xattrs
-
-        if should_include("acl"):
-            # Use stat's already-processed ACL data
-            acl = stat_data.get("acl")
-            if acl:
-                info["acl"] = acl
-
-        if file_type == "directory" and include_content:
-            directory_entries = self._list_directory(path, task_vars)
-            if directory_entries is not None:
-                info["content"] = directory_entries
-
-        # Note: No fallback needed for xattrs/acl/flags/selinux.
-        # If we requested get_attributes=True from stat, it already ran
-        # raw commands with its own fallback. If stat didn't return
-        # these fields, they don't exist or aren't available.
-
-        encoding, content_text = self._maybe_get_content(
-            path=path,
-            include_content=include_content,
-            preferred_encoding=preferred_encoding,
-            stat_data=stat_data,
-            task_vars=task_vars,
-        )
-        if encoding:
-            info["encoding"] = encoding
-        if content_text is not None:
-            info["content"] = content_text
-
-        return info, extra_paths
-
-    def _list_directory(
-        self, path: str, task_vars: Optional[dict[str, Any]]
-    ) -> Optional[list[str]]:
-        """List direct children of a directory path."""
-
-        command = [
-            "find",
-            path,
-            "-mindepth",
-            "1",
-            "-maxdepth",
-            "1",
-            "-print",
-        ]
-        result = self._cmd(command, task_vars=task_vars, check_mode=False)
-        if result.get("rc") != 0:
-            return None
-        entries: list[str] = []
-        for line in (result.get("stdout") or "").splitlines():
-            stripped = line.strip()
-            if not stripped:
-                continue
-            entries.append(posixpath.normpath(stripped))
-
-        if not entries:
-            return []
-        return sorted(set(entries))
-
-    def _determine_type(self, stat_data: dict[str, Any]) -> Optional[str]:
-        """Determine file type from stat data.
-
-        :param dict[str, Any] stat_data: Stat module output
-        :returns Optional[str]: File type label or None
-        """
-        mapping = {
-            "isreg": "regular",
-            "isdir": "directory",
-            "islnk": "link",
-            "isfifo": "pipe",
-            "issock": "socket",
-            "ischr": "character",
-            "isblk": "block",
+    def _def_args(self) -> dict[str, Any]:
+        """Parse and validate module arguments."""
+        argument_spec = {
+            "paths": {
+                "type": "list",
+                "required": True,
+                "elements": "str",
+                "aliases": ["path"],
+                "description": "Path or list of paths to inspect",
+            },
+            "include": {
+                "type": "list",
+                "elements": "str",
+                "default": ["metadata"],
+                "description": (
+                    "Fields to include in the result. "
+                    "'all' includes everything (metadata + extended + content + children). "
+                    "'metadata' includes basic metadata and extended filesystem attributes: "
+                    "type, mode, owner, group, size, writable, hardlinks, inode, "
+                    "timestamps (modified, created, changed), ACL, filesystem flags, "
+                    "and SELinux context (but NOT xattrs). "
+                    "'extended' includes all metadata plus extended attributes (xattrs). "
+                    "'content' includes file content with encoding detection. "
+                    "'children' includes directory child paths."
+                ),
+                "choices": [
+                    "all",
+                    "metadata",
+                    "extended",
+                    "content",
+                    "children",
+                ],
+            },
+            "parents": {
+                "type": "raw",
+                "default": False,
+                "description": (
+                    "Recursively read parent directories (using dirname) "
+                    "and include their metadata. Can be a boolean (True "
+                    "for unlimited recursion up to root) or a positive "
+                    "integer (maximum directory levels to ascend)"
+                ),
+            },
+            "follow": {
+                "type": "raw",
+                "default": True,
+                "description": (
+                    "How to handle symbolic links. Can be a boolean or "
+                    "the string 'recurse'. True (default) resolves to the "
+                    "ultimate target (like readlink -f). 'recurse' adds "
+                    "link targets to the paths list recursively until a "
+                    "non-symlink is found. False lists the link without "
+                    "following or recursing"
+                ),
+            },
+            "children": {
+                "type": "raw",
+                "default": False,
+                "description": (
+                    "Recursively read child entries within directories. "
+                    "Can be a boolean (True for unlimited recursion into "
+                    "all subdirectories) or a positive integer (maximum "
+                    "directory depth to descend). Has no effect on "
+                    "non-directory entries"
+                ),
+            },
         }
-        for key, label in mapping.items():
-            if stat_data.get(key):
-                return label
-        return None
 
-    def _extract_inode(self, stat_data: dict[str, Any]) -> Optional[int]:
-        """Extract inode number from stat output when present."""
+        validation_result, new_module_args = self.validate_argument_spec(
+            argument_spec=argument_spec
+        )
 
-        for key in ("inode", "ino"):
-            candidate = stat_data.get(key)
-            if candidate is None:
-                continue
-            try:
-                return int(candidate)
-            except (TypeError, ValueError):
-                continue
-        return None
-
-    def _stat_follow(
-        self,
-        path: str,
-        task_vars: Optional[dict[str, Any]],
-    ) -> Optional[dict[str, Any]]:
-        """Retrieve stat data with symlink following enabled."""
+        # Set instance variables from validated args
+        self.paths = new_module_args["paths"]
+        self.include = new_module_args["include"]
 
         try:
-            return self._stat(
-                path=path,
-                follow=True,
-                task_vars=task_vars,
+            # Process follow parameter (boolean or 'recurse')
+            self.follow = truthy_or_string(
+                new_module_args["follow"], ["recurse"]
             )
-        except (AnsibleActionFail, ValueError, RuntimeError):
-            return None
 
-    def _get_mount_root(
-        self,
-        path: str,
-        task_vars: Optional[dict[str, Any]],
-    ) -> Optional[str]:
-        """Determine the mount point that contains the path.
-
-        :param str path: Path to evaluate
-        :param Optional[dict[str, Any]] task_vars: Available Ansible
-            variables
-        :returns Optional[str]: Mount point directory or None when
-            detection fails
-        """
-        df_result = self._cmd(
-            ["df", "-P", path],
-            task_vars=task_vars,
-            check_mode=False,
-        )
-        if df_result.get("rc") != 0:
-            return None
-        stdout = (df_result.get("stdout") or "").strip()
-        lines = [line for line in stdout.splitlines() if line.strip()]
-        if len(lines) < 2:
-            return None
-        fields = lines[-1].split()
-        if len(fields) < 6:
-            return None
-        mount_point = fields[-1]
-        if not mount_point:
-            return None
-        return mount_point
-
-    def _discover_links(
-        self,
-        path: str,
-        task_vars: Optional[dict[str, Any]],
-        inode: Optional[int],
-        file_type: Optional[str],
-        expected_total: Optional[int],
-        include_hardlinks: bool,
-        include_symlinks: bool,
-    ) -> tuple[list[str], list[str]]:
-        """Discover hard link and symlink references for a path."""
-
-        if not include_hardlinks and not include_symlinks:
-            return [], []
-
-        if (
-            include_hardlinks
-            and expected_total is not None
-            and expected_total <= 1
-        ):
-            include_hardlinks = False
-
-        if include_hardlinks and inode is None:
-            probe = self._cmd(
-                ["ls", "-li", "--", path],
-                task_vars=task_vars,
-                check_mode=False,
+            # Process parents parameter (boolean or positive integer)
+            self.parents = truthy_or_integer(
+                new_module_args["parents"],
+                only_positive=True,
+                zero_is_false=True,
             )
-            if probe.get("rc") == 0:
-                stdout = (probe.get("stdout") or "").strip()
-                if stdout:
-                    first_line = stdout.splitlines()[0]
-                    fragments = first_line.strip().split()
-                    if fragments:
-                        try:
-                            inode = int(fragments[0])
-                        except (TypeError, ValueError):
-                            inode = None
-        if include_hardlinks and inode is None:
-            include_hardlinks = False
 
-        mount_root = self._get_mount_root(path, task_vars)
-        search_root = mount_root or posixpath.dirname(path) or "/"
-
-        if include_hardlinks and not include_symlinks:
-            legacy = self._find_hard_links(
-                path=path,
-                task_vars=task_vars,
-                inode=inode,
-                file_type=file_type,
-                expected_total=expected_total,
+            # Process children parameter (boolean or positive integer)
+            self.children = truthy_or_integer(
+                new_module_args["children"],
+                only_positive=True,
+                zero_is_false=True,
             )
-            return legacy or [], []
+        except ValueError as e:
+            raise AnsibleActionFail(str(e)) from e
 
-        type_map = {
-            "regular": "f",
-            "directory": "d",
-            "link": "l",
-            "pipe": "p",
-            "socket": "s",
-            "character": "c",
-            "block": "b",
-        }
-        type_flag = type_map.get(file_type or "")
+        # Track original paths before adding parents
+        # (children should only be processed for original paths, not auto-added parents)
+        original_paths = set(self.paths)
 
-        normalized_path = posixpath.normpath(path)
-        path_dir = posixpath.dirname(path) or "."
+        # Add parent paths if requested
+        if self.parents:
+            parent_paths = []
+            max_depth = None if self.parents is True else self.parents
 
-        max_links = None
-        if include_hardlinks and expected_total is not None:
-            max_links = max(expected_total - 1, 0)
+            for path in self.paths:
+                current_path = path
+                depth = 0
 
-        def append_unique(target: list[str], value: str) -> None:
-            if value not in target:
-                target.append(value)
+                while True:
+                    # Get parent directory
+                    parent = dirname(current_path)
 
-        def is_same_path(first: str, second: str) -> bool:
-            try:
-                return os.path.samefile(first, second)
-            except OSError:
-                return False
-
-        def build_command(
-            root: str,
-            limit: Optional[int],
-            restrict_dev: bool,
-            max_depth: Optional[int],
-        ) -> list[str]:
-            find_parts: list[str] = ["find", shlex.quote(root)]
-            if restrict_dev:
-                find_parts.append("-xdev")
-            if max_depth is not None:
-                find_parts.extend(["-maxdepth", str(max_depth)])
-
-            expressions: list[str] = []
-            if include_hardlinks:
-                hard_chunks = [r"\(", f"-samefile {shlex.quote(path)}"]
-                if type_flag:
-                    hard_chunks.append(f"-type {shlex.quote(type_flag)}")
-                hard_chunks.extend(
-                    [
-                        "-exec",
-                        "sh",
-                        "-c",
-                        '\'printf "H:%s\\n" "$1"\'',
-                        "sh",
-                        "{}",
-                        r"\;",
-                        r"\)",
-                    ]
-                )
-                expressions.append(" ".join(hard_chunks))
-            if include_symlinks:
-                sym_chunks = [
-                    r"\(",
-                    "-type",
-                    "l",
-                    "-exec",
-                    "sh",
-                    "-c",
-                    '\'printf "S:%s\\n" "$1"\'',
-                    "sh",
-                    "{}",
-                    r"\;",
-                    r"\)",
-                ]
-                expressions.append(" ".join(sym_chunks))
-
-            if expressions:
-                if len(expressions) == 1:
-                    find_parts.append(expressions[0])
-                else:
-                    find_parts.append(
-                        r"\( " + " -o ".join(expressions) + r" \)"
-                    )
-
-            find_str = " ".join(find_parts)
-            if include_hardlinks:
-                if include_symlinks:
-                    pipeline = find_str
-                elif limit is not None and limit > 0:
-                    pipeline = f"{find_str} | head -n {limit}"
-                else:
-                    pipeline = find_str
-            else:
-                pipeline = find_str
-            return ["sh", "-c", pipeline, "sh"]
-
-        hard_results: list[str] = []
-        symlink_results: list[str] = []
-
-        search_plans = [
-            (path_dir, expected_total, True, None, "path_dir_head"),
-            (path_dir, None, True, None, "path_dir_full"),
-            (search_root, expected_total, True, None, "mount_head"),
-            (search_root, None, True, None, "mount_full"),
-            (path_dir, None, False, 1, "path_dir_one_level"),
-            (path_dir, expected_total, False, 1, "path_dir_one_level_head"),
-            (search_root, None, False, None, "mount_crossdev"),
-        ]
-
-        for root, limit, restrict_dev, max_depth, label in search_plans:
-            if (
-                include_hardlinks
-                and max_links is not None
-                and len(hard_results) >= max_links
-            ):
-                break
-
-            command = build_command(
-                root=root,
-                limit=limit,
-                restrict_dev=restrict_dev,
-                max_depth=max_depth,
-            )
-            self._display.vvv(
-                f"[read] link scan {label} command={' '.join(command)}"
-            )
-            result = self._cmd(
-                command,
-                task_vars=task_vars,
-                check_mode=False,
-            )
-            if result.get("rc") != 0:
-                self._display.vvv(
-                    f"[read] link scan {label} failed rc={result.get('rc')}"
-                )
-                continue
-
-            lines = [
-                line.strip()
-                for line in (result.get("stdout") or "").splitlines()
-                if line.strip()
-            ]
-            if not lines:
-                continue
-
-            for entry in lines:
-                if include_symlinks and entry.startswith("S:"):
-                    candidate = posixpath.normpath(entry[2:])
-                    if candidate == normalized_path:
-                        continue
-                    append_unique(symlink_results, candidate)
-                    continue
-
-                if include_hardlinks:
-                    candidate = entry[2:] if entry.startswith("H:") else entry
-                    normalized_candidate = posixpath.normpath(candidate)
-                    if normalized_candidate == normalized_path:
-                        continue
-                    candidate_dir = posixpath.dirname(candidate) or "."
-                    display_candidate = candidate
-                    if is_same_path(candidate_dir, path_dir):
-                        display_candidate = posixpath.normpath(
-                            posixpath.join(
-                                path_dir, posixpath.basename(candidate)
-                            )
-                        )
-                    display_normalized = posixpath.normpath(display_candidate)
-                    if display_normalized == normalized_path:
-                        continue
-                    append_unique(hard_results, display_normalized)
-                    if (
-                        max_links is not None
-                        and len(hard_results) >= max_links
-                    ):
+                    # Stop if we've reached root or max depth
+                    if not parent or parent == current_path:
+                        break
+                    if max_depth is not None and depth >= max_depth:
                         break
 
-            if (
-                include_hardlinks
-                and max_links is not None
-                and len(hard_results) >= max_links
-            ):
-                break
+                    parent_paths.append(parent)
+                    current_path = parent
+                    depth += 1
 
-        return hard_results, symlink_results
+            # Merge parent paths into self.paths and deduplicate
+            self.paths = list(set(self.paths + parent_paths))
 
-    def _find_hard_links(
-        self,
-        path: str,
-        task_vars: Optional[dict[str, Any]],
-        inode: Optional[int],
-        file_type: Optional[str],
-        expected_total: Optional[int],
-    ) -> Optional[list[str]]:
-        """Legacy hard link discovery using targeted find scans."""
-
-        if expected_total is not None and expected_total <= 1:
-            return None
-
-        if inode is None:
-            probe = self._cmd(
-                ["ls", "-li", "--", path],
-                task_vars=task_vars,
-                check_mode=False,
-            )
-            if probe.get("rc") == 0:
-                stdout = (probe.get("stdout") or "").strip()
-                if stdout:
-                    first_line = stdout.splitlines()[0]
-                    fragments = first_line.strip().split()
-                    if fragments:
-                        try:
-                            inode = int(fragments[0])
-                        except (TypeError, ValueError):
-                            inode = None
-        if inode is None:
-            return None
-
-        mount_root = self._get_mount_root(path, task_vars)
-        search_root = mount_root or posixpath.dirname(path) or "/"
-
-        type_map = {
-            "regular": "f",
-            "directory": "d",
-            "link": "l",
-            "pipe": "p",
-            "socket": "s",
-            "character": "c",
-            "block": "b",
-        }
-        type_flag = type_map.get(file_type or "")
-
-        def build_command(
-            root: str,
-            limit: Optional[int],
-            restrict_dev: bool = True,
-            max_depth: Optional[int] = None,
-        ) -> list[str]:
-            find_parts: list[str] = ["find", root]
-            if restrict_dev:
-                find_parts.append("-xdev")
-            if max_depth is not None:
-                find_parts.extend(["-maxdepth", str(max_depth)])
-            find_parts.extend(["-samefile", path])
-            if type_flag:
-                find_parts.extend(["-type", type_flag])
-            find_str = " ".join(shlex.quote(part) for part in find_parts)
-            if limit and limit > 0:
-                pipeline = f"{find_str} | head -n {limit}"
-            else:
-                pipeline = find_str
-            return ["sh", "-c", pipeline, "sh"]
-
-        normalized_path = posixpath.normpath(path)
-        path_dir = posixpath.dirname(path) or "."
-        max_links = None
-        if expected_total is not None:
-            max_links = max(expected_total - 1, 0)
-
-        def append_unique(target: list[str], value: str) -> None:
-            if value not in target:
-                target.append(value)
-
-        def is_same_path(first: str, second: str) -> bool:
-            try:
-                return os.path.samefile(first, second)
-            except OSError:
-                return False
-
-        others: list[str] = []
-
-        def consume(
-            root: str,
-            limit: Optional[int],
-            restrict_dev: bool,
-            max_depth: Optional[int],
-            label: str,
-        ) -> bool:
-            command = build_command(
-                root,
-                limit,
-                restrict_dev=restrict_dev,
-                max_depth=max_depth,
-            )
-            self._display.vvv(
-                f"[read] hardlink scan {label} command={' '.join(command)}"
-            )
-            result = self._cmd(
-                command,
-                task_vars=task_vars,
-                check_mode=False,
-            )
-            rc = result.get("rc")
-            if rc != 0:
-                self._display.vvv(
-                    f"[read] hardlink scan {label} failed rc={rc}"
-                )
-                return False
-            lines = [
-                line.strip()
-                for line in (result.get("stdout") or "").splitlines()
-                if line.strip()
-            ]
-            if not lines:
-                self._display.vvv(
-                    f"[read] hardlink scan {label} produced no results"
-                )
-                return False
-            for candidate in lines:
-                normalized_candidate = posixpath.normpath(candidate)
-                if normalized_candidate == normalized_path:
-                    continue
-                candidate_dir = posixpath.dirname(candidate) or "."
-                display_candidate = candidate
-                if is_same_path(candidate_dir, path_dir):
-                    display_candidate = posixpath.normpath(
-                        posixpath.join(path_dir, posixpath.basename(candidate))
-                    )
-                display_normalized = posixpath.normpath(display_candidate)
-                if display_normalized == normalized_path:
-                    continue
-                append_unique(others, display_normalized)
-                limit_reached = (
-                    max_links is not None and len(others) >= max_links
-                )
-                if limit_reached:
-                    self._display.vvv(
-                        f"[read] hardlink scan {label} "
-                        f"reached limit with {others}"
-                    )
-                    return True
-            return False
-
-        search_plans = [
-            (path_dir, expected_total, True, None, "path_dir_head"),
-            (path_dir, None, True, None, "path_dir_full"),
-            (search_root, expected_total, True, None, "mount_head"),
-            (search_root, None, True, None, "mount_full"),
-            (path_dir, None, False, 1, "path_dir_one_level"),
-            (path_dir, expected_total, False, 1, "path_dir_one_level_head"),
-            (search_root, None, False, None, "mount_crossdev"),
-        ]
-
-        for (
-            root,
-            limit,
-            restrict_dev,
-            max_depth,
-            label,
-        ) in search_plans:
-            if consume(root, limit, restrict_dev, max_depth, label):
-                break
-            if max_links is not None and len(others) >= max_links:
-                break
-
-        if others:
-            return others
-        self._display.debug(
-            "No hard links found for '%s' after scanning %s",
-            path,
-            search_root,
-        )
-        return None
-
-    def _collect_symlink_refs(
-        self,
-        target: str,
-        include_content: bool,
-        include_fields: set[str],
-        preferred_encoding: Optional[str],
-        task_vars: Optional[dict[str, Any]],
-        parents: bool,
-        visited: set[str],
-    ) -> dict[str, Optional[dict[str, Any]]]:
-        """Discover symlinks pointing to target and gather metadata."""
-
-        if target in visited:
-            return {}
-
-        try:
-            stat_result = self._stat(
-                path=target,
-                follow=False,
-                task_vars=task_vars,
-            )
-        except (AnsibleActionFail, ValueError, RuntimeError):
-            return {}
-
-        target_stat = stat_result.get("stat", {})
-        if not target_stat.get("exists"):
-            return {}
-
-        target_type = self._determine_type(target_stat)
-        target_inode = self._extract_inode(target_stat)
-        follow_stat = self._stat_follow(target, task_vars)
-        follow_data = follow_stat.get("stat", {}) if follow_stat else {}
-        follow_inode = self._extract_inode(follow_data)
-
-        reference_inodes: set[int] = set()
-        if target_inode is not None:
-            reference_inodes.add(target_inode)
-        if follow_inode is not None:
-            reference_inodes.add(follow_inode)
-
-        hard_links_unused, symlink_candidates = self._discover_links(
-            path=target,
-            task_vars=task_vars,
-            inode=target_inode,
-            file_type=target_type,
-            expected_total=target_stat.get("nlink"),
-            include_hardlinks=False,
-            include_symlinks=True,
-        )
-        if not symlink_candidates:
-            return {}
-
-        valid_symlinks = self._filter_symlinks(
-            candidates=symlink_candidates,
-            task_vars=task_vars,
-            reference_inodes=reference_inodes,
-            current_path=target,
-        )
-        if not valid_symlinks:
-            return {}
-
-        extra: dict[str, Optional[dict[str, Any]]] = {}
-        for symlink_path in valid_symlinks:
-            if symlink_path in visited:
-                continue
-            symlink_info, nested_extra = self._gather_file_info(
-                path=symlink_path,
-                include_content=include_content,
-                include_fields=include_fields,
-                preferred_encoding=preferred_encoding,
-                task_vars=task_vars,
-                parents=parents,
-                find_hardlinks=False,
-                find_symlinks=False,
-                visited=visited,
-            )
-            extra.update(nested_extra)
-            extra[symlink_path] = symlink_info
-            visited.add(symlink_path)
-        return extra
-
-    def _collect_parent_paths(
-        self, path: str, limit: Optional[int]
-    ) -> list[str]:
-        """Compute the ordered list of parent directories for a path."""
-
-        if limit is not None and limit <= 0:
-            return []
-
-        normalized = posixpath.normpath(path)
-        if normalized == posixpath.sep:
-            return []
-
-        parents: list[str] = []
-        current = normalized
-
-        while True:
-            parent = posixpath.dirname(current)
-            if parent == current:
-                break
-            parents.append(parent or posixpath.sep)
-            if parent in {"", posixpath.sep}:
-                break
-            current = parent
-
-        filtered: list[str] = []
-        for candidate in parents:
-            if candidate in {"", "."}:
-                continue
-            filtered.append(posixpath.normpath(candidate))
-
-        if filtered:
-            if filtered[-1] != posixpath.sep:
-                filtered.append(posixpath.sep)
-        else:
-            filtered.append(posixpath.sep)
-
-        if limit is not None:
-            filtered = filtered[:limit]
-
-        filtered.reverse()
-        return filtered
-
-    def _filter_symlinks(
-        self,
-        candidates: list[str],
-        task_vars: Optional[dict[str, Any]],
-        reference_inodes: set[int],
-        current_path: str,
-    ) -> list[str]:
-        """Filter symlink candidates to those resolving to target."""
-
-        valid: list[str] = []
-        seen: set[str] = set()
-        normalized_current = posixpath.normpath(current_path)
-
-        for candidate in candidates:
-            normalized_candidate = posixpath.normpath(candidate)
-            if normalized_candidate == normalized_current:
-                continue
-            if normalized_candidate in seen:
-                continue
-
-            follow_stat = self._stat_follow(candidate, task_vars)
-            follow_data = follow_stat.get("stat", {}) if follow_stat else {}
-            candidate_inode = self._extract_inode(follow_data)
-            if reference_inodes and candidate_inode is not None:
-                if candidate_inode not in reference_inodes:
-                    continue
-            elif reference_inodes:
-                resolved_path = follow_data.get("path")
-                if not resolved_path:
-                    continue
-                if posixpath.normpath(resolved_path) != normalized_current:
-                    continue
-
-            seen.add(normalized_candidate)
-            valid.append(normalized_candidate)
-
-        return valid
-
-    def _detect_encoding(
-        self,
-        path: str,
-        stat_data: dict[str, Any],
-        preferred_encoding: Optional[str],
-        task_vars: Optional[dict[str, Any]],
-    ) -> Optional[str]:
-        """Detect or validate file encoding for content reading.
-
-        :param str path: Path to detect encoding for
-        :param dict[str, Any] stat_data: Stat module output
-        :param Optional[str] preferred_encoding: User-specified encoding
-        :param Optional[dict[str, Any]] task_vars: Available Ansible
-            variables
-        :returns Optional[str]: Detected or preferred encoding, or None
-            if binary
-        """
-        if preferred_encoding:
-            return preferred_encoding
-
-        stat_charset = stat_data.get("charset") or stat_data.get("encoding")
-        if stat_charset and stat_charset.lower() not in {"binary", "unknown"}:
-            return stat_charset
-
-        result = self._cmd(
-            ["file", "-b", "--mime-encoding", path],
-            task_vars=task_vars,
-        )
-        if result.get("rc") == 0:
-            guess = (result.get("stdout") or "").strip()
-            if guess and guess.lower() not in {"binary", "unknown"}:
-                return guess
-        return None
-
-    def _maybe_get_content(
-        self,
-        path: str,
-        include_content: bool,
-        preferred_encoding: Optional[str],
-        stat_data: dict[str, Any],
-        task_vars: Optional[dict[str, Any]],
-    ) -> tuple[Optional[str], Optional[str]]:
-        """Conditionally retrieve and decode file content.
-
-        :param str path: Path to read content from
-        :param bool include_content: Whether content reading is
-            requested
-        :param Optional[str] preferred_encoding: User-specified encoding
-        :param dict[str, Any] stat_data: Stat module output
-        :param Optional[dict[str, Any]] task_vars: Available Ansible
-            variables
-        :returns tuple[Optional[str], Optional[str]]: Tuple of
-            (encoding, decoded_content)
-        :raises AnsibleActionFail: When content decoding fails
-        """
-        file_type = self._determine_type(stat_data)
-        if not include_content or file_type != "regular":
-            return None, None
-
-        encoding = self._detect_encoding(
-            path=path,
-            stat_data=stat_data,
-            preferred_encoding=preferred_encoding,
-            task_vars=task_vars,
-        )
-        if not encoding:
-            return None, None
-
-        slurp = self._slurp(
-            src=path,
-            encoding=encoding,
-            task_vars=task_vars,
-        )
-        if slurp.get("failed"):
-            raise AnsibleActionFail(
-                "Failed to read content from '{path}': {error}".format(
-                    path=path,
-                    error=slurp.get("msg", "unknown error"),
-                )
-            )
-        content_data = slurp.get("content")
-        if not content_data:
-            return encoding, None
-        return encoding, content_data
+        # Store original paths for children processing
+        self.original_paths = original_paths
 
     def run(
         self,
@@ -1178,133 +176,277 @@ class ActionModule(ReadPosixActionBase, ActionBase):
         :param Optional[str] tmp: Unused temporary directory path
         :param Optional[dict[str, Any]] task_vars: Available Ansible
             variables
-        :returns dict[str, Any]: Result with file metadata under 'file'
-            key
-        :raises AnsibleActionFail: When invalid arguments are provided
+        :returns dict[str, Any]: Result with file metadata
         """
         task_vars = task_vars or {}
         self._def_inventory_hostname(task_vars)
 
-        result = super(ActionModule, self).run(tmp, task_vars=task_vars)
-        del tmp  # unused
+        self._def_args()
 
+        result = super(ActionModule, self).run(tmp, task_vars=task_vars)
         result["invocation"] = self._task.args.copy()
 
-        argument_spec = {
-            "paths": {
-                "type": "list",
-                "required": True,
-                "elements": "str",
-                "aliases": ["path"],
-            },
-            "include": {
-                "type": "list",
-                "elements": "str",
-                "default": ["metadata"],
-                "choices": [
-                    "content",
-                    "metadata",
-                    "type",
-                    "name",
-                    "parent",
-                    "mode",
-                    "owner",
-                    "group",
-                    "writable",
-                    "links",
-                    "modified",
-                    "created",
-                    "acl",
-                    "xattrs",
-                    "flags",
-                    "selinux",
-                ],
-            },
-            "encoding": {"type": "str"},
-            "parents": {"type": "raw", "default": False},
-            "find_hardlinks": {"type": "bool", "default": False},
-            "find_symlinks": {"type": "bool", "default": False},
-        }
-        validation_result, new_args = self.validate_argument_spec(
-            argument_spec=argument_spec
+        del tmp  # unused
+
+        # Generate batched commands for all paths
+        # Pass need_dir_contents=True when children is enabled to get directory listings
+        commands = self._get_read_commands(
+            self.paths, self.include, need_dir_contents=bool(self.children)
+        )
+        self._display.vvv(
+            f"[{self.inventory_hostname}] Generated {len(commands)} "
+            f"commands for {len(self.paths)} initial paths"
         )
 
-        path_list = new_args["paths"]
-
-        # Convert include list to set for fast lookup
-        include_fields = set(new_args["include"])
-        include_content = "content" in include_fields
-        preferred_encoding = new_args.get("encoding")
-        parents_option = truthy_or_integer(
-            new_args["parents"], zero_is_false=True, only_positive=True
+        # Execute all commands in single batch
+        commands_result = self._run(
+            commands=commands,
+            task_vars=task_vars,
+            check_mode=False,
         )
-        parents = False
-        parent_limit: Optional[int] = 0
-        if parents_option is True:
-            parents = True
-            parent_limit = None
-        elif parents_option is False:
-            parent_limit = 0
-        else:
-            parents = True
-            parent_limit = parents_option
-        find_hardlinks = new_args.get("find_hardlinks", False)
-        find_symlinks = new_args.get("find_symlinks", False)
 
-        files: dict[str, Optional[dict[str, Any]]] = {}
-        for current_path in path_list:
-            visited_paths: set[str] = set()
+        # Process all results
+        file_data = self._process_read_results(
+            results=commands_result["commands"],
+            paths=self.paths,
+            include=self.include,
+        )
 
-            info, extra_entries = self._gather_file_info(
-                path=current_path,
-                include_content=include_content,
-                include_fields=include_fields,
-                preferred_encoding=preferred_encoding,
-                task_vars=task_vars,
-                parents=parents,
-                find_hardlinks=find_hardlinks,
-                find_symlinks=find_symlinks,
-                visited=visited_paths,
+        # If children is set, recursively read child entries within directories
+        if self.children:
+            max_depth = None if self.children is True else self.children
+            self._display.vvv(
+                f"[{self.inventory_hostname}] Children processing enabled "
+                f"(max_depth={max_depth})"
             )
-            files[current_path] = info
-            for extra_path, extra_info in extra_entries.items():
-                if extra_path in files:
+
+            # Track directories to process with their depth
+            # Start with original paths that are directories
+            # (don't process children for auto-added parent paths)
+            dirs_to_process = []
+            for path in self.original_paths:
+                if (
+                    path in file_data
+                    and file_data[path]
+                    and file_data[path].get("type") == "directory"
+                ):
+                    dirs_to_process.append((path, 0))
+
+            self._display.vvv(
+                f"[{self.inventory_hostname}] Found {len(dirs_to_process)} "
+                f"initial directories to process"
+            )
+
+            processed_dirs = set()
+
+            while dirs_to_process:
+                current_dir, current_depth = dirs_to_process.pop(0)
+
+                # Skip if already processed or exceeded depth
+                if current_dir in processed_dirs:
                     continue
-                files[extra_path] = extra_info
+                if max_depth is not None and current_depth >= max_depth:
+                    continue
 
-        if parent_limit is None:
-            parent_paths_iter = self._collect_parent_paths(current_path, None)
-        elif parent_limit > 0:
-            parent_paths_iter = self._collect_parent_paths(
-                current_path, parent_limit
-            )
-        else:
-            parent_paths_iter = []
+                processed_dirs.add(current_dir)
 
-        for parent_path in parent_paths_iter:
-            if parent_path in files:
-                continue
-            parent_info, parent_extra = self._gather_file_info(
-                path=parent_path,
-                include_content=False,
-                include_fields=include_fields,
-                preferred_encoding=None,
-                task_vars=task_vars,
-                parents=False,
-                find_hardlinks=False,
-                find_symlinks=False,
-                visited=visited_paths,
-            )
-            if parent_info is not None:
-                files[parent_path] = parent_info
-            for extra_path, extra_info in parent_extra.items():
-                if extra_path not in files:
-                    files[extra_path] = extra_info
+                # Get children from this directory
+                dir_data = file_data.get(current_dir)
+                if not dir_data or "children" not in dir_data:
+                    self._display.vvv(
+                        f"[{self.inventory_hostname}] Skipping {current_dir} "
+                        f"(no children)"
+                    )
+                    continue
 
-        result.update(
-            {
-                "changed": False,
-                "paths": files,
-            }
-        )
+                child_paths = dir_data["children"]
+                if not child_paths:
+                    self._display.vvv(
+                        f"[{self.inventory_hostname}] Directory {current_dir} "
+                        f"is empty"
+                    )
+                    continue
+
+                self._display.vvv(
+                    f"[{self.inventory_hostname}] Processing {current_dir} "
+                    f"(depth={current_depth}, {len(child_paths)} children)"
+                )
+
+                # Filter out children that are already in file_data
+                new_children = [
+                    child for child in child_paths if child not in file_data
+                ]
+
+                self._display.vvv(
+                    f"[{self.inventory_hostname}] Found {len(new_children)} "
+                    f"new children to read"
+                )
+
+                if new_children:
+                    # Process children in batches to avoid SSH buffer overflow
+                    batch_size = 50
+                    for batch_start in range(0, len(new_children), batch_size):
+                        batch_end = min(
+                            batch_start + batch_size, len(new_children)
+                        )
+                        batch_paths = new_children[batch_start:batch_end]
+
+                        self._display.vvv(
+                            f"[{self.inventory_hostname}] Processing batch "
+                            f"{batch_start // batch_size + 1} "
+                            f"({len(batch_paths)} paths)"
+                        )
+
+                        # Read metadata for this batch of children
+                        child_commands = self._get_read_commands(
+                            batch_paths,
+                            self.include,
+                            need_dir_contents=True,
+                        )
+                        self._display.vvv(
+                            f"[{self.inventory_hostname}] Generated "
+                            f"{len(child_commands)} commands for "
+                            f"{len(batch_paths)} paths"
+                        )
+                        child_result = self._run(
+                            commands=child_commands,
+                            task_vars=task_vars,
+                            check_mode=False,
+                        )
+                        child_data = self._process_read_results(
+                            results=child_result["commands"],
+                            paths=batch_paths,
+                            include=self.include,
+                        )
+                        file_data.update(child_data)
+
+                # Add subdirectories to processing queue (outside batch loop)
+                subdirs_found = 0
+                for child_path in new_children:
+                    if (
+                        child_path in file_data
+                        and file_data[child_path]
+                        and file_data[child_path].get("type") == "directory"
+                    ):
+                        dirs_to_process.append((child_path, current_depth + 1))
+                        subdirs_found += 1
+
+                if subdirs_found > 0:
+                    self._display.vvv(
+                        f"[{self.inventory_hostname}] Added "
+                        f"{subdirs_found} subdirectories to queue "
+                        f"(queue size now: {len(dirs_to_process)})"
+                    )
+
+        # Handle symbolic links based on follow parameter
+        if self.follow == "recurse":
+            # Recursively add symlink targets until non-symlink found
+            processed_paths = set(file_data.keys())
+
+            while True:
+                new_targets = []
+                for path, data in file_data.items():
+                    if (
+                        data
+                        and data.get("type") == "link"
+                        and "target" in data
+                        and data["target"]
+                    ):
+                        target = data["target"]
+                        # Resolve relative paths to absolute
+                        if not isabs(target):
+                            target = normpath(join(dirname(path), target))
+                        if target not in processed_paths:
+                            new_targets.append(target)
+                            processed_paths.add(target)
+
+                if not new_targets:
+                    break
+
+                # Read metadata for link targets
+                target_commands = self._get_read_commands(
+                    new_targets, self.include
+                )
+                target_result = self._run(
+                    commands=target_commands,
+                    task_vars=task_vars,
+                    check_mode=False,
+                )
+                target_data = self._process_read_results(
+                    results=target_result["commands"],
+                    paths=new_targets,
+                    include=self.include,
+                )
+                file_data.update(target_data)
+
+        elif self.follow is True:
+            # Resolve symlinks to their ultimate targets
+            links_to_resolve = []
+            for path, data in file_data.items():
+                if data and data.get("type") == "link":
+                    links_to_resolve.append(path)
+
+            if links_to_resolve:
+                # Use readlink -f to resolve ultimate targets
+                readlink_commands = {}
+                for link_path in links_to_resolve:
+                    readlink_commands[f"{link_path}_readlink"] = [
+                        "readlink",
+                        "-f",
+                        link_path,
+                    ]
+
+                readlink_result = self._run(
+                    commands=readlink_commands,
+                    task_vars=task_vars,
+                    check_mode=False,
+                )
+
+                # Get resolved targets and read their metadata
+                resolved_targets = {}
+                for link_path in links_to_resolve:
+                    result_key = f"{link_path}_readlink"
+                    if result_key in readlink_result["commands"]:
+                        cmd_result = readlink_result["commands"][result_key]
+                        if cmd_result.get("rc") == 0:
+                            target = cmd_result.get("stdout", "").strip()
+                            if target:
+                                resolved_targets[link_path] = target
+
+                # Read metadata for resolved targets
+                if resolved_targets:
+                    unique_targets = list(set(resolved_targets.values()))
+                    target_commands = self._get_read_commands(
+                        unique_targets, self.include
+                    )
+                    target_result = self._run(
+                        commands=target_commands,
+                        task_vars=task_vars,
+                        check_mode=False,
+                    )
+                    target_data = self._process_read_results(
+                        results=target_result["commands"],
+                        paths=unique_targets,
+                        include=self.include,
+                    )
+
+                    # Replace symlink data with target data
+                    for link_path, target in resolved_targets.items():
+                        if target in target_data and target_data[target]:
+                            file_data[link_path] = target_data[target]
+                            # Add realpath key when it differs from original path
+                            if target != link_path:
+                                file_data[link_path]["realpath"] = target
+
+        # Remove children field from output if not explicitly requested
+        # (it was needed internally for children parameter processing)
+        if "all" not in self.include and "children" not in self.include:
+            for path_data in file_data.values():
+                if path_data and "children" in path_data:
+                    del path_data["children"]
+
+        # Format output
+        result["changed"] = False
+        result["paths"] = file_data
+
         return result

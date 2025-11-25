@@ -1,0 +1,409 @@
+# vim: ts=2:sw=2:sts=2:et:ft=yaml.ansible
+# -*- mode: yaml; yaml-indent-offset: 2; indent-tabs-mode: nil; -*-
+---
+# GNU General Public License v3.0+
+# SPDX-License-Identifier: GPL-3.0-or-later
+# (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
+# Copyright (c) 2025 oØ.o (@o0-o)
+#
+# This file is part of the o0_o.posix Ansible Collection.
+
+# Advanced read module tests for children, parents, and include options
+
+- name: Create nested directory structure for advanced tests
+  ansible.builtin.file:
+    state: directory
+    path: "{{ item }}"
+  loop:
+    - "{{ read_dir_path }}/nested/level1"
+    - "{{ read_dir_path }}/nested/level1/level2"
+    - "{{ read_dir_path }}/nested/level1/level2/level3"
+
+- name: Create files in nested structure
+  ansible.builtin.copy:
+    dest: "{{ item }}"
+    content: 'test content'
+  loop:
+    - "{{ read_dir_path }}/nested/file0.txt"
+    - "{{ read_dir_path }}/nested/level1/file1.txt"
+    - "{{ read_dir_path }}/nested/level1/level2/file2.txt"
+    - "{{ read_dir_path }}/nested/level1/level2/level3/file3.txt"
+
+# Test children parameter with boolean True (unlimited recursion)
+- name: Read directory with children=true (unlimited depth)
+  o0_o.posix.read:
+    path: "{{ read_dir_path }}/nested"
+    children: true
+  register: read_children_unlimited_reg
+
+- name: Assert children=true reads all nested files
+  ansible.builtin.assert:
+    that:
+      - read_children_unlimited_reg is not changed
+      - >-
+        read_children_unlimited_reg['paths'][read_dir_path + '/nested']
+        is defined
+      - >-
+        read_children_unlimited_reg['paths'][read_dir_path +
+        '/nested/file0.txt'] is defined
+      - >-
+        read_children_unlimited_reg['paths'][read_dir_path +
+        '/nested/level1'] is defined
+      - >-
+        read_children_unlimited_reg['paths'][read_dir_path +
+        '/nested/level1/file1.txt'] is defined
+      - >-
+        read_children_unlimited_reg['paths'][read_dir_path +
+        '/nested/level1/level2'] is defined
+      - >-
+        read_children_unlimited_reg['paths'][read_dir_path +
+        '/nested/level1/level2/file2.txt'] is defined
+      - >-
+        read_children_unlimited_reg['paths'][read_dir_path +
+        '/nested/level1/level2/level3'] is defined
+      - >-
+        read_children_unlimited_reg['paths'][read_dir_path +
+        '/nested/level1/level2/level3/file3.txt'] is defined
+
+# Test children parameter with integer depth limit
+- name: Read directory with children=1 (depth limit)
+  o0_o.posix.read:
+    path: "{{ read_dir_path }}/nested"
+    children: 1
+  register: read_children_depth1_reg
+
+- name: Assert children=1 only reads first level
+  ansible.builtin.assert:
+    that:
+      - read_children_depth1_reg is not changed
+      - >-
+        read_children_depth1_reg['paths'][read_dir_path + '/nested']
+        is defined
+      - >-
+        read_children_depth1_reg['paths'][read_dir_path +
+        '/nested/file0.txt'] is defined
+      - >-
+        read_children_depth1_reg['paths'][read_dir_path +
+        '/nested/level1'] is defined
+      - >-
+        read_children_depth1_reg['paths'][read_dir_path +
+        '/nested/level1/file1.txt'] is not defined
+      - >-
+        read_children_depth1_reg['paths'][read_dir_path +
+        '/nested/level1/level2'] is not defined
+
+# Test children parameter with depth 2
+- name: Read directory with children=2
+  o0_o.posix.read:
+    path: "{{ read_dir_path }}/nested"
+    children: 2
+  register: read_children_depth2_reg
+
+- name: Assert children=2 reads two levels deep
+  ansible.builtin.assert:
+    that:
+      - read_children_depth2_reg is not changed
+      - >-
+        read_children_depth2_reg['paths'][read_dir_path +
+        '/nested/level1'] is defined
+      - >-
+        read_children_depth2_reg['paths'][read_dir_path +
+        '/nested/level1/file1.txt'] is defined
+      - >-
+        read_children_depth2_reg['paths'][read_dir_path +
+        '/nested/level1/level2'] is defined
+      - >-
+        read_children_depth2_reg['paths'][read_dir_path +
+        '/nested/level1/level2/file2.txt'] is not defined
+      - >-
+        read_children_depth2_reg['paths'][read_dir_path +
+        '/nested/level1/level2/level3'] is not defined
+
+# Test parents parameter with boolean True
+- name: Read file with parents=true
+  o0_o.posix.read:
+    path: "{{ read_dir_path }}/nested/level1/level2/file2.txt"
+    parents: true
+  register: read_parents_unlimited_reg
+
+- name: Assert parents=true reads all parent directories
+  ansible.builtin.assert:
+    that:
+      - read_parents_unlimited_reg is not changed
+      - >-
+        read_parents_unlimited_reg['paths'][read_dir_path +
+        '/nested/level1/level2/file2.txt'] is defined
+      - >-
+        read_parents_unlimited_reg['paths'][read_dir_path +
+        '/nested/level1/level2'] is defined
+      - >-
+        read_parents_unlimited_reg['paths'][read_dir_path +
+        '/nested/level1'] is defined
+      - >-
+        read_parents_unlimited_reg['paths'][read_dir_path + '/nested']
+        is defined
+      - >-
+        read_parents_unlimited_reg['paths'][read_dir_path +
+        '/nested/level1/level2']['type'] == 'directory'
+
+# Test parents parameter with integer depth limit
+- name: Read file with parents=2
+  o0_o.posix.read:
+    path: "{{ read_dir_path }}/nested/level1/level2/level3/file3.txt"
+    parents: 2
+  register: read_parents_depth2_reg
+
+- name: Assert parents=2 only reads 2 parent levels
+  ansible.builtin.assert:
+    that:
+      - read_parents_depth2_reg is not changed
+      - >-
+        read_parents_depth2_reg['paths'][read_dir_path +
+        '/nested/level1/level2/level3/file3.txt'] is defined
+      - >-
+        read_parents_depth2_reg['paths'][read_dir_path +
+        '/nested/level1/level2/level3'] is defined
+      - >-
+        read_parents_depth2_reg['paths'][read_dir_path +
+        '/nested/level1/level2'] is defined
+      - >-
+        read_parents_depth2_reg['paths'][read_dir_path +
+        '/nested/level1'] is not defined
+
+# Test include: ['children'] option
+- name: Read directory with include children option
+  o0_o.posix.read:
+    path: "{{ read_directory_path }}"
+    include: ['children', 'metadata']
+  register: read_include_children_reg
+
+- name: Assert include children option adds children field
+  ansible.builtin.assert:
+    that:
+      - read_include_children_reg is not changed
+      - >-
+        read_include_children_reg['paths'][read_directory_path]['type']
+        == 'directory'
+      - >-
+        'children' in
+        read_include_children_reg['paths'][read_directory_path]
+      - >-
+        read_include_children_reg['paths'][read_directory_path]['children']
+        is sequence
+
+# Test include: ['all'] option
+- name: Read regular file with include all
+  o0_o.posix.read:
+    path: "{{ read_regular_path }}"
+    include: ['all']
+  register: read_include_all_reg
+
+- name: Assert include all provides comprehensive metadata
+  ansible.builtin.assert:
+    that:
+      - read_include_all_reg is not changed
+      - read_include_all_reg['paths'][read_regular_path]['type'] == 'regular'
+      - >-
+        read_include_all_reg['paths'][read_regular_path]['mode']
+        is defined
+      - >-
+        read_include_all_reg['paths'][read_regular_path]['owner']
+        is defined
+      - >-
+        read_include_all_reg['paths'][read_regular_path]['group']
+        is defined
+      - >-
+        read_include_all_reg['paths'][read_regular_path]['size']
+        is defined
+      - >-
+        read_include_all_reg['paths'][read_regular_path]['writable']
+        is boolean
+      - >-
+        read_include_all_reg['paths'][read_regular_path]['content']
+        is defined
+      - >-
+        read_include_all_reg['paths'][read_regular_path]['encoding']
+        is defined
+
+# Test include with extended metadata fields
+- name: Read file with extended metadata fields
+  o0_o.posix.read:
+    path: "{{ read_regular_path }}"
+    include: ['metadata', 'modified', 'created', 'changed']
+  register: read_extended_meta_reg
+
+- name: Assert extended metadata fields are present
+  ansible.builtin.assert:
+    that:
+      - read_extended_meta_reg is not changed
+      - >-
+        read_extended_meta_reg['paths'][read_regular_path]['modified']
+        is defined
+      - >-
+        read_extended_meta_reg['paths'][read_regular_path]['created']
+        is defined
+      - >-
+        read_extended_meta_reg['paths'][read_regular_path]['changed']
+        is defined
+
+# Test interaction between children parameter and include: ['children']
+- name: Read with both children param and children include
+  o0_o.posix.read:
+    path: "{{ read_dir_path }}/nested"
+    children: 1
+    include: ['children', 'metadata']
+  register: read_children_both_reg
+
+- name: Assert children param and include work together
+  ansible.builtin.assert:
+    that:
+      - read_children_both_reg is not changed
+      - >-
+        read_children_both_reg['paths'][read_dir_path + '/nested']
+        is defined
+      - >-
+        'children' in
+        read_children_both_reg['paths'][read_dir_path + '/nested']
+      - >-
+        read_children_both_reg['paths'][read_dir_path +
+        '/nested/level1'] is defined
+      - >-
+        'children' in read_children_both_reg['paths'][read_dir_path +
+        '/nested/level1']
+
+# Test children parameter doesn't include children field without include option
+- name: Read with children param without children in include
+  o0_o.posix.read:
+    path: "{{ read_dir_path }}/nested"
+    children: 1
+    include: ['metadata']
+  register: read_children_no_include_reg
+
+- name: Assert children field not present without include
+  ansible.builtin.assert:
+    that:
+      - read_children_no_include_reg is not changed
+      - >-
+        read_children_no_include_reg['paths'][read_dir_path + '/nested']
+        is defined
+      - >-
+        'children' not in
+        read_children_no_include_reg['paths'][read_dir_path + '/nested']
+
+# Test parents with children combined
+- name: Read with both parents and children
+  o0_o.posix.read:
+    path: "{{ read_dir_path }}/nested/level1"
+    parents: 1
+    children: 1
+  register: read_parents_children_reg
+
+- name: Assert parents and children work together
+  ansible.builtin.assert:
+    that:
+      - read_parents_children_reg is not changed
+      - >-
+        read_parents_children_reg['paths'][read_dir_path +
+        '/nested/level1'] is defined
+      - >-
+        read_parents_children_reg['paths'][read_dir_path + '/nested']
+        is defined
+      - >-
+        read_parents_children_reg['paths'][read_dir_path +
+        '/nested/level1/file1.txt'] is defined
+      - >-
+        read_parents_children_reg['paths'][read_dir_path +
+        '/nested/level1/level2'] is defined
+      - >-
+        read_parents_children_reg['paths'][read_dir_path +
+        '/nested/level1/level2/file2.txt'] is not defined
+
+# Test multiple paths with children parameter
+- name: Read multiple directories with children
+  o0_o.posix.read:
+    paths:
+      - "{{ read_dir_path }}/nested"
+      - "{{ read_dir_path }}/nested/level1"
+    children: 1
+  register: read_multi_children_reg
+
+- name: Assert multiple paths with children works correctly
+  ansible.builtin.assert:
+    that:
+      - read_multi_children_reg is not changed
+      - >-
+        read_multi_children_reg['paths'][read_dir_path + '/nested']
+        is defined
+      - >-
+        read_multi_children_reg['paths'][read_dir_path +
+        '/nested/level1'] is defined
+      - >-
+        read_multi_children_reg['paths'][read_dir_path +
+        '/nested/file0.txt'] is defined
+      - >-
+        read_multi_children_reg['paths'][read_dir_path +
+        '/nested/level1/file1.txt'] is defined
+
+# Test multiple paths with parents parameter
+- name: Read multiple files with parents
+  o0_o.posix.read:
+    paths:
+      - "{{ read_dir_path }}/nested/level1/file1.txt"
+      - "{{ read_dir_path }}/nested/level1/level2/file2.txt"
+    parents: 1
+  register: read_multi_parents_reg
+
+- name: Assert multiple paths with parents works correctly
+  ansible.builtin.assert:
+    that:
+      - read_multi_parents_reg is not changed
+      - >-
+        read_multi_parents_reg['paths'][read_dir_path +
+        '/nested/level1/file1.txt'] is defined
+      - >-
+        read_multi_parents_reg['paths'][read_dir_path +
+        '/nested/level1/level2/file2.txt'] is defined
+      - >-
+        read_multi_parents_reg['paths'][read_dir_path +
+        '/nested/level1'] is defined
+      - >-
+        read_multi_parents_reg['paths'][read_dir_path +
+        '/nested/level1/level2'] is defined
+
+# Test multiple mixed paths (files and directories)
+- name: Read multiple mixed paths with children and parents
+  o0_o.posix.read:
+    paths:
+      - "{{ read_dir_path }}/nested"
+      - "{{ read_regular_path }}"
+      - "{{ read_symlink_path }}"
+    children: 1
+    parents: 1
+    follow: false
+  register: read_multi_mixed_reg
+
+- name: Assert multiple mixed paths works correctly
+  ansible.builtin.assert:
+    that:
+      - read_multi_mixed_reg is not changed
+      - >-
+        read_multi_mixed_reg['paths'][read_dir_path + '/nested']
+        is defined
+      - >-
+        read_multi_mixed_reg['paths'][read_dir_path + '/nested']['type']
+        == 'directory'
+      - >-
+        read_multi_mixed_reg['paths'][read_regular_path] is defined
+      - >-
+        read_multi_mixed_reg['paths'][read_regular_path]['type']
+        == 'regular'
+      - >-
+        read_multi_mixed_reg['paths'][read_symlink_path] is defined
+      - >-
+        read_multi_mixed_reg['paths'][read_symlink_path]['type']
+        == 'link'
+      - >-
+        read_multi_mixed_reg['paths'][read_dir_path] is defined
+      - >-
+        read_multi_mixed_reg['paths'][read_dir_path +
+        '/nested/file0.txt'] is defined

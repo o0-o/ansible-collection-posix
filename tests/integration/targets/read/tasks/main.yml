@@ -79,6 +79,14 @@
       vars:
         ansible_check_mode: "{{ read_check_mode }}"
 
+    - name: Execute advanced read module tests
+      ansible.builtin.include_tasks: read_advanced.yml
+      loop: "{{ [true, false] }}"
+      loop_control:
+        loop_var: read_check_mode
+      vars:
+        ansible_check_mode: "{{ read_check_mode }}"
+
   always:
 
     - name: Remove temporary directory tree

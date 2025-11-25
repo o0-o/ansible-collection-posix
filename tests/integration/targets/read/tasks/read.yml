@@ -38,7 +38,7 @@
         'quick brown fox' in
         read_regular_content_reg['paths'][read_regular_path]['content']
       - >-
-        read_regular_content_reg['paths'][read_regular_path]['links']
+        read_regular_content_reg['paths'][read_regular_path]['hardlinks']
         == 1
 
 - name: Read regular file without content
@@ -53,7 +53,7 @@
       - read_regular_meta_reg['paths'][read_regular_path]['type'] == 'regular'
       - "'content' not in read_regular_meta_reg['paths'][read_regular_path]"
       - "'encoding' not in read_regular_meta_reg['paths'][read_regular_path]"
-      - read_regular_meta_reg['paths'][read_regular_path]['links'] == 1
+      - read_regular_meta_reg['paths'][read_regular_path]['hardlinks'] == 1
       - >-
         read_regular_meta_reg['paths'][read_regular_path]['writable']
         is boolean
@@ -71,13 +71,14 @@
       - read_binary_reg['paths'][read_binary_path]['type'] == 'regular'
       - "'content' not in read_binary_reg['paths'][read_binary_path]"
       - "'encoding' not in read_binary_reg['paths'][read_binary_path]"
-      - "'links' not in read_binary_reg['paths'][read_binary_path]"
+      - "'hardlinks' not in read_binary_reg['paths'][read_binary_path]"
       - >-
         read_binary_reg['paths'][read_binary_path]['writable'] is boolean
 
 - name: Read symbolic link metadata
   o0_o.posix.read:
     path: "{{ read_symlink_path }}"
+    follow: false
   register: read_symlink_reg
 
 - name: Assert symbolic link target recorded
@@ -86,9 +87,9 @@
       - read_symlink_reg is not changed
       - read_symlink_reg['paths'][read_symlink_path]['type'] == 'link'
       - >-
-        read_symlink_reg['paths'][read_symlink_path]['links']
-        == [read_regular_path]
-      - "'content' not in read_symlink_reg['paths'][read_symlink_path]"
+        read_symlink_reg['paths'][read_symlink_path]['target']
+        == read_regular_path
+      - "'hardlinks' not in read_symlink_reg['paths'][read_symlink_path]"
       - >-
         read_symlink_reg['paths'][read_symlink_path]['writable'] is boolean
 
@@ -117,14 +118,14 @@
     that:
       - read_fifo_reg is not changed
       - read_fifo_reg['paths'][read_fifo_path]['type'] == 'pipe'
-      - "'links' not in read_fifo_reg['paths'][read_fifo_path]"
+      - "'hardlinks' not in read_fifo_reg['paths'][read_fifo_path]"
       - >-
         read_fifo_reg['paths'][read_fifo_path]['writable'] is boolean
 
 - name: Read symbolic link recursively
   o0_o.posix.read:
     path: "{{ read_symlink_path }}"
-    parents: true
+    follow: recurse
     include: ['content', 'metadata']
   register: read_symlink_recursive_reg
 
@@ -138,14 +139,14 @@
         read_symlink_recursive_reg['paths'][read_symlink_path]['type']
         == 'link'
       - >-
-        read_symlink_recursive_reg['paths'][read_symlink_path]['links']
-        == [read_regular_path]
+        read_symlink_recursive_reg['paths'][read_symlink_path]['target']
+        == read_regular_path
       - >-
         read_symlink_recursive_reg['paths'][read_regular_path]['type']
         == 'regular'
       - >-
-        'quick brown fox' in read_symlink_recursive_reg['paths']
-        [read_regular_path]['content']
+        'quick brown fox' in
+        read_symlink_recursive_reg['paths'][read_regular_path]['content']
       - >-
         read_symlink_recursive_reg['paths'][read_regular_path]['writable']
         is boolean
@@ -169,6 +170,7 @@
     paths:
       - "{{ read_regular_path }}"
       - "{{ read_symlink_path }}"
+    follow: false
   register: read_multiple_reg
 
 - name: Assert multiple path results available
@@ -176,3 +178,121 @@
     that:
       - read_multiple_reg['paths'][read_regular_path]['type'] == 'regular'
       - read_multiple_reg['paths'][read_symlink_path]['type'] == 'link'
+
+# Test hardlinks
+- name: Read hardlink file
+  o0_o.posix.read:
+    path: "{{ read_hardlink_path }}"
+  register: read_hardlink_reg
+
+- name: Assert hardlink shows other hardlinks count of 1
+  ansible.builtin.assert:
+    that:
+      - read_hardlink_reg is not changed
+      - read_hardlink_reg['paths'][read_hardlink_path]['type'] == 'regular'
+      - read_hardlink_reg['paths'][read_hardlink_path]['hardlinks'] == 1
+      - read_hardlink_reg['paths'][read_hardlink_path]['inode'] is defined
+      - read_hardlink_reg['paths'][read_hardlink_path]['inode'] is number
+
+# Test extended metadata fields (platform-specific)
+
+# Test ACL support (Linux and macOS)
+- name: Read file with ACL metadata
+  o0_o.posix.read:
+    path: "{{ read_regular_path }}"
+    include: ['metadata', 'acl']
+  register: read_acl_reg
+  when: ansible_system in ['Linux', 'Darwin']
+
+- name: Assert ACL field behavior
+  ansible.builtin.assert:
+    that:
+      - read_acl_reg is not changed
+      - >-
+        'acl' in read_acl_reg['paths'][read_regular_path] or
+        'acl' not in read_acl_reg['paths'][read_regular_path]
+  when: ansible_system in ['Linux', 'Darwin']
+
+# Test xattrs support (Linux and macOS)
+- name: Read file with xattrs metadata
+  o0_o.posix.read:
+    path: "{{ read_regular_path }}"
+    include: ['metadata', 'xattrs']
+  register: read_xattrs_reg
+  when: ansible_system in ['Linux', 'Darwin']
+
+- name: Assert xattrs field behavior
+  ansible.builtin.assert:
+    that:
+      - read_xattrs_reg is not changed
+      - >-
+        'xattrs' in read_xattrs_reg['paths'][read_regular_path] or
+        'xattrs' not in read_xattrs_reg['paths'][read_regular_path]
+  when: ansible_system in ['Linux', 'Darwin']
+
+# Test filesystem flags (Linux lsattr and macOS chflags)
+- name: Read file with flags metadata
+  o0_o.posix.read:
+    path: "{{ read_regular_path }}"
+    include: ['metadata', 'flags']
+  register: read_flags_reg
+  when: ansible_system in ['Linux', 'Darwin']
+
+- name: Assert flags field behavior
+  ansible.builtin.assert:
+    that:
+      - read_flags_reg is not changed
+      - >-
+        'flags' in read_flags_reg['paths'][read_regular_path] or
+        'flags' not in read_flags_reg['paths'][read_regular_path]
+  when: ansible_system in ['Linux', 'Darwin']
+
+# Test SELinux context (only on SELinux-enabled Linux systems)
+- name: Check if SELinux is enabled
+  ansible.builtin.command:
+    argv:
+      - getenforce
+  register: selinux_status_reg
+  changed_when: false
+  failed_when: false
+  when: ansible_system == 'Linux'
+
+- name: Read file with SELinux metadata
+  o0_o.posix.read:
+    path: "{{ read_regular_path }}"
+    include: ['metadata', 'selinux']
+  register: read_selinux_reg
+  when:
+    - ansible_system == 'Linux'
+    - selinux_status_reg is defined
+    - selinux_status_reg['rc'] == 0
+    - selinux_status_reg['stdout'] | default('') != 'Disabled'
+
+- name: Assert SELinux field behavior
+  ansible.builtin.assert:
+    that:
+      - read_selinux_reg is not changed
+      - >-
+        'selinux' in read_selinux_reg['paths'][read_regular_path] or
+        'selinux' not in read_selinux_reg['paths'][read_regular_path]
+  when:
+    - ansible_system == 'Linux'
+    - selinux_status_reg is defined
+    - selinux_status_reg['rc'] == 0
+    - selinux_status_reg['stdout'] | default('') != 'Disabled'
+
+# Test that extended fields are NOT present when not requested
+- name: Read file without extended metadata
+  o0_o.posix.read:
+    path: "{{ read_regular_path }}"
+    include: ['metadata']
+  register: read_no_extended_reg
+
+- name: Assert extended fields not present when not requested
+  ansible.builtin.assert:
+    that:
+      - read_no_extended_reg is not changed
+      - "'acl' not in read_no_extended_reg['paths'][read_regular_path]"
+      - "'xattrs' not in read_no_extended_reg['paths'][read_regular_path]"
+      - "'flags' not in read_no_extended_reg['paths'][read_regular_path]"
+      - "'selinux' not in read_no_extended_reg['paths'][read_regular_path]"

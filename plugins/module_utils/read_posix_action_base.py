@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import re
 from numbers import Number
+from os.path import join
 from typing import Any, Dict, List, Optional, Tuple
 
 from ansible.module_utils.common.text.converters import to_text
@@ -30,180 +31,419 @@ from ansible_collections.o0_o.posix.plugins.module_utils.jc_utils import (
 from ansible_collections.o0_o.posix.plugins.module_utils.posix_action_base import (  # noqa: E501
     PosixActionBase,
 )
+from ansible_collections.o0_o.utils.plugins.module_utils import (
+    format_epoch_timestamp,
+    parse_si,
+)
 
 
 class ReadPosixActionBase(PosixActionBase):
     """Base class for stat and read plugins with shared methods."""
 
-    def _read(
+    def _get_read_commands(
         self,
-        path: Optional[str] = None,
-        paths: Optional[list[str]] = None,
+        paths: list[str],
+        include: list[str],
+        need_dir_contents: bool = False,
+    ) -> dict[str, Any]:
+        """
+        Generate batched commands to inspect multiple paths.
+
+        Uses ls -din as the base command for each path. Additional
+        commands are added based on the include list.
+
+        :param list[str] paths: Paths to inspect
+        :param list[str] include: Fields to include (metadata, content,
+            modified, created, changed, acl, xattrs, flags, selinux)
+        :param bool need_dir_contents: If True, add commands to list
+            directory contents (for children feature)
+        :returns dict: Command dictionary keyed by path-prefixed tags
+        """
+        commands: dict[str, Any] = {}
+        include_set = set(include)
+        include_all = "all" in include_set
+        include_metadata = (
+            include_all or "metadata" in include_set or "extended" in include_set
+        )
+        include_extended = include_all or "extended" in include_set
+
+        for path in paths:
+            # Basic file info using ls -dn (numeric UIDs/GIDs)
+            commands[f"{path}_ls"] = ["ls", "-dn", path]
+
+            # Always get inode for hardlink identification
+            commands[f"{path}_inode"] = ["stat", "-c", "%i", path]
+            commands[f"{path}_inode_bsd"] = ["stat", "-f", "%i", path]
+
+            # Add stat for timestamps if metadata requested
+            if include_metadata:
+                # GNU stat format: mtime, ctime, birth time (if available)
+                commands[f"{path}_stat"] = [
+                    "stat",
+                    "-c",
+                    "%Y %Z %W",
+                    path,
+                ]
+                # BSD stat fallback (macOS)
+                commands[f"{path}_stat_bsd"] = [
+                    "stat",
+                    "-f",
+                    "%m %c %B",
+                    path,
+                ]
+
+            # Add file content reading if requested
+            # (encoding detection and cat for regular files)
+            if include_all or "content" in include_set:
+                commands[f"{path}_encoding"] = [
+                    "file",
+                    "-b",
+                    "--mime-encoding",
+                    path,
+                ]
+                commands[f"{path}_cat"] = ["cat", path]
+
+            # Add ACL info if metadata requested
+            if include_metadata:
+                commands[f"{path}_acl"] = ["getfacl", "-p", path]
+                # macOS fallback
+                commands[f"{path}_acl_macos"] = ["ls", "-le", path]
+
+            # Add extended attributes if extended requested
+            # (not included in basic metadata)
+            if include_extended:
+                commands[f"{path}_xattr"] = [
+                    "getfattr",
+                    "--absolute-names",
+                    "-d",
+                    path,
+                ]
+                # macOS fallback
+                commands[f"{path}_xattr_macos"] = ["xattr", "-l", path]
+
+            # Add filesystem flags if metadata requested
+            if include_metadata:
+                commands[f"{path}_flags"] = ["lsattr", "-d", path]
+                # macOS fallback
+                commands[f"{path}_flags_macos"] = ["ls", "-ldO", path]
+
+            # Add SELinux context if metadata requested
+            if include_metadata:
+                commands[f"{path}_selinux"] = ["stat", "-c", "%C", path]
+                # Alternative using ls -Z
+                commands[f"{path}_selinux_ls"] = ["ls", "-Zd", path]
+
+            # Add directory listing if needed (for children feature)
+            # Either explicitly requested via include or enabled via children parameter
+            if need_dir_contents or include_all or "children" in include_set:
+                commands[f"{path}_contents"] = ["ls", "-1A", path]
+
+        return commands
+
+    def _process_read_results(
+        self,
+        results: dict[str, Any],
+        paths: list[str],
         include: Optional[list[str]] = None,
-        encoding: Optional[str] = None,
-        parents: Optional[bool] = None,
-        find_hardlinks: bool = False,
-        find_symlinks: bool = False,
-        task_vars: Optional[dict[str, Any]] = None,
-        check_mode: Optional[bool] = None,
-    ) -> dict[str, Any]:
+    ) -> dict[str, Optional[dict[str, Any]]]:
         """
-        Run the read action plugin to gather file metadata and
-        content.
+        Process raw command results into structured file data.
 
-        Inspects file metadata and optionally content on POSIX hosts
-        using portable commands. When path does not exist, returns
-        null instead of raising an error.
+        Parses ls -din output using jc and extracts file metadata.
 
-        :param Optional[str] path: Absolute path to the file to
-            inspect
-        :param Optional[list[str]] paths: List of paths to inspect
-        :param Optional[list[str]] include: List of field names to
-            include (metadata, content, type, name, parent, mode,
-            owner, group, writable, links, modified, created, acl,
-            xattrs, flags, selinux)
-        :param Optional[str] encoding: Override detected encoding for
-            content
-        :param Optional[bool] parents: Include parent directories
-            (False, True, or integer count)
-        :param bool find_hardlinks: Enumerate all hard link paths
-        :param bool find_symlinks: Enumerate all symbolic links
-        :param Optional[dict] task_vars: Dictionary of task variables
-        :param Optional[bool] check_mode: Optional override for
-            Ansible check mode
-        :returns dict: Result dictionary with 'paths' containing file
-            data
+        :param dict results: Raw command results from _run()
+        :param list[str] paths: Original paths that were inspected
+        :param Optional[list[str]] include: List of fields to include
+            (metadata, content, etc.)
+        :returns dict: Dictionary mapping paths to parsed file data or
+            None if path doesn't exist
         """
-        task_vars = task_vars or {}
+        include = include or ["metadata"]
+        include_set = set(include)
+        include_all = "all" in include_set
+        file_data: dict[str, Optional[dict[str, Any]]] = {}
 
-        args = {
-            "find_hardlinks": find_hardlinks,
-            "find_symlinks": find_symlinks,
-        }
+        for path in paths:
+            ls_key = f"{path}_ls"
+            if ls_key not in results:
+                file_data[path] = None
+                continue
 
-        if path:
-            args["path"] = path
-        if paths:
-            args["paths"] = paths
-        if include:
-            args["include"] = include
-        if encoding:
-            args["encoding"] = encoding
-        if parents is not None:
-            args["parents"] = parents
+            ls_result = results[ls_key]
 
-        return self._run_action(
-            "o0_o.posix.read",
-            args,
-            task_vars=task_vars,
-            check_mode=check_mode,
-        )
+            # Path doesn't exist if ls failed
+            if ls_result.get("rc") != 0:
+                file_data[path] = None
+                continue
 
-    def _stat(
-        self,
-        path: str,
-        follow: bool = False,
-        get_checksum: bool = True,
-        get_mime: bool = True,
-        get_attributes: bool = True,
-        checksum_algorithm: str = "sha1",
-        task_vars: Optional[dict[str, Any]] = None,
-        check_mode: Optional[bool] = None,
-    ) -> dict[str, Any]:
-        """
-        Gather file status information using staged command approach.
+            # Parse ls output using jc
+            ls_output = ls_result.get("stdout", "")
+            try:
+                parsed = jc_parse("ls", ls_output)
+                if not parsed or not isinstance(parsed, list):
+                    file_data[path] = None
+                    continue
 
-        Retrieves file status information similar to the stat
-        command, including permissions, ownership, timestamps,
-        checksums, and more. Uses a two-stage command execution
-        pattern for efficient remote operations.
+                # ls returns a list, get first entry
+                entry = parsed[0] if parsed else {}
 
-        :param str path: Path to the file to stat
-        :param bool follow: Follow symbolic links (default False)
-        :param bool get_checksum: Calculate file checksum (default
-            True)
-        :param bool get_mime: Get MIME type (default True)
-        :param bool get_attributes: Get file attributes (default
-            True)
-        :param str checksum_algorithm: Algorithm for checksum
-            (default sha1)
-        :param Optional[dict] task_vars: Dictionary of task variables
-        :param Optional[bool] check_mode: Optional override for Ansible
-            check mode
-        :returns dict: Result dictionary with stat information
-        """
-        task_vars = task_vars or {}
-        result: dict[str, Any] = {"changed": False}
+                # Extract basic metadata
+                metadata = {}
 
-        # === STAGE 1: Initial discovery ===
-        # Get stage 1 commands from mixin (returns dict)
-        stage1_commands = self._get_stat_commands_stage1(path, get_mime)
+                # Extract file type from first char of flags
+                flags = entry.get("flags", "")
+                if flags:
+                    type_char = flags[0]
+                    type_map = {
+                        "-": "regular",
+                        "d": "directory",
+                        "l": "link",
+                        "p": "pipe",
+                        "s": "socket",
+                        "c": "character",
+                        "b": "block",
+                    }
+                    metadata["type"] = type_map.get(type_char, "unknown")
 
-        # Execute stage 1 (using dict mode for automatic keying)
-        stage1_result = self._run(
-            commands=stage1_commands,
-            task_vars=task_vars,
-            check_mode=False,
-        )
+                # Extract octal mode from flags
+                if flags:
+                    metadata["mode"] = self._flags_to_octal_mode(flags)
 
-        # Get raw flag from run result
-        result["raw"] = stage1_result.get("raw", False)
+                # Add other fields from ls output
+                # Only include size for regular files
+                if "size" in entry and metadata.get("type") == "regular":
+                    size_bytes = entry["size"]
+                    # Format size with bytes and pretty keys using parse_si
+                    size_str = f"{size_bytes}B"
+                    metadata["size"] = parse_si(
+                        size_str, binary=True, optimize=True
+                    )
+                if "owner" in entry:
+                    metadata["owner"] = entry["owner"]
+                if "group" in entry:
+                    metadata["group"] = entry["group"]
 
-        # Dict mode returns results already keyed by tag
-        stage1_commands_results = stage1_result["commands"]
+                # Calculate permission flags
+                if flags and len(flags) >= 10:
+                    perms = self._stat_permission_booleans(flags)
+                    metadata["readable"] = perms.get("readable", False)
+                    metadata["writable"] = perms.get("writeable", False)
+                    metadata["executable"] = perms.get("executable", False)
 
-        # Process stage 1
-        partial_stat, stage2_params = self._process_stat_stage1(
-            stage1_commands_results, path, follow
-        )
+                # Add content/hardlinks field based on file type
+                if metadata.get("type") == "link":
+                    # For symlinks, target is the link target
+                    # jc returns link_to field for symlink targets
+                    if "link_to" in entry:
+                        metadata["target"] = entry["link_to"]
+                    else:
+                        metadata["target"] = ""
+                elif metadata.get("type") == "regular":
+                    # For regular files, hardlinks is the count of OTHER links
+                    # (raw count - 1), omit if zero
+                    if "links" in entry:
+                        other_links = entry["links"] - 1
+                        if other_links > 0:
+                            metadata["hardlinks"] = other_links
+                            # Get inode from stat for hardlink identification
+                            inode_key = f"{path}_inode"
+                            inode_bsd_key = f"{path}_inode_bsd"
+                            if inode_key in results or inode_bsd_key in results:
+                                # Try GNU stat first
+                                inode_result = results.get(inode_key, {})
+                                if inode_result.get("rc") != 0:
+                                    # Fall back to BSD stat
+                                    inode_result = results.get(inode_bsd_key, {})
 
-        # Early return if file doesn't exist
-        if not partial_stat.get("exists"):
-            result["stat"] = partial_stat
-            return result
+                                if inode_result.get("rc") == 0:
+                                    inode_str = (
+                                        inode_result.get("stdout", "")
+                                        .strip()
+                                    )
+                                    try:
+                                        metadata["inode"] = int(inode_str)
+                                    except (ValueError, TypeError):
+                                        pass
 
-        # === STAGE 2: Conditional commands based on stage 1 ===
-        # Get stage 2 commands from mixin (returns dict)
-        stage2_commands = self._get_stat_commands_stage2(
-            path=path,
-            username=stage2_params["username"],
-            groupname=stage2_params["groupname"],
-            is_symlink=stage2_params["is_symlink"],
-            follow=follow,
-            file_type_char=stage2_params["file_type_char"],
-            is_regular_file=stage2_params["is_regular_file"],
-            get_checksum=get_checksum,
-            checksum_algorithm=checksum_algorithm,
-            get_attributes=get_attributes,
-        )
+                # Add content and encoding if requested and available
+                if metadata.get("type") == "regular":
+                    encoding_key = f"{path}_encoding"
+                    cat_key = f"{path}_cat"
 
-        # Execute stage 2 (using dict mode for automatic keying)
-        stage2_result = self._run(
-            commands=stage2_commands,
-            task_vars=task_vars,
-            check_mode=False,
-        )
+                    # Check if encoding detection was requested
+                    if encoding_key in results:
+                        encoding_result = results[encoding_key]
+                        if encoding_result.get("rc") == 0:
+                            encoding = encoding_result.get(
+                                "stdout", ""
+                            ).strip()
+                            # Only include content if encoding is not binary
+                            if encoding and encoding.lower() not in {
+                                "binary",
+                                "unknown",
+                            }:
+                                metadata["encoding"] = encoding
 
-        # Dict mode returns results already keyed by tag
-        stage2_commands_results = stage2_result["commands"]
+                                # Add content if cat succeeded
+                                if cat_key in results:
+                                    cat_result = results[cat_key]
+                                    if cat_result.get("rc") == 0:
+                                        content = cat_result.get("stdout", "")
+                                        metadata["content"] = content.replace(
+                                            "\r", ""
+                                        )
 
-        # === FINAL PROCESSING ===
-        # Process stage 2 and finalize stat
-        stat_result = self._process_stat_stage2(
-            tagged_results=stage2_commands_results,
-            stage1_tagged_results=stage1_commands_results,
-            partial_stat=partial_stat,
-            stage2_params=stage2_params,
-            path=path,
-            get_checksum=get_checksum,
-            checksum_algorithm=checksum_algorithm,
-            get_mime=get_mime,
-            get_attributes=get_attributes,
-            task_vars=task_vars,
-        )
+                # Add timestamps if requested
+                stat_key = f"{path}_stat"
+                stat_bsd_key = f"{path}_stat_bsd"
+                if stat_key in results or stat_bsd_key in results:
+                    # Try GNU stat first
+                    stat_result = results.get(stat_key, {})
+                    if stat_result.get("rc") != 0:
+                        # Fall back to BSD stat
+                        stat_result = results.get(stat_bsd_key, {})
 
-        result["stat"] = stat_result
-        return result
+                    if stat_result.get("rc") == 0:
+                        stat_output = stat_result.get("stdout", "").strip()
+                        times = stat_output.split()
+                        if len(times) >= 3:
+                            mtime = int(times[0]) if times[0] != "0" else None
+                            ctime = int(times[1]) if times[1] != "0" else None
+                            btime = int(times[2]) if times[2] != "0" else None
+
+                            if mtime:
+                                metadata["modified"] = format_epoch_timestamp(
+                                    mtime
+                                )
+                            if ctime:
+                                metadata["changed"] = format_epoch_timestamp(
+                                    ctime
+                                )
+                            if btime:
+                                metadata["created"] = format_epoch_timestamp(
+                                    btime
+                                )
+
+                # Add ACL if requested
+                acl_key = f"{path}_acl"
+                acl_macos_key = f"{path}_acl_macos"
+                if acl_key in results or acl_macos_key in results:
+                    # Try getfacl first
+                    acl_result = results.get(acl_key, {})
+                    acl_type = "posix"
+                    if acl_result.get("rc") != 0:
+                        # Fall back to macOS ls -le
+                        acl_result = results.get(acl_macos_key, {})
+                        acl_type = "macos"
+
+                    if acl_result.get("rc") == 0:
+                        acl_text = acl_result.get("stdout", "").strip()
+                        if acl_text:
+                            # For macOS, check if there are actual ACL entries
+                            if acl_type == "macos":
+                                lines = acl_text.splitlines()
+                                prefixes = tuple(f"{i}:" for i in range(10))
+                                has_acl = any(
+                                    line.lstrip().startswith(prefixes)
+                                    for line in lines[1:]
+                                )
+                                if has_acl:
+                                    metadata["acl"] = {
+                                        "type": acl_type,
+                                        "text": acl_text,
+                                    }
+                            else:
+                                metadata["acl"] = {
+                                    "type": acl_type,
+                                    "text": acl_text,
+                                }
+
+                # Add extended attributes if requested
+                xattr_key = f"{path}_xattr"
+                xattr_macos_key = f"{path}_xattr_macos"
+                if xattr_key in results or xattr_macos_key in results:
+                    # Try getfattr first
+                    xattr_result = results.get(xattr_key, {})
+                    if xattr_result.get("rc") != 0:
+                        # Fall back to macOS xattr
+                        xattr_result = results.get(xattr_macos_key, {})
+
+                    if xattr_result.get("rc") == 0:
+                        xattr_text = xattr_result.get("stdout", "").strip()
+                        if xattr_text:
+                            metadata["xattrs"] = xattr_text
+
+                # Add filesystem flags if requested
+                flags_key = f"{path}_flags"
+                flags_macos_key = f"{path}_flags_macos"
+                if flags_key in results or flags_macos_key in results:
+                    # Try lsattr first (Linux)
+                    flags_result = results.get(flags_key, {})
+                    if flags_result.get("rc") == 0:
+                        flags_output = flags_result.get("stdout", "")
+                        flags = self._process_linux_flags(flags_output)
+                        metadata["flags"] = flags
+                    else:
+                        # Fall back to macOS ls -ldO
+                        flags_result = results.get(flags_macos_key, {})
+                        if flags_result.get("rc") == 0:
+                            flags_output = flags_result.get("stdout", "")
+                            flags = self._process_macos_flags(flags_output)
+                            metadata["flags"] = flags
+                        else:
+                            # Neither command succeeded, set empty default
+                            metadata["flags"] = []
+
+                # Add SELinux context if requested
+                selinux_key = f"{path}_selinux"
+                selinux_ls_key = f"{path}_selinux_ls"
+                if selinux_key in results or selinux_ls_key in results:
+                    # Try stat -c %C first
+                    selinux_result = results.get(selinux_key, {})
+                    if selinux_result.get("rc") != 0:
+                        # Fall back to ls -Zd
+                        selinux_result = results.get(selinux_ls_key, {})
+
+                    if selinux_result.get("rc") == 0:
+                        selinux_text = selinux_result.get("stdout", "").strip()
+                        if selinux_text and not selinux_text.startswith("?"):
+                            metadata["selinux"] = selinux_text
+
+                # Add directory children if this is a directory and
+                # ls command was run (either for children parameter or
+                # explicitly requested via include)
+                if metadata.get("type") == "directory":
+                    contents_key = f"{path}_contents"
+                    if contents_key in results:
+                        contents_result = results.get(contents_key, {})
+                        if contents_result.get("rc") == 0:
+                            contents_output = contents_result.get(
+                                "stdout", ""
+                            ).strip()
+                            if contents_output:
+                                # Split by newlines and create full paths
+                                filenames = contents_output.split("\n")
+                                metadata["children"] = [
+                                    join(path, filename)
+                                    for filename in filenames
+                                    if filename
+                                ]
+                            else:
+                                # Empty directory
+                                metadata["children"] = []
+                        else:
+                            # Could not list directory (e.g., no permission)
+                            metadata["children"] = []
+
+                file_data[path] = metadata
+
+            except Exception as e:
+                raise ValueError(
+                    f"Failed to parse file metadata for {path}: "
+                    f"{type(e).__name__}: {e}"
+                ) from e
+
+        return file_data
 
     def _cat(
         self, src: str, task_vars: Optional[dict[str, Any]] = None
@@ -425,18 +665,15 @@ class ReadPosixActionBase(PosixActionBase):
             for stage 2 command generation
         :raises ValueError: When stat command fails or jc parsing fails
         """
-        stat_result = {"exists": False}
-
         # Check if file exists (stat command succeeded)
         stat_output_result = tagged_results.get("stat_main", {})
         if stat_output_result.get("rc") != 0:
             # File doesn't exist or other error
-            return stat_result, {}
+            return {}, {}
 
         stat_result = {
-            "exists": True,
             "attr_flags": "",
-            "attributes": [],
+            "flags": [],
         }
 
         self._display.vvv(stat_output_result.get("stdout"))
@@ -681,7 +918,7 @@ class ReadPosixActionBase(PosixActionBase):
                     )
                 # Check for broken symlink
                 if target_jc_data["flags"].startswith("l"):
-                    return {"exists": False}
+                    return {}
             except ValueError:
                 raise
             except Exception as e:
@@ -788,7 +1025,7 @@ class ReadPosixActionBase(PosixActionBase):
                 if attr_flags_raw:
                     attrs = self._normalize_flags(flags_output)
                     if attrs:
-                        stat_result["attributes"] = attrs
+                        stat_result["flags"] = attrs
 
         return stat_result
 
@@ -1489,4 +1726,38 @@ class ReadPosixActionBase(PosixActionBase):
             if char in flag_map:
                 attributes.append(flag_map[char])
 
+        return attributes
+
+    def _process_linux_flags(self, flags_output: str) -> list[str]:
+        """Process Linux lsattr output into attributes list.
+
+        :param str flags_output: Raw lsattr output
+        :returns list[str]: List of attribute names
+        """
+        flags_text = flags_output.strip()
+        parts = flags_text.split()
+        if not parts:
+            return []
+
+        raw_flags = parts[0]
+        attributes = self._normalize_flags(raw_flags)
+        return attributes
+
+    def _process_macos_flags(self, flags_output: str) -> list[str]:
+        """Process macOS ls -ldO output into attributes list.
+
+        :param str flags_output: Raw ls -ldO output
+        :returns list[str]: List of attribute names
+        """
+        flags_text = flags_output.strip()
+        parts = flags_text.split()
+        if len(parts) < 5:
+            return []
+
+        flag_str = parts[4]
+        if flag_str == "-":
+            return []
+
+        # macOS uses comma-separated or space-separated flags
+        attributes = self._normalize_flags(flag_str)
         return attributes
