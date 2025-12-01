@@ -9,6 +9,19 @@
 #
 # This file is part of the o0_o.posix Ansible Collection.
 
+# Simplest form - only required parameter, all defaults
+- name: Test simplest form (defaults only)
+  o0_o.posix.command:
+    cmd: echo hello
+  register: simplest_reg
+
+- name: Assert simplest form works
+  ansible.builtin.assert:
+    that:
+      - simplest_reg['rc'] == 0
+      - simplest_reg['stdout'] | trim == 'hello'
+  when: not ansible_check_mode
+
 - name: Run command with argv
   o0_o.posix.command:
     argv:

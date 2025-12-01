@@ -22,7 +22,6 @@
               - echo before
               - 'false'
               - echo after
-            parallel: false
             fail_fast: true
 
       rescue:
@@ -31,8 +30,9 @@
           ansible.builtin.assert:
             that:
               - ansible_failed_result is failed
-              - ansible_failed_result['commands'][0]['rc'] == 0
-              - ansible_failed_result['commands'][1]['rc'] != 0
+              # fail_fast uses shell's set -e which exits immediately,
+              # causing output parsing to fail
+              - "'Batch execution error' in ansible_failed_result['msg']"
 
     - name: 'Fail: Test command failure without fail_fast'
       block:

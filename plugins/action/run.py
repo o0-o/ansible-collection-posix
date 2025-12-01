@@ -364,11 +364,9 @@ class ActionModule(PosixActionBase, ActionBase):
             "strip": {"type": "bool", "default": True},
             "raw": {"type": "raw", "default": "auto"},
         }
-        mutually_exclusive = [["parallel", "fail_fast"]]
 
         validation_result, new_module_args = self.validate_argument_spec(
             argument_spec=argument_spec,
-            mutually_exclusive=mutually_exclusive,
         )
 
         # Extract and process commands
@@ -392,6 +390,12 @@ class ActionModule(PosixActionBase, ActionBase):
             self.parallel = not self.fail_fast
         else:
             self.parallel = parallel
+            # Validate: can't have parallel=true AND fail_fast=true
+            if self.parallel and self.fail_fast:
+                raise AnsibleActionFail(
+                    "Cannot use parallel=true with fail_fast=true. "
+                    "fail_fast only works with sequential execution."
+                )
 
         # Process raw parameter: accept boolean or 'auto'
         try:

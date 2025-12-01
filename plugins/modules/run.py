@@ -61,14 +61,15 @@ options:
       - When C(false), commands execute sequentially in order.
       - Defaults to the inverse of I(fail_fast) (i.e., C(true) unless
         I(fail_fast=true)).
-      - Mutually exclusive with I(fail_fast).
+      - Cannot be C(true) when I(fail_fast=true).
     type: bool
   fail_fast:
     description:
       - Stop executing remaining commands if any command fails.
       - When C(false), all commands execute regardless of failures.
-      - Only valid for sequential execution (I(parallel=false)).
-      - Mutually exclusive with I(parallel).
+      - Only valid for sequential execution.
+      - Setting to C(true) automatically sets I(parallel=false) unless
+        I(parallel) is explicitly specified.
     type: bool
     default: false
   strip:
@@ -239,11 +240,9 @@ def main() -> None:
         "strip": {"type": "bool", "default": True},
         "raw": {"type": "raw", "default": "auto"},
     }
-    mutually_exclusive = [["parallel", "fail_fast"]]
 
     module = AnsibleModule(
         argument_spec=argument_spec,
-        mutually_exclusive=mutually_exclusive,
         supports_check_mode=True,
     )
     module.fail_json(msg="This module must be run via its action plugin.")

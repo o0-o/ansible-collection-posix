@@ -9,6 +9,21 @@
 #
 # This file is part of the o0_o.posix Ansible Collection.
 
+# Simplest form - only required parameter, all defaults
+- name: Test simplest form (defaults only)
+  o0_o.posix.run:
+    commands:
+      - echo hello
+  register: simplest_reg
+
+- name: Assert simplest form works
+  ansible.builtin.assert:
+    that:
+      - simplest_reg['commands'] | length == 1
+      - simplest_reg['commands'][0]['rc'] == 0
+      - simplest_reg['commands'][0]['stdout'] | trim == 'hello'
+  when: not ansible_check_mode
+
 - name: Test basic sequential execution
   o0_o.posix.run:
     commands:
@@ -34,12 +49,11 @@
       - sequential_reg['commands'][1]['stdout'] | trim == 'world'
   when: not ansible_check_mode
 
-- name: Test timing fields present
+- name: Test timing fields present in command results
   ansible.builtin.assert:
     that:
-      - sequential_reg['start'] is defined
-      - sequential_reg['end'] is defined
-      - sequential_reg['delta'] is defined
+      - sequential_reg['commands'][0]['elapsed'] is defined
+      - sequential_reg['commands'][1]['elapsed'] is defined
   when: not ansible_check_mode
 
 - name: Test mixed string and list commands
@@ -110,4 +124,3 @@
       - empty_output_reg['commands'][0]['rc'] == 0
       - empty_output_reg['commands'][0]['stdout'] == ''
   when: not ansible_check_mode
-

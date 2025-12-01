@@ -357,7 +357,8 @@ class ActionModule(PosixActionBase, ActionBase):
         if self.raw is True:  # Must check again instead of else
             self._raw_cmd()
 
-        self.result["raw"] = self.raw
+        # Convert "auto" to boolean: True if raw was used, False otherwise
+        self.result["raw"] = self.raw is True
 
         self._remove_tmp_path(self._connection._shell.tmpdir)
 

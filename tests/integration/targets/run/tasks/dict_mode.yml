@@ -144,4 +144,3 @@
       - list_compat_reg['commands'][0]['stdout'] | trim == 'list1'
       - list_compat_reg['commands'][1]['stdout'] | trim == 'list2'
   when: not ansible_check_mode
-
