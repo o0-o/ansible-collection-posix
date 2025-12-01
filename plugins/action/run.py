@@ -359,7 +359,7 @@ class ActionModule(PosixActionBase, ActionBase):
                 "required": True,
             },
             "chdir": {"type": "path"},
-            "parallel": {"type": "bool", "default": True},
+            "parallel": {"type": "bool"},  # Default derived from fail_fast
             "fail_fast": {"type": "bool", "default": False},
             "strip": {"type": "bool", "default": True},
             "raw": {"type": "raw", "default": "auto"},
@@ -383,9 +383,15 @@ class ActionModule(PosixActionBase, ActionBase):
 
         # Set instance variables from validated args
         self.chdir = new_module_args["chdir"]
-        self.parallel = new_module_args["parallel"]
         self.fail_fast = new_module_args["fail_fast"]
         self.strip = new_module_args["strip"]
+
+        # Derive parallel from fail_fast if not explicitly set
+        parallel = new_module_args["parallel"]
+        if parallel is None:
+            self.parallel = not self.fail_fast
+        else:
+            self.parallel = parallel
 
         # Process raw parameter: accept boolean or 'auto'
         try:

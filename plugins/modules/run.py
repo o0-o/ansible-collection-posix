@@ -59,9 +59,10 @@ options:
       - When C(true), all commands are launched simultaneously and
         results are collected after all complete.
       - When C(false), commands execute sequentially in order.
+      - Defaults to the inverse of I(fail_fast) (i.e., C(true) unless
+        I(fail_fast=true)).
       - Mutually exclusive with I(fail_fast).
     type: bool
-    default: true
   fail_fast:
     description:
       - Stop executing remaining commands if any command fails.
@@ -233,7 +234,7 @@ def main() -> None:
         "chdir": {"type": "path"},
         "creates": {"type": "path"},
         "removes": {"type": "path"},
-        "parallel": {"type": "bool", "default": True},
+        "parallel": {"type": "bool"},  # Default derived from fail_fast
         "fail_fast": {"type": "bool", "default": False},
         "strip": {"type": "bool", "default": True},
         "raw": {"type": "raw", "default": "auto"},
