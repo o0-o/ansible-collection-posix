@@ -88,13 +88,15 @@ options:
       - Strip empty newlines from the end of stdout/stderr.
     type: bool
     default: true
-  _force_raw:
+  raw:
     description:
-      - Internal flag to bypass the builtin module and force raw command
-        fallback.
+      - Control raw execution mode behavior.
+      - 'C(true): Force raw fallback mode, bypassing native Python.'
+      - 'C(false): Force native Python execution (fail if unavailable).'
+      - 'C("auto"): Automatically detect and use the best method.'
       - Useful for debugging, testing, or bootstrap scenarios.
-    type: bool
-    default: false
+    type: raw
+    default: "auto"
 extends_documentation_fragment:
   - action_common_attributes
   - o0_o.posix.raw_fallback
@@ -124,7 +126,7 @@ seealso:
 notes:
   - Only one of C(cmd) or C(argv) may be used; supplying both will cause an
     error.
-  - When C(_force_raw=true), all execution is performed via raw shell
+  - When C(raw=true), all execution is performed via raw shell
     invocation, bypassing the builtin command module entirely.
   - The C(executable) parameter is only supported when C(_uses_shell=true), and
     is ignored during raw fallback.
@@ -155,7 +157,7 @@ EXAMPLES = r"""
 - name: Force raw fallback (bypassing builtin command)
   o0_o.posix.command:
     argv: ['uptime']
-    _force_raw: true
+    raw: true
 """
 
 RETURN = r"""
@@ -224,7 +226,7 @@ def main():
             "stdin": {"required": False},
             "stdin_add_newline": {"type": "bool", "default": True},
             "strip_empty_ends": {"type": "bool", "default": True},
-            "_force_raw": {"type": "bool", "default": False},
+            "raw": {"type": "raw", "default": "auto"},
         },
         supports_check_mode=True,
     )

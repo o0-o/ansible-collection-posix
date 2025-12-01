@@ -22,7 +22,6 @@ when Python is not available on the remote host.
 from __future__ import annotations
 
 import shlex
-from datetime import timedelta, timezone
 from typing import Any, Dict, List, Optional, Union
 
 from ansible.module_utils.common.text.converters import to_native
@@ -102,6 +101,55 @@ class PosixActionBase:
         """
         return text.replace("\r\n", "\n")
 
+    def _flags_to_octal_mode(self, flags: str) -> str:
+        """
+        Convert ls permission flags to octal mode string.
+
+        Parses the 10-character permission string from ls output
+        (e.g., "-rwxr-xr-x") and converts it to a 4-digit octal
+        mode string (e.g., "0755").
+
+        :param str flags: Permission flags from ls (10 characters)
+        :returns str: Octal mode as 4-digit string (e.g., "0755")
+        """
+        if not flags or len(flags) < 10:
+            return "0000"
+
+        perms = flags[1:]  # Skip first char (file type)
+        octal = 0
+
+        # Owner permissions
+        if perms[0] == "r":
+            octal += 0o400
+        if perms[1] == "w":
+            octal += 0o200
+        if perms[2] in ["x", "s", "S"]:
+            octal += 0o100
+        if perms[2] in ["s", "S"]:
+            octal += 0o4000  # setuid
+
+        # Group permissions
+        if perms[3] == "r":
+            octal += 0o040
+        if perms[4] == "w":
+            octal += 0o020
+        if perms[5] in ["x", "s", "S"]:
+            octal += 0o010
+        if perms[5] in ["s", "S"]:
+            octal += 0o2000  # setgid
+
+        # Other permissions
+        if perms[6] == "r":
+            octal += 0o004
+        if perms[7] == "w":
+            octal += 0o002
+        if perms[8] in ["x", "t", "T"]:
+            octal += 0o001
+        if perms[8] in ["t", "T"]:
+            octal += 0o1000  # sticky bit
+
+        return f"{octal:04o}"
+
     def _is_interpreter_missing(self, result: Dict[str, Any]) -> bool:
         """
         Check if failure was likely caused by a missing Python
@@ -141,8 +189,7 @@ class PosixActionBase:
 
         # Check for the standard canary or signs of missing Python
         if canary_str.lower() in text_to_check:
-            self.force_raw = True
-            self._display.vv("Python not found, proceeding with raw commands")
+            self._display.vv("Python interpreter not found")
             return True
 
         # Check for shell error indicating Python not found
@@ -151,17 +198,10 @@ class PosixActionBase:
             "python: not found",
             "python2: not found",
             "python3: not found",
-            "/python: not found",  # Catches /usr/bin/python: not found
-            "/python2: not found",  # Catches /usr/bin/python2: not found
-            "/python3: not found",  # Catches /usr/bin/python3: not found
         ]
 
         if any(pattern in text_to_check for pattern in python_patterns):
-            self.force_raw = True
-            self._display.vv(
-                "Python interpreter not found (shell error), "
-                "proceeding with raw commands"
-            )
+            self._display.vv("Python interpreter not found (shell error)")
             return True
 
         return False
@@ -199,95 +239,6 @@ class PosixActionBase:
         self.inventory_hostname = "localhost"
         return self.inventory_hostname
 
-    def _get_target_timezone(
-        self, task_vars: Optional[Dict[str, Any]] = None
-    ) -> timezone:
-        """Get target system's timezone as a timezone object.
-
-        Checks for timezone offset in this order:
-        1. o0_os facts (o0_os.time.zone.offset)
-        2. Standard ansible_facts (ansible_date_time.tz_offset)
-        3. Runs 'date +%z' command as fallback
-
-        Falls back to UTC if detection fails.
-
-        :param task_vars: Available Ansible variables
-        :returns: timezone object representing target's local timezone
-        """
-        task_vars = task_vars or {}
-        offset_str = None
-
-        # Try o0_os facts first
-        o0_os = task_vars.get("o0_os", {})
-        if isinstance(o0_os, dict):
-            time_facts = o0_os.get("time", {})
-            if isinstance(time_facts, dict):
-                zone = time_facts.get("zone", {})
-                if isinstance(zone, dict):
-                    offset_str = zone.get("offset")
-
-        # Try standard ansible_facts if not found
-        if not offset_str:
-            ansible_facts = task_vars.get("ansible_facts", {})
-            if isinstance(ansible_facts, dict):
-                date_time = ansible_facts.get("ansible_date_time", {})
-                if isinstance(date_time, dict):
-                    offset_str = date_time.get("tz_offset")
-
-        # If we found offset in facts, parse and return it
-        if offset_str and isinstance(offset_str, str):
-            offset_str = offset_str.strip()
-            if offset_str:
-                try:
-                    return self._parse_timezone_offset(offset_str)
-                except ValueError:
-                    # Invalid offset in facts, fall through to command
-                    pass
-
-        # Fallback: run date command
-        offset_cmd = self._cmd(
-            ["date", "+%z"], task_vars=task_vars, check_mode=False
-        )
-        if offset_cmd.get("rc") != 0:
-            self._display.vvv(
-                f"[{self.inventory_hostname}] Failed to get timezone offset, "
-                f"assuming UTC"
-            )
-            return timezone.utc
-
-        offset_str = (offset_cmd.get("stdout") or "").strip()
-        if not offset_str:
-            return timezone.utc
-
-        try:
-            return self._parse_timezone_offset(offset_str)
-        except ValueError as e:
-            self._display.vvv(
-                f"[{self.inventory_hostname}] Failed to parse timezone offset "
-                f"'{offset_str}': {e}, assuming UTC"
-            )
-            return timezone.utc
-
-    def _parse_timezone_offset(self, offset: str) -> timezone:
-        """Parse timezone offset string like '-0400' or '+0530'.
-
-        :param offset: Timezone offset string from 'date +%z'
-        :returns: timezone object with the specified offset
-        :raises ValueError: If offset format is invalid
-        """
-        if len(offset) != 5 or offset[0] not in ("+", "-"):
-            raise ValueError(f"Invalid offset format: {offset}")
-
-        try:
-            sign = 1 if offset[0] == "+" else -1
-            hours = int(offset[1:3])
-            minutes = int(offset[3:5])
-        except ValueError:
-            raise ValueError(f"Invalid offset format: {offset}")
-
-        offset_delta = timedelta(hours=sign * hours, minutes=sign * minutes)
-        return timezone(offset_delta)
-
     def _run_action(
         self,
         plugin_name: str,
@@ -321,8 +272,8 @@ class PosixActionBase:
         task.args.clear()
         task.args.update(plugin_args)
 
-        if getattr(self, "force_raw", False):
-            task.args["_force_raw"] = True
+        if getattr(self, "raw", False):
+            task.args["raw"] = True
 
         plugin = self._shared_loader_obj.action_loader.get(
             plugin_name,
@@ -346,8 +297,12 @@ class PosixActionBase:
 
         result = plugin.run(task_vars=task_vars)
 
-        if result.get("raw"):
-            self.force_raw = True
+        # Update raw mode based on delegated plugin's result
+        if "raw" in result:
+            if getattr(self, "raw", None) == "auto":
+                self.raw = result["raw"]
+            elif result["raw"]:
+                self.raw = True
 
         return result
 
@@ -359,6 +314,7 @@ class PosixActionBase:
         strip: bool = True,
         task_vars: Optional[Dict[str, Any]] = None,
         check_mode: Optional[bool] = None,
+        raw: Optional[Union[bool, str]] = None,
     ) -> Dict[str, Any]:
         """
         Run the fallback-compatible 'command' action plugin with
@@ -373,6 +329,8 @@ class PosixActionBase:
             from the calling task
         :param Optional[bool] check_mode: Optional override for Ansible
             check mode
+        :param Optional[Union[bool, str]] raw: Force raw execution
+            (True/False) or auto-detect ("auto")
         :returns dict: The result dictionary from the command plugin
         """
         task_vars = task_vars or {}
@@ -382,6 +340,10 @@ class PosixActionBase:
             "chdir": chdir,
             "strip_empty_ends": strip,
         }
+
+        # Pass raw if explicitly set
+        if raw is not None:
+            args["raw"] = raw
 
         if isinstance(cmd, str):
             args["cmd"] = cmd

@@ -53,10 +53,21 @@ options:
       - Path to a file or directory.
       - If it does not exist, this step will be skipped.
     type: path
+  parallel:
+    description:
+      - Execute commands in parallel using background jobs.
+      - When C(true), all commands are launched simultaneously and
+        results are collected after all complete.
+      - When C(false), commands execute sequentially in order.
+      - Mutually exclusive with I(fail_fast).
+    type: bool
+    default: true
   fail_fast:
     description:
       - Stop executing remaining commands if any command fails.
       - When C(false), all commands execute regardless of failures.
+      - Only valid for sequential execution (I(parallel=false)).
+      - Mutually exclusive with I(parallel).
     type: bool
     default: false
   strip:
@@ -65,6 +76,14 @@ options:
       - When C(true), trailing newlines and spaces are removed.
     type: bool
     default: true
+  raw:
+    description:
+      - Control raw execution mode behavior.
+      - 'C(true): Force raw fallback mode, bypassing native Python.'
+      - 'C(false): Force native Python execution (fail if unavailable).'
+      - 'C("auto"): Automatically detect and use the best method.'
+    type: raw
+    default: "auto"
 author:
   - oØ.o (@o0-o)
 notes:
@@ -91,7 +110,7 @@ EXAMPLES = r"""
 - name: Display command results
   ansible.builtin.debug:
     msg: "{{ item['stdout'] }}"
-  loop: "{{ sysinfo_reg['results'] }}"
+  loop: "{{ sysinfo_reg['commands'] }}"
 
 - name: Execute commands with argument lists for safe quoting
   o0_o.posix.run:
@@ -110,12 +129,13 @@ EXAMPLES = r"""
     chdir: /etc/ssh
   register: ssh_config_reg
 
-- name: Stop on first failure
+- name: Stop on first failure (sequential mode)
   o0_o.posix.run:
     commands:
       - test -f /etc/hosts
       - cat /etc/hosts
       - grep localhost /etc/hosts
+    parallel: false
     fail_fast: true
   register: hosts_check_reg
 
@@ -148,11 +168,13 @@ msg:
   returned: always
   type: str
   sample: "Executed 3 commands"
-results:
-  description: List of command results in execution order
+commands:
+  description: >-
+    Command results in execution order.
+    Returns a list when input is a list, or a dict when input is a dict
+    (keys preserved).
   returned: success
-  type: list
-  elements: dict
+  type: raw
   contains:
     rc:
       description: Return code from the command
@@ -176,6 +198,15 @@ results:
       type: list
       elements: str
       sample: []
+    elapsed:
+      description: Time taken to execute the command
+      type: str
+      sample: "0:00:01"
+raw:
+  description: Whether raw fallback mode was used
+  returned: always
+  type: bool
+  sample: false
 skipped:
   description: Whether execution was skipped
   returned: when skipped
@@ -202,12 +233,17 @@ def main() -> None:
         "chdir": {"type": "path"},
         "creates": {"type": "path"},
         "removes": {"type": "path"},
+        "parallel": {"type": "bool", "default": True},
         "fail_fast": {"type": "bool", "default": False},
         "strip": {"type": "bool", "default": True},
+        "raw": {"type": "raw", "default": "auto"},
     }
+    mutually_exclusive = [["parallel", "fail_fast"]]
 
     module = AnsibleModule(
-        argument_spec=argument_spec, supports_check_mode=True
+        argument_spec=argument_spec,
+        mutually_exclusive=mutually_exclusive,
+        supports_check_mode=True,
     )
     module.fail_json(msg="This module must be run via its action plugin.")
 

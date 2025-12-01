@@ -47,13 +47,17 @@ def test_run_list_mode(plugin) -> None:
         "commands": ["echo foo", "echo bar"],
     }
 
-    # Mock _cmd to return batch output
+    # Mock _cmd to return batch output with start/end times
     def mock_cmd(cmd, **kwargs):
         return {
             "rc": 0,
             "raw": False,
-            "stdout": "0\n7 /tmp/0.stdout\nfoo\n\n0 /tmp/0.stderr\n"
-            "0\n7 /tmp/1.stdout\nbar\n\n0 /tmp/1.stderr\n\n",
+            "stdout": (
+                "0\n1735689600\n1735689601\n4 /tmp/0.stdout\nfoo\n"
+                "0 /tmp/0.stderr\n"
+                "0\n1735689600\n1735689601\n4 /tmp/1.stdout\nbar\n"
+                "0 /tmp/1.stderr\n\n"
+            ),
             "stderr": "",
             "start": "2025-01-01 00:00:00",
             "end": "2025-01-01 00:00:01",
@@ -77,13 +81,17 @@ def test_run_dict_mode(plugin) -> None:
         "commands": {"first": "echo foo", "second": "echo bar"},
     }
 
-    # Mock _cmd to return batch output
+    # Mock _cmd to return batch output with start/end times
     def mock_cmd(cmd, **kwargs):
         return {
             "rc": 0,
             "raw": False,
-            "stdout": "0\n7 /tmp/0.stdout\nfoo\n\n0 /tmp/0.stderr\n"
-            "0\n7 /tmp/1.stdout\nbar\n\n0 /tmp/1.stderr\n\n",
+            "stdout": (
+                "0\n1735689600\n1735689601\n4 /tmp/0.stdout\nfoo\n"
+                "0 /tmp/0.stderr\n"
+                "0\n1735689600\n1735689601\n4 /tmp/1.stdout\nbar\n"
+                "0 /tmp/1.stderr\n\n"
+            ),
             "stderr": "",
             "start": "2025-01-01 00:00:00",
             "end": "2025-01-01 00:00:01",
@@ -112,15 +120,18 @@ def test_run_dict_mode_preserves_keys(plugin) -> None:
         },
     }
 
-    # Mock _cmd to return batch output
+    # Mock _cmd to return batch output with start/end times
     def mock_cmd(cmd, **kwargs):
         return {
             "rc": 0,
             "raw": False,
             "stdout": (
-                "0\n10 /tmp/0.stdout\nLinux\n\n\n0 /tmp/0.stderr\n"
-                "0\n11 /tmp/1.stdout\nx86_64\n\n\n0 /tmp/1.stderr\n"
-                "0\n14 /tmp/2.stdout\ntesthost\n\n\n0 /tmp/2.stderr\n\n"
+                "0\n1735689600\n1735689601\n6 /tmp/0.stdout\nLinux\n"
+                "0 /tmp/0.stderr\n"
+                "0\n1735689600\n1735689601\n7 /tmp/1.stdout\nx86_64\n"
+                "0 /tmp/1.stderr\n"
+                "0\n1735689600\n1735689601\n9 /tmp/2.stdout\ntesthost\n"
+                "0 /tmp/2.stderr\n\n"
             ),
             "stderr": "",
             "start": "2025-01-01 00:00:00",
@@ -145,12 +156,15 @@ def test_run_dict_mode_single_command(plugin) -> None:
         "commands": {"only_one": "echo test"},
     }
 
-    # Mock _cmd to return batch output
+    # Mock _cmd to return batch output with start/end times
     def mock_cmd(cmd, **kwargs):
         return {
             "rc": 0,
             "raw": False,
-            "stdout": "0\n9 /tmp/0.stdout\ntest\n\n\n0 /tmp/0.stderr\n\n",
+            "stdout": (
+                "0\n1735689600\n1735689601\n5 /tmp/0.stdout\ntest\n"
+                "0 /tmp/0.stderr\n\n"
+            ),
             "stderr": "",
             "start": "2025-01-01 00:00:00",
             "end": "2025-01-01 00:00:01",
@@ -179,8 +193,10 @@ def test_run_dict_mode_with_failures(plugin) -> None:
             "rc": 0,
             "raw": False,
             "stdout": (
-                "0\n0 /tmp/0.stdout\n0 /tmp/0.stderr\n"
-                "1\n0 /tmp/1.stdout\n0 /tmp/1.stderr\n\n"
+                "0\n1735689600\n1735689601\n0 /tmp/0.stdout\n"
+                "0 /tmp/0.stderr\n"
+                "1\n1735689600\n1735689601\n0 /tmp/1.stdout\n"
+                "0 /tmp/1.stderr\n\n"
             ),
             "stderr": "",
             "start": "2025-01-01 00:00:00",

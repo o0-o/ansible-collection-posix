@@ -23,6 +23,9 @@ from ansible import __version__ as ansible_version
 from ansible.errors import AnsibleActionFail
 from ansible.plugins.action import ActionBase
 from ansible.module_utils.common.text.converters import to_text
+from ansible_collections.o0_o.utils.plugins.module_utils import (
+    truthy_or_string,
+)
 from ansible_collections.o0_o.posix.plugins.module_utils import PosixActionBase
 
 try:
@@ -197,6 +200,9 @@ class ActionModule(PosixActionBase, ActionBase):
 
         if self.result["rc"] != 0:
             self.result["msg"] = "non-zero return code"
+        else:
+            # Clear any error messages from previous attempts
+            self.result["msg"] = ""
 
         return
 
@@ -222,7 +228,7 @@ class ActionModule(PosixActionBase, ActionBase):
             "stdin": {"required": False},
             "stdin_add_newline": {"type": "bool", "default": True},
             "strip_empty_ends": {"type": "bool", "default": True},
-            "_force_raw": {"type": "bool", "default": False},
+            "raw": {"type": "raw", "default": "auto"},
         }
         mutually_exclusive = [["cmd", "argv"]]
         required_one_of = [["cmd", "argv"]]
@@ -238,17 +244,17 @@ class ActionModule(PosixActionBase, ActionBase):
         self.creates = new_module_args["creates"]
         self.removes = new_module_args["removes"]
         self.strip = new_module_args["strip_empty_ends"]
-        self.force_raw = new_module_args.pop("_force_raw")
+
+        # Process raw parameter: accept boolean or 'auto'
+        try:
+            self.raw = truthy_or_string(new_module_args.pop("raw"), ["auto"])
+        except ValueError as e:
+            raise AnsibleActionFail(str(e)) from e
 
         # Args
         cmd = new_module_args.pop("cmd")
-        if cmd is not None:
-            # Avoid errors when using builtin command module
-            new_module_args["_raw_params"] = cmd
+        new_module_args["_raw_params"] = cmd
         argv = new_module_args["argv"]
-        if argv is None:
-            # Avoid errors when using builtin command module
-            new_module_args.pop("argv")
         self.command = cmd or argv
         if not self.shell:
             self.command = self._format_command(self.command)
@@ -318,29 +324,40 @@ class ActionModule(PosixActionBase, ActionBase):
 
         del tmp  # unused
 
-        if not self.force_raw:
-            builtin_module_args = new_module_args.copy()
+        # Handle raw mode: True (force raw), False (no raw), "auto" (fallback)
+        if self.raw is not True:
+            builtin_module_args = self._sanitize_args(new_module_args)
 
             builtin_module_result = self._execute_module(
                 module_name="ansible.builtin.command",
                 module_args=builtin_module_args,
                 task_vars=task_vars,
             )
-            builtin_module_result.pop("invocation")
+            builtin_module_result.pop("invocation", None)
 
+            # Auto mode: fall back to raw if interpreter missing
             if self._is_interpreter_missing(builtin_module_result):
-                self._display.warning(
-                    f"[{self.inventory_hostname}] Ansible command module "
-                    "failed; falling back to raw command."
+                self._display.vvv(
+                    f"Interpreter missing, self.raw={self.raw!r} "
+                    f"(type={type(self.raw).__name__})"
                 )
-                self.force_raw = True
+                if self.raw == "auto":
+                    self._display.warning(
+                        f"[{self.inventory_hostname}] Ansible command module "
+                        "failed; falling back to raw command."
+                    )
+                    self.raw = True
+                else:
+                    # raw=false: don't fall back, return the failure
+                    self._display.vvv("Not in auto mode, returning failure")
+                    self.result.update(builtin_module_result)
             else:
                 self.result.update(builtin_module_result)
-                self.result["raw"] = False
 
-        if self.force_raw:  # Must check again instead of else
-            self.result["raw"] = True
+        if self.raw is True:  # Must check again instead of else
             self._raw_cmd()
+
+        self.result["raw"] = self.raw
 
         self._remove_tmp_path(self._connection._shell.tmpdir)
 

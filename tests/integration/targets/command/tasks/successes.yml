@@ -14,7 +14,7 @@
     argv:
       - echo
       - foo
-    _force_raw: "{{ _force_raw }}"
+    raw: "{{ raw }}"
   register: command_argv_reg
 
 - name: Assert command output
@@ -27,12 +27,12 @@
 - name: Assert raw execution is as intended
   ansible.builtin.assert:
     that:
-      - command_argv_reg['raw'] == _force_raw
+      - command_argv_reg['raw'] == raw
 
 - name: Run command with cmd
   o0_o.posix.command:
     cmd: echo foo
-    _force_raw: "{{ _force_raw }}"
+    raw: "{{ raw }}"
   register: command_cmd_reg
 
 - name: Assert command output
@@ -45,7 +45,7 @@
 - name: Assert raw execution is as intended
   ansible.builtin.assert:
     that:
-      - command_cmd_reg['raw'] == _force_raw
+      - command_cmd_reg['raw'] == raw
 
 - name: Assert command output (Check mode)
   ansible.builtin.assert:
@@ -57,7 +57,7 @@
 - name: Run command with cmd
   o0_o.posix.command:
     cmd: echo foo
-    _force_raw: "{{ _force_raw }}"
+    raw: "{{ raw }}"
   register: command_reg
 
 - name: Assert command output
@@ -70,13 +70,13 @@
 - name: Assert raw execution is as intended
   ansible.builtin.assert:
     that:
-      - command_reg['raw'] == _force_raw
+      - command_reg['raw'] == raw
 
 - name: Run command with stdin
   o0_o.posix.command:
     argv: [cat]
     stdin: "hello\nworld"
-    _force_raw: "{{ _force_raw }}"
+    raw: "{{ raw }}"
   register: command_reg
 
 - name: Assert stdin was passed correctly
@@ -88,7 +88,7 @@
 - name: Assert raw execution is as intended
   ansible.builtin.assert:
     that:
-      - command_reg['raw'] == _force_raw
+      - command_reg['raw'] == raw
 
 - name: Run with creates when file already exists (should skip)
   o0_o.posix.command:
@@ -98,7 +98,7 @@
       - not
       - run
     creates: /dev/null
-    _force_raw: "{{ _force_raw }}"
+    raw: "{{ raw }}"
   register: command_reg
 
 - name: Assert command skipped due to creates
@@ -110,7 +110,7 @@
 - name: Assert raw execution is as intended
   ansible.builtin.assert:
     that:
-      - command_reg['raw'] == _force_raw
+      - command_reg['raw'] == raw
 
 - name: Ensure dummy file is absent
   ansible.builtin.file:
@@ -124,13 +124,13 @@
       - would
       - run
     creates: /tmp/o0_foo
-    _force_raw: "{{ _force_raw }}"
+    raw: "{{ raw }}"
   register: command_reg
 
 - name: Assert raw execution is as intended
   ansible.builtin.assert:
     that:
-      - command_reg['raw'] == _force_raw
+      - command_reg['raw'] == raw
 
 - name: Assert command would run due to creates missing
   ansible.builtin.assert:
@@ -145,7 +145,7 @@
       - would
       - run
     removes: /dev/null
-    _force_raw: "{{ _force_raw }}"
+    raw: "{{ raw }}"
   register: command_reg
 
 - name: Assert command would run due to file existing
@@ -157,7 +157,7 @@
 - name: Assert raw execution is as intended
   ansible.builtin.assert:
     that:
-      - command_reg['raw'] == _force_raw
+      - command_reg['raw'] == raw
 
 - name: Run with removes when file is missing (should skip)
   o0_o.posix.command:
@@ -167,7 +167,7 @@
       - not
       - run
     removes: /tmp/o0_foo
-    _force_raw: "{{ _force_raw }}"
+    raw: "{{ raw }}"
   register: command_reg
 
 - name: Assert command skipped due to removes missing
@@ -179,12 +179,12 @@
 - name: Assert raw execution is as intended
   ansible.builtin.assert:
     that:
-      - command_reg['raw'] == _force_raw
+      - command_reg['raw'] == raw
 
 - name: Test timing fields populated
   o0_o.posix.command:
     cmd: sleep 0.1
-    _force_raw: "{{ _force_raw }}"
+    raw: "{{ raw }}"
   register: timing_reg
 
 - name: Assert timing fields present and valid
@@ -199,4 +199,4 @@
 - name: Assert raw execution is as intended
   ansible.builtin.assert:
     that:
-      - timing_reg['raw'] == _force_raw
+      - timing_reg['raw'] == raw

@@ -18,7 +18,7 @@
         cmd: 'echo "My home: ${HOME}"'
         _uses_shell: true
         expand_argument_vars: true
-        _force_raw: true
+        raw: true
       register: var_exp_raw_reg
 
   rescue:
@@ -35,7 +35,7 @@
         cmd: 'echo "My home: ${HOME}"'
         _uses_shell: false
         expand_argument_vars: false
-        _force_raw: true
+        raw: true
       register: no_var_exp_raw_reg
 
   rescue:

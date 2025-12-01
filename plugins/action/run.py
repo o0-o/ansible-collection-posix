@@ -11,10 +11,15 @@
 
 from __future__ import annotations
 
-from typing import Any, Optional
+from typing import Any, Optional, Union
 
+from ansible.errors import AnsibleActionFail
 from ansible.module_utils.common.text.converters import to_bytes, to_text
 from ansible.plugins.action import ActionBase
+from ansible_collections.o0_o.utils.plugins.module_utils import (
+    format_elapsed_seconds,
+    truthy_or_string,
+)
 
 from ansible_collections.o0_o.posix.plugins.module_utils import PosixActionBase
 
@@ -36,20 +41,26 @@ class ActionModule(PosixActionBase, ActionBase):
     _supports_check_mode = True
     _supports_async = False
 
-    def _parse_batch_output(self, output: str) -> None:
+    def _parse_batch_output(
+        self,
+        output: str,
+        commands: list[Union[str, list[str]]],
+    ) -> list[dict[str, Any]]:
         """
         Parse length-prefixed batch output.
 
         :param str output: Raw batch output string
+        :param list commands: Commands that were executed
+        :returns list: List of command result dictionaries
         """
-        self.result["commands"] = []
+        results = []
 
         # Convert to bytes for accurate length counting
         # Use to_bytes() with surrogate_or_strict for round-trip safety
         output_bytes = to_bytes(output, errors="surrogate_or_strict")
         offset = 0
 
-        for i, cmd in enumerate(self.commands):
+        for i, cmd in enumerate(commands):
             command_result = {
                 "cmd": cmd,
                 "rc": None,
@@ -68,6 +79,38 @@ class ActionModule(PosixActionBase, ActionBase):
                 )
                 command_result["rc"] = int(rc_line.strip())
                 offset = rc_line_end + 1
+
+                # Read start time line
+                start_time_end = output_bytes.find(b"\n", offset)
+                if start_time_end == -1:
+                    raise ValueError(
+                        "Newline not found when searching for start time"
+                    )
+                start_time_line = to_text(
+                    output_bytes[offset:start_time_end],
+                    errors="surrogate_or_strict",
+                )
+                start_time = int(start_time_line.strip())
+                offset = start_time_end + 1
+
+                # Read end time line
+                end_time_end = output_bytes.find(b"\n", offset)
+                if end_time_end == -1:
+                    raise ValueError(
+                        "Newline not found when searching for end time"
+                    )
+                end_time_line = to_text(
+                    output_bytes[offset:end_time_end],
+                    errors="surrogate_or_strict",
+                )
+                end_time = int(end_time_line.strip())
+                offset = end_time_end + 1
+
+                # Calculate elapsed time
+                elapsed_seconds = end_time - start_time
+                command_result["elapsed"] = format_elapsed_seconds(
+                    elapsed_seconds
+                )
 
                 # Read stdout length line (format: "42 /path/file")
                 stdout_len_end = output_bytes.find(b"\n", offset)
@@ -138,14 +181,19 @@ class ActionModule(PosixActionBase, ActionBase):
                 raise e
 
             finally:
-                self.result["commands"].append(command_result)
+                results.append(command_result)
 
-        return
+        return results
 
-    def _build_batch_script(self, tmp: str) -> str:
+    def _build_batch_script(
+        self,
+        commands: list[Union[str, list[str]]],
+        tmp: str,
+    ) -> str:
         """
         Build the batched shell script using Ansible's tmp.
 
+        :param list commands: Commands to include in the batch
         :param str tmp: Temporary directory path
         :returns str: Shell script content
         """
@@ -155,21 +203,26 @@ class ActionModule(PosixActionBase, ActionBase):
             cmds = ["set +e"]  # Don't exit on command errors
 
         if self.parallel:
-            # Launch all commands in background
-            for i, cmd in enumerate(self.commands):
+            # Launch all commands in background with timing
+            # Capture rc in variable before final date so wait returns cmd's rc
+            for i, cmd in enumerate(commands):
                 if not isinstance(cmd, str):
                     cmd = self._format_command(cmd)
                 cmds.append(
-                    f'({cmd}) 1>"{tmp}{i}.stdout" 2>"{tmp}{i}.stderr" & '
+                    f'(date +%s >"{tmp}{i}.start" && '
+                    f'({cmd}) 1>"{tmp}{i}.stdout" 2>"{tmp}{i}.stderr"; rc=$?; '
+                    f'date +%s >"{tmp}{i}.end"; exit $rc) & '
                     f"pid{i}=$!"
                 )
 
             # Wait for each and collect results
-            for i in range(len(self.commands)):
+            for i in range(len(commands)):
                 cmds.extend(
                     [
                         f'wait "$pid{i}"',
                         'echo "$?"',
+                        f'cat "{tmp}{i}.start"',
+                        f'cat "{tmp}{i}.end"',
                         f'wc -c "{tmp}{i}.stdout"',
                         f'cat "{tmp}{i}.stdout"',
                         f'wc -c "{tmp}{i}.stderr"',
@@ -177,15 +230,21 @@ class ActionModule(PosixActionBase, ActionBase):
                     ]
                 )
         else:
-            # Sequential execution
-            for i, cmd in enumerate(self.commands):
+            # Sequential execution with timing
+            # Capture rc in variable before final date so we echo cmd's rc
+            for i, cmd in enumerate(commands):
                 if not isinstance(cmd, str):
                     cmd = self._format_command(cmd)
                 cmds.extend(
                     [
-                        # Execute and capture
+                        # Execute and capture with timing
+                        f'date +%s >"{tmp}{i}.start"',
                         f'({cmd}) 1>"{tmp}{i}.stdout" 2>"{tmp}{i}.stderr"',
-                        'echo "${?}"',
+                        "rc=$?",
+                        f'date +%s >"{tmp}{i}.end"',
+                        'echo "$rc"',
+                        f'cat "{tmp}{i}.start"',
+                        f'cat "{tmp}{i}.end"',
                         f'wc -c "{tmp}{i}.stdout"',
                         f'cat "{tmp}{i}.stdout"',
                         f'wc -c "{tmp}{i}.stderr"',
@@ -196,14 +255,104 @@ class ActionModule(PosixActionBase, ActionBase):
         # Ensure script ends with a newline for proper parsing
         cmds.append("echo")
 
-        return "; ".join(cmds)
+        # Use newlines instead of semicolons for ksh compatibility.
+        # OpenBSD's pdksh fails to capture PIDs from background jobs when
+        # commands are semicolon-separated (e.g., "cmd & pid=$!; wait $pid"
+        # results in "wait: argument must be %job or process id").
+        # Newline separation works correctly on both bash and ksh.
+        return "\n".join(cmds)
+
+    def _estimate_script_length(
+        self,
+        commands: list[Union[str, list[str]]],
+        tmp: str,
+    ) -> int:
+        """
+        Estimate the length of the batch script for given commands.
+
+        :param list commands: List of commands to estimate
+        :param str tmp: Temporary directory path
+        :returns int: Estimated script length in bytes
+        """
+        script = self._build_batch_script(commands, tmp)
+
+        # Multiply by 2 for safety margin (shell escaping, JSON overhead)
+        return len(script) * 2
+
+    def _split_commands_by_length(
+        self,
+        max_length: int = 65536,  # 64 KB default
+        max_count: int = 63,  # Max commands per batch
+    ) -> list[list[Union[str, list[str]]]]:
+        """
+        Split commands into batches that fit within limits.
+
+        :param int max_length: Maximum script length in bytes
+        :param int max_count: Maximum commands per batch
+        :returns list: List of command batches
+        """
+        batches = []
+        current_batch = []
+        tmp_estimate = "/tmp/ansible_tmp"  # Placeholder for estimation
+
+        for cmd in self.commands:
+            test_batch = current_batch + [cmd]
+            estimated_len = self._estimate_script_length(
+                test_batch, tmp_estimate
+            )
+
+            # Check both size and count limits
+            if current_batch and (
+                estimated_len > max_length or len(test_batch) > max_count
+            ):
+                # Current batch would exceed limit, save it and start new
+                batches.append(current_batch)
+                current_batch = [cmd]
+            else:
+                current_batch.append(cmd)
+
+        if current_batch:
+            batches.append(current_batch)
+
+        return batches
+
+    def _execute_batch(
+        self,
+        batch_commands: list[Union[str, list[str]]],
+        tmp: str,
+        task_vars: dict[str, Any],
+    ) -> list[dict[str, Any]]:
+        """
+        Execute a single batch of commands and return results.
+
+        :param list batch_commands: Commands to execute in this batch
+        :param str tmp: Temporary directory path
+        :param dict task_vars: Task variables
+        :returns list: List of command results
+        """
+        # Build batched script
+        script = self._build_batch_script(batch_commands, tmp)
+        self._display.vvv(f"Batch command:\n{script}")
+
+        # Execute batch
+        cmd_result = self._cmd(
+            script,
+            chdir=self.chdir,
+            strip=False,
+            check_mode=self._task.check_mode,
+            task_vars=task_vars,
+            raw=self.raw,
+        )
+
+        if cmd_result.get("failed"):
+            error_msg = cmd_result.get("msg", "Unknown error")
+            raise AnsibleActionFail(f"Batch execution failed: {error_msg}")
+
+        # Parse output and return results
+        return self._parse_batch_output(cmd_result["stdout"], batch_commands)
 
     def _def_args(self) -> dict[str, Any]:
-        """
-        Parse and validate module arguments.
-
-        :returns dict: The validated argument dictionary
-        """
+        """Parse and validate module arguments."""
         argument_spec = {
             "commands": {
                 "type": "raw",  # Accept list or dict
@@ -213,15 +362,17 @@ class ActionModule(PosixActionBase, ActionBase):
             "parallel": {"type": "bool", "default": True},
             "fail_fast": {"type": "bool", "default": False},
             "strip": {"type": "bool", "default": True},
+            "raw": {"type": "raw", "default": "auto"},
         }
+        mutually_exclusive = [["parallel", "fail_fast"]]
 
         validation_result, new_module_args = self.validate_argument_spec(
-            argument_spec=argument_spec
+            argument_spec=argument_spec,
+            mutually_exclusive=mutually_exclusive,
         )
 
+        # Extract and process commands
         commands_input = new_module_args["commands"]
-
-        # Detect dict mode and extract keys/commands
         self.is_dict_mode = isinstance(commands_input, dict)
         if self.is_dict_mode:
             self.command_keys = list(commands_input.keys())
@@ -230,12 +381,17 @@ class ActionModule(PosixActionBase, ActionBase):
             self.command_keys = None
             self.commands = commands_input
 
+        # Set instance variables from validated args
         self.chdir = new_module_args["chdir"]
         self.parallel = new_module_args["parallel"]
         self.fail_fast = new_module_args["fail_fast"]
         self.strip = new_module_args["strip"]
 
-        return new_module_args
+        # Process raw parameter: accept boolean or 'auto'
+        try:
+            self.raw = truthy_or_string(new_module_args["raw"], ["auto"])
+        except ValueError as e:
+            raise AnsibleActionFail(str(e)) from e
 
     def run(
         self,
@@ -243,19 +399,22 @@ class ActionModule(PosixActionBase, ActionBase):
         task_vars: Optional[dict[str, Any]] = None,
     ) -> dict[str, Any]:
         """
-        Execute multiple commands in batch.
+        Execute multiple commands in batch with automatic
+        command-length-aware batching.
 
         :param Optional[str] tmp: Temporary directory path
         :param Optional[dict[str, Any]] task_vars: Task variables
         :returns dict[str, Any]: Ansible result dictionary
         """
         task_vars = task_vars or {}
+        tmp = tmp or self._make_tmp_path()
         self._def_inventory_hostname(task_vars)
 
         self._def_args()
 
         self.result = super(ActionModule, self).run(tmp, task_vars=task_vars)
         self.result["invocation"] = self._task.args.copy()
+
         # Check mode: validate we could run, but don't actually execute
         if self._task.check_mode:
             self.result.update(
@@ -267,49 +426,56 @@ class ActionModule(PosixActionBase, ActionBase):
             )
             return self.result
 
-        # Don't change tmp if it was already provided upstream
-        run_tmp = tmp if tmp else self._make_tmp_path()
-
         try:
-            # Build batched script using Ansible's tmp
-            script = self._build_batch_script(run_tmp)
-            self._display.vvv(f"Batch command:\n{script}")
+            # Check if we need to split into multiple batches
+            max_command_length = 65536  # 64 KB safe default
+            max_command_count = 63  # Safe limit for parallel execution
+            estimated_length = self._estimate_script_length(self.commands, tmp)
 
-            # Execute single batch command
-            # strip=False to preserve length-prefix format parsing
-            cmd_result = self._cmd(
-                script,
-                chdir=self.chdir,
-                strip=False,
-                check_mode=self._task.check_mode,
-                task_vars=task_vars,
-            )
-
-            self.result.update(
-                {
-                    "failed": cmd_result.get("failed", False),
-                    "raw": cmd_result["raw"],
-                    "stderr": cmd_result["stderr"],
-                    "start": cmd_result.get("start"),
-                    "end": cmd_result.get("end"),
-                    "delta": cmd_result.get("delta"),
-                }
-            )
-
-            # Parse combined output back into individual results
-            try:
-                self._parse_batch_output(
-                    output=cmd_result["stdout"],
+            if (
+                estimated_length > max_command_length
+                or len(self.commands) >= max_command_count
+            ):
+                # Split commands into batches
+                command_batches = self._split_commands_by_length(
+                    max_command_length, max_command_count
                 )
-            except Exception as e:
-                self.result.update(
-                    {
-                        "failed": True,
-                        "msg": f"Failed to parse batch output: {e}",
-                        "stdout": cmd_result["stdout"],
-                    }
+                num_batches = len(command_batches)
+
+                # Determine which threshold triggered batching
+                reasons = []
+                if len(self.commands) >= max_command_count:
+                    reasons.append(
+                        f"command count {len(self.commands)} >= "
+                        f"{max_command_count}"
+                    )
+                if estimated_length > max_command_length:
+                    reasons.append(
+                        f"length {estimated_length} > {max_command_length}"
+                    )
+
+                self._display.vvv(
+                    f"Batching triggered ({', '.join(reasons)}), "
+                    f"splitting into {num_batches} batches"
                 )
-                return self.result
+
+                # Execute all batches and collect results
+                all_results = []
+                for i, batch in enumerate(command_batches, 1):
+                    self._display.vvv(
+                        f"Executing batch {i}/{num_batches} "
+                        f"({len(batch)} commands)"
+                    )
+                    batch_results = self._execute_batch(batch, tmp, task_vars)
+                    all_results.extend(batch_results)
+
+                self.result["commands"] = all_results
+            else:
+                # Single batch execution
+                num_batches = 1
+                self.result["commands"] = self._execute_batch(
+                    self.commands, tmp, task_vars
+                )
 
             # Convert to dict if dict mode
             if self.is_dict_mode:
@@ -329,17 +495,31 @@ class ActionModule(PosixActionBase, ActionBase):
                 for r in command_results
             )
 
+            # Build message with batch count
+            batch_suffix = (
+                f" in {num_batches} batches" if num_batches > 1 else ""
+            )
+            cmd_count = len(self.commands)
+            result_msg = f"Executed {cmd_count} commands{batch_suffix}"
             self.result.update(
                 {
                     "changed": True,
                     "failed": any_failed,
-                    "msg": f"Executed {len(self.commands)} commands",
+                    "msg": result_msg,
+                    "count": cmd_count,
+                    "batches": num_batches,
                 }
             )
 
             return self.result
 
-        finally:
-            # Always clean up tmp if we created it here
-            if run_tmp and tmp != run_tmp:
-                self._remove_tmp_path(run_tmp)
+        except AnsibleActionFail:
+            raise
+        except Exception as e:
+            self.result.update(
+                {
+                    "failed": True,
+                    "msg": f"Batch execution error: {e}",
+                }
+            )
+            return self.result

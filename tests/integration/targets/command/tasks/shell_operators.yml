@@ -17,7 +17,7 @@
       o0_o.posix.command:
         cmd: echo foo; echo bar; echo baz
         _uses_shell: true
-        _force_raw: "{{ _force_raw }}"
+        raw: "{{ raw }}"
       register: semicolon_reg
 
     - name: Assert semicolon command output
@@ -32,13 +32,13 @@
     - name: Assert raw execution is as intended
       ansible.builtin.assert:
         that:
-          - semicolon_reg['raw'] == _force_raw
+          - semicolon_reg['raw'] == raw
 
     - name: Test shell command with pipes
       o0_o.posix.command:
         cmd: echo "hello world" | grep hello
         _uses_shell: true
-        _force_raw: "{{ _force_raw }}"
+        raw: "{{ raw }}"
       register: pipe_reg
 
     - name: Assert pipe command output
@@ -50,13 +50,13 @@
     - name: Assert raw execution is as intended
       ansible.builtin.assert:
         that:
-          - pipe_reg['raw'] == _force_raw
+          - pipe_reg['raw'] == raw
 
     - name: Test shell command with stderr redirect
       o0_o.posix.command:
         cmd: echo foo 1>&2
         _uses_shell: true
-        _force_raw: "{{ _force_raw }}"
+        raw: "{{ raw }}"
       register: redirect_reg
 
     - name: Assert redirect command output
@@ -69,13 +69,13 @@
     - name: Assert raw execution is as intended
       ansible.builtin.assert:
         that:
-          - redirect_reg['raw'] == _force_raw
+          - redirect_reg['raw'] == raw
 
     - name: Test complex shell command with multiple operators
       o0_o.posix.command:
         cmd: echo start; echo middle | cat; echo end 1>&2
         _uses_shell: true
-        _force_raw: "{{ _force_raw }}"
+        raw: "{{ raw }}"
       register: complex_reg
 
     - name: Assert complex command output
@@ -89,13 +89,13 @@
     - name: Assert raw execution is as intended
       ansible.builtin.assert:
         that:
-          - complex_reg['raw'] == _force_raw
+          - complex_reg['raw'] == raw
 
     - name: Test shell command with quoted arguments and operators
       o0_o.posix.command:
         cmd: echo "hello world"; echo "foo bar"
         _uses_shell: true
-        _force_raw: "{{ _force_raw }}"
+        raw: "{{ raw }}"
       register: quoted_reg
 
     - name: Assert quoted command output
@@ -109,4 +109,4 @@
     - name: Assert raw execution is as intended
       ansible.builtin.assert:
         that:
-          - quoted_reg['raw'] == _force_raw
+          - quoted_reg['raw'] == raw

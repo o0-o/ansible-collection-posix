@@ -21,7 +21,7 @@
             argv:
               - return
               - 1
-            _force_raw: "{{ _force_raw }}"
+            raw: "{{ raw }}"
 
       rescue:
 
@@ -39,7 +39,7 @@
               - echo
               - foo
             chdir: /does/not/exist
-            _force_raw: "{{ _force_raw }}"
+            raw: "{{ raw }}"
 
       rescue:
 
@@ -55,7 +55,7 @@
       o0_o.posix.command:
         cmd: echo foo
         argv: [echo, foo]
-        _force_raw: "{{ _force_raw }}"
+        raw: "{{ raw }}"
 
   rescue:
 
@@ -70,7 +70,7 @@
     - name: Run command without cmd or argv
       o0_o.posix.command:
         creates: /tmp/placeholder  # unrelated arg to force arg check
-        _force_raw: "{{ _force_raw }}"
+        raw: "{{ raw }}"
 
   rescue:
 
@@ -90,7 +90,7 @@
           - 'test'
           - '-d'
           - '/dev/null'
-        _force_raw: "{{ _force_raw }}"
+        raw: "{{ raw }}"
 
   rescue:
 

@@ -70,11 +70,7 @@ def test_which_prefers_command_v(monkeypatch) -> None:
     result = dummy._which("grep")
 
     assert result == "/usr/bin/grep"
-    assert dummy.calls[0] == [
-        "sh",
-        "-c",
-        "unalias -a 2>/dev/null; command -v grep",
-    ]
+    assert dummy.calls[0] == "unalias -a 2>/dev/null; command -v grep"
 
 
 def test_which_handles_builtin_via_command_v() -> None:
@@ -139,3 +135,38 @@ def test_which_debug_message_emitted() -> None:
     assert any(
         "command -v missing failed" in msg for msg in dummy._display.messages
     )
+
+
+@pytest.mark.parametrize(
+    "flags,expected",
+    [
+        ("-rw-r--r--", "0644"),
+        ("-rwxr-xr-x", "0755"),
+        ("-rwxrwxrwx", "0777"),
+        ("----------", "0000"),
+        ("-r--r--r--", "0444"),
+        ("-rw-------", "0600"),
+        ("-rwsr-xr-x", "4755"),  # setuid
+        ("-rwxr-sr-x", "2755"),  # setgid
+        ("-rwxr-xr-t", "1755"),  # sticky bit
+        ("-rwsr-sr-t", "7755"),  # all special bits
+        ("drwxr-xr-x", "0755"),  # directory (first char ignored)
+        ("lrwxrwxrwx", "0777"),  # symlink (first char ignored)
+    ],
+)
+def test_flags_to_octal_mode(flags: str, expected: str) -> None:
+    """Test conversion of ls flags to octal mode."""
+    dummy = DummyPosixAction([])
+    assert dummy._flags_to_octal_mode(flags) == expected
+
+
+def test_flags_to_octal_mode_empty_string() -> None:
+    """Test that empty string returns 0000."""
+    dummy = DummyPosixAction([])
+    assert dummy._flags_to_octal_mode("") == "0000"
+
+
+def test_flags_to_octal_mode_short_string() -> None:
+    """Test that strings shorter than 10 chars return 0000."""
+    dummy = DummyPosixAction([])
+    assert dummy._flags_to_octal_mode("-rw-") == "0000"
