@@ -38,6 +38,19 @@
           - parallel_default_reg['commands'][1]['elapsed'] is defined
           - parallel_default_reg['commands'][2]['elapsed'] is defined
 
+    - name: Assert top-level timing fields present
+      ansible.builtin.assert:
+        that:
+          - parallel_default_reg['started'] is defined
+          - parallel_default_reg['started']['seconds'] is number
+          - parallel_default_reg['started']['pretty'] is string
+          - parallel_default_reg['ended'] is defined
+          - parallel_default_reg['ended']['seconds'] is number
+          - parallel_default_reg['ended']['pretty'] is string
+          - parallel_default_reg['elapsed'] is defined
+          - parallel_default_reg['elapsed']['seconds'] is number
+          - parallel_default_reg['elapsed']['pretty'] is string
+
     - name: Test explicit parallel execution
       o0_o.posix.run:
         commands:

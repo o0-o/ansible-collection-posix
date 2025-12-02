@@ -202,8 +202,51 @@ commands:
       sample: []
     elapsed:
       description: Time taken to execute the command
+      type: dict
+      contains:
+        seconds:
+          description: Elapsed time in seconds
+          type: int
+        pretty:
+          description: Human-readable elapsed time
+          type: str
+      sample: {"seconds": 1, "pretty": "1 second"}
+started:
+  description: When batch execution started
+  returned: success
+  type: dict
+  contains:
+    seconds:
+      description: Unix epoch timestamp
+      type: int
+    pretty:
+      description: Human-readable timestamp
       type: str
-      sample: "0:00:01"
+  sample: {"seconds": 1733060400, "pretty": "2025-12-01 12:00:00"}
+ended:
+  description: When batch execution ended
+  returned: success
+  type: dict
+  contains:
+    seconds:
+      description: Unix epoch timestamp
+      type: int
+    pretty:
+      description: Human-readable timestamp
+      type: str
+  sample: {"seconds": 1733060401, "pretty": "2025-12-01 12:00:01"}
+elapsed:
+  description: Total time for batch execution
+  returned: success
+  type: dict
+  contains:
+    seconds:
+      description: Elapsed time in seconds
+      type: int
+    pretty:
+      description: Human-readable elapsed time
+      type: str
+  sample: {"seconds": 1, "pretty": "1 second"}
 raw:
   description: Whether raw fallback mode was used
   returned: always

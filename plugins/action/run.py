@@ -11,6 +11,7 @@
 
 from __future__ import annotations
 
+import time
 from typing import Any, Optional, Union
 
 from ansible.errors import AnsibleActionFail
@@ -18,6 +19,7 @@ from ansible.module_utils.common.text.converters import to_bytes, to_text
 from ansible.plugins.action import ActionBase
 from ansible_collections.o0_o.utils.plugins.module_utils import (
     format_elapsed_seconds,
+    format_epoch_timestamp,
     truthy_or_string,
 )
 
@@ -436,6 +438,9 @@ class ActionModule(PosixActionBase, ActionBase):
             )
             return self.result
 
+        # Capture start time
+        start_time = time.time()
+
         try:
             # Check if we need to split into multiple batches
             max_command_length = 65536  # 64 KB safe default
@@ -505,6 +510,10 @@ class ActionModule(PosixActionBase, ActionBase):
                 for r in command_results
             )
 
+            # Capture end time and calculate elapsed
+            end_time = time.time()
+            elapsed_seconds = int(end_time - start_time)
+
             # Build message with batch count
             batch_suffix = (
                 f" in {num_batches} batches" if num_batches > 1 else ""
@@ -518,6 +527,9 @@ class ActionModule(PosixActionBase, ActionBase):
                     "msg": result_msg,
                     "count": cmd_count,
                     "batches": num_batches,
+                    "started": format_epoch_timestamp(start_time),
+                    "ended": format_epoch_timestamp(end_time),
+                    "elapsed": format_elapsed_seconds(elapsed_seconds),
                 }
             )
 
@@ -526,10 +538,16 @@ class ActionModule(PosixActionBase, ActionBase):
         except AnsibleActionFail:
             raise
         except Exception as e:
+            # Capture end time even on failure
+            end_time = time.time()
+            elapsed_seconds = int(end_time - start_time)
             self.result.update(
                 {
                     "failed": True,
                     "msg": f"Batch execution error: {e}",
+                    "started": format_epoch_timestamp(start_time),
+                    "ended": format_epoch_timestamp(end_time),
+                    "elapsed": format_elapsed_seconds(elapsed_seconds),
                 }
             )
             return self.result
