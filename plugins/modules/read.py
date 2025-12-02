@@ -69,10 +69,10 @@ options:
   follow:
     description:
       - How to handle symbolic links.
-      - Can be a boolean or the string C(recurse).
+      - Can be a boolean or the string C(recursive).
       - When C(true) (default), resolves to the ultimate target (like
         C(readlink -f)).
-      - When C(recurse), adds link targets to the paths list recursively
+      - When C(recursive), adds link targets to the paths list recursively
         until a non-symlink is found.
       - When C(false), lists the link without following or recursing.
     type: raw
@@ -158,7 +158,7 @@ RETURN = r"""
 paths:
   description:
     - Mapping of inspected paths to collected information.
-    - When I(follow=recurse), additional entries are included for all symlink
+    - When I(follow=recursive), additional entries are included for all symlink
       targets in the resolution chain.
     - When I(children) is enabled, additional entries are included for all
       discovered child paths.

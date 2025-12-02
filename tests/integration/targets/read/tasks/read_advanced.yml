@@ -225,25 +225,25 @@
         read_include_all_reg['paths'][read_regular_path]['encoding']
         is defined
 
-# Test include with extended metadata fields
-- name: Read file with extended metadata fields
+# Test metadata includes timestamp fields (modified, created, changed)
+- name: Read file to verify timestamp fields in metadata
   o0_o.posix.read:
     path: "{{ read_regular_path }}"
-    include: ['metadata', 'modified', 'created', 'changed']
-  register: read_extended_meta_reg
+    include: ['metadata']
+  register: read_timestamps_reg
 
-- name: Assert extended metadata fields are present
+- name: Assert timestamp fields are present in metadata
   ansible.builtin.assert:
     that:
-      - read_extended_meta_reg is not changed
+      - read_timestamps_reg is not changed
       - >-
-        read_extended_meta_reg['paths'][read_regular_path]['modified']
+        read_timestamps_reg['paths'][read_regular_path]['modified']
         is defined
       - >-
-        read_extended_meta_reg['paths'][read_regular_path]['created']
+        read_timestamps_reg['paths'][read_regular_path]['created']
         is defined
       - >-
-        read_extended_meta_reg['paths'][read_regular_path]['changed']
+        read_timestamps_reg['paths'][read_regular_path]['changed']
         is defined
 
 # Test interaction between children parameter and include: ['children']

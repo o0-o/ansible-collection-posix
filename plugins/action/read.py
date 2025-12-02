@@ -35,6 +35,40 @@ class ActionModule(ReadPosixActionBase, ActionBase):
     _supports_async = False
     _supports_diff = False
 
+    def _display_longest_command(
+        self, commands_result: dict[str, Any], context: str = ""
+    ) -> None:
+        """Display debug information about the longest running command.
+
+        :param dict commands_result: Result from _run() call
+        :param str context: Context description for the debug message
+        """
+        if not isinstance(commands_result.get("commands"), dict):
+            return
+
+        # Find the longest running command
+        longest_cmd = None
+        longest_elapsed = 0
+
+        for cmd_key, cmd_result in commands_result["commands"].items():
+            if "elapsed" in cmd_result:
+                elapsed = cmd_result["elapsed"].get("seconds", 0)
+                if elapsed > longest_elapsed:
+                    longest_elapsed = elapsed
+                    longest_cmd = cmd_result.get("cmd", cmd_key)
+
+        context_str = f" ({context})" if context else ""
+        if longest_elapsed > 0:
+            self._display.vvv(
+                f"[{self.inventory_hostname}] Longest command{context_str}: "
+                f"{longest_cmd} took {longest_elapsed}s"
+            )
+        else:
+            self._display.vvv(
+                f"[{self.inventory_hostname}] All commands{context_str} "
+                f"completed in under 1 second"
+            )
+
     def _def_args(self) -> dict[str, Any]:
         """Parse and validate module arguments."""
         argument_spec = {
@@ -83,8 +117,8 @@ class ActionModule(ReadPosixActionBase, ActionBase):
                 "default": True,
                 "description": (
                     "How to handle symbolic links. Can be a boolean or "
-                    "the string 'recurse'. True (default) resolves to the "
-                    "ultimate target (like readlink -f). 'recurse' adds "
+                    "the string 'recursive'. True (default) resolves to the "
+                    "ultimate target (like readlink -f). 'recursive' adds "
                     "link targets to the paths list recursively until a "
                     "non-symlink is found. False lists the link without "
                     "following or recursing"
@@ -112,9 +146,9 @@ class ActionModule(ReadPosixActionBase, ActionBase):
         self.include = new_module_args["include"]
 
         try:
-            # Process follow parameter (boolean or 'recurse')
+            # Process follow parameter (boolean or 'recursive')
             self.follow = truthy_or_string(
-                new_module_args["follow"], ["recurse"]
+                new_module_args["follow"], ["recursive"]
             )
 
             # Process parents parameter (boolean or positive integer)
@@ -188,29 +222,96 @@ class ActionModule(ReadPosixActionBase, ActionBase):
 
         del tmp  # unused
 
-        # Generate batched commands for all paths
-        # Pass need_dir_contents=True when children is enabled to get directory listings
-        commands = self._get_read_commands(
-            self.paths, self.include, need_dir_contents=bool(self.children)
-        )
-        self._display.vvv(
-            f"[{self.inventory_hostname}] Generated {len(commands)} "
-            f"commands for {len(self.paths)} initial paths"
-        )
+        # Initialize counters for tracking total commands and batches
+        total_commands = 0
+        total_batches = 0
 
-        # Execute all commands in single batch
-        commands_result = self._run(
-            commands=commands,
-            task_vars=task_vars,
-            check_mode=False,
-        )
+        # Platform detection: check for cached facts first (always None for now)
+        # TODO: In the future, check task_vars for cached platform facts from
+        # o0_os['platform'] before falling back to runtime detection.
+        platform: Optional[dict[str, Any]] = None
 
-        # Process all results
-        file_data = self._process_read_results(
-            results=commands_result["commands"],
-            paths=self.paths,
-            include=self.include,
-        )
+        # Two-phase approach: detect platform from first path, then use
+        # detected capabilities for remaining paths to avoid redundant commands
+        file_data: dict[str, Any] = {}
+
+        if self.paths:
+            # Phase 1: Process first path with all command variants (detection)
+            first_path = self.paths[0]
+            detection_commands = self._get_read_commands(
+                [first_path],
+                self.include,
+                need_dir_contents=bool(self.children),
+                platform=None,  # Detection mode: run all variants
+            )
+            self._display.vvv(
+                f"[{self.inventory_hostname}] Platform detection: generated "
+                f"{len(detection_commands)} commands for {first_path}"
+            )
+
+            detection_result = self._run(
+                commands=detection_commands,
+                task_vars=task_vars,
+                check_mode=False,
+            )
+            total_commands += detection_result.get("count", 0)
+            total_batches += detection_result.get("batches", 0)
+            self._display_longest_command(
+                detection_result, "platform detection"
+            )
+
+            # Detect platform capabilities from first path's results
+            platform = self._detect_platform_from_results(
+                detection_result["commands"], first_path
+            )
+            self._display.vvv(
+                f"[{self.inventory_hostname}] Detected platform: "
+                f"stat={platform['stat_variant']}, "
+                f"lsattr={platform['has_lsattr']}, "
+                f"getfacl={platform['has_getfacl']}, "
+                f"flags_bsd={platform['ls_supports_flags_bsd']}"
+            )
+
+            # Process first path's results
+            first_file_data = self._process_read_results(
+                results=detection_result["commands"],
+                paths=[first_path],
+                include=self.include,
+            )
+            file_data.update(first_file_data)
+
+            # Phase 2: Process remaining paths with detected platform
+            remaining_paths = self.paths[1:]
+            if remaining_paths:
+                commands = self._get_read_commands(
+                    remaining_paths,
+                    self.include,
+                    need_dir_contents=bool(self.children),
+                    platform=platform,
+                )
+                self._display.vvv(
+                    f"[{self.inventory_hostname}] Generated {len(commands)} "
+                    f"commands for {len(remaining_paths)} remaining paths"
+                )
+
+                commands_result = self._run(
+                    commands=commands,
+                    task_vars=task_vars,
+                    check_mode=False,
+                )
+                total_commands += commands_result.get("count", 0)
+                total_batches += commands_result.get("batches", 0)
+                self._display_longest_command(
+                    commands_result, "remaining paths"
+                )
+
+                # Process remaining results
+                remaining_file_data = self._process_read_results(
+                    results=commands_result["commands"],
+                    paths=remaining_paths,
+                    include=self.include,
+                )
+                file_data.update(remaining_file_data)
 
         # If children is set, recursively read child entries within directories
         if self.children:
@@ -302,6 +403,7 @@ class ActionModule(ReadPosixActionBase, ActionBase):
                             batch_paths,
                             self.include,
                             need_dir_contents=True,
+                            platform=platform,
                         )
                         self._display.vvv(
                             f"[{self.inventory_hostname}] Generated "
@@ -312,6 +414,12 @@ class ActionModule(ReadPosixActionBase, ActionBase):
                             commands=child_commands,
                             task_vars=task_vars,
                             check_mode=False,
+                        )
+                        total_commands += child_result.get("count", 0)
+                        total_batches += child_result.get("batches", 0)
+                        self._display_longest_command(
+                            child_result,
+                            f"children batch {batch_start // batch_size + 1}",
                         )
                         child_data = self._process_read_results(
                             results=child_result["commands"],
@@ -339,7 +447,7 @@ class ActionModule(ReadPosixActionBase, ActionBase):
                     )
 
         # Handle symbolic links based on follow parameter
-        if self.follow == "recurse":
+        if self.follow == "recursive":
             # Recursively add symlink targets until non-symlink found
             processed_paths = set(file_data.keys())
 
@@ -365,12 +473,17 @@ class ActionModule(ReadPosixActionBase, ActionBase):
 
                 # Read metadata for link targets
                 target_commands = self._get_read_commands(
-                    new_targets, self.include
+                    new_targets, self.include, platform=platform
                 )
                 target_result = self._run(
                     commands=target_commands,
                     task_vars=task_vars,
                     check_mode=False,
+                )
+                total_commands += target_result.get("count", 0)
+                total_batches += target_result.get("batches", 0)
+                self._display_longest_command(
+                    target_result, "recursive symlink targets"
                 )
                 target_data = self._process_read_results(
                     results=target_result["commands"],
@@ -401,6 +514,9 @@ class ActionModule(ReadPosixActionBase, ActionBase):
                     task_vars=task_vars,
                     check_mode=False,
                 )
+                total_commands += readlink_result.get("count", 0)
+                total_batches += readlink_result.get("batches", 0)
+                self._display_longest_command(readlink_result, "readlink -f")
 
                 # Get resolved targets and read their metadata
                 resolved_targets = {}
@@ -417,12 +533,17 @@ class ActionModule(ReadPosixActionBase, ActionBase):
                 if resolved_targets:
                     unique_targets = list(set(resolved_targets.values()))
                     target_commands = self._get_read_commands(
-                        unique_targets, self.include
+                        unique_targets, self.include, platform=platform
                     )
                     target_result = self._run(
                         commands=target_commands,
                         task_vars=task_vars,
                         check_mode=False,
+                    )
+                    total_commands += target_result.get("count", 0)
+                    total_batches += target_result.get("batches", 0)
+                    self._display_longest_command(
+                        target_result, "resolved symlink targets"
                     )
                     target_data = self._process_read_results(
                         results=target_result["commands"],
@@ -448,5 +569,7 @@ class ActionModule(ReadPosixActionBase, ActionBase):
         # Format output
         result["changed"] = False
         result["paths"] = file_data
+        result["commands"] = total_commands
+        result["batches"] = total_batches
 
         return result

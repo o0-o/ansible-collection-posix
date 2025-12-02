@@ -125,7 +125,7 @@
 - name: Read symbolic link recursively
   o0_o.posix.read:
     path: "{{ read_symlink_path }}"
-    follow: recurse
+    follow: recursive
     include: ['content', 'metadata']
   register: read_symlink_recursive_reg
 
@@ -196,55 +196,37 @@
 
 # Test extended metadata fields (platform-specific)
 
-# Test ACL support (Linux and macOS)
-- name: Read file with ACL metadata
+# Test extended metadata (includes ACL, xattrs where available)
+- name: Read file with extended metadata
   o0_o.posix.read:
     path: "{{ read_regular_path }}"
-    include: ['metadata', 'acl']
-  register: read_acl_reg
+    include: ['extended']
+  register: read_extended_reg
   when: ansible_system in ['Linux', 'Darwin']
 
-- name: Assert ACL field behavior
+- name: Assert extended metadata fields
   ansible.builtin.assert:
     that:
-      - read_acl_reg is not changed
-      - >-
-        'acl' in read_acl_reg['paths'][read_regular_path] or
-        'acl' not in read_acl_reg['paths'][read_regular_path]
+      - read_extended_reg is not changed
+      # Extended metadata available (ACL/xattrs may or may not be present)
+      - read_extended_reg['paths'][read_regular_path] is defined
   when: ansible_system in ['Linux', 'Darwin']
 
-# Test xattrs support (Linux and macOS)
-- name: Read file with xattrs metadata
+# Test all metadata (combines metadata + extended + content + children)
+- name: Read file with all metadata
   o0_o.posix.read:
     path: "{{ read_regular_path }}"
-    include: ['metadata', 'xattrs']
-  register: read_xattrs_reg
+    include: ['all']
+  register: read_all_reg
   when: ansible_system in ['Linux', 'Darwin']
 
-- name: Assert xattrs field behavior
+- name: Assert all metadata fields
   ansible.builtin.assert:
     that:
-      - read_xattrs_reg is not changed
-      - >-
-        'xattrs' in read_xattrs_reg['paths'][read_regular_path] or
-        'xattrs' not in read_xattrs_reg['paths'][read_regular_path]
-  when: ansible_system in ['Linux', 'Darwin']
-
-# Test filesystem flags (Linux lsattr and macOS chflags)
-- name: Read file with flags metadata
-  o0_o.posix.read:
-    path: "{{ read_regular_path }}"
-    include: ['metadata', 'flags']
-  register: read_flags_reg
-  when: ansible_system in ['Linux', 'Darwin']
-
-- name: Assert flags field behavior
-  ansible.builtin.assert:
-    that:
-      - read_flags_reg is not changed
-      - >-
-        'flags' in read_flags_reg['paths'][read_regular_path] or
-        'flags' not in read_flags_reg['paths'][read_regular_path]
+      - read_all_reg is not changed
+      - read_all_reg['paths'][read_regular_path] is defined
+      # Content should be included with 'all'
+      - read_all_reg['paths'][read_regular_path]['content'] is defined
   when: ansible_system in ['Linux', 'Darwin']
 
 # Test SELinux context (only on SELinux-enabled Linux systems)
@@ -281,18 +263,20 @@
     - selinux_status_reg['rc'] == 0
     - selinux_status_reg['stdout'] | default('') != 'Disabled'
 
-# Test that extended fields are NOT present when not requested
-- name: Read file without extended metadata
+# Test that xattrs are NOT present when only metadata is requested
+# (metadata includes flags, ACL, SELinux but NOT xattrs)
+- name: Read file with metadata only (no xattrs)
   o0_o.posix.read:
     path: "{{ read_regular_path }}"
     include: ['metadata']
-  register: read_no_extended_reg
+  register: read_metadata_only_reg
 
-- name: Assert extended fields not present when not requested
+- name: Assert xattrs not present when only metadata requested
   ansible.builtin.assert:
     that:
-      - read_no_extended_reg is not changed
-      - "'acl' not in read_no_extended_reg['paths'][read_regular_path]"
-      - "'xattrs' not in read_no_extended_reg['paths'][read_regular_path]"
-      - "'flags' not in read_no_extended_reg['paths'][read_regular_path]"
-      - "'selinux' not in read_no_extended_reg['paths'][read_regular_path]"
+      - read_metadata_only_reg is not changed
+      - read_metadata_only_reg['paths'][read_regular_path] is defined
+      # xattrs should not be present with just 'metadata'
+      - >-
+        'xattrs' not in read_metadata_only_reg['paths'][read_regular_path]
+        or read_metadata_only_reg['paths'][read_regular_path]['xattrs'] == {}
