@@ -17,6 +17,8 @@ import base64
 from os.path import join
 from typing import Any, Optional
 
+from ansible.errors import AnsibleActionFail
+
 from ansible_collections.o0_o.posix.plugins.module_utils.jc_utils import (
     jc_parse,
 )
@@ -36,7 +38,7 @@ class ReadPosixActionBase(PosixActionBase):
     def _get_read_commands(
         self,
         paths: list[str],
-        include: list[str],
+        options: dict[str, Any],
         need_dir_contents: bool = False,
         platform: Optional[dict[str, Any]] = None,
     ) -> dict[str, Any]:
@@ -44,12 +46,12 @@ class ReadPosixActionBase(PosixActionBase):
         Generate batched commands to inspect multiple paths.
 
         Uses ls -dn as the base command for each path. Additional
-        commands are added based on the include list and platform
+        commands are added based on the options dict and platform
         capabilities.
 
         :param list[str] paths: Paths to inspect
-        :param list[str] include: Fields to include (metadata, content,
-            modified, created, changed, acl, xattrs, flags, selinux)
+        :param dict[str, Any] options: Options dict with keys: metadata,
+            extended, content, encoding, mime, md5, sha1, sha256, sha512
         :param bool need_dir_contents: If True, add commands to list
             directory contents (for children feature)
         :param Optional[dict[str, Any]] platform: Platform capabilities
@@ -58,14 +60,19 @@ class ReadPosixActionBase(PosixActionBase):
         :returns dict: Command dictionary keyed by path-prefixed tags
         """
         commands: dict[str, Any] = {}
-        include_set = set(include)
-        include_all = "all" in include_set
-        include_metadata = (
-            include_all
-            or "metadata" in include_set
-            or "extended" in include_set
+        include_metadata = options.get("metadata", False) or options.get(
+            "extended", False
         )
-        include_extended = include_all or "extended" in include_set
+        include_extended = options.get("extended", False)
+        include_content = options.get("content", False) or options.get(
+            "lines", False
+        )
+        forced_encoding = options.get("encoding")
+        include_mime = options.get("mime", False)
+        include_md5 = options.get("md5", False)
+        include_sha1 = options.get("sha1", False)
+        include_sha256 = options.get("sha256", False)
+        include_sha512 = options.get("sha512", False)
 
         # Extract platform capabilities (None = detection mode, run all)
         # TODO: In the future, check for cached platform facts from
@@ -136,14 +143,117 @@ class ReadPosixActionBase(PosixActionBase):
                     ]
 
             # File content reading if requested
-            if include_all or "content" in include_set:
-                commands[f"{path}_encoding"] = [
+            if include_content:
+                # Only auto-detect encoding if not forced
+                if not forced_encoding:
+                    # Try GNU, BSD, and basic file command variants
+                    # GNU: file -b --mime-encoding
+                    commands[f"{path}_encoding"] = [
+                        "file",
+                        "-b",
+                        "--mime-encoding",
+                        path,
+                    ]
+                    # FreeBSD/macOS: file -b -I
+                    commands[f"{path}_encoding_bsd"] = [
+                        "file",
+                        "-b",
+                        "-I",
+                        path,
+                    ]
+                    # OpenBSD/fallback: file -b (descriptive text)
+                    commands[f"{path}_encoding_desc"] = ["file", "-b", path]
+                # Always need cat to read the content
+                commands[f"{path}_cat"] = ["cat", path]
+
+            # MIME type detection if requested
+            if include_mime:
+                # Try both GNU and BSD file command variants
+                commands[f"{path}_mimetype"] = [
                     "file",
                     "-b",
-                    "--mime-encoding",
+                    "--mime-type",
                     path,
                 ]
-                commands[f"{path}_cat"] = ["cat", path]
+                commands[f"{path}_mimetype_bsd"] = ["file", "-b", "-I", path]
+
+            # Hash checksums if requested
+            # Try multiple hash command variants for platform detection
+            if include_md5:
+                if platform is None:
+                    # Detection mode: try both GNU and BSD variants
+                    commands[f"{path}_md5"] = ["md5sum", path]
+                    commands[f"{path}_md5_bsd"] = ["md5", "-q", path]
+                elif platform.get("has_md5sum"):
+                    commands[f"{path}_md5"] = ["md5sum", path]
+                elif platform.get("has_md5_bsd"):
+                    commands[f"{path}_md5_bsd"] = ["md5", "-q", path]
+
+            if include_sha1:
+                if platform is None:
+                    commands[f"{path}_sha1"] = ["sha1sum", path]
+                    commands[f"{path}_sha1_shasum"] = [
+                        "shasum",
+                        "-a",
+                        "1",
+                        path,
+                    ]
+                    commands[f"{path}_sha1_bsd"] = ["sha1", "-q", path]
+                elif platform.get("has_sha1sum"):
+                    commands[f"{path}_sha1"] = ["sha1sum", path]
+                elif platform.get("has_shasum"):
+                    commands[f"{path}_sha1_shasum"] = [
+                        "shasum",
+                        "-a",
+                        "1",
+                        path,
+                    ]
+                elif platform.get("has_sha1_bsd"):
+                    commands[f"{path}_sha1_bsd"] = ["sha1", "-q", path]
+
+            if include_sha256:
+                if platform is None:
+                    commands[f"{path}_sha256"] = ["sha256sum", path]
+                    commands[f"{path}_sha256_shasum"] = [
+                        "shasum",
+                        "-a",
+                        "256",
+                        path,
+                    ]
+                    commands[f"{path}_sha256_bsd"] = ["sha256", "-q", path]
+                elif platform.get("has_sha256sum"):
+                    commands[f"{path}_sha256"] = ["sha256sum", path]
+                elif platform.get("has_shasum"):
+                    commands[f"{path}_sha256_shasum"] = [
+                        "shasum",
+                        "-a",
+                        "256",
+                        path,
+                    ]
+                elif platform.get("has_sha256_bsd"):
+                    commands[f"{path}_sha256_bsd"] = ["sha256", "-q", path]
+
+            if include_sha512:
+                if platform is None:
+                    commands[f"{path}_sha512"] = ["sha512sum", path]
+                    commands[f"{path}_sha512_shasum"] = [
+                        "shasum",
+                        "-a",
+                        "512",
+                        path,
+                    ]
+                    commands[f"{path}_sha512_bsd"] = ["sha512", "-q", path]
+                elif platform.get("has_sha512sum"):
+                    commands[f"{path}_sha512"] = ["sha512sum", path]
+                elif platform.get("has_shasum"):
+                    commands[f"{path}_sha512_shasum"] = [
+                        "shasum",
+                        "-a",
+                        "512",
+                        path,
+                    ]
+                elif platform.get("has_sha512_bsd"):
+                    commands[f"{path}_sha512_bsd"] = ["sha512", "-q", path]
 
             # ACL info if metadata requested
             if include_metadata:
@@ -210,7 +320,7 @@ class ReadPosixActionBase(PosixActionBase):
                 # else: no SELinux support, skip
 
             # Directory listing if needed
-            if need_dir_contents or include_all or "children" in include_set:
+            if need_dir_contents:
                 commands[f"{path}_contents"] = ["ls", "-1A", path]
 
         return commands
@@ -242,6 +352,15 @@ class ReadPosixActionBase(PosixActionBase):
             "ls_supports_selinux": False,
             "ls_supports_acl_macos": False,
             "ls_supports_flags_bsd": False,
+            "has_md5sum": False,
+            "has_md5_bsd": False,
+            "has_sha1sum": False,
+            "has_sha256sum": False,
+            "has_sha512sum": False,
+            "has_shasum": False,
+            "has_sha1_bsd": False,
+            "has_sha256_bsd": False,
+            "has_sha512_bsd": False,
         }
 
         # Detect stat variant - prefer GNU if both work (more features)
@@ -304,13 +423,197 @@ class ReadPosixActionBase(PosixActionBase):
             if stdout and not stdout.strip().startswith("?"):
                 platform["ls_supports_selinux"] = True
 
+        # Check for hash tools
+        md5_result = results.get(f"{path}_md5", {})
+        if md5_result.get("rc") == 0 and md5_result.get("stdout", ""):
+            platform["has_md5sum"] = True
+
+        md5_bsd_result = results.get(f"{path}_md5_bsd", {})
+        if md5_bsd_result.get("rc") == 0 and md5_bsd_result.get("stdout", ""):
+            platform["has_md5_bsd"] = True
+
+        sha1_result = results.get(f"{path}_sha1", {})
+        if sha1_result.get("rc") == 0 and sha1_result.get("stdout", ""):
+            platform["has_sha1sum"] = True
+
+        sha256_result = results.get(f"{path}_sha256", {})
+        if sha256_result.get("rc") == 0 and sha256_result.get("stdout", ""):
+            platform["has_sha256sum"] = True
+
+        sha512_result = results.get(f"{path}_sha512", {})
+        if sha512_result.get("rc") == 0 and sha512_result.get("stdout", ""):
+            platform["has_sha512sum"] = True
+
+        # Check for shasum (macOS)
+        sha1_shasum_result = results.get(f"{path}_sha1_shasum", {})
+        sha256_shasum_result = results.get(f"{path}_sha256_shasum", {})
+        sha512_shasum_result = results.get(f"{path}_sha512_shasum", {})
+        if (
+            (
+                sha1_shasum_result.get("rc") == 0
+                and sha1_shasum_result.get("stdout", "")
+            )
+            or (
+                sha256_shasum_result.get("rc") == 0
+                and sha256_shasum_result.get("stdout", "")
+            )
+            or (
+                sha512_shasum_result.get("rc") == 0
+                and sha512_shasum_result.get("stdout", "")
+            )
+        ):
+            platform["has_shasum"] = True
+
+        # Check for BSD native SHA commands (OpenBSD, etc.)
+        sha1_bsd_result = results.get(f"{path}_sha1_bsd", {})
+        if sha1_bsd_result.get("rc") == 0 and sha1_bsd_result.get(
+            "stdout", ""
+        ):
+            platform["has_sha1_bsd"] = True
+
+        sha256_bsd_result = results.get(f"{path}_sha256_bsd", {})
+        if sha256_bsd_result.get("rc") == 0 and sha256_bsd_result.get(
+            "stdout", ""
+        ):
+            platform["has_sha256_bsd"] = True
+
+        sha512_bsd_result = results.get(f"{path}_sha512_bsd", {})
+        if sha512_bsd_result.get("rc") == 0 and sha512_bsd_result.get(
+            "stdout", ""
+        ):
+            platform["has_sha512_bsd"] = True
+
         return platform
+
+    def _parse_encoding_from_desc(self, desc: str) -> Optional[str]:
+        """
+        Parse encoding from file -b descriptive output.
+
+        On systems like OpenBSD where --mime-encoding is not available,
+        file -b returns descriptive text like "ASCII text",
+        "ISO-8859 text", "Non-ISO extended-ASCII text", etc.
+
+        :param str desc: Output from file -b command
+        :returns Optional[str]: Detected encoding or None if binary/unknown
+        """
+        desc_lower = desc.lower()
+
+        # Check if it's binary (no text-based encoding)
+        if "text" not in desc_lower:
+            return "binary"
+
+        # Map common file descriptions to encoding names
+        if "ascii" in desc_lower and "non-iso" not in desc_lower:
+            return "us-ascii"
+        elif "iso-8859" in desc_lower or "iso 8859" in desc_lower:
+            # ISO-8859 text usually means ISO-8859-1 (Latin-1)
+            return "iso-8859-1"
+        elif "utf-8" in desc_lower or "utf8" in desc_lower:
+            return "utf-8"
+        elif "utf-16" in desc_lower or "utf16" in desc_lower:
+            return "utf-16"
+        elif "non-iso" in desc_lower and "extended-ascii" in desc_lower:
+            # OpenBSD reports UTF-8 as "Non-ISO extended-ASCII text"
+            return "utf-8"
+        elif "text" in desc_lower:
+            # Default to UTF-8 for any text file we can't identify
+            return "utf-8"
+
+        # Unknown or binary
+        return None
+
+    def _add_content_with_encoding(
+        self,
+        metadata: dict[str, Any],
+        raw_content: str,
+        encoding: str,
+        path: str,
+        options: dict[str, Any],
+    ) -> None:
+        """
+        Add content to metadata with specified encoding.
+
+        Handles special encodings (hex, base64) and text encodings.
+        Fails if text decode fails with forced encoding.
+
+        :param dict metadata: Metadata dict to update
+        :param str raw_content: Raw content from cat command
+        :param str encoding: Encoding to use (forced or auto-detected)
+        :param str path: File path (for error messages)
+        :param dict options: Options dict with content/lines flags
+        """
+        # Convert raw_content back to bytes
+        # Ansible may have decoded it with surrogateescape
+        try:
+            content_bytes = raw_content.encode("utf-8", "surrogateescape")
+        except (UnicodeEncodeError, UnicodeDecodeError) as e:
+            raise AnsibleActionFail(
+                f"Failed to process content for {path}: {e}"
+            )
+
+        encoding_lower = encoding.lower()
+        want_content = options.get("content", False)
+        want_lines = options.get("lines", False)
+
+        # Fail if lines requested with non-text encoding
+        if want_lines and encoding_lower in {
+            "hex",
+            "base64",
+            "binary",
+            "unknown",
+        }:
+            raise AnsibleActionFail(
+                f"Cannot split binary content into lines for {path}. "
+                f"The 'lines' parameter requires text content, but "
+                f"encoding is '{encoding}'. Remove lines=true or use "
+                f"a text encoding."
+            )
+
+        # Handle special encodings (only valid with content, not lines)
+        if encoding_lower == "hex":
+            # Hexadecimal representation
+            metadata["content"] = content_bytes.hex()
+            metadata["encoding"] = "hex"
+        elif encoding_lower == "base64":
+            # Base64 representation (user forced or auto-detected binary)
+            metadata["content"] = base64.b64encode(content_bytes).decode(
+                "ascii"
+            )
+            metadata["encoding"] = "base64"
+        elif encoding_lower in {"binary", "unknown"}:
+            # Auto-detected binary: use base64
+            metadata["content"] = base64.b64encode(content_bytes).decode(
+                "ascii"
+            )
+            metadata["encoding"] = "base64"
+        else:
+            # Text encoding: try to decode with specified encoding
+            try:
+                decoded_content = content_bytes.decode(encoding)
+                clean_content = decoded_content.replace("\r", "")
+                metadata["encoding"] = encoding
+
+                # Add content key if requested
+                if want_content:
+                    metadata["content"] = clean_content
+
+                # Add lines key if requested
+                if want_lines:
+                    metadata["lines"] = clean_content.splitlines()
+
+            except (UnicodeDecodeError, LookupError) as e:
+                # LookupError: unknown encoding
+                # UnicodeDecodeError: decode failed
+                raise AnsibleActionFail(
+                    f"Failed to decode content for {path} with "
+                    f"encoding '{encoding}': {e}"
+                )
 
     def _process_read_results(
         self,
         results: dict[str, Any],
         paths: list[str],
-        include: Optional[list[str]] = None,
+        options: Optional[dict[str, Any]] = None,
     ) -> dict[str, Optional[dict[str, Any]]]:
         """
         Process raw command results into structured file data.
@@ -319,12 +622,12 @@ class ReadPosixActionBase(PosixActionBase):
 
         :param dict results: Raw command results from _run()
         :param list[str] paths: Original paths that were inspected
-        :param Optional[list[str]] include: List of fields to include
-            (metadata, content, etc.)
+        :param Optional[dict[str, bool]] options: Boolean options dict
+            (metadata, extended, content, md5, sha1, sha256, sha512)
         :returns dict: Dictionary mapping paths to parsed file data or
             None if path doesn't exist
         """
-        include = include or ["metadata"]
+        options = options or {"metadata": True}
         file_data: dict[str, Optional[dict[str, Any]]] = {}
 
         for path in paths:
@@ -353,8 +656,10 @@ class ReadPosixActionBase(PosixActionBase):
 
                 # Extract basic metadata
                 metadata = {}
+                include_metadata = options.get("metadata", False)
 
                 # Extract file type from first char of flags
+                # (always needed for content/extended logic)
                 flags = entry.get("flags", "")
                 if flags:
                     type_char = flags[0]
@@ -367,42 +672,49 @@ class ReadPosixActionBase(PosixActionBase):
                         "c": "character",
                         "b": "block",
                     }
-                    metadata["type"] = type_map.get(type_char, "unknown")
+                    file_type = type_map.get(type_char, "unknown")
+                    # Only add type if metadata requested
+                    if include_metadata:
+                        metadata["type"] = file_type
+                else:
+                    file_type = "unknown"
 
-                # Extract octal mode from flags
-                if flags:
-                    metadata["mode"] = self._flags_to_octal_mode(flags)
+                # Add optional metadata fields only if requested
+                if include_metadata:
+                    # Extract octal mode from flags
+                    if flags:
+                        metadata["mode"] = self._flags_to_octal_mode(flags)
 
-                # Add other fields from ls output
-                # Only include size for regular files
-                if "size" in entry and metadata.get("type") == "regular":
-                    size_bytes = entry["size"]
-                    # Format size with bytes and pretty keys using parse_si
-                    size_str = f"{size_bytes}B"
-                    metadata["size"] = parse_si(
-                        size_str, binary=True, optimize=True
-                    )
-                if "owner" in entry:
-                    metadata["owner"] = entry["owner"]
-                if "group" in entry:
-                    metadata["group"] = entry["group"]
+                    # Add other fields from ls output
+                    # Only include size for regular files
+                    if "size" in entry and file_type == "regular":
+                        size_bytes = entry["size"]
+                        # Format size with bytes and pretty keys
+                        size_str = f"{size_bytes}B"
+                        metadata["size"] = parse_si(
+                            size_str, binary=True, optimize=True
+                        )
+                    if "owner" in entry:
+                        metadata["owner"] = entry["owner"]
+                    if "group" in entry:
+                        metadata["group"] = entry["group"]
 
-                # Calculate permission flags
-                if flags and len(flags) >= 10:
-                    perms = self._stat_permission_booleans(flags)
-                    metadata["readable"] = perms.get("readable", False)
-                    metadata["writable"] = perms.get("writeable", False)
-                    metadata["executable"] = perms.get("executable", False)
+                    # Calculate permission flags
+                    if flags and len(flags) >= 10:
+                        perms = self._stat_permission_booleans(flags)
+                        metadata["readable"] = perms.get("readable", False)
+                        metadata["writable"] = perms.get("writeable", False)
+                        metadata["executable"] = perms.get("executable", False)
 
                 # Add content/hardlinks field based on file type
-                if metadata.get("type") == "link":
+                if file_type == "link" and include_metadata:
                     # For symlinks, target is the link target
                     # jc returns link_to field for symlink targets
                     if "link_to" in entry:
                         metadata["target"] = entry["link_to"]
                     else:
                         metadata["target"] = ""
-                elif metadata.get("type") == "regular":
+                elif file_type == "regular" and include_metadata:
                     # For regular files, hardlinks is the count of OTHER links
                     # (raw count - 1), omit if zero
                     if "links" in entry:
@@ -434,32 +746,137 @@ class ReadPosixActionBase(PosixActionBase):
                                         pass
 
                 # Add content and encoding if requested and available
-                if metadata.get("type") == "regular":
-                    encoding_key = f"{path}_encoding"
+                if file_type == "regular":
                     cat_key = f"{path}_cat"
+                    forced_encoding = options.get("encoding")
 
-                    # Check if encoding detection was requested
-                    if encoding_key in results:
-                        encoding_result = results[encoding_key]
-                        if encoding_result.get("rc") == 0:
-                            encoding = encoding_result.get(
+                    # Check if content reading was requested
+                    if cat_key in results:
+                        cat_result = results[cat_key]
+                        if cat_result.get("rc") != 0:
+                            # cat command failed
+                            if forced_encoding or options.get("content"):
+                                raise AnsibleActionFail(
+                                    f"Failed to read content for {path}: "
+                                    f"cat command failed"
+                                )
+                            # Skip if content not explicitly requested
+                            continue
+
+                        raw_content = cat_result.get("stdout", "")
+
+                        # Determine encoding (forced or auto-detected)
+                        if forced_encoding:
+                            # User specified encoding - use it
+                            encoding = forced_encoding
+                        else:
+                            # Auto-detect encoding
+                            encoding_key = f"{path}_encoding"
+                            encoding_bsd_key = f"{path}_encoding_bsd"
+                            encoding_desc_key = f"{path}_encoding_desc"
+
+                            # Check if auto-detection was requested
+                            if not (
+                                encoding_key in results
+                                or encoding_bsd_key in results
+                                or encoding_desc_key in results
+                            ):
+                                # No content requested for this path
+                                continue
+
+                            encoding_result = results.get(encoding_key, {})
+                            encoding = None
+
+                            # Try GNU file first (--mime-encoding)
+                            if encoding_result.get("rc") == 0:
+                                encoding = encoding_result.get(
+                                    "stdout", ""
+                                ).strip()
+                            else:
+                                # Fall back to BSD file -I
+                                encoding_result = results.get(
+                                    encoding_bsd_key, {}
+                                )
+                                if encoding_result.get("rc") == 0:
+                                    # Parse BSD: "text/plain; charset=us-ascii"
+                                    bsd_output = encoding_result.get(
+                                        "stdout", ""
+                                    ).strip()
+                                    if "charset=" in bsd_output:
+                                        # Extract charset value
+                                        charset_part = bsd_output.split(
+                                            "charset=", 1
+                                        )[1]
+                                        encoding = charset_part.split(";")[
+                                            0
+                                        ].strip()
+                                else:
+                                    # Fall back to OpenBSD file -b
+                                    desc_result = results.get(
+                                        encoding_desc_key, {}
+                                    )
+                                    if desc_result.get("rc") == 0:
+                                        desc_output = desc_result.get(
+                                            "stdout", ""
+                                        ).strip()
+                                        encoding = (
+                                            self._parse_encoding_from_desc(
+                                                desc_output
+                                            )
+                                        )
+
+                            if not encoding:
+                                raise AnsibleActionFail(
+                                    f"Content requested for {path} but "
+                                    f"encoding detection failed. Ensure the "
+                                    f"file command is installed."
+                                )
+
+                        # Process content with determined encoding
+                        self._add_content_with_encoding(
+                            metadata, raw_content, encoding, path, options
+                        )
+
+                    # Add MIME type if requested
+                    mimetype_key = f"{path}_mimetype"
+                    mimetype_bsd_key = f"{path}_mimetype_bsd"
+                    if mimetype_key in results or mimetype_bsd_key in results:
+                        mimetype_result = results.get(mimetype_key, {})
+                        mimetype = None
+
+                        # Try GNU file first
+                        if mimetype_result.get("rc") == 0:
+                            mimetype = mimetype_result.get(
                                 "stdout", ""
                             ).strip()
-                            # Only include content if encoding is not binary
-                            if encoding and encoding.lower() not in {
-                                "binary",
-                                "unknown",
-                            }:
-                                metadata["encoding"] = encoding
+                        else:
+                            # Fall back to BSD file -I
+                            mimetype_result = results.get(mimetype_bsd_key, {})
+                            if mimetype_result.get("rc") == 0:
+                                # Parse BSD: "text/plain; charset=us-ascii"
+                                bsd_output = mimetype_result.get(
+                                    "stdout", ""
+                                ).strip()
+                                # Extract MIME type (before semicolon)
+                                if ";" in bsd_output:
+                                    mimetype = bsd_output.split(";")[0].strip()
+                                else:
+                                    mimetype = bsd_output
 
-                                # Add content if cat succeeded
-                                if cat_key in results:
-                                    cat_result = results[cat_key]
-                                    if cat_result.get("rc") == 0:
-                                        content = cat_result.get("stdout", "")
-                                        metadata["content"] = content.replace(
-                                            "\r", ""
-                                        )
+                        if not mimetype or "/" not in mimetype:
+                            # MIME type was requested but failed
+                            raise AnsibleActionFail(
+                                f"MIME type detection requested for {path} "
+                                f"but file command failed. Ensure the file "
+                                f"command is installed and accessible."
+                            )
+
+                        # Split into type and subtype
+                        mime_parts = mimetype.split("/", 1)
+                        metadata["mime"] = {
+                            "type": mime_parts[0],
+                            "subtype": mime_parts[1],
+                        }
 
                 # Add timestamps if requested
                 stat_key = f"{path}_stat"
@@ -650,6 +1067,118 @@ class ReadPosixActionBase(PosixActionBase):
                         else:
                             # Could not list directory (e.g., no permission)
                             metadata["children"] = []
+
+                # Add hash checksums if requested
+                # Only process for regular files
+                if metadata.get("type") == "regular":
+                    # MD5 - try GNU md5sum first, then BSD md5
+                    if (
+                        f"{path}_md5" in results
+                        or f"{path}_md5_bsd" in results
+                    ):
+                        md5_result = results.get(f"{path}_md5", {})
+                        if md5_result.get("rc") != 0:
+                            md5_result = results.get(f"{path}_md5_bsd", {})
+                        if md5_result.get("rc") == 0:
+                            md5_output = md5_result.get("stdout", "").strip()
+                            # Parse hash: GNU format is "hash filename",
+                            # BSD format is just "hash"
+                            md5_hash = md5_output.split()[0]
+                            if md5_hash:
+                                metadata["md5"] = md5_hash
+                        else:
+                            # MD5 was requested but failed
+                            raise AnsibleActionFail(
+                                f"MD5 checksum requested for {path} but "
+                                f"all hash commands failed. Ensure md5sum "
+                                f"or md5 is installed."
+                            )
+
+                    # SHA-1 - try GNU, shasum, then BSD native
+                    if (
+                        f"{path}_sha1" in results
+                        or f"{path}_sha1_shasum" in results
+                        or f"{path}_sha1_bsd" in results
+                    ):
+                        sha1_result = results.get(f"{path}_sha1", {})
+                        if sha1_result.get("rc") != 0:
+                            sha1_result = results.get(
+                                f"{path}_sha1_shasum", {}
+                            )
+                        if sha1_result.get("rc") != 0:
+                            sha1_result = results.get(f"{path}_sha1_bsd", {})
+                        if sha1_result.get("rc") == 0:
+                            sha1_output = sha1_result.get("stdout", "").strip()
+                            sha1_hash = sha1_output.split()[0]
+                            if sha1_hash:
+                                metadata["sha1"] = sha1_hash
+                        else:
+                            # SHA-1 was requested but failed
+                            raise AnsibleActionFail(
+                                f"SHA-1 checksum requested for {path} but "
+                                f"all hash commands failed. Ensure sha1sum, "
+                                f"shasum, or sha1 is installed."
+                            )
+
+                    # SHA-256 - try GNU, shasum, then BSD native
+                    if (
+                        f"{path}_sha256" in results
+                        or f"{path}_sha256_shasum" in results
+                        or f"{path}_sha256_bsd" in results
+                    ):
+                        sha256_result = results.get(f"{path}_sha256", {})
+                        if sha256_result.get("rc") != 0:
+                            sha256_result = results.get(
+                                f"{path}_sha256_shasum", {}
+                            )
+                        if sha256_result.get("rc") != 0:
+                            sha256_result = results.get(
+                                f"{path}_sha256_bsd", {}
+                            )
+                        if sha256_result.get("rc") == 0:
+                            sha256_output = sha256_result.get(
+                                "stdout", ""
+                            ).strip()
+                            sha256_hash = sha256_output.split()[0]
+                            if sha256_hash:
+                                metadata["sha256"] = sha256_hash
+                        else:
+                            # SHA-256 was requested but failed
+                            raise AnsibleActionFail(
+                                f"SHA-256 checksum requested for {path} "
+                                f"but all hash commands failed. Ensure "
+                                f"sha256sum, shasum, or sha256 is installed."
+                            )
+
+                    # SHA-512 - try GNU, shasum, then BSD native
+                    if (
+                        f"{path}_sha512" in results
+                        or f"{path}_sha512_shasum" in results
+                        or f"{path}_sha512_bsd" in results
+                    ):
+                        sha512_result = results.get(f"{path}_sha512", {})
+                        if sha512_result.get("rc") != 0:
+                            sha512_result = results.get(
+                                f"{path}_sha512_shasum", {}
+                            )
+                        if sha512_result.get("rc") != 0:
+                            sha512_result = results.get(
+                                f"{path}_sha512_bsd", {}
+                            )
+                        if sha512_result.get("rc") == 0:
+                            sha512_output = sha512_result.get(
+                                "stdout", ""
+                            ).strip()
+                            sha512_hash = sha512_output.split()[0]
+                            if sha512_hash:
+                                metadata["sha512"] = sha512_hash
+                        else:
+                            # SHA-512 was requested but failed
+                            raise AnsibleActionFail(
+                                f"SHA-512 checksum requested for {path} "
+                                f"but all hash commands failed. Ensure "
+                                f"sha512sum, shasum, or sha512 is installed."
+                            )
 
                 file_data[path] = metadata
 

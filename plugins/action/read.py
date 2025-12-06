@@ -79,28 +79,74 @@ class ActionModule(ReadPosixActionBase, ActionBase):
                 "aliases": ["path"],
                 "description": "Path or list of paths to inspect",
             },
-            "include": {
-                "type": "list",
-                "elements": "str",
-                "default": ["metadata"],
+            "metadata": {
+                "type": "bool",
+                "default": True,
                 "description": (
-                    "Fields to include in the result. "
-                    "'all' includes everything (metadata + extended + content + children). "
-                    "'metadata' includes basic metadata and extended filesystem attributes: "
-                    "type, mode, owner, group, size, writable, hardlinks, inode, "
-                    "timestamps (modified, created, changed), ACL, filesystem flags, "
-                    "and SELinux context (but NOT xattrs). "
-                    "'extended' includes all metadata plus extended attributes (xattrs). "
-                    "'content' includes file content with encoding detection. "
-                    "'children' includes directory child paths."
+                    "Include basic metadata and extended filesystem "
+                    "attributes: type, mode, owner, group, size, writable, "
+                    "hardlinks, inode, timestamps (modified, created, "
+                    "changed), ACL, filesystem flags, and SELinux context "
+                    "(but NOT xattrs)"
                 ),
-                "choices": [
-                    "all",
-                    "metadata",
-                    "extended",
-                    "content",
-                    "children",
-                ],
+            },
+            "extended": {
+                "type": "bool",
+                "default": False,
+                "description": (
+                    "Include extended attributes (xattrs). "
+                    "Implies metadata=true"
+                ),
+            },
+            "content": {
+                "type": "bool",
+                "default": False,
+                "description": "Include file content with encoding detection",
+            },
+            "lines": {
+                "type": "bool",
+                "default": False,
+                "description": (
+                    "Include file content split into lines array. "
+                    "Fails if used with binary files or hex/base64 encoding. "
+                    "Implies content reading is enabled"
+                ),
+            },
+            "encoding": {
+                "type": "str",
+                "default": None,
+                "description": (
+                    "Force specific encoding instead of auto-detection. "
+                    "Supports standard encodings (utf-8, iso-8859-1, "
+                    "shift-jis, etc.), 'base64' for binary data, and 'hex' "
+                    "for hexadecimal representation. Fails if decode fails. "
+                    "Only used when content=true or lines=true"
+                ),
+            },
+            "mime": {
+                "type": "bool",
+                "default": False,
+                "description": "Detect MIME type using file command",
+            },
+            "md5": {
+                "type": "bool",
+                "default": False,
+                "description": "Calculate MD5 checksum of file content",
+            },
+            "sha1": {
+                "type": "bool",
+                "default": False,
+                "description": "Calculate SHA-1 checksum of file content",
+            },
+            "sha256": {
+                "type": "bool",
+                "default": False,
+                "description": "Calculate SHA-256 checksum of file content",
+            },
+            "sha512": {
+                "type": "bool",
+                "default": False,
+                "description": "Calculate SHA-512 checksum of file content",
             },
             "parents": {
                 "type": "raw",
@@ -137,13 +183,38 @@ class ActionModule(ReadPosixActionBase, ActionBase):
             },
         }
 
+        # Check if user explicitly provided metadata before validation
+        metadata_explicitly_set = "metadata" in self._task.args
+
         validation_result, new_module_args = self.validate_argument_spec(
             argument_spec=argument_spec
         )
 
         # Set instance variables from validated args
         self.paths = new_module_args["paths"]
-        self.include = new_module_args["include"]
+        self.metadata = new_module_args["metadata"]
+        self.extended = new_module_args["extended"]
+        self.content = new_module_args["content"]
+        self.lines = new_module_args["lines"]
+        self.encoding = new_module_args["encoding"]
+        self.mime = new_module_args["mime"]
+        self.md5 = new_module_args["md5"]
+        self.sha1 = new_module_args["sha1"]
+        self.sha256 = new_module_args["sha256"]
+        self.sha512 = new_module_args["sha512"]
+
+        # Extended implies metadata
+        if self.extended:
+            self.metadata = True
+
+        # Encoding implies content reading (but not lines)
+        if self.encoding:
+            self.content = True
+
+        # If content/lines requested, default metadata to false
+        # (unless user explicitly set it)
+        if (self.content or self.lines) and not metadata_explicitly_set:
+            self.metadata = False
 
         try:
             # Process follow parameter (boolean or 'recursive')
@@ -168,7 +239,8 @@ class ActionModule(ReadPosixActionBase, ActionBase):
             raise AnsibleActionFail(str(e)) from e
 
         # Track original paths before adding parents
-        # (children should only be processed for original paths, not auto-added parents)
+        # (children should only be processed for original paths,
+        # not auto-added parents)
         original_paths = set(self.paths)
 
         # Add parent paths if requested
@@ -226,10 +298,26 @@ class ActionModule(ReadPosixActionBase, ActionBase):
         total_commands = 0
         total_batches = 0
 
-        # Platform detection: check for cached facts first (always None for now)
-        # TODO: In the future, check task_vars for cached platform facts from
-        # o0_os['platform'] before falling back to runtime detection.
+        # Platform detection: check for cached facts first
+        # (always None for now)
+        # TODO: In the future, check task_vars for cached platform
+        # facts from o0_os['platform'] before falling back to runtime
+        # detection.
         platform: Optional[dict[str, Any]] = None
+
+        # Build options dict from parameters
+        options = {
+            "metadata": self.metadata,
+            "extended": self.extended,
+            "content": self.content,
+            "lines": self.lines,
+            "encoding": self.encoding,
+            "mime": self.mime,
+            "md5": self.md5,
+            "sha1": self.sha1,
+            "sha256": self.sha256,
+            "sha512": self.sha512,
+        }
 
         # Two-phase approach: detect platform from first path, then use
         # detected capabilities for remaining paths to avoid redundant commands
@@ -240,7 +328,7 @@ class ActionModule(ReadPosixActionBase, ActionBase):
             first_path = self.paths[0]
             detection_commands = self._get_read_commands(
                 [first_path],
-                self.include,
+                options,
                 need_dir_contents=bool(self.children),
                 platform=None,  # Detection mode: run all variants
             )
@@ -276,7 +364,7 @@ class ActionModule(ReadPosixActionBase, ActionBase):
             first_file_data = self._process_read_results(
                 results=detection_result["commands"],
                 paths=[first_path],
-                include=self.include,
+                options=options,
             )
             file_data.update(first_file_data)
 
@@ -285,7 +373,7 @@ class ActionModule(ReadPosixActionBase, ActionBase):
             if remaining_paths:
                 commands = self._get_read_commands(
                     remaining_paths,
-                    self.include,
+                    options,
                     need_dir_contents=bool(self.children),
                     platform=platform,
                 )
@@ -309,7 +397,7 @@ class ActionModule(ReadPosixActionBase, ActionBase):
                 remaining_file_data = self._process_read_results(
                     results=commands_result["commands"],
                     paths=remaining_paths,
-                    include=self.include,
+                    options=options,
                 )
                 file_data.update(remaining_file_data)
 
@@ -401,7 +489,7 @@ class ActionModule(ReadPosixActionBase, ActionBase):
                         # Read metadata for this batch of children
                         child_commands = self._get_read_commands(
                             batch_paths,
-                            self.include,
+                            options,
                             need_dir_contents=True,
                             platform=platform,
                         )
@@ -424,7 +512,7 @@ class ActionModule(ReadPosixActionBase, ActionBase):
                         child_data = self._process_read_results(
                             results=child_result["commands"],
                             paths=batch_paths,
-                            include=self.include,
+                            options=options,
                         )
                         file_data.update(child_data)
 
@@ -473,7 +561,7 @@ class ActionModule(ReadPosixActionBase, ActionBase):
 
                 # Read metadata for link targets
                 target_commands = self._get_read_commands(
-                    new_targets, self.include, platform=platform
+                    new_targets, options, platform=platform
                 )
                 target_result = self._run(
                     commands=target_commands,
@@ -488,7 +576,7 @@ class ActionModule(ReadPosixActionBase, ActionBase):
                 target_data = self._process_read_results(
                     results=target_result["commands"],
                     paths=new_targets,
-                    include=self.include,
+                    options=options,
                 )
                 file_data.update(target_data)
 
@@ -533,7 +621,7 @@ class ActionModule(ReadPosixActionBase, ActionBase):
                 if resolved_targets:
                     unique_targets = list(set(resolved_targets.values()))
                     target_commands = self._get_read_commands(
-                        unique_targets, self.include, platform=platform
+                        unique_targets, options, platform=platform
                     )
                     target_result = self._run(
                         commands=target_commands,
@@ -548,23 +636,20 @@ class ActionModule(ReadPosixActionBase, ActionBase):
                     target_data = self._process_read_results(
                         results=target_result["commands"],
                         paths=unique_targets,
-                        include=self.include,
+                        options=options,
                     )
 
                     # Replace symlink data with target data
                     for link_path, target in resolved_targets.items():
                         if target in target_data and target_data[target]:
                             file_data[link_path] = target_data[target]
-                            # Add realpath key when it differs from original path
+                            # Add realpath key when it differs from
+                            # original path
                             if target != link_path:
                                 file_data[link_path]["realpath"] = target
 
-        # Remove children field from output if not explicitly requested
-        # (it was needed internally for children parameter processing)
-        if "all" not in self.include and "children" not in self.include:
-            for path_data in file_data.values():
-                if path_data and "children" in path_data:
-                    del path_data["children"]
+        # Note: children field is always kept in output since it's controlled
+        # by the children parameter (not the old include list)
 
         # Format output
         result["changed"] = False
