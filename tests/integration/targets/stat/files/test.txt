@@ -1,3 +1,0 @@
-This is a test file for stat integration tests.
-It has multiple lines.
-Line 3 here.

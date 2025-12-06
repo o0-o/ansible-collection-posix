@@ -13,18 +13,10 @@
 
 from __future__ import annotations
 
-import re
-from numbers import Number
+import base64
 from os.path import join
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Optional
 
-from ansible.module_utils.common.text.converters import to_text
-
-from ansible_collections.o0_o.posix.plugins.module_utils.dev_utils import (
-    device_from_hex_major_minor,
-    device_from_major_minor,
-    device_value,
-)
 from ansible_collections.o0_o.posix.plugins.module_utils.jc_utils import (
     jc_parse,
 )
@@ -34,6 +26,7 @@ from ansible_collections.o0_o.posix.plugins.module_utils.posix_action_base impor
 from ansible_collections.o0_o.utils.plugins.module_utils import (
     format_epoch_timestamp,
     parse_si,
+    unflatten,
 )
 
 
@@ -45,55 +38,104 @@ class ReadPosixActionBase(PosixActionBase):
         paths: list[str],
         include: list[str],
         need_dir_contents: bool = False,
+        platform: Optional[dict[str, Any]] = None,
     ) -> dict[str, Any]:
         """
         Generate batched commands to inspect multiple paths.
 
-        Uses ls -din as the base command for each path. Additional
-        commands are added based on the include list.
+        Uses ls -dn as the base command for each path. Additional
+        commands are added based on the include list and platform
+        capabilities.
 
         :param list[str] paths: Paths to inspect
         :param list[str] include: Fields to include (metadata, content,
             modified, created, changed, acl, xattrs, flags, selinux)
         :param bool need_dir_contents: If True, add commands to list
             directory contents (for children feature)
+        :param Optional[dict[str, Any]] platform: Platform capabilities
+            dict from _detect_platform_from_results(). If None, generates
+            all command variants for detection on first file.
         :returns dict: Command dictionary keyed by path-prefixed tags
         """
         commands: dict[str, Any] = {}
         include_set = set(include)
         include_all = "all" in include_set
         include_metadata = (
-            include_all or "metadata" in include_set or "extended" in include_set
+            include_all
+            or "metadata" in include_set
+            or "extended" in include_set
         )
         include_extended = include_all or "extended" in include_set
+
+        # Extract platform capabilities (None = detection mode, run all)
+        # TODO: In the future, check for cached platform facts from
+        # o0_os['platform'] before falling back to detection mode.
+        stat_variant = platform.get("stat_variant") if platform else None
+        has_lsattr = platform.get("has_lsattr", False) if platform else None
+        has_getfacl = platform.get("has_getfacl", False) if platform else None
+        has_nfs4_getfacl = (
+            platform.get("has_nfs4_getfacl", False) if platform else None
+        )
+        has_getfattr = (
+            platform.get("has_getfattr", False) if platform else None
+        )
+        has_xattr = platform.get("has_xattr", False) if platform else None
+        ls_supports_selinux = (
+            platform.get("ls_supports_selinux", False) if platform else None
+        )
+        ls_supports_acl_macos = (
+            platform.get("ls_supports_acl_macos", False) if platform else None
+        )
+        ls_supports_flags_bsd = (
+            platform.get("ls_supports_flags_bsd", False) if platform else None
+        )
 
         for path in paths:
             # Basic file info using ls -dn (numeric UIDs/GIDs)
             commands[f"{path}_ls"] = ["ls", "-dn", path]
 
-            # Always get inode for hardlink identification
-            commands[f"{path}_inode"] = ["stat", "-c", "%i", path]
-            commands[f"{path}_inode_bsd"] = ["stat", "-f", "%i", path]
+            # Inode for hardlink identification - use detected variant
+            if stat_variant is None:
+                # Detection mode: run both
+                commands[f"{path}_inode"] = ["stat", "-c", "%i", path]
+                commands[f"{path}_inode_bsd"] = ["stat", "-f", "%i", path]
+            elif stat_variant == "gnu":
+                commands[f"{path}_inode"] = ["stat", "-c", "%i", path]
+            else:  # bsd
+                commands[f"{path}_inode_bsd"] = ["stat", "-f", "%i", path]
 
-            # Add stat for timestamps if metadata requested
+            # Timestamps if metadata requested
             if include_metadata:
-                # GNU stat format: mtime, ctime, birth time (if available)
-                commands[f"{path}_stat"] = [
-                    "stat",
-                    "-c",
-                    "%Y %Z %W",
-                    path,
-                ]
-                # BSD stat fallback (macOS)
-                commands[f"{path}_stat_bsd"] = [
-                    "stat",
-                    "-f",
-                    "%m %c %B",
-                    path,
-                ]
+                if stat_variant is None:
+                    # Detection mode: run both
+                    commands[f"{path}_stat"] = [
+                        "stat",
+                        "-c",
+                        "%Y %Z %W",
+                        path,
+                    ]
+                    commands[f"{path}_stat_bsd"] = [
+                        "stat",
+                        "-f",
+                        "%m %c %B",
+                        path,
+                    ]
+                elif stat_variant == "gnu":
+                    commands[f"{path}_stat"] = [
+                        "stat",
+                        "-c",
+                        "%Y %Z %W",
+                        path,
+                    ]
+                else:  # bsd
+                    commands[f"{path}_stat_bsd"] = [
+                        "stat",
+                        "-f",
+                        "%m %c %B",
+                        path,
+                    ]
 
-            # Add file content reading if requested
-            # (encoding detection and cat for regular files)
+            # File content reading if requested
             if include_all or "content" in include_set:
                 commands[f"{path}_encoding"] = [
                     "file",
@@ -103,42 +145,166 @@ class ReadPosixActionBase(PosixActionBase):
                 ]
                 commands[f"{path}_cat"] = ["cat", path]
 
-            # Add ACL info if metadata requested
+            # ACL info if metadata requested
             if include_metadata:
-                commands[f"{path}_acl"] = ["getfacl", "-p", path]
-                # macOS fallback
-                commands[f"{path}_acl_macos"] = ["ls", "-le", path]
+                if has_getfacl is None:
+                    # Detection mode: run all ACL variants
+                    commands[f"{path}_acl"] = ["getfacl", "-p", path]
+                    commands[f"{path}_acl_nfs4"] = ["nfs4_getfacl", path]
+                    commands[f"{path}_acl_macos"] = ["ls", "-le", path]
+                elif has_getfacl:
+                    commands[f"{path}_acl"] = ["getfacl", "-p", path]
+                elif has_nfs4_getfacl:
+                    commands[f"{path}_acl_nfs4"] = ["nfs4_getfacl", path]
+                elif ls_supports_acl_macos:
+                    commands[f"{path}_acl_macos"] = ["ls", "-le", path]
+                # else: no ACL command available, skip
 
-            # Add extended attributes if extended requested
-            # (not included in basic metadata)
+            # Extended attributes if extended requested
             if include_extended:
-                commands[f"{path}_xattr"] = [
-                    "getfattr",
-                    "--absolute-names",
-                    "-d",
-                    path,
-                ]
-                # macOS fallback
-                commands[f"{path}_xattr_macos"] = ["xattr", "-l", path]
+                if has_getfattr is None:
+                    # Detection mode: run both
+                    commands[f"{path}_xattr"] = [
+                        "getfattr",
+                        "--absolute-names",
+                        "-d",
+                        path,
+                    ]
+                    # Use -lx for hex output (avoids binary corruption)
+                    commands[f"{path}_xattr_macos"] = ["xattr", "-lx", path]
+                elif has_getfattr:
+                    commands[f"{path}_xattr"] = [
+                        "getfattr",
+                        "--absolute-names",
+                        "-d",
+                        path,
+                    ]
+                elif has_xattr:
+                    # Use -lx for hex output (avoids binary corruption)
+                    commands[f"{path}_xattr_macos"] = ["xattr", "-lx", path]
+                # else: no xattr command available, skip
 
-            # Add filesystem flags if metadata requested
+            # Filesystem flags if metadata requested
             if include_metadata:
-                commands[f"{path}_flags"] = ["lsattr", "-d", path]
-                # macOS fallback
-                commands[f"{path}_flags_macos"] = ["ls", "-ldO", path]
+                if has_lsattr is None:
+                    # Detection mode: run both
+                    commands[f"{path}_flags"] = ["lsattr", "-d", path]
+                    commands[f"{path}_flags_macos"] = ["ls", "-ldO", path]
+                elif has_lsattr:
+                    commands[f"{path}_flags"] = ["lsattr", "-d", path]
+                elif ls_supports_flags_bsd:
+                    commands[f"{path}_flags_macos"] = ["ls", "-ldO", path]
+                # else: no flags command available, skip
 
-            # Add SELinux context if metadata requested
+            # SELinux context if metadata requested
             if include_metadata:
-                commands[f"{path}_selinux"] = ["stat", "-c", "%C", path]
-                # Alternative using ls -Z
-                commands[f"{path}_selinux_ls"] = ["ls", "-Zd", path]
+                if ls_supports_selinux is None:
+                    # Detection mode: run both
+                    commands[f"{path}_selinux"] = ["stat", "-c", "%C", path]
+                    commands[f"{path}_selinux_ls"] = ["ls", "-Zd", path]
+                elif stat_variant == "gnu":
+                    # GNU stat supports %C for SELinux
+                    commands[f"{path}_selinux"] = ["stat", "-c", "%C", path]
+                elif ls_supports_selinux:
+                    commands[f"{path}_selinux_ls"] = ["ls", "-Zd", path]
+                # else: no SELinux support, skip
 
-            # Add directory listing if needed (for children feature)
-            # Either explicitly requested via include or enabled via children parameter
+            # Directory listing if needed
             if need_dir_contents or include_all or "children" in include_set:
                 commands[f"{path}_contents"] = ["ls", "-1A", path]
 
         return commands
+
+    def _detect_platform_from_results(
+        self,
+        results: dict[str, Any],
+        path: str,
+    ) -> dict[str, Any]:
+        """
+        Detect platform capabilities from first file's command results.
+
+        Analyzes which commands succeeded to determine which variants
+        to use for subsequent files. This tests actual command behavior
+        rather than OS type, since GNU utilities can be installed on
+        BSD systems and vice versa.
+
+        :param dict results: Command results from first file
+        :param str path: The path that was used for detection
+        :returns dict[str, Any]: Platform capabilities dictionary
+        """
+        platform: dict[str, Any] = {
+            "stat_variant": None,
+            "has_lsattr": False,
+            "has_getfacl": False,
+            "has_nfs4_getfacl": False,
+            "has_getfattr": False,
+            "has_xattr": False,
+            "ls_supports_selinux": False,
+            "ls_supports_acl_macos": False,
+            "ls_supports_flags_bsd": False,
+        }
+
+        # Detect stat variant - prefer GNU if both work (more features)
+        # Note: Some BSD systems return rc=0 even for invalid options,
+        # so we must also verify stdout contains expected numeric output.
+        inode_gnu = results.get(f"{path}_inode", {})
+        inode_bsd = results.get(f"{path}_inode_bsd", {})
+
+        gnu_stdout = inode_gnu.get("stdout", "").strip()
+        bsd_stdout = inode_bsd.get("stdout", "").strip()
+
+        if inode_gnu.get("rc") == 0 and gnu_stdout.isdigit():
+            platform["stat_variant"] = "gnu"
+        elif inode_bsd.get("rc") == 0 and bsd_stdout.isdigit():
+            platform["stat_variant"] = "bsd"
+
+        # Check for lsattr (Linux ext2/3/4 attributes)
+        flags_result = results.get(f"{path}_flags", {})
+        if flags_result.get("rc") == 0 and flags_result.get("stdout", ""):
+            platform["has_lsattr"] = True
+
+        # Check for ls -ldO (BSD/macOS flags)
+        flags_bsd_result = results.get(f"{path}_flags_macos", {})
+        if flags_bsd_result.get("rc") == 0:
+            platform["ls_supports_flags_bsd"] = True
+
+        # Check for getfacl (Linux POSIX ACLs)
+        acl_result = results.get(f"{path}_acl", {})
+        if acl_result.get("rc") == 0 and acl_result.get("stdout", ""):
+            platform["has_getfacl"] = True
+
+        # Check for nfs4_getfacl (NFS v4 ACLs)
+        acl_nfs4_result = results.get(f"{path}_acl_nfs4", {})
+        if acl_nfs4_result.get("rc") == 0 and acl_nfs4_result.get(
+            "stdout", ""
+        ):
+            platform["has_nfs4_getfacl"] = True
+
+        # Check for ls -le (macOS ACLs)
+        acl_macos_result = results.get(f"{path}_acl_macos", {})
+        if acl_macos_result.get("rc") == 0:
+            platform["ls_supports_acl_macos"] = True
+
+        # Check for getfattr (Linux extended attributes)
+        xattr_result = results.get(f"{path}_xattr", {})
+        if xattr_result.get("rc") == 0:
+            platform["has_getfattr"] = True
+
+        # Check for xattr (macOS extended attributes)
+        xattr_macos_result = results.get(f"{path}_xattr_macos", {})
+        if xattr_macos_result.get("rc") == 0:
+            platform["has_xattr"] = True
+
+        # Check for SELinux support via ls -Z
+        # On non-SELinux systems, ls -Z might succeed but show '?'
+        selinux_ls_result = results.get(f"{path}_selinux_ls", {})
+        if selinux_ls_result.get("rc") == 0:
+            stdout = selinux_ls_result.get("stdout", "")
+            # Check that output doesn't start with '?' (no SELinux)
+            if stdout and not stdout.strip().startswith("?"):
+                platform["ls_supports_selinux"] = True
+
+        return platform
 
     def _process_read_results(
         self,
@@ -159,8 +325,6 @@ class ReadPosixActionBase(PosixActionBase):
             None if path doesn't exist
         """
         include = include or ["metadata"]
-        include_set = set(include)
-        include_all = "all" in include_set
         file_data: dict[str, Optional[dict[str, Any]]] = {}
 
         for path in paths:
@@ -248,18 +412,22 @@ class ReadPosixActionBase(PosixActionBase):
                             # Get inode from stat for hardlink identification
                             inode_key = f"{path}_inode"
                             inode_bsd_key = f"{path}_inode_bsd"
-                            if inode_key in results or inode_bsd_key in results:
+                            if (
+                                inode_key in results
+                                or inode_bsd_key in results
+                            ):
                                 # Try GNU stat first
                                 inode_result = results.get(inode_key, {})
                                 if inode_result.get("rc") != 0:
                                     # Fall back to BSD stat
-                                    inode_result = results.get(inode_bsd_key, {})
+                                    inode_result = results.get(
+                                        inode_bsd_key, {}
+                                    )
 
                                 if inode_result.get("rc") == 0:
-                                    inode_str = (
-                                        inode_result.get("stdout", "")
-                                        .strip()
-                                    )
+                                    inode_str = inode_result.get(
+                                        "stdout", ""
+                                    ).strip()
                                     try:
                                         metadata["inode"] = int(inode_str)
                                     except (ValueError, TypeError):
@@ -326,52 +494,100 @@ class ReadPosixActionBase(PosixActionBase):
 
                 # Add ACL if requested
                 acl_key = f"{path}_acl"
+                acl_nfs4_key = f"{path}_acl_nfs4"
                 acl_macos_key = f"{path}_acl_macos"
-                if acl_key in results or acl_macos_key in results:
-                    # Try getfacl first
+                if (
+                    acl_key in results
+                    or acl_nfs4_key in results
+                    or acl_macos_key in results
+                ):
+                    # Try ACL commands in order: POSIX, NFS v4, macOS
                     acl_result = results.get(acl_key, {})
                     acl_type = "posix"
+
+                    if acl_result.get("rc") != 0:
+                        # Fall back to NFS v4
+                        acl_result = results.get(acl_nfs4_key, {})
+                        acl_type = "nfs4"
+
                     if acl_result.get("rc") != 0:
                         # Fall back to macOS ls -le
                         acl_result = results.get(acl_macos_key, {})
                         acl_type = "macos"
 
                     if acl_result.get("rc") == 0:
+                        # Command succeeded - parse ACL
                         acl_text = acl_result.get("stdout", "").strip()
                         if acl_text:
-                            # For macOS, check if there are actual ACL entries
                             if acl_type == "macos":
-                                lines = acl_text.splitlines()
-                                prefixes = tuple(f"{i}:" for i in range(10))
-                                has_acl = any(
-                                    line.lstrip().startswith(prefixes)
-                                    for line in lines[1:]
+                                metadata["acl"] = self._parse_macos_acl(
+                                    acl_text
                                 )
-                                if has_acl:
-                                    metadata["acl"] = {
-                                        "type": acl_type,
-                                        "text": acl_text,
-                                    }
+                            elif acl_type == "nfs4":
+                                metadata["acl"] = self._parse_nfs4_acl(
+                                    acl_text
+                                )
                             else:
-                                metadata["acl"] = {
-                                    "type": acl_type,
-                                    "text": acl_text,
-                                }
+                                metadata["acl"] = self._parse_posix_acl(
+                                    acl_text
+                                )
+                    else:
+                        # All commands failed - system doesn't support ACLs
+                        metadata["acl"] = {}
 
                 # Add extended attributes if requested
                 xattr_key = f"{path}_xattr"
                 xattr_macos_key = f"{path}_xattr_macos"
                 if xattr_key in results or xattr_macos_key in results:
-                    # Try getfattr first
+                    # Try getfattr first (Linux)
                     xattr_result = results.get(xattr_key, {})
+                    xattr_type = "linux"
                     if xattr_result.get("rc") != 0:
                         # Fall back to macOS xattr
                         xattr_result = results.get(xattr_macos_key, {})
+                        xattr_type = "macos"
 
                     if xattr_result.get("rc") == 0:
                         xattr_text = xattr_result.get("stdout", "").strip()
                         if xattr_text:
-                            metadata["xattrs"] = xattr_text
+                            xattr_parsed = self._process_xattrs(
+                                xattr_text, xattr_type=xattr_type
+                            )
+                            # Add xattrs if any were found
+                            if xattr_parsed.get("xattrs"):
+                                metadata["xattrs"] = xattr_parsed["xattrs"]
+                            # Merge SELinux from xattrs if not already set
+                            if (
+                                "selinux" in xattr_parsed
+                                and "selinux" not in metadata
+                            ):
+                                metadata["selinux"] = xattr_parsed["selinux"]
+
+                            # Check for ACL xattrs when ACL commands failed
+                            # Only POSIX ACLs use xattrs (macOS/APFS stores
+                            # ACLs in filesystem metadata)
+                            if metadata.get("acl") == {}:
+                                xattrs = xattr_parsed.get("xattrs", {})
+                                acl_xattrs = [
+                                    "system.posix_acl_access",
+                                    "system.posix_acl_default",
+                                ]
+                                found_acl_xattrs = [
+                                    x for x in acl_xattrs if x in xattrs
+                                ]
+                                if found_acl_xattrs:
+                                    # Set type to indicate POSIX ACLs present
+                                    # even though we couldn't read them
+                                    metadata["acl"] = {"type": "posix"}
+                                    xattr_list = ", ".join(found_acl_xattrs)
+                                    self._display.warning(
+                                        f"[{self.inventory_hostname}] "
+                                        f"Found POSIX ACL extended "
+                                        f"attributes ({xattr_list}) but "
+                                        f"getfacl command failed for {path}. "
+                                        f"ACL tools may be missing or "
+                                        f"inaccessible."
+                                    )
 
                 # Add filesystem flags if requested
                 flags_key = f"{path}_flags"
@@ -445,906 +661,11 @@ class ReadPosixActionBase(PosixActionBase):
 
         return file_data
 
-    def _cat(
-        self, src: str, task_vars: Optional[dict[str, Any]] = None
-    ) -> dict[str, Any]:
-        """
-        Fallback method to read the contents of a file using 'cat'.
-
-        :param str src: Path to the file on the remote host
-        :param Optional[dict] task_vars: Dictionary of task variables
-            from the calling task
-        :returns dict: Dictionary with read result or error
-        """
-        cmd_result = self._cmd(
-            ["cat", src], task_vars=task_vars, check_mode=False
-        )
-        result = {"changed": False, "raw": cmd_result.get("raw", False)}
-        result["source"] = src
-
-        stdout = cmd_result.pop("stdout", None)
-        stderr = cmd_result.pop("stderr", None)
-
-        if cmd_result.get("rc") != 0:
-            result["failed"] = True
-            result["msg"] = stderr.strip() or stdout.strip()
-        else:
-            result["content"] = stdout.replace("\r", "")
-
-        return result
-
-    def _slurp(
-        self,
-        src: str,
-        encoding: str = "utf-8",
-        task_vars: Optional[dict[str, Any]] = None,
-    ) -> dict[str, Any]:
-        """Run the fallback-compatible slurp64 action plugin.
-
-        Reads remote files using the o0_o.posix.slurp64 action plugin
-        which provides Python-free fallback capability.
-
-        :param str src: Path to the file on the remote host
-        :param str encoding: File encoding (default: utf-8)
-        :param Optional[dict[str, Any]] task_vars: Task variables
-        :returns Dict[str, Any]: Result dictionary from slurp64
-        """
-        return self._run_action(
-            "o0_o.posix.slurp64",
-            {"src": src, "encoding": encoding},
-            task_vars=task_vars,
-        )
-
-    def _get_symlink_target(
-        self, path: str, task_vars: Optional[dict[str, Any]] = None
-    ) -> Optional[str]:
-        """Get the immediate target of a symlink using readlink.
-
-        Returns the raw target string as stored in the symlink, which
-        may be relative or absolute.
-
-        :param str path: Path to the symlink
-        :param Optional[dict[str, Any]] task_vars: Available Ansible
-            variables
-        :returns Optional[str]: Target path or None if unavailable
-        """
-        result = self._cmd(
-            ["readlink", path], task_vars=task_vars, check_mode=False
-        )
-
-        if result.get("rc") == 0:
-            output = result.get("stdout", "").strip()
-            if output:
-                return output
-
-        return None
-
-    def _get_symlink_source(
-        self, path: str, task_vars: Optional[dict[str, Any]] = None
-    ) -> Optional[str]:
-        """Get the fully resolved target of a symlink.
-
-        Follows all intermediate symlinks to find the ultimate target.
-        Uses readlink -f which is available on both GNU and BSD systems.
-
-        :param str path: Path to the symlink
-        :param Optional[dict[str, Any]] task_vars: Available Ansible
-            variables
-        :returns Optional[str]: Resolved target path or None
-        """
-        result = self._cmd(
-            ["readlink", "-f", path], task_vars=task_vars, check_mode=False
-        )
-
-        if result.get("rc") == 0:
-            output = result.get("stdout", "").strip()
-            if output:
-                return output
-
-        return None
-
-    def _get_stat_commands_stage1(
-        self,
-        path: str,
-        get_mime: bool,
-    ) -> dict[str, list[str]]:
-        """Generate stage 1 discovery commands with tags.
-
-        Returns tagged commands for initial file discovery including
-        stat output, symlink targets, executability, and optionally
-        MIME type.
-
-        :param str path: File path to stat
-        :param bool get_mime: Whether to include MIME type detection
-        :returns dict[str, list[str]]: Dict mapping tags to commands
-        """
-        commands = {
-            "stat_main": ["stat", path],
-            "readlink": ["readlink", path],
-            "readlink_f": ["readlink", "-f", path],
-            "test_x": ["test", "-x", path],
-        }
-
-        if get_mime:
-            commands["mime"] = ["file", "-b", "--mime", path]
-
-        return commands
-
-    def _get_stat_commands_stage2(
-        self,
-        path: str,
-        username: str,
-        groupname: str,
-        is_symlink: bool,
-        follow: bool,
-        file_type_char: str,
-        is_regular_file: bool = False,
-        get_checksum: bool = False,
-        checksum_algorithm: str = "sha1",
-        get_attributes: bool = False,
-    ) -> dict[str, list[str]]:
-        """Generate stage 2 commands based on stage 1 results.
-
-        Returns tagged commands for uid/gid lookup, conditional
-        commands based on file type, and optional checksum/attributes.
-
-        :param str path: File path
-        :param str username: Owner username from stage 1
-        :param str groupname: Owner groupname from stage 1
-        :param bool is_symlink: Whether file is symlink (from stage 1)
-        :param bool follow: Whether to follow symlinks
-        :param str file_type_char: File type character from flags
-        :param bool is_regular_file: Whether file is regular (from stage 1)
-        :param bool get_checksum: Whether to get checksum
-        :param str checksum_algorithm: Checksum algorithm to use
-        :param bool get_attributes: Whether to get filesystem attributes
-        :returns dict[str, list[str]]: Dict mapping tags to commands
-        """
-        commands = {
-            "uid": ["id", "-u", username],
-            "gid": ["id", "-g", username] if username else ["id", "-g"],
-        }
-
-        if is_symlink and follow:
-            commands["stat_follow"] = ["stat", "-L", path]
-
-        if file_type_char in ("b", "c"):
-            commands["device_type"] = ["stat", "-c", "%t,%T", path]
-
-        # Checksum (only for regular files)
-        if get_checksum and is_regular_file:
-            # Try GNU coreutils commands
-            cmd_map = {
-                "md5": "md5sum",
-                "sha1": "sha1sum",
-                "sha224": "sha224sum",
-                "sha256": "sha256sum",
-                "sha384": "sha384sum",
-                "sha512": "sha512sum",
-            }
-            gnu_cmd = cmd_map.get(checksum_algorithm)
-            if gnu_cmd:
-                commands["checksum_gnu"] = [gnu_cmd, path]
-            # Also try BSD commands as fallback
-            commands["checksum_bsd_shasum"] = [
-                "shasum",
-                "-a",
-                checksum_algorithm.replace("sha", ""),
-                path,
-            ]
-            commands["checksum_bsd_md5"] = ["md5", "-q", path]
-
-        # Filesystem attributes
-        if get_attributes:
-            # Try lsattr first (Linux)
-            commands["attrs_lsattr"] = ["lsattr", "-d", path]
-            # Try ls -ldO as fallback (BSD/macOS)
-            commands["attrs_ls"] = ["ls", "-ldO", path]
-
-        return commands
-
-    def _process_stat_stage1(
-        self,
-        tagged_results: dict[str, dict[str, Any]],
-        path: str,
-        follow: bool,
-    ) -> tuple[dict[str, Any], dict[str, Any]]:
-        """Process stage 1 results and extract parameters for stage 2.
-
-        Parses stat command output with jc, validates the results, and
-        extracts basic file metadata. Returns both a partial stat
-        dictionary and parameters needed to generate stage 2 commands.
-
-        :param dict[str, dict[str, Any]] tagged_results: Stage 1
-            command results by tag
-        :param str path: Original file path
-        :param bool follow: Whether to follow symlinks
-        :returns tuple[dict[str, Any], dict[str, Any]]: Returns
-            (partial_stat, stage2_params) where partial_stat contains
-            basic file metadata and stage2_params contains values needed
-            for stage 2 command generation
-        :raises ValueError: When stat command fails or jc parsing fails
-        """
-        # Check if file exists (stat command succeeded)
-        stat_output_result = tagged_results.get("stat_main", {})
-        if stat_output_result.get("rc") != 0:
-            # File doesn't exist or other error
-            return {}, {}
-
-        stat_result = {
-            "attr_flags": "",
-            "flags": [],
-        }
-
-        self._display.vvv(stat_output_result.get("stdout"))
-
-        # Parse with jc
-        try:
-            parsed = jc_parse("stat", stat_output_result.get("stdout", ""))
-        except Exception as e:
-            raise ValueError(f"Failed to parse stat output for {path}: {e}")
-
-        # Validate jc output
-        if (
-            not parsed
-            or not isinstance(parsed, list)
-            or len(parsed) == 0
-            or not isinstance(parsed[0], dict)
-        ):
-            raise ValueError("jc stat parser returned empty result")
-
-        jc_data = parsed[0]
-        self._display.vvv(to_text(jc_data))
-
-        # Validate required fields
-        for field in ["file", "flags", "user", "group"]:
-            if jc_data.get(field) is None or not isinstance(
-                jc_data.get(field), str
-            ):
-                raise ValueError(
-                    f"jc stat result missing {field} field (string)"
-                )
-
-        for field in [
-            "size",
-            "links",
-            "inode",
-            "blocks",
-            "access_time_epoch",
-            "modify_time_epoch",
-            "change_time_epoch",
-        ]:
-            value = jc_data.get(field)
-            if value is None or not isinstance(value, Number):
-                raise ValueError(
-                    f"jc stat result missing {field} field (number): "
-                    f"{to_text(value)}"
-                )
-
-        # Extract basic metadata
-        result_path = jc_data.get("file")
-        if not result_path or not result_path.strip():
-            result_path = path
-
-        stat_result["path"] = result_path
-        stat_result["size"] = jc_data["size"]
-        stat_result["nlink"] = jc_data.get("links")
-        stat_result["inode"] = jc_data.get("inode")
-        stat_result["dev"] = device_value(jc_data)
-
-        # Handle BSD vs Linux block size differences
-        birth_time = jc_data.get("birth_time_epoch")
-        if birth_time is not None and not isinstance(birth_time, Number):
-            raise ValueError(
-                f"jc stat result has invalid birth_time_epoch: "
-                f"{to_text(birth_time)}"
-            )
-
-        is_bsd = "unix_device" in jc_data
-        if is_bsd:
-            blocks_value = jc_data.get("blocks", 0)
-            block_size_value = jc_data.get("block_size", 512)
-
-            if birth_time is None:
-                birth_time_str = jc_data.get("birth_time")
-                if birth_time_str and isinstance(birth_time_str, str):
-                    try:
-                        parsed_block_size = int(birth_time_str)
-                        if parsed_block_size > 0:
-                            blocks_value = block_size_value
-                            block_size_value = parsed_block_size
-                    except (ValueError, TypeError):
-                        pass
-
-            stat_result["blocks"] = blocks_value
-            stat_result["block_size"] = block_size_value
-        else:
-            stat_result["blocks"] = jc_data.get("blocks", 0)
-            block_size = jc_data.get("io_blocks") or jc_data.get("block_size")
-            if block_size:
-                stat_result["block_size"] = block_size
-            else:
-                raise ValueError(
-                    "jc stat result missing block_size or io_blocks"
-                )
-
-        # Timestamps
-        stat_result["atime"] = float(jc_data["access_time_epoch"])
-        stat_result["mtime"] = float(jc_data["modify_time_epoch"])
-        stat_result["ctime"] = float(jc_data["change_time_epoch"])
-
-        if birth_time and birth_time > 0:
-            if is_bsd or birth_time != jc_data["change_time_epoch"]:
-                stat_result["birthtime"] = float(birth_time)
-
-        # Extract file type info
-        flags = jc_data["flags"]
-        flags_re = re.compile(r"^[\-dlcbsp][-rwxSsTt]{9}$")
-        if not flags_re.match(flags):
-            raise ValueError(f"jc flags result invalid: {flags}")
-
-        is_symlink = flags.startswith("l")
-        file_type_char = flags[0]
-        username = jc_data["user"]
-        groupname = jc_data["group"]
-
-        # Store owner names
-        stat_result["pw_name"] = username
-        stat_result["gr_name"] = groupname
-
-        # BSD unix_flags
-        if is_bsd:
-            stat_result["flags"] = 0
-            unix_flags = jc_data.get("unix_flags")
-            if unix_flags and isinstance(unix_flags, str):
-                if unix_flags.replace("/", "").replace("x", "").isalnum():
-                    try:
-                        hex_str = unix_flags.lower().replace("0x", "")
-                        if all(c in "0123456789abcdef" for c in hex_str):
-                            stat_result["flags"] = int(hex_str, 16)
-                    except (ValueError, TypeError):
-                        pass
-
-        # Prepare parameters for stage 2
-        is_regular_file = flags.startswith("-")
-
-        stage2_params = {
-            "username": username,
-            "groupname": groupname,
-            "is_symlink": is_symlink,
-            "follow": follow,
-            "file_type_char": file_type_char,
-            "is_regular_file": is_regular_file,
-            "jc_data": jc_data,  # Pass full jc_data for stage 2
-            "flags": flags,
-            "is_bsd": is_bsd,
-        }
-
-        return stat_result, stage2_params
-
-    def _process_stat_stage2(
-        self,
-        tagged_results: dict[str, dict[str, Any]],
-        stage1_tagged_results: dict[str, dict[str, Any]],
-        partial_stat: dict[str, Any],
-        stage2_params: dict[str, Any],
-        path: str,
-        get_checksum: bool,
-        checksum_algorithm: str,
-        get_mime: bool,
-        get_attributes: bool,
-        task_vars: dict[str, Any],
-    ) -> dict[str, Any]:
-        """Process stage 2 results and finalize stat dictionary.
-
-        Takes stage 2 command results and merges them with partial
-        stat from stage 1 to create the final complete stat structure
-        matching ansible.builtin.stat format.
-
-        :param dict[str, dict[str, Any]] tagged_results: Stage 2
-            command results by tag
-        :param dict[str, dict[str, Any]] stage1_tagged_results: Stage 1
-            results for re-use
-        :param dict[str, Any] partial_stat: Partial stat from stage 1
-        :param dict[str, Any] stage2_params: Parameters from stage 1
-        :param str path: File path
-        :param bool get_checksum: Whether to compute checksum
-        :param str checksum_algorithm: Checksum algorithm
-        :param bool get_mime: Whether MIME was requested
-        :param bool get_attributes: Whether to get attributes
-        :param dict[str, Any] task_vars: Task variables
-        :returns dict[str, Any]: Complete stat dictionary
-        :raises ValueError: When required commands fail
-        """
-        stat_result = partial_stat.copy()
-
-        # Extract stage 2 parameters
-        jc_data = stage2_params["jc_data"]
-        flags = stage2_params["flags"]
-        is_symlink = stage2_params["is_symlink"]
-        follow = stage2_params["follow"]
-
-        # Get uid/gid from stage 2 results
-        uid_result = tagged_results.get("uid", {})
-        gid_result = tagged_results.get("gid", {})
-
-        if uid_result.get("rc") == 0:
-            uid_str = uid_result.get("stdout", "").strip()
-            if uid_str and uid_str.isdigit():
-                stat_result["uid"] = int(uid_str)
-        else:
-            username = stage2_params["username"]
-            raise ValueError(f"Unable to determine uid of {username}")
-
-        if gid_result.get("rc") == 0:
-            gid_str = gid_result.get("stdout", "").strip()
-            if gid_str and gid_str.isdigit():
-                stat_result["gid"] = int(gid_str)
-        else:
-            groupname = stage2_params["groupname"]
-            raise ValueError(f"Unable to determine gid of {groupname}")
-
-        # Get device_type if requested
-        device_result_for_type = tagged_results.get("device_type")
-        stat_result["device_type"] = self._stat_device_type(
-            jc_data, device_result=device_result_for_type
-        )
-
-        # Handle symlink following
-        target_jc_data = None
-        if is_symlink and follow:
-            stat_follow_result = tagged_results.get("stat_follow")
-            if not stat_follow_result:
-                raise ValueError("stat -L should have been in stage 2")
-
-            try:
-                target_parsed = jc_parse(
-                    "stat", stat_follow_result.get("stdout", "")
-                )
-                if not target_parsed or not isinstance(target_parsed, list):
-                    raise ValueError(
-                        "jc stat parser returned empty result for target"
-                    )
-                target_jc_data = target_parsed[0]
-                if not isinstance(target_jc_data, dict):
-                    raise ValueError(
-                        "jc stat parser returned invalid result for target"
-                    )
-                if not target_jc_data.get("flags") or not isinstance(
-                    target_jc_data.get("flags"), str
-                ):
-                    raise ValueError(
-                        "jc stat result for target missing flags field"
-                    )
-                # Check for broken symlink
-                if target_jc_data["flags"].startswith("l"):
-                    return {}
-            except ValueError:
-                raise
-            except Exception as e:
-                raise ValueError(
-                    f"Failed to parse stat output for target {path}: {e}"
-                )
-
-        # Set file type flags
-        type_flags = target_jc_data["flags"] if target_jc_data else flags
-
-        stat_result["isdir"] = type_flags.startswith("d")
-        stat_result["islnk"] = type_flags.startswith("l")
-        stat_result["isreg"] = type_flags.startswith("-")
-        stat_result["isblk"] = type_flags.startswith("b")
-        stat_result["ischr"] = type_flags.startswith("c")
-        stat_result["isfifo"] = type_flags.startswith("p")
-        stat_result["issock"] = type_flags.startswith("s")
-
-        # Check executability from stage 1
-        test_x_result = stage1_tagged_results.get("test_x", {})
-        is_executable = test_x_result.get("rc") == 0
-
-        # Mode
-        mode_flags = target_jc_data["flags"] if target_jc_data else flags
-        stat_result["mode"] = self._stat_mode_from_flags(mode_flags)
-
-        # Permission booleans
-        permission_bools = self._stat_permission_booleans(mode_flags)
-        permission_bools["executable"] = is_executable
-        stat_result.update(permission_bools)
-
-        # Symlink targets from stage 1
-        if is_symlink:
-            readlink_result = stage1_tagged_results.get("readlink", {})
-            readlink_f_result = stage1_tagged_results.get("readlink_f", {})
-
-            if readlink_result.get("rc") == 0:
-                lnk_target = readlink_result.get("stdout", "").strip()
-                if lnk_target:
-                    stat_result["lnk_target"] = lnk_target
-
-            if readlink_f_result.get("rc") == 0:
-                lnk_source = readlink_f_result.get("stdout", "").strip()
-                if lnk_source:
-                    stat_result["lnk_source"] = lnk_source
-
-        # Checksum for regular files (from stage 2 results)
-        if get_checksum and stat_result["isreg"]:
-            checksum = self._parse_checksum_from_results(
-                tagged_results, checksum_algorithm
-            )
-            if checksum:
-                stat_result["checksum"] = checksum
-            else:
-                self._display.warning(
-                    f"[{self.inventory_hostname}] Checksum algorithm "
-                    f"'{checksum_algorithm}' not available on target system. "
-                    f"Checksum field will be omitted."
-                )
-
-        # MIME type from stage 1
-        if get_mime:
-            mime_result = stage1_tagged_results.get("mime")
-            if mime_result:
-                if mime_result.get("rc") == 0:
-                    output = mime_result.get("stdout", "").strip()
-                    if output:
-                        mime_info: dict[str, str] = {}
-                        parts = output.split(";", 1)
-                        if parts:
-                            mimetype = parts[0].strip()
-                            if mimetype == "application/x-not-regular-file":
-                                mime_info["mimetype"] = "unknown"
-                            else:
-                                mime_info["mimetype"] = mimetype
-
-                        if len(parts) > 1:
-                            charset_part = parts[1].strip()
-                            if charset_part.startswith("charset="):
-                                mime_info["charset"] = charset_part[8:].strip()
-
-                        if "charset" not in mime_info:
-                            mime_info["charset"] = "unknown"
-
-                        if mime_info:
-                            stat_result.update(mime_info)
-                        else:
-                            raise ValueError("MIME info is empty")
-                    else:
-                        raise ValueError("MIME output is empty")
-                else:
-                    raise ValueError(
-                        f"MIME command failed: {mime_result.get('stderr', '')}"
-                    )
-
-        # Extended attributes (from stage 2 results)
-        if get_attributes:
-            flags_output = self._parse_attributes_from_results(tagged_results)
-            if flags_output:
-                attr_flags_raw = self._extract_attr_flags(flags_output)
-                if attr_flags_raw:
-                    stat_result["attr_flags"] = attr_flags_raw
-
-                if attr_flags_raw:
-                    attrs = self._normalize_flags(flags_output)
-                    if attrs:
-                        stat_result["flags"] = attrs
-
-        return stat_result
-
-    def _parse_checksum_from_results(
-        self,
-        tagged_results: dict[str, dict[str, Any]],
-        algorithm: str,
-    ) -> Optional[str]:
-        """Parse checksum from stage 2 command results.
-
-        Tries to extract checksum from various command results (GNU
-        coreutils, BSD shasum, BSD md5) based on which commands
-        succeeded.
-
-        :param dict[str, dict[str, Any]] tagged_results: Stage 2 results
-        :param str algorithm: Checksum algorithm requested
-        :returns Optional[str]: Hex checksum string or None
-        """
-        # Try GNU coreutils command first
-        gnu_result = tagged_results.get("checksum_gnu", {})
-        if gnu_result.get("rc") == 0:
-            output = gnu_result.get("stdout", "").strip()
-            if output:
-                # GNU format: "checksum  filename"
-                parts = output.split()
-                if parts:
-                    return parts[0]
-
-        # Try BSD shasum command
-        if algorithm.startswith("sha"):
-            shasum_result = tagged_results.get("checksum_bsd_shasum", {})
-            if shasum_result.get("rc") == 0:
-                output = shasum_result.get("stdout", "").strip()
-                if output:
-                    parts = output.split()
-                    if parts:
-                        return parts[0]
-
-        # Try BSD md5 command
-        if algorithm == "md5":
-            md5_result = tagged_results.get("checksum_bsd_md5", {})
-            if md5_result.get("rc") == 0:
-                output = md5_result.get("stdout", "").strip()
-                if output:
-                    # BSD md5 outputs just the hash
-                    return output
-
-        return None
-
-    def _parse_attributes_from_results(
-        self,
-        tagged_results: dict[str, dict[str, Any]],
-    ) -> Optional[str]:
-        """Parse filesystem attributes from stage 2 command results.
-
-        Tries to extract attributes from lsattr (Linux) or ls -ldO
-        (BSD/macOS) command results.
-
-        :param dict[str, dict[str, Any]] tagged_results: Stage 2 results
-        :returns Optional[str]: Attribute flags string or None
-        """
-        # Try lsattr first (Linux)
-        lsattr_result = tagged_results.get("attrs_lsattr", {})
-        if lsattr_result.get("rc") == 0:
-            stdout = lsattr_result.get("stdout", "")
-            parts = stdout.split()
-            if parts:
-                return parts[0]
-
-        # Try ls -ldO fallback (BSD/macOS)
-        ls_result = tagged_results.get("attrs_ls", {})
-        if ls_result.get("rc") == 0:
-            stdout = ls_result.get("stdout", "")
-            parts = stdout.split()
-            if len(parts) >= 5:
-                flags = parts[4]
-                if flags != "-":
-                    return flags
-
-        return None
-
-    def _get_checksum(
-        self,
-        path: str,
-        algorithm: str,
-        task_vars: Optional[dict[str, Any]],
-    ) -> Optional[str]:
-        """Compute file checksum using available hash commands.
-
-        :param str path: File path to checksum
-        :param str algorithm: Hash algorithm (md5, sha1, sha224, sha256,
-            sha384, sha512)
-        :param Optional[dict[str, Any]] task_vars: Available Ansible
-            variables
-        :returns Optional[str]: Hex checksum string or None
-        """
-        # Try GNU coreutils first (Linux)
-        cmd_map_gnu = {
-            "md5": "md5sum",
-            "sha1": "sha1sum",
-            "sha224": "sha224sum",
-            "sha256": "sha256sum",
-            "sha384": "sha384sum",
-            "sha512": "sha512sum",
-        }
-
-        gnu_cmd = cmd_map_gnu.get(algorithm)
-        if gnu_cmd:
-            result = self._cmd(
-                [gnu_cmd, path], task_vars=task_vars, check_mode=False
-            )
-            if result.get("rc") == 0:
-                stdout = result.get("stdout", "").strip()
-                if stdout:
-                    # Format: "checksum  filename"
-                    parts = stdout.split()
-                    if parts:
-                        return parts[0]
-
-        # Try BSD/macOS commands
-        if algorithm == "md5":
-            result = self._cmd(
-                ["md5", "-q", path], task_vars=task_vars, check_mode=False
-            )
-            if result.get("rc") == 0:
-                return result.get("stdout", "").strip()
-
-        # Try shasum (available on macOS and some Linux)
-        if algorithm in ("sha1", "sha224", "sha256", "sha384", "sha512"):
-            algo_num = {
-                "sha1": "1",
-                "sha224": "224",
-                "sha256": "256",
-                "sha384": "384",
-                "sha512": "512",
-            }[algorithm]
-            result = self._cmd(
-                ["shasum", "-a", algo_num, path],
-                task_vars=task_vars,
-                check_mode=False,
-            )
-            if result.get("rc") == 0:
-                stdout = result.get("stdout", "").strip()
-                if stdout:
-                    parts = stdout.split()
-                    if parts:
-                        return parts[0]
-
-        # Try OpenBSD commands (sha1, sha256, sha512 without -q)
-        # Output format: "SHA256 (file) = checksum"
-        if algorithm in ("sha1", "sha256", "sha512"):
-            result = self._cmd(
-                [algorithm, path], task_vars=task_vars, check_mode=False
-            )
-            if result.get("rc") == 0:
-                stdout = result.get("stdout", "").strip()
-                if stdout and "=" in stdout:
-                    # Parse "SHA256 (file) = checksum"
-                    checksum = stdout.split("=", 1)[1].strip()
-                    if checksum:
-                        return checksum
-
-        return None
-
-    def _get_mime(
-        self, path: str, task_vars: Optional[dict[str, Any]]
-    ) -> Optional[dict[str, str]]:
-        """Detect MIME type and charset.
-
-        :param str path: File path to inspect
-        :param Optional[dict[str, Any]] task_vars: Available Ansible
-            variables
-        :returns Optional[dict[str, str]]: Dict with mimetype and
-            charset or None
-        """
-        result = self._cmd(
-            ["file", "-b", "--mime", path],
-            task_vars=task_vars,
-            check_mode=False,
-        )
-        if result.get("rc") != 0:
-            return None
-
-        output = result.get("stdout", "").strip()
-        if not output:
-            return None
-
-        # Parse: "text/plain; charset=us-ascii"
-        mime_info: dict[str, str] = {}
-        parts = output.split(";", 1)
-        if parts:
-            mimetype = parts[0].strip()
-            # Normalize application/x-not-regular-file to "unknown" to
-            # match builtin.stat behavior on OpenBSD
-            if mimetype == "application/x-not-regular-file":
-                mime_info["mimetype"] = "unknown"
-            else:
-                mime_info["mimetype"] = mimetype
-
-        if len(parts) > 1:
-            charset_part = parts[1].strip()
-            if charset_part.startswith("charset="):
-                mime_info["charset"] = charset_part[8:].strip()
-
-        # Always include charset, default to "unknown" if not found
-        if "charset" not in mime_info:
-            mime_info["charset"] = "unknown"
-
-        return mime_info if mime_info else None
-
-    def _stat_device_type(
-        self,
-        jc_data: dict[str, Any],
-        device_result: Optional[dict[str, Any]] = None,
-    ) -> int:
-        """Get device type (rdev) with intelligent fallback detection.
-
-        Determines the device type value based on file type and
-        available data. For regular files and similar types, returns 0.
-        For device files, uses the provided device_result from batched
-        command execution.
-
-        :param Dict[str, Any] jc_data: Parsed jc stat output
-        :param Optional[dict[str, Any]] device_result: Result from
-            stat -c "%t,%T" command (if device file)
-        :returns int: Device type number (rdev), 0 for non-device
-            files
-        """
-        # If jc already parsed rdev, use it
-        rdev = jc_data.get("rdev")
-        if rdev is not None:
-            # Convert if needed (decimal major,minor format)
-            if isinstance(rdev, str) and "," in rdev:
-                rdev_int = device_from_major_minor(rdev)
-                if rdev_int is not None:
-                    return rdev_int
-            # Direct integer or convertible string
-            try:
-                return int(rdev) if rdev else 0
-            except (ValueError, TypeError):
-                pass
-
-        # Determine file type from flags to decide if we need rdev
-        flags = jc_data.get("flags", "")
-        if not flags:
-            return 0
-
-        file_type_char = flags[0]
-
-        # File types that always have rdev=0
-        # - regular file, d directory, l symlink, p fifo, s socket
-        if file_type_char in ("-", "d", "l", "p", "s"):
-            return 0
-
-        # Block or character device - use provided device_result
-        if file_type_char in ("b", "c") and device_result:
-            if device_result.get("rc") == 0:
-                output = device_result.get("stdout", "").strip()
-                if output:
-                    rdev_int = device_from_hex_major_minor(output)
-                    if rdev_int is not None:
-                        return rdev_int
-
-        # Default fallback
-        return 0
-
-    def _stat_mode_from_flags(self, flags: str) -> str:
-        """Convert permission flags to 4-digit octal mode.
-
-        Parses Unix permission flags (e.g., "-rw-r--r--") and converts
-        them to 4-digit octal format (e.g., "0644").
-
-        :param str flags: Permission flags string from stat
-        :returns str: 4-digit octal mode string
-        """
-        if not flags or len(flags) < 10:
-            return "0000"
-
-        mode = 0
-
-        # Special bits (setuid, setgid, sticky)
-        if flags[3] in ("s", "S"):  # setuid
-            mode |= 0o4000
-        if flags[6] in ("s", "S"):  # setgid
-            mode |= 0o2000
-        if flags[9] in ("t", "T"):  # sticky
-            mode |= 0o1000
-
-        # Owner permissions
-        if flags[1] == "r":
-            mode |= 0o400
-        if flags[2] == "w":
-            mode |= 0o200
-        if flags[3] in ("x", "s"):
-            mode |= 0o100
-
-        # Group permissions
-        if flags[4] == "r":
-            mode |= 0o040
-        if flags[5] == "w":
-            mode |= 0o020
-        if flags[6] in ("x", "s"):
-            mode |= 0o010
-
-        # Other permissions
-        if flags[7] == "r":
-            mode |= 0o004
-        if flags[8] == "w":
-            mode |= 0o002
-        if flags[9] in ("x", "t"):
-            mode |= 0o001
-
-        return f"{mode:04o}"
-
     def _stat_permission_booleans(self, flags: str) -> dict[str, bool]:
         """Parse permission booleans from flags string.
 
         :param str flags: Permission flags string (e.g., "-rw-r--r--")
-        :returns Dict[str, bool]: Permission boolean dictionary
+        :returns dict[str, bool]: Permission boolean dictionary
         """
         if not flags or len(flags) < 10:
             return {}
@@ -1377,302 +698,579 @@ class ReadPosixActionBase(PosixActionBase):
 
         return perms
 
-    def _validate_jc_stat_result(self, jc_data: dict[str, Any]) -> None:
-        """Validate that jc stat result has required fields.
+    def _parse_macos_acl(self, acl_text: str) -> Optional[dict[str, Any]]:
+        """Parse macOS ACL output from ls -le into simplified dict.
 
-        :param Dict[str, Any] jc_data: Parsed jc stat output
-        :raises ValueError: If required fields are missing or invalid
+        Format: ``0: group:everyone deny write``
+
+        Returns simplified structure where each entry has type and name
+        fields, with rights represented as boolean fields. Deny sets
+        false, allow sets true. Only explicitly mentioned rights are
+        included.
+
+        :param str acl_text: Raw ls -le output
+        :returns Optional[dict[str, Any]]: Parsed ACL or None if no entries
         """
-        for field in ["file", "flags", "user", "group"]:
-            if jc_data.get(field) is None or not isinstance(
-                jc_data.get(field), str
-            ):
-                raise ValueError(
-                    f"jc stat result missing {field} field (string)"
-                )
+        import re
 
-        for field in [
-            "size",
-            "links",
-            "inode",
-            "blocks",
-            "access_time_epoch",
-            "modify_time_epoch",
-            "change_time_epoch",
-        ]:
-            value = jc_data.get(field)
-            if value is None or not isinstance(value, Number):
-                raise ValueError(
-                    f"jc stat result missing {field} field (number): {value}"
-                )
-
-        # birth_time_epoch is optional - not all systems support it
-        birth_time = jc_data.get("birth_time_epoch")
-        if birth_time is not None and not isinstance(birth_time, Number):
-            raise ValueError(
-                f"jc stat result has invalid birth_time_epoch: "
-                f"{birth_time}"
-            )
-
-        # Validate flags format
-        flags = jc_data["flags"]
-        flags_re = re.compile(r"^[\-dlcbsp][-rwxSsTt]{9}$")
-        if not flags_re.match(flags):
-            raise ValueError(f"jc flags result invalid: {flags}")
-
-    def _get_acl(
-        self, path: str, task_vars: Optional[dict[str, Any]]
-    ) -> Optional[dict[str, Any]]:
-        """Retrieve ACL information for a path.
-
-        :param str path: Path to get ACLs for
-        :param Optional[dict[str, Any]] task_vars: Available Ansible
-            variables
-        :returns Optional[dict[str, Any]]: ACL metadata with type or
-            None
-        """
-        result = self._cmd(["getfacl", "-p", path], task_vars=task_vars)
-        if result.get("rc") == 0:
-            output = (result.get("stdout") or "").strip()
-            if output:
-                return {"type": "posix", "text": output}
-        # macOS fallback: ls -le prints ACLs
-        alt = self._cmd(["ls", "-le", path], task_vars=task_vars)
-        if alt.get("rc") == 0:
-            output = (alt.get("stdout") or "").strip()
-            if output:
-                lines = output.splitlines()
-                prefixes = tuple(f"{i}:" for i in range(10))
-                if any(
-                    line.lstrip().startswith(prefixes) for line in lines[1:]
-                ):
-                    return {"type": "macos", "text": output}
-        return None
-
-    def _get_xattrs(
-        self, path: str, task_vars: Optional[dict[str, Any]]
-    ) -> Optional[str]:
-        """Retrieve extended attributes for a path.
-
-        :param str path: Path to get extended attributes for
-        :param Optional[dict[str, Any]] task_vars: Available Ansible
-            variables
-        :returns Optional[str]: Extended attributes or None if
-            unavailable
-        """
-        result = self._cmd(
-            ["getfattr", "--absolute-names", "-d", path], task_vars=task_vars
+        entries: list[dict[str, Any]] = []
+        # Pattern: index: qualifier:name permission rights[,rights...]
+        pattern = re.compile(
+            r"^\s*(\d+):\s+"  # index
+            r"(\w+):(\S+)\s+"  # qualifier:name
+            r"(\w+)\s+"  # permission (allow/deny)
+            r"(.+)$"  # rights
         )
-        if result.get("rc") == 0:
-            output = (result.get("stdout") or "").strip()
-            if output:
-                return output
-        # macOS fallback: xattr -l
-        alt = self._cmd(["xattr", "-l", path], task_vars=task_vars)
-        if alt.get("rc") == 0:
-            output = (alt.get("stdout") or "").strip()
-            if output:
-                return output
-        return None
 
-    def _get_flags(
-        self, path: str, task_vars: Optional[dict[str, Any]]
-    ) -> Optional[str]:
-        """Retrieve filesystem flags for a path.
+        # Mapping of macOS ACL rights to schema fields
+        # Note: macOS uses different names for files vs directories:
+        #   files: read_data, write_data, execute, append_data
+        #   directories: list/list_directory, add_file, search,
+        #                add_subdirectory
+        # We normalize these to common field names
+        right_aliases = {
+            "list": "read",
+            "list_directory": "read",
+            "read_data": "read",
+            "add_file": "write",
+            "write_data": "write",
+            "search": "execute",
+            "add_subdirectory": "append",
+            "append_data": "append",
+        }
 
-        :param str path: Path to get flags for
-        :param Optional[dict[str, Any]] task_vars: Available Ansible
-            variables
-        :returns Optional[str]: Filesystem flags or None if unavailable
+        # Basic rights after normalization
+        basic_rights = {
+            "read",
+            "write",
+            "execute",
+            "delete",
+            "append",
+            "delete_child",
+            "chown",
+        }
+
+        # Nested field mappings: right_name -> (parent_key, field_name)
+        attr_map = {
+            "readattr": ("attributes", "read"),
+            "writeattr": ("attributes", "write"),
+        }
+
+        ext_map = {
+            "readextattr": ("extended", "read"),
+            "writeextattr": ("extended", "write"),
+        }
+
+        sec_map = {
+            "readsecurity": ("security", "read"),
+            "writesecurity": ("security", "write"),
+        }
+
+        # Inheritance flags (stored under inheritance key)
+        inherit_flags = {
+            "file_inherit": "file",
+            "directory_inherit": "directory",
+            "limit_inherit": "limit",
+            "only_inherit": "only",
+        }
+
+        for line in acl_text.splitlines():
+            match = pattern.match(line)
+            if match:
+                index, qualifier, name, permission, rights_str = match.groups()
+                # Parse rights (comma or space separated)
+                rights = [
+                    r.strip()
+                    for r in re.split(r"[,\s]+", rights_str)
+                    if r.strip()
+                ]
+
+                # Build simplified entry
+                entry: dict[str, Any] = {}
+
+                # Set type and name fields
+                entry["type"] = qualifier
+                entry["name"] = name
+
+                # Determine boolean value: allow=true, deny=false
+                value = permission == "allow"
+
+                # Track nested groups
+                attributes: dict[str, bool] = {}
+                extended: dict[str, bool] = {}
+                security: dict[str, bool] = {}
+                inheritance: dict[str, Any] = {}
+
+                # Process each right
+                for right in rights:
+                    # Normalize right name using aliases
+                    normalized_right = right_aliases.get(right, right)
+
+                    if normalized_right in basic_rights:
+                        entry[normalized_right] = value
+                    elif right in attr_map:
+                        parent_key, field_name = attr_map[right]
+                        attributes[field_name] = value
+                    elif right in ext_map:
+                        parent_key, field_name = ext_map[right]
+                        extended[field_name] = value
+                    elif right in sec_map:
+                        parent_key, field_name = sec_map[right]
+                        security[field_name] = value
+                    elif right in inherit_flags:
+                        field_name = inherit_flags[right]
+                        inheritance[field_name] = True
+                    elif right == "inherited":
+                        entry["inherited"] = True
+
+                # Add nested dicts only if they have content
+                if attributes:
+                    entry["attributes"] = attributes
+                if extended:
+                    entry["extended"] = extended
+                if security:
+                    entry["security"] = security
+                if inheritance:
+                    # Convert limit to propagate (inverse for readability)
+                    # Only add propagate if there's actual inheritance
+                    if "file" in inheritance or "directory" in inheritance:
+                        has_limit = inheritance.pop("limit", False)
+                        inheritance["propagate"] = not has_limit
+                    entry["inheritance"] = inheritance
+
+                entries.append(entry)
+
+        # Always return the structure with type, even if no entries
+        # Empty entries means file has no ACL (but system supports ACLs)
+        return {"type": "macos", "entries": entries}
+
+    def _parse_posix_acl(self, acl_text: str) -> Optional[dict[str, Any]]:
+        """Parse POSIX ACL output from getfacl into simplified dict.
+
+        Format::
+
+            # file: path
+            # owner: user
+            # group: group
+            user::rwx
+            user:john:r-x
+            group::r-x
+            mask::r-x
+            other::r-x
+
+        Returns simplified structure where each entry has type and optional
+        name fields. Only extended ACL entries (named users/groups, mask)
+        are included - basic entries (owner, group_owner, other) are
+        excluded as they represent standard Unix permissions.
+
+        :param str acl_text: Raw getfacl output
+        :returns dict[str, Any]: Parsed ACL structure (empty entries if
+            only basic permissions)
         """
-        result = self._cmd(["lsattr", "-d", path], task_vars=task_vars)
-        if result.get("rc") != 0:
-            alt = self._cmd(["ls", "-ldO", path], task_vars=task_vars)
-            if alt.get("rc") != 0:
-                return None
-            stdout = alt.get("stdout") or ""
-            parts = stdout.split()
-            if len(parts) >= 5:
-                flags = parts[4]
-                if flags != "-":
-                    return flags
-            return None
-        stdout = result.get("stdout") or ""
-        parts = stdout.split()
-        if not parts:
-            return None
-        return parts[0]
+        extended_entries: list[dict[str, Any]] = []
+
+        for line in acl_text.splitlines():
+            line = line.strip()
+            if not line:
+                continue
+
+            # Skip all comment lines (including metadata)
+            if line.startswith("#"):
+                continue
+
+            # Parse ACL entry: type:name:perms or type::perms
+            parts = line.split(":")
+            if len(parts) >= 3:
+                entry_type = parts[0]
+                name = parts[1] if parts[1] else None
+                perms = parts[2] if len(parts) > 2 else ""
+
+                entry: dict[str, Any] = {}
+                is_extended = False
+
+                # Handle named vs non-named entries
+                if name:
+                    # Named user or group - EXTENDED ACL entry
+                    entry["type"] = entry_type
+                    entry["name"] = name
+                    is_extended = True
+                else:
+                    # Non-named entries - check if extended or basic
+                    if entry_type == "user":
+                        # user:: is owner (basic, skip)
+                        continue
+                    elif entry_type == "group":
+                        # group:: is group_owner (basic, skip)
+                        continue
+                    elif entry_type == "other":
+                        # other:: is basic, skip
+                        continue
+                    elif entry_type == "mask":
+                        # mask:: only exists with extended ACLs
+                        entry["type"] = "mask"
+                        is_extended = True
+                    else:
+                        # Other types (e.g., default:user::)
+                        entry["type"] = entry_type
+                        is_extended = True
+
+                # Parse permissions to boolean fields (only for extended)
+                if is_extended:
+                    if "r" in perms:
+                        entry["read"] = True
+                    if "w" in perms:
+                        entry["write"] = True
+                    if "x" in perms:
+                        entry["execute"] = True
+
+                    extended_entries.append(entry)
+
+        # Always return structure with type, even if no extended entries
+        # Empty entries means file has only basic Unix permissions
+        return {"type": "posix", "entries": extended_entries}
+
+    def _parse_nfs4_acl(self, acl_text: str) -> dict[str, Any]:
+        """Parse NFS v4 ACL output from nfs4_getfacl into simplified dict.
+
+        Format: ``A::OWNER@:rwatTnNcCoy``
+
+        TYPE:FLAGS:PRINCIPAL:PERMISSIONS
+        - TYPE: A (allow), D (deny), U (audit), L (alarm)
+        - FLAGS: f (file_inherit), d (directory_inherit), i (inherit_only),
+                 n (no_propagate), I (inherited)
+        - PRINCIPAL: OWNER@, GROUP@, EVERYONE@, or user@domain
+        - PERMISSIONS: r,w,a,x,d,D,t,T,n,N,c,C,o,y (various rights)
+
+        Returns simplified structure where each entry has type and optional
+        name fields, with rights represented as boolean fields.
+
+        :param str acl_text: Raw nfs4_getfacl output
+        :returns dict[str, Any]: Parsed ACL structure
+        """
+        entries: list[dict[str, Any]] = []
+
+        # Permission mapping: NFS v4 letter codes to our schema
+        perm_map = {
+            "r": "read",  # read_data / list_directory
+            "w": "write",  # write_data / add_file
+            "a": "append",  # append_data / add_subdirectory
+            "x": "execute",
+            "d": "delete",
+            "D": "delete_child",
+            "t": ("attributes", "read"),  # read_attributes
+            "T": ("attributes", "write"),  # write_attributes
+            "n": ("extended", "read"),  # read_named_attrs
+            "N": ("extended", "write"),  # write_named_attrs
+            "c": ("security", "read"),  # read_acl
+            "C": ("security", "write"),  # write_acl
+            "o": "chown",  # write_owner
+            "y": "synchronize",
+        }
+
+        # Inheritance flags mapping
+        inherit_flags_map = {
+            "f": "file",  # file_inherit
+            "d": "directory",  # directory_inherit
+            "i": "only",  # inherit_only
+            "n": "limit",  # no_propagate (will be converted to propagate)
+            "I": "inherited",  # This ACE was inherited
+        }
+
+        for line in acl_text.splitlines():
+            line = line.strip()
+            if not line or line.startswith("#"):
+                continue
+
+            # Parse NFS v4 ACE: TYPE:FLAGS:PRINCIPAL:PERMISSIONS
+            parts = line.split(":")
+            if len(parts) != 4:
+                continue
+
+            ace_type, flags_str, principal, perms_str = parts
+
+            entry: dict[str, Any] = {}
+
+            # Parse principal (user/group identification)
+            if principal == "OWNER@":
+                entry["type"] = "owner"
+            elif principal == "GROUP@":
+                entry["type"] = "group_owner"
+            elif principal == "EVERYONE@":
+                entry["type"] = "everyone"
+            elif "@" in principal:
+                # Named principal: user@domain or group@domain
+                # NFS v4 doesn't distinguish user vs group in principal
+                # format, but typically lowercase indicates user
+                entry["type"] = "user"
+                entry["name"] = principal
+            else:
+                # Fallback for non-standard principals
+                entry["type"] = "user"
+                entry["name"] = principal
+
+            # Determine boolean value based on ACE type
+            value = ace_type == "A"  # Allow=true, Deny=false
+
+            # Track nested permission groups
+            attributes: dict[str, bool] = {}
+            extended: dict[str, bool] = {}
+            security: dict[str, bool] = {}
+            inheritance: dict[str, Any] = {}
+
+            # Parse permissions
+            for perm in perms_str:
+                if perm in perm_map:
+                    mapped = perm_map[perm]
+                    if isinstance(mapped, tuple):
+                        # Nested permission
+                        parent_key, field_name = mapped
+                        if parent_key == "attributes":
+                            attributes[field_name] = value
+                        elif parent_key == "extended":
+                            extended[field_name] = value
+                        elif parent_key == "security":
+                            security[field_name] = value
+                    else:
+                        # Top-level permission
+                        entry[mapped] = value
+
+            # Parse inheritance flags
+            for flag in flags_str:
+                if flag in inherit_flags_map:
+                    field_name = inherit_flags_map[flag]
+                    if field_name == "inherited":
+                        entry["inherited"] = True
+                    else:
+                        inheritance[field_name] = True
+
+            # Add nested dicts only if they have content
+            if attributes:
+                entry["attributes"] = attributes
+            if extended:
+                entry["extended"] = extended
+            if security:
+                entry["security"] = security
+            if inheritance:
+                # Convert no_propagate (limit) to propagate for consistency
+                if "file" in inheritance or "directory" in inheritance:
+                    has_limit = inheritance.pop("limit", False)
+                    inheritance["propagate"] = not has_limit
+                entry["inheritance"] = inheritance
+
+            entries.append(entry)
+
+        # Always return structure with type, even if no entries
+        return {"type": "nfs4", "entries": entries}
+
+    def _is_binary_value(self, value: str) -> bool:
+        """Check if a string value appears to be binary data.
+
+        Considers a value binary if it contains non-printable characters
+        (excluding common whitespace like tab, newline, carriage return).
+
+        :param str value: The string value to check
+        :returns bool: True if value contains binary/non-printable data
+        """
+        for char in value:
+            code = ord(char)
+            # Allow printable ASCII (32-126), tab, newline, carriage return
+            if code < 32 and code not in (9, 10, 13):
+                return True
+            # Allow extended ASCII but flag surrogate escapes and control
+            if 0x7F <= code < 0xA0:
+                return True
+            # Surrogate escape markers from Python's surrogateescape
+            if 0xDC80 <= code <= 0xDCFF:
+                return True
+        return False
+
+    def _encode_xattr_value(self, value: str) -> dict[str, str]:
+        """Encode an xattr value with encoding and value fields.
+
+        Returns a dict with 'encoding' (utf-8 or base64) and 'value'.
+
+        :param str value: The xattr value to encode
+        :returns dict[str, str]: Dict with encoding and value fields
+        """
+        if not self._is_binary_value(value):
+            return {"encoding": "utf-8", "value": value}
+
+        # Convert surrogates back to bytes and base64 encode
+        try:
+            raw_bytes = value.encode("utf-8", "surrogateescape")
+            encoded = base64.b64encode(raw_bytes).decode("ascii")
+            return {"encoding": "base64", "value": encoded}
+        except (UnicodeEncodeError, UnicodeDecodeError):
+            return {"encoding": "utf-8", "value": value}
 
     def _process_xattrs(
         self,
-        source: Optional[object],
-    ) -> Tuple[List[str], List[Dict[str, Any]], Optional[str]]:
-        """Normalize xattr sources into names and specialised records.
+        source: Optional[str],
+        xattr_type: str = "linux",
+    ) -> dict[str, Any]:
+        """Parse xattr output into nested dictionary structure.
 
-        :param Optional[object] source: Extended attributes from xattr
-            command
-        :returns Tuple[List[str], List[Dict[str, Any]], Optional[str]]:
-            Tuple of (attribute names, ACL records, SELinux value)
+        Parses getfattr (Linux) or xattr -l (macOS) output into a nested
+        dictionary. Binary values are base64 encoded. ACL and SELinux
+        xattrs are separated from regular xattrs.
+
+        :param Optional[str] source: Raw xattr command output
+        :param str xattr_type: Either 'linux' (getfattr) or 'macos' (xattr)
+        :returns dict[str, Any]: Dictionary with keys:
+            - 'xattrs': Nested dict of xattr values (may be empty dict).
+              Text values are strings, binary values are
+              ``{"_base64": "..."}``
+            - 'selinux': SELinux context if found in xattrs (optional)
         """
-        names: list[str] = []
-        acl_records: dict[str, Dict[str, Any]] = {}
+        result: dict[str, Any] = {"xattrs": {}}
+
+        if not source or not isinstance(source, str):
+            return result
+
+        flat_xattrs: dict[str, Any] = {}
         selinux_value: Optional[str] = None
+        selinux_key = "security.selinux"
 
-        def place_acl(record_type: str) -> dict[str, Any]:
-            entry = acl_records.setdefault(record_type, {"type": record_type})
-            return entry
-
-        def handle(name: str, value: Optional[str]) -> None:
+        def process_entry(key: str, value: str) -> None:
             nonlocal selinux_value
-            key = name.strip()
+            key = key.strip()
             if not key:
                 return
-            lowered = key.lower()
-            if lowered == "system.posix_acl_access":
-                return
-            if lowered == "system.posix_acl_default":
-                return
-            if lowered in {"com.apple.acl.text", "com.apple.security.acl"}:
-                entry = place_acl("macos_xattr")
-                if value is not None and "text" not in entry:
-                    entry["text"] = value
-                return
-            if lowered in {"system.nfs4_acl", "nfs4_acl"}:
-                entry = place_acl("nfs4_xattr")
-                if value is not None and "text" not in entry:
-                    entry["text"] = value
-                return
-            if lowered == "security.selinux":
-                if value and selinux_value is None:
-                    selinux_value = value
-                return
-            names.append(key)
 
-        if isinstance(source, dict):
-            for key, value in source.items():
-                if isinstance(key, bytes):
-                    key_obj = key.decode("utf-8", "ignore")
-                else:
-                    key_obj = str(key)
-                value_str = None
-                if value is not None:
-                    if isinstance(value, bytes):
-                        value_str = value.decode("utf-8", "ignore")
-                    else:
-                        value_str = str(value)
-                handle(key_obj, value_str)
-        elif isinstance(source, str):
+            lowered = key.lower()
+
+            # Handle SELinux - extract to top level but also include in xattrs
+            if lowered == selinux_key:
+                if value and selinux_value is None:
+                    # Remove null terminator if present
+                    selinux_value = value.rstrip("\x00")
+                # Continue to also add to xattrs (don't return)
+
+            # All xattrs (including ACL) go into the nested structure
+            encoded = self._encode_xattr_value(value)
+            flat_xattrs[key] = encoded
+
+        # Parse based on format
+        if xattr_type == "linux":
+            # getfattr format: key="value" or key=0xHEX
             for line in source.splitlines():
                 stripped = line.strip()
                 if not stripped or stripped.startswith("#"):
                     continue
-                if ":" in stripped and "=" not in stripped:
-                    key, raw_val = stripped.split(":", 1)
-                    handle(key, raw_val.strip())
-                    continue
                 if "=" in stripped:
                     key, raw_val = stripped.split("=", 1)
-                    handle(key, raw_val.strip().strip('"').strip("'"))
+                    # Remove quotes from value
+                    val = raw_val.strip().strip('"').strip("'")
+                    process_entry(key, val)
+        else:
+            # macOS xattr -lx format: "key:\n<hex dump>"
+            # All values are hex dumps with -lx flag
+            # Key line ends with ":" and next lines are hex dump
+            lines = source.splitlines()
+            i = 0
+            while i < len(lines):
+                line = lines[i]
+                # Skip empty lines and hex dump lines (start with offset)
+                if not line or line[0].isdigit() or line.startswith(" "):
+                    i += 1
                     continue
-                handle(stripped, None)
-        elif source is not None:
-            handle(str(source), None)
 
-        names = sorted(set(names))
-        acl_list = [value for value in acl_records.values() if len(value) > 1]
-        return names, acl_list, selinux_value
+                # Key line ends with ":"
+                if line.endswith(":"):
+                    key = line[:-1].strip()
 
-    def _merge_acl(self, info: dict[str, Any], entry: dict[str, Any]) -> None:
-        """Merge ACL details into result dictionary with type tracking.
-
-        :param Dict[str, Any] info: Stat dictionary to merge ACL into
-        :param Dict[str, Any] entry: ACL entry to merge
-        """
-        if not entry:
-            return
-
-        entry_type = entry.get("type")
-        existing = info.get("acl")
-
-        if entry_type == "posix_xattr":
-            if isinstance(existing, dict) and existing.get("type") == "posix":
-                return
-            if isinstance(existing, list) and any(
-                isinstance(item, dict) and item.get("type") == "posix"
-                for item in existing
-            ):
-                return
-
-        if existing is None:
-            info["acl"] = entry.copy()
-            return
-
-        if isinstance(existing, dict):
-            existing_type = existing.get("type")
-            if entry_type and existing_type == entry_type:
-                merged = existing.copy()
-                for key, value in entry.items():
-                    if key in {"type"}:
-                        continue
-                    if key not in merged:
-                        merged[key] = value
-                info["acl"] = merged
-                return
-
-            info["acl"] = [existing.copy(), entry.copy()]
-            return
-
-        if isinstance(existing, list):
-            if entry_type:
-                for idx, item in enumerate(existing):
-                    if (
-                        isinstance(item, dict)
-                        and item.get("type") == entry_type
-                    ):
-                        merged = item.copy()
-                        for key, value in entry.items():
-                            if key in {"type"}:
+                    # Collect hex dump lines that follow
+                    hex_lines = []
+                    j = i + 1
+                    while j < len(lines):
+                        hex_line = lines[j]
+                        # Hex lines start with offset (8 hex digits)
+                        if (
+                            hex_line
+                            and len(hex_line) > 8
+                            and hex_line[:8].isalnum()
+                        ):
+                            # Check if it looks like hex offset
+                            try:
+                                int(hex_line[:8], 16)
+                                hex_lines.append(hex_line)
+                                j += 1
                                 continue
-                            if key not in merged:
-                                merged[key] = value
-                        existing[idx] = merged
-                        info["acl"] = existing
-                        return
-            existing.append(entry.copy())
-            info["acl"] = existing
-            return
+                            except ValueError:
+                                pass
+                        break
 
-        # Existing value is plain string; convert to structured form.
-        info["acl"] = [
-            {"type": "unknown", "text": str(existing)},
-            entry.copy(),
-        ]
+                    if hex_lines:
+                        # Parse hex dump to bytes
+                        raw_bytes = self._parse_macos_hex_dump(hex_lines)
+                        if raw_bytes:
+                            # Try to decode as text, fall back to base64
+                            try:
+                                text = raw_bytes.decode("utf-8")
+                                # Strip null terminator if present
+                                flat_xattrs[key] = {
+                                    "encoding": "utf-8",
+                                    "value": text.rstrip("\x00"),
+                                }
+                            except UnicodeDecodeError:
+                                encoded = base64.b64encode(raw_bytes)
+                                flat_xattrs[key] = {
+                                    "encoding": "base64",
+                                    "value": encoded.decode("ascii"),
+                                }
+                        i = j
+                        continue
 
-    def _extract_attr_flags(self, value: str) -> str:
-        """Extract raw flag characters from lsattr output.
+                i += 1
 
-        Converts "--------------e-------" to "e" (just the set flags).
-        For BSD/macOS format, returns empty string as it doesn't use
-        single-character flags.
+        # Apply unflatten to create nested structure
+        if flat_xattrs:
+            # Use both . and : as separators for macOS compatibility
+            nested = unflatten(flat_xattrs, separators=[".", ":"])
+            result["xattrs"] = nested
 
-        :param str value: Raw lsattr/ls output
-        :returns str: Flag characters that are set
+        # Add SELinux if found (also included in xattrs for completeness)
+        if selinux_value:
+            result["selinux"] = selinux_value
+
+        return result
+
+    def _parse_macos_hex_dump(self, hex_lines: list[str]) -> bytes:
+        """Parse macOS xattr hex dump format into bytes.
+
+        macOS xattr -l outputs binary data as hex dump with format:
+        ``00000000  62 70 6C 69 ...  |bplist00...|``
+
+        :param list[str] hex_lines: Lines from hex dump
+        :returns bytes: Decoded binary data
         """
-        flags_str = value.strip()
-        if not flags_str or flags_str == "-":
-            return ""
+        result = bytearray()
+        for line in hex_lines:
+            # Format: offset  HH HH HH ...  |ASCII|
+            line = line.strip()
+            if not line:
+                continue
 
-        # BSD/macOS format - doesn't use attr_flags field
-        if "," in flags_str or any(
-            word.isalpha() and len(word) > 1 for word in flags_str.split()
-        ):
-            return ""
+            # Split on multiple spaces to separate offset, hex, ascii
+            parts = line.split("  ")
+            if len(parts) < 2:
+                continue
 
-        # Linux lsattr format - extract non-dash characters
-        flag_chars = "".join(
-            char for char in flags_str if char not in ("-", " ")
-        )
-        return flag_chars
+            # Extract hex portion (between offset and ASCII)
+            hex_part = parts[1] if len(parts) >= 2 else ""
+            # Handle case where there's more hex in parts[2]
+            if len(parts) >= 3 and not parts[2].startswith("|"):
+                hex_part += " " + parts[2]
+
+            # Parse hex bytes
+            for byte_str in hex_part.split():
+                if len(byte_str) == 2:
+                    try:
+                        result.append(int(byte_str, 16))
+                    except ValueError:
+                        pass
+
+        return bytes(result)
 
     def _normalize_flags(self, value: str) -> list[str]:
         """Parse filesystem flags into attribute names.
