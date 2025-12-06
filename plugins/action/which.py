@@ -38,7 +38,7 @@ class ActionModule(PosixActionBase, ActionBase):
         task_vars = task_vars or {}
         tmp = None
 
-        result = super().run(tmp, task_vars)
+        result = super().run(task_vars=task_vars)
 
         # Validate args
         argument_spec = {

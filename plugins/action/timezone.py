@@ -11,26 +11,49 @@
 
 from __future__ import annotations
 
-import re
-from typing import Any, Dict, List, Optional
+from typing import Any, Optional
 
 from ansible.plugins.action import ActionBase
 from ansible.errors import AnsibleActionFail
+from ansible_collections.o0_o.utils.plugins.module_utils import (
+    truthy_or_string,
+)
 
 from ansible_collections.o0_o.posix.plugins.module_utils import (
     PosixActionBase,
+    parse_posix_tz,
+    parse_etc_timezone,
+    parse_localtime_symlink,
+    parse_systemsetup_output,
+    parse_timedatectl_output,
+    parse_date_abbr,
+    parse_posix_candidate,
+    merge_timezone_config,
 )
 
 
 class ActionModule(PosixActionBase, ActionBase):
     """Detect the IANA timezone name on POSIX systems.
 
-    Tries multiple portable approaches across Linux, macOS, and *BSD:
-    - /etc/timezone file (Debian/Ubuntu)
-    - /etc/localtime symlink target (most POSIX, including macOS/*BSD)
-    - systemsetup -gettimezone (macOS)
-    - timedatectl show -p Timezone --value (systemd)
-    Falls back to the timezone abbreviation from date +%Z when needed.
+    This action plugin detects the configured timezone on remote POSIX
+    systems using multiple portable detection methods. It tries various
+    approaches to maximize compatibility across different operating
+    systems including Linux, macOS, and BSD variants.
+
+    Detection methods (in order of preference):
+    - /etc/timezone file (Debian/Ubuntu systems)
+    - /etc/localtime symlink target (most POSIX systems)
+    - systemsetup -gettimezone command (macOS)
+    - timedatectl show command (systemd-based systems)
+    - date command output (universal fallback)
+
+    The plugin also attempts to extract detailed POSIX timezone
+    information including daylight saving time transition rules when
+    available from zoneinfo files.
+
+    Returns comprehensive timezone information including the IANA
+    timezone name, current abbreviation, UTC offset, and detection
+    method configuration details.
     """
 
     TRANSFERS_FILES = False
@@ -42,22 +65,38 @@ class ActionModule(PosixActionBase, ActionBase):
     def run(
         self,
         tmp: Optional[str] = None,
-        task_vars: Optional[Dict[str, Any]] = None,
-    ) -> Dict[str, Any]:
-        task_vars = task_vars or {}
-        tmp = None
+        task_vars: Optional[dict[str, Any]] = None,
+    ) -> dict[str, Any]:
+        """Execute timezone detection.
 
-        result = super().run(tmp, task_vars)
+        :param Optional[str] tmp: Temporary directory path (unused)
+        :param Optional[dict[str, Any]] task_vars: Task variables
+        :returns dict[str, Any]: Result with timezone information
+        """
+        task_vars = task_vars or {}
+        self._def_inventory_hostname(task_vars)
+
+        result = super().run(task_vars=task_vars)
+        del tmp  # unused
+
+        # Validate arguments (primarily for raw execution support)
+        argument_spec = {
+            "raw": {"type": "raw", "default": "auto"},
+        }
+        validation_result, new_args = self.validate_argument_spec(
+            argument_spec=argument_spec
+        )
+
+        # Process raw parameter: accept boolean or 'auto'
+        try:
+            raw = truthy_or_string(new_args.pop("raw"), ["auto"])
+        except ValueError as e:
+            raise AnsibleActionFail(str(e)) from e
 
         try:
             tz = self._get_timezone(task_vars=task_vars)
         except Exception as e:
-            host = self._get_inventory_hostname(task_vars)
-            self._display.warning(
-                f"[{host}] Failed to detect timezone: "
-                f"{type(e).__name__}: {e}"
-            )
-            raise AnsibleActionFail(f"Failed to detect timezone: {e}")
+            raise AnsibleActionFail(f"Failed to detect timezone: {e}") from e
 
         result.update(
             {
@@ -68,44 +107,50 @@ class ActionModule(PosixActionBase, ActionBase):
         return result
 
     def _get_timezone(
-        self, task_vars: Optional[Dict[str, Any]] = None
-    ) -> Dict[str, Any]:
+        self, task_vars: Optional[dict[str, Any]] = None
+    ) -> dict[str, Any]:
         """Detect timezone using several POSIX-friendly techniques.
 
-        :returns: dict with keys:
-            name (optional), abbr (optional), source
+        :param Optional[dict[str, Any]] task_vars: Task variables
+        :returns dict[str, Any]: Timezone info with name, zone, config,
+            and optional POSIX details
         """
-        # 1) Debian/Ubuntu: /etc/timezone file
         task_vars = task_vars or {}
 
-        info: Dict[str, Any] = {}
-        config: Dict[str, Any] = {}
+        info: dict[str, Any] = {}
+        config: dict[str, Any] = {}
 
+        # Try /etc/timezone file
         tz = self._from_etc_timezone(task_vars)
-        self._merge_config(config, tz)
+        merge_timezone_config(config, tz)
         if tz and tz.get("name"):
             info["name"] = tz["name"]
 
-        localtime = self._from_localtime_symlink(task_vars)
-        self._merge_config(config, localtime)
-        if localtime and localtime.get("name") and "name" not in info:
-            info["name"] = localtime["name"]
+        # Try /etc/localtime symlink
+        if "name" not in info:
+            localtime = self._from_localtime_symlink(task_vars)
+            merge_timezone_config(config, localtime)
+            if localtime and localtime.get("name"):
+                info["name"] = localtime["name"]
 
+        # Try macOS systemsetup command
         if "name" not in info:
             tz = self._from_systemsetup(task_vars)
-            self._merge_config(config, tz)
+            merge_timezone_config(config, tz)
             if tz and tz.get("name"):
                 info["name"] = tz["name"]
 
+        # Try systemd timedatectl
         if "name" not in info:
             tz = self._from_timedatectl(task_vars)
-            self._merge_config(config, tz)
+            merge_timezone_config(config, tz)
             if tz and tz.get("name"):
                 info["name"] = tz["name"]
 
+        # Fallback to date abbreviation
         if "name" not in info:
             fallback = self._from_date_abbr(task_vars)
-            self._merge_config(config, fallback)
+            merge_timezone_config(config, fallback)
             if fallback:
                 info.update(
                     {k: v for k, v in fallback.items() if k != "config"}
@@ -115,8 +160,10 @@ class ActionModule(PosixActionBase, ActionBase):
                 return info
             raise RuntimeError("Timezone detection methods exhausted")
 
+        # Set zone to match name
         info["zone"] = info["name"]
 
+        # Try to get POSIX timezone string details
         zoneinfo_path = self._resolve_zoneinfo_path(
             info["name"], config, task_vars
         )
@@ -129,6 +176,7 @@ class ActionModule(PosixActionBase, ActionBase):
                     {},
                 ).setdefault("link", zoneinfo_path)
 
+        # Add current time info
         info.update(self._active_time_info(task_vars))
 
         if config:
@@ -137,8 +185,14 @@ class ActionModule(PosixActionBase, ActionBase):
         return info
 
     def _read_file(
-        self, path: str, task_vars: Optional[Dict[str, Any]]
+        self, path: str, task_vars: Optional[dict[str, Any]]
     ) -> Optional[str]:
+        """Read file contents if file exists.
+
+        :param str path: File path to read
+        :param Optional[dict[str, Any]] task_vars: Task variables
+        :returns Optional[str]: File contents, or None if not found
+        """
         st = self._cmd(
             ["test", "-f", path], task_vars=task_vars, check_mode=False
         )
@@ -150,22 +204,26 @@ class ActionModule(PosixActionBase, ActionBase):
         return (cat.get("stdout") or "").strip()
 
     def _from_etc_timezone(
-        self, task_vars: Optional[Dict[str, Any]]
-    ) -> Optional[Dict[str, Any]]:
+        self, task_vars: Optional[dict[str, Any]]
+    ) -> Optional[dict[str, Any]]:
+        """Detect timezone from /etc/timezone file.
+
+        :param Optional[dict[str, Any]] task_vars: Task variables
+        :returns Optional[dict[str, Any]]: Timezone info or None
+        """
         content = self._read_file("/etc/timezone", task_vars)
         if not content:
             return None
-        # Validate simple Region/City form
-        if "/" in content and all(part for part in content.split("/")):
-            return {
-                "name": content,
-                "config": {"/etc/timezone": {"path": "/etc/timezone"}},
-            }
-        return None
+        return parse_etc_timezone(content)
 
     def _from_localtime_symlink(
-        self, task_vars: Optional[Dict[str, Any]]
-    ) -> Optional[Dict[str, Any]]:
+        self, task_vars: Optional[dict[str, Any]]
+    ) -> Optional[dict[str, Any]]:
+        """Detect timezone from /etc/localtime symlink.
+
+        :param Optional[dict[str, Any]] task_vars: Task variables
+        :returns Optional[dict[str, Any]]: Timezone info or None
+        """
         # Try readlink first
         rl = self._cmd(
             ["readlink", "/etc/localtime"],
@@ -187,23 +245,19 @@ class ActionModule(PosixActionBase, ActionBase):
                 arrow = " -> "
                 if arrow in out:
                     target = out.split(arrow, 1)[1].strip()
+
         if not target:
             return None
-        # Extract portion after zoneinfo/
-        key = "/zoneinfo/"
-        if key in target:
-            name = target.split(key, 1)[1]
-            if name:
-                return {
-                    "name": name,
-                    "config": {"/etc/localtime": {"link": target}},
-                }
-        return None
+        return parse_localtime_symlink(target)
 
     def _from_systemsetup(
-        self, task_vars: Optional[Dict[str, Any]]
-    ) -> Optional[Dict[str, Any]]:
-        # macOS systemsetup -gettimezone
+        self, task_vars: Optional[dict[str, Any]]
+    ) -> Optional[dict[str, Any]]:
+        """Detect timezone from macOS systemsetup command.
+
+        :param Optional[dict[str, Any]] task_vars: Task variables
+        :returns Optional[dict[str, Any]]: Timezone info or None
+        """
         ss = self._cmd(
             ["systemsetup", "-gettimezone"],
             task_vars=task_vars,
@@ -212,19 +266,16 @@ class ActionModule(PosixActionBase, ActionBase):
         if ss.get("rc") != 0:
             return None
         out = (ss.get("stdout") or "").strip()
-        # Expected: "Time Zone: America/Los_Angeles"
-        if ":" in out:
-            val = out.split(":", 1)[1].strip()
-            if "/" in val:
-                return {
-                    "name": val,
-                    "config": {"command": "systemsetup -gettimezone"},
-                }
-        return None
+        return parse_systemsetup_output(out)
 
     def _from_timedatectl(
-        self, task_vars: Optional[Dict[str, Any]]
-    ) -> Optional[Dict[str, Any]]:
+        self, task_vars: Optional[dict[str, Any]]
+    ) -> Optional[dict[str, Any]]:
+        """Detect timezone from timedatectl command.
+
+        :param Optional[dict[str, Any]] task_vars: Task variables
+        :returns Optional[dict[str, Any]]: Timezone info or None
+        """
         td = self._cmd(
             ["timedatectl", "show", "-p", "Timezone", "--value"],
             task_vars=task_vars,
@@ -233,65 +284,48 @@ class ActionModule(PosixActionBase, ActionBase):
         if td.get("rc") != 0:
             return None
         out = (td.get("stdout") or "").strip()
-        if "/" in out:
-            return {
-                "name": out,
-                "config": {
-                    "command": "timedatectl show -p Timezone --value",
-                },
-            }
-        return None
+        return parse_timedatectl_output(out)
 
     def _from_date_abbr(
-        self, task_vars: Optional[Dict[str, Any]]
-    ) -> Optional[Dict[str, Any]]:
+        self, task_vars: Optional[dict[str, Any]]
+    ) -> Optional[dict[str, Any]]:
+        """Get timezone abbreviation and offset from date command.
+
+        :param Optional[dict[str, Any]] task_vars: Task variables
+        :returns Optional[dict[str, Any]]: Timezone info or None
+        """
         date = self._cmd(
             ["date", "+%Z"], task_vars=task_vars, check_mode=False
         )
         if date.get("rc") != 0:
             return None
         abbr = (date.get("stdout") or "").strip()
-        if abbr:
-            offset_cmd = self._cmd(
-                ["date", "+%z"], task_vars=task_vars, check_mode=False
-            )
-            result: Dict[str, Any] = {
-                "abbr": abbr,
-                "config": {"command": "date +%Z"},
-            }
-            if offset_cmd.get("rc") == 0:
-                offset = (offset_cmd.get("stdout") or "").strip()
-                if offset:
-                    result["offset"] = offset
-            return result
-        return None
+        if not abbr:
+            return None
 
-    def _merge_config(
-        self,
-        target: Dict[str, Any],
-        source: Optional[Dict[str, Any]],
-    ) -> None:
-        if not source:
-            return
-        cfg = source.get("config")
-        if not isinstance(cfg, dict):
-            return
-        for key, value in cfg.items():
-            if (
-                key in target
-                and isinstance(target[key], dict)
-                and isinstance(value, dict)
-            ):
-                target[key].update(value)
-            else:
-                target[key] = value
+        offset_cmd = self._cmd(
+            ["date", "+%z"], task_vars=task_vars, check_mode=False
+        )
+        offset = None
+        if offset_cmd.get("rc") == 0:
+            offset = (offset_cmd.get("stdout") or "").strip()
+
+        return parse_date_abbr(abbr, offset)
 
     def _resolve_zoneinfo_path(
         self,
         name: str,
-        config: Dict[str, Dict[str, Any]],
-        task_vars: Optional[Dict[str, Any]],
+        config: dict[str, dict[str, Any]],
+        task_vars: Optional[dict[str, Any]],
     ) -> Optional[str]:
+        """Find path to zoneinfo file for timezone name.
+
+        :param str name: Timezone name like "America/New_York"
+        :param dict[str, dict[str, Any]] config: Config with possible link
+        :param Optional[dict[str, Any]] task_vars: Task variables
+        :returns Optional[str]: Path to zoneinfo file, or None
+        """
+        # Check if we already have a link from /etc/localtime
         localtime_entry = config.get("/etc/localtime")
         link = None
         if isinstance(localtime_entry, dict):
@@ -299,162 +333,77 @@ class ActionModule(PosixActionBase, ActionBase):
         if link and self._path_exists(link, task_vars):
             return link
 
+        # Try standard zoneinfo location
         candidate = f"/usr/share/zoneinfo/{name}"
         if self._path_exists(candidate, task_vars):
             return candidate
         return None
 
     def _path_exists(
-        self, candidate: str, task_vars: Optional[Dict[str, Any]]
+        self, candidate: str, task_vars: Optional[dict[str, Any]]
     ) -> bool:
+        """Check if path exists.
+
+        :param str candidate: Path to check
+        :param Optional[dict[str, Any]] task_vars: Task variables
+        :returns bool: True if path exists
+        """
         result = self._cmd(
             ["test", "-f", candidate], task_vars=task_vars, check_mode=False
         )
         return result.get("rc") == 0
 
     def _parse_zoneinfo(
-        self, path: str, task_vars: Optional[Dict[str, Any]]
-    ) -> Dict[str, Any]:
+        self, path: str, task_vars: Optional[dict[str, Any]]
+    ) -> dict[str, Any]:
+        """Extract POSIX timezone details from zoneinfo file.
+
+        :param str path: Path to zoneinfo file
+        :param Optional[dict[str, Any]] task_vars: Task variables
+        :returns dict[str, Any]: Parsed POSIX timezone info
+        """
+        # Try strings command
         candidate = self._read_posix_candidate(
             ["strings", "-n", "1", path], task_vars
         )
         if candidate is None:
+            # Try tail fallback
             candidate = self._read_posix_candidate(
                 ["tail", "-c", "512", path], task_vars
             )
         if candidate is None:
             return {}
 
-        details = self._parse_posix_string(candidate)
+        details = parse_posix_tz(candidate)
         details["posix"] = candidate
         return details
 
     def _read_posix_candidate(
         self,
-        command: List[str],
-        task_vars: Optional[Dict[str, Any]],
+        command: list[str],
+        task_vars: Optional[dict[str, Any]],
     ) -> Optional[str]:
+        """Execute command and extract POSIX timezone string.
+
+        :param list[str] command: Command to execute
+        :param Optional[dict[str, Any]] task_vars: Task variables
+        :returns Optional[str]: POSIX timezone string, or None
+        """
         result = self._cmd(command, task_vars=task_vars, check_mode=False)
         if result.get("rc") != 0:
             return None
-        stdout = (result.get("stdout") or "").replace("\x00", "\n")
-        for line in stdout.splitlines():
-            candidate = line.strip()
-            if not candidate or candidate.startswith("TZif"):
-                continue
-            if re.match(r"^[A-Za-z]{3,}[-+]?[0-9]", candidate):
-                return candidate
-        return None
-
-    def _parse_posix_string(self, value: str) -> Dict[str, Any]:
-        pattern = re.compile(
-            r"^(?P<std>[A-Za-z]{3,})"
-            r"(?P<std_offset>[-+]?\d+(?::\d{2}(?::\d{2})?)?)"
-            r"(?:"
-            r"(?P<dst>[A-Za-z]{3,})"
-            r"(?P<dst_offset>[-+]?\d+(?::\d{2}(?::\d{2})?)?)?"
-            r",(?P<start>[^,]+),(?P<end>[^,]+)"
-            r")?"
-            r"$"
-        )
-        match = pattern.match(value)
-        if not match:
-            return {}
-
-        info: Dict[str, Any] = {}
-
-        std_offset_spec = match.group("std_offset")
-        std_seconds = self._posix_seconds(std_offset_spec)
-        info["standard"] = {
-            "abbr": match.group("std"),
-            "offset": self._format_offset_from_seconds(std_seconds),
-        }
-
-        dst_code = match.group("dst")
-        if dst_code:
-            dst_offset_spec = match.group("dst_offset")
-            if dst_offset_spec:
-                dst_seconds = self._posix_seconds(dst_offset_spec)
-            else:
-                dst_seconds = std_seconds - 3600
-            daylight: Dict[str, Any] = {
-                "abbr": dst_code,
-                "offset": self._format_offset_from_seconds(dst_seconds),
-            }
-            start_rule = match.group("start")
-            end_rule = match.group("end")
-            if start_rule:
-                daylight["start"] = self._parse_transition_rule(start_rule)
-            if end_rule:
-                daylight["end"] = self._parse_transition_rule(end_rule)
-            info["daylight"] = daylight
-
-        return info
-
-    def _posix_seconds(self, spec: str) -> int:
-        sign = 1
-        if spec.startswith("-"):
-            sign = -1
-            spec = spec[1:]
-        elif spec.startswith("+"):
-            spec = spec[1:]
-        parts = spec.split(":")
-        hours = int(parts[0]) if parts[0] else 0
-        minutes = int(parts[1]) if len(parts) > 1 else 0
-        seconds = int(parts[2]) if len(parts) > 2 else 0
-        return sign * (hours * 3600 + minutes * 60 + seconds)
-
-    def _format_offset_from_seconds(self, seconds: int) -> str:
-        adjusted = -seconds
-        sign = "+" if adjusted >= 0 else "-"
-        adjusted = abs(adjusted)
-        hours = adjusted // 3600
-        minutes = (adjusted % 3600) // 60
-        secs = adjusted % 60
-        if secs:
-            return f"{sign}{hours:02d}:{minutes:02d}:{secs:02d}"
-        return f"{sign}{hours:02d}:{minutes:02d}"
-
-    def _parse_transition_rule(self, rule: str) -> Dict[str, Any]:
-        time_part = "02:00"
-        if "/" in rule:
-            rule, time_spec = rule.split("/", 1)
-            time_part = self._format_rule_time(time_spec)
-        else:
-            time_part = "02:00"
-
-        if rule.startswith("M"):
-            parts = rule[1:].split(".")
-            if len(parts) == 3 and all(part.isdigit() for part in parts):
-                return {
-                    "month": int(parts[0]),
-                    "week": int(parts[1]),
-                    "weekday": int(parts[2]),
-                    "time": time_part,
-                }
-        return {"time": time_part}
-
-    def _format_rule_time(self, spec: str) -> str:
-        if not spec:
-            return "02:00"
-        sign = ""
-        if spec.startswith("-"):
-            sign = "-"
-            spec = spec[1:]
-        elif spec.startswith("+"):
-            spec = spec[1:]
-        parts = spec.split(":")
-        hours = int(parts[0]) if parts and parts[0] else 0
-        minutes = int(parts[1]) if len(parts) > 1 else 0
-        seconds = int(parts[2]) if len(parts) > 2 else 0
-        if seconds:
-            return f"{sign}{hours:02d}:{minutes:02d}:{seconds:02d}"
-        return f"{sign}{hours:02d}:{minutes:02d}"
+        stdout = result.get("stdout") or ""
+        return parse_posix_candidate(stdout)
 
     def _active_time_info(
-        self, task_vars: Optional[Dict[str, Any]]
-    ) -> Dict[str, Any]:
-        result: Dict[str, Any] = {}
+        self, task_vars: Optional[dict[str, Any]]
+    ) -> dict[str, Any]:
+        """Get current timezone abbreviation and offset.
+
+        :param Optional[dict[str, Any]] task_vars: Task variables
+        :returns dict[str, Any]: Dict with abbr and offset keys
+        """
+        result: dict[str, Any] = {}
 
         abbr_cmd = self._cmd(
             ["date", "+%Z"], task_vars=task_vars, check_mode=False

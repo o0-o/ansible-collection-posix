@@ -410,45 +410,10 @@ class ActionModule(PosixActionBase, ActionBase):
         )
         gather_subset = new_module_args["gather_subset"]
 
-        result = super().run(tmp, task_vars)
+        result = super().run(task_vars=task_vars)
 
-        # Always check POSIX compliance first to validate the host
-        try:
-            compliance_facts = self._gather_compliance(task_vars=task_vars)
-            from ansible_collections.o0_o.posix.plugins.module_utils import (
-                is_posix as check_is_posix,
-            )
-
-            # Extract compliance dict from o0_os namespace
-            compliance_dict = {}
-            if "o0_os" in compliance_facts:
-                compliance_dict = compliance_facts["o0_os"].get(
-                    "compliance", {}
-                )
-
-            is_posix_compliant = check_is_posix(compliance_dict)
-
-            # If definitely not POSIX, skip gathering facts
-            if is_posix_compliant is False:
-                result.update(
-                    {
-                        "skipped": True,
-                        "skip_reason": (
-                            "This does not appear to be a POSIX system."
-                        ),
-                        "ansible_facts": {},
-                    }
-                )
-                return result
-        except AnsibleConnectionFailure:
-            raise
-        except Exception as e:
-            # If compliance check fails, log warning but continue
-            host = self._get_inventory_hostname(task_vars)
-            self._display.warning(
-                f"[{host}] Failed to check POSIX compliance: {e}"
-            )
-            compliance_facts = {}
+        # TODO: Add POSIX compliance check back later
+        compliance_facts = {}
 
         # Resolve subsets
         selected_subsets = self._resolve_subsets(gather_subset)

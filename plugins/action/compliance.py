@@ -61,7 +61,7 @@ class ActionModule(CompliancePosixActionBase, ActionBase):
         task_vars = task_vars or {}
         self._def_inventory_hostname(task_vars)
 
-        result = super().run(tmp, task_vars)
+        result = super().run(task_vars=task_vars)
         del tmp  # unused
 
         # Get tagged commands from mixin (returns dict)

@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from typing import Any, Optional
 
-from ansible.errors import AnsibleConnectionFailure
+from ansible.errors import AnsibleActionFail, AnsibleConnectionFailure
 from ansible.plugins.action import ActionBase
 from ansible_collections.o0_o.posix.plugins.module_utils import (
     PosixActionBase,
@@ -21,6 +21,7 @@ from ansible_collections.o0_o.posix.plugins.module_utils import (
     restructure_process,
 )
 from ansible_collections.o0_o.utils.plugins.module_utils import (
+    truthy_or_string,
     wantlist,
 )
 
@@ -50,7 +51,7 @@ class ActionModule(PosixActionBase, ActionBase):
         if task_vars is None:
             task_vars = {}
 
-        result = super().run(tmp, task_vars)
+        result = super().run(task_vars=task_vars)
         del tmp  # Not used
 
         if result.get("skipped") or result.get("failed"):
@@ -73,13 +74,18 @@ class ActionModule(PosixActionBase, ActionBase):
                 "elements": "str",
                 "aliases": ["executable"],
             },
-            "_force_raw": {"type": "bool", "default": False},
+            "raw": {"type": "raw", "default": "auto"},
         }
 
         validation_result, new_args = self.validate_argument_spec(
             argument_spec=argument_spec
         )
-        self.force_raw = new_args.pop("_force_raw", False)
+
+        # Process raw parameter: accept boolean or 'auto'
+        try:
+            self.raw = truthy_or_string(new_args.pop("raw"), ["auto"])
+        except ValueError as e:
+            raise AnsibleActionFail(str(e)) from e
 
         # Normalize to lists using wantlist
         pids = wantlist(new_args.get("pids"))

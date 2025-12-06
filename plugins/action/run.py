@@ -419,13 +419,15 @@ class ActionModule(PosixActionBase, ActionBase):
         :returns dict[str, Any]: Ansible result dictionary
         """
         task_vars = task_vars or {}
-        tmp = tmp or self._make_tmp_path()
         self._def_inventory_hostname(task_vars)
 
         self._def_args()
 
-        self.result = super(ActionModule, self).run(tmp, task_vars=task_vars)
+        self.result = super(ActionModule, self).run(task_vars=task_vars)
         self.result["invocation"] = self._task.args.copy()
+
+        # Use connection's tmpdir for remote temporary files
+        tmp = self._connection._shell.tmpdir
 
         # Check mode: validate we could run, but don't actually execute
         if self._task.check_mode:

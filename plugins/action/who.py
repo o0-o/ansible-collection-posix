@@ -18,12 +18,12 @@ from ansible.errors import AnsibleActionFail
 from ansible.plugins.action import ActionBase
 
 from ansible_collections.o0_o.posix.plugins.module_utils import (
-    PosixActionBase,
+    TimezonePosixActionBase,
     parse_who,
 )
 
 
-class ActionModule(PosixActionBase, ActionBase):
+class ActionModule(TimezonePosixActionBase, ActionBase):
     """Gather session information using the POSIX who command."""
 
     TRANSFERS_FILES = False
@@ -40,7 +40,7 @@ class ActionModule(PosixActionBase, ActionBase):
         task_vars = task_vars or {}
         tmp = None
 
-        result = super().run(tmp, task_vars)
+        result = super().run(task_vars=task_vars)
 
         # Get target system timezone to parse login times correctly
         target_tz = self._get_target_timezone(task_vars)

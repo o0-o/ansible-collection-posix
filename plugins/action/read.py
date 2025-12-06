@@ -289,7 +289,7 @@ class ActionModule(ReadPosixActionBase, ActionBase):
 
         self._def_args()
 
-        result = super(ActionModule, self).run(tmp, task_vars=task_vars)
+        result = super(ActionModule, self).run(task_vars=task_vars)
         result["invocation"] = self._task.args.copy()
 
         del tmp  # unused

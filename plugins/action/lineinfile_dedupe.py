@@ -22,6 +22,9 @@ from ansible.errors import AnsibleActionFail
 from ansible.plugins.action import ActionBase
 from ansible.module_utils.common.file import get_file_arg_spec
 from ansible.module_utils.common.text.converters import to_text
+from ansible_collections.o0_o.utils.plugins.module_utils import (
+    truthy_or_string,
+)
 from ansible_collections.o0_o.posix.plugins.module_utils import (
     WritePosixActionBase,
 )
@@ -465,7 +468,7 @@ class ActionModule(WritePosixActionBase, ActionBase):
                 "firstmatch": {"type": "bool", "default": False},
                 "dedupe": {"type": "bool", "default": True},
                 "validate": {"type": "str"},
-                "_force_raw": {"type": "bool", "default": False},
+                "raw": {"type": "raw", "default": "auto"},
             }
         )
         mutually_exclusive = [
@@ -491,7 +494,12 @@ class ActionModule(WritePosixActionBase, ActionBase):
         self.firstmatch = new_module_args["firstmatch"]
         self.validate = new_module_args["validate"]
         self.dedupe = new_module_args.pop("dedupe")
-        self.force_raw = new_module_args.pop("_force_raw")
+
+        # Process raw parameter: accept boolean or 'auto'
+        try:
+            self.raw = truthy_or_string(new_module_args.pop("raw"), ["auto"])
+        except ValueError as e:
+            raise AnsibleActionFail(str(e)) from e
 
         self.perms = {
             key: new_module_args[key]
@@ -539,7 +547,7 @@ class ActionModule(WritePosixActionBase, ActionBase):
         new_module_args = self._def_args()
         self._display.vvv(f"new_module_args: {new_module_args}")
 
-        self.result = super(ActionModule, self).run(tmp, task_vars=task_vars)
+        self.result = super(ActionModule, self).run(task_vars=task_vars)
         self.result.update(
             {
                 "invocation": self._task.args.copy(),

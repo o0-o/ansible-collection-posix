@@ -16,6 +16,9 @@ from typing import Any, Optional
 
 from ansible.errors import AnsibleActionFail
 from ansible.plugins.action import ActionBase
+from ansible_collections.o0_o.utils.plugins.module_utils import (
+    truthy_or_string,
+)
 from ansible_collections.o0_o.posix.plugins.module_utils import (
     ReadPosixActionBase,
 )
@@ -69,7 +72,7 @@ class ActionModule(ReadPosixActionBase, ActionBase):
 
         .. note::
            This method validates the 'src' parameter and supports
-           '_force_raw' to bypass native slurp module usage.
+           '_raw' to bypass native slurp module usage.
         """
         task_vars = task_vars or {}
 
@@ -79,7 +82,7 @@ class ActionModule(ReadPosixActionBase, ActionBase):
         argument_spec = {
             "src": {"type": "str", "required": True},
             "encoding": {"type": "str", "default": "utf-8"},
-            "_force_raw": {"type": "bool", "default": False},
+            "raw": {"type": "raw", "default": "auto"},
         }
 
         # Validate input against spec and extract usable values
@@ -88,19 +91,22 @@ class ActionModule(ReadPosixActionBase, ActionBase):
         )
         src = new_module_args.get("src")
         encoding = new_module_args.get("encoding")
-        self.force_raw = new_module_args.pop("_force_raw")
 
-        self._display.vvv(
-            f"slurp64: parsed src={src}, _force_raw={self.force_raw}"
-        )
+        # Process raw parameter: accept boolean or 'auto'
+        try:
+            self.raw = truthy_or_string(new_module_args.pop("raw"), ["auto"])
+        except ValueError as e:
+            raise AnsibleActionFail(str(e)) from e
+
+        self._display.vvv(f"slurp64: parsed src={src}, raw={self.raw}")
 
         # Initialize the result structure from the base Action class
-        result = super().run(tmp, task_vars)
+        result = super().run(task_vars=task_vars)
         result["invocation"] = self._task.args.copy()
         result["msg"] = ""
         del tmp
 
-        if self.force_raw:
+        if self.raw:
             self._display.vvv("slurp64: forcing raw mode, calling _cat()")
             cat_result = self._cat(src, task_vars=task_vars)
             self._display.vvv(f"slurp64: _cat() returned {cat_result}")

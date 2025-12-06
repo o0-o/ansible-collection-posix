@@ -36,6 +36,9 @@ from ansible.errors import AnsibleActionFail, AnsibleError
 from ansible.module_utils.common.file import get_file_arg_spec
 from ansible.module_utils.common.text.converters import to_bytes, to_text
 from ansible.plugins.action import ActionBase
+from ansible_collections.o0_o.utils.plugins.module_utils import (
+    truthy_or_string,
+)
 from ansible_collections.o0_o.posix.plugins.module_utils import (
     WritePosixActionBase,
 )
@@ -160,7 +163,7 @@ class ActionModule(WritePosixActionBase, ActionBase):
                     "type": "str",
                     "default": VARIABLE_START_STRING,
                 },
-                "_force_raw": {"type": "bool", "default": False},
+                "raw": {"type": "raw", "default": "auto"},
             }
         )
 
@@ -203,7 +206,7 @@ class ActionModule(WritePosixActionBase, ActionBase):
 
         new_module_args = self._def_args()
 
-        self.result = super(ActionModule, self).run(tmp, task_vars=task_vars)
+        self.result = super(ActionModule, self).run(task_vars=task_vars)
         self.result.update(
             {
                 "invocation": self._task.args.copy(),
@@ -234,7 +237,11 @@ class ActionModule(WritePosixActionBase, ActionBase):
         comment_end_string = new_module_args.get("comment_end_string")
         force = new_module_args.get("force")
 
-        self.force_raw = new_module_args.get("_force_raw")
+        # Process raw parameter: accept boolean or 'auto'
+        try:
+            self.raw = truthy_or_string(new_module_args.get("raw"), ["auto"])
+        except ValueError as e:
+            raise AnsibleActionFail(str(e)) from e
 
         # Resolve src
         try:
@@ -361,7 +368,7 @@ class ActionModule(WritePosixActionBase, ActionBase):
             f.write(to_bytes(result_text, encoding="utf-8"))
 
         try:
-            if not self.force_raw:
+            if not self.raw:
                 self._display.vvv("Attempt native execution to detect Python")
                 new_task = self._task.copy()
                 new_task.args["src"] = result_file
@@ -379,7 +386,7 @@ class ActionModule(WritePosixActionBase, ActionBase):
                     "comment_end_string",
                     "trim_blocks",
                     "lstrip_blocks",
-                    "_force_raw",
+                    "raw",
                 ):
                     new_task.args.pop(remove, None)
 
@@ -404,9 +411,9 @@ class ActionModule(WritePosixActionBase, ActionBase):
                     self._display.vvv(
                         "Python missing — falling back to raw mode"
                     )
-                    self.force_raw = True
+                    self.raw = True
 
-            if self.force_raw:
+            if self.raw:
                 try:
                     self._display.vvv(
                         "Creating parent directories (if needed)"

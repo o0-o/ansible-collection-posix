@@ -306,7 +306,7 @@ class ActionModule(PosixActionBase, ActionBase):
                 f"plugin. Import failed: {e}"
             )
 
-        self.result = super(ActionModule, self).run(tmp, task_vars=task_vars)
+        self.result = super(ActionModule, self).run(task_vars=task_vars)
         self.result.update(
             {
                 "cmd": self.command,

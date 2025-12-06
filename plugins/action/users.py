@@ -45,7 +45,7 @@ class ActionModule(ReadPosixActionBase, ActionBase):
         task_vars = task_vars or {}
         tmp = None
 
-        result = super().run(tmp, task_vars)
+        result = super().run(task_vars=task_vars)
 
         argument_spec = {
             "key": {"type": "str", "choices": ["id", "name"], "default": "id"},

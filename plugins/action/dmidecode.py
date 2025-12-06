@@ -51,7 +51,7 @@ class ActionModule(PosixActionBase, ActionBase):
         task_vars = task_vars or {}
         self._def_inventory_hostname(task_vars)
 
-        result = super(ActionModule, self).run(tmp, task_vars=task_vars)
+        result = super(ActionModule, self).run(task_vars=task_vars)
         result["changed"] = False
         del tmp  # unused
 

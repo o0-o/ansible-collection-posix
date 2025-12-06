@@ -51,7 +51,7 @@ class ActionModule(PosixActionBase, ActionBase):
         task_vars = task_vars or {}
         tmp = None
 
-        result = super().run(tmp, task_vars)
+        result = super().run(task_vars=task_vars)
 
         try:
             data = self._get_locale(task_vars=task_vars)
