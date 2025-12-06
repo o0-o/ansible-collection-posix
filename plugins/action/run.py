@@ -60,7 +60,13 @@ class ActionModule(PosixActionBase, ActionBase):
         # Convert to bytes for accurate length counting
         # Use to_bytes() with surrogate_or_strict for round-trip safety
         output_bytes = to_bytes(output, errors="surrogate_or_strict")
+
+        # Skip any leading whitespace/newlines
         offset = 0
+        while offset < len(output_bytes) and output_bytes[
+            offset : offset + 1
+        ] in (b"\n", b"\r", b" ", b"\t"):
+            offset += 1
 
         for i, cmd in enumerate(commands):
             command_result = {
@@ -79,7 +85,10 @@ class ActionModule(PosixActionBase, ActionBase):
                     output_bytes[offset:rc_line_end],
                     errors="surrogate_or_strict",
                 )
-                command_result["rc"] = int(rc_line.strip())
+                rc_str = rc_line.strip()
+                if not rc_str:
+                    raise ValueError(f"Empty RC line for command {i}")
+                command_result["rc"] = int(rc_str)
                 offset = rc_line_end + 1
 
                 # Read start time line
@@ -206,14 +215,15 @@ class ActionModule(PosixActionBase, ActionBase):
 
         if self.parallel:
             # Launch all commands in background with timing
-            # Capture rc in variable before final date so wait returns cmd's rc
+            # Write RC to file to avoid stdout interleaving
             for i, cmd in enumerate(commands):
                 if not isinstance(cmd, str):
                     cmd = self._format_command(cmd)
                 cmds.append(
                     f'(date +%s >"{tmp}{i}.start" && '
-                    f'({cmd}) 1>"{tmp}{i}.stdout" 2>"{tmp}{i}.stderr"; rc=$?; '
-                    f'date +%s >"{tmp}{i}.end"; exit $rc) & '
+                    f'({cmd}) 1>"{tmp}{i}.stdout" 2>"{tmp}{i}.stderr"; '
+                    f'echo $? >"{tmp}{i}.rc"; '
+                    f'date +%s >"{tmp}{i}.end") & '
                     f"pid{i}=$!"
                 )
 
@@ -222,7 +232,7 @@ class ActionModule(PosixActionBase, ActionBase):
                 cmds.extend(
                     [
                         f'wait "$pid{i}"',
-                        'echo "$?"',
+                        f'cat "{tmp}{i}.rc"',
                         f'cat "{tmp}{i}.start"',
                         f'cat "{tmp}{i}.end"',
                         f'wc -c "{tmp}{i}.stdout"',
@@ -233,7 +243,7 @@ class ActionModule(PosixActionBase, ActionBase):
                 )
         else:
             # Sequential execution with timing
-            # Capture rc in variable before final date so we echo cmd's rc
+            # Write RC to file for consistency with parallel mode
             for i, cmd in enumerate(commands):
                 if not isinstance(cmd, str):
                     cmd = self._format_command(cmd)
@@ -242,9 +252,9 @@ class ActionModule(PosixActionBase, ActionBase):
                         # Execute and capture with timing
                         f'date +%s >"{tmp}{i}.start"',
                         f'({cmd}) 1>"{tmp}{i}.stdout" 2>"{tmp}{i}.stderr"',
-                        "rc=$?",
+                        f'echo $? >"{tmp}{i}.rc"',
                         f'date +%s >"{tmp}{i}.end"',
-                        'echo "$rc"',
+                        f'cat "{tmp}{i}.rc"',
                         f'cat "{tmp}{i}.start"',
                         f'cat "{tmp}{i}.end"',
                         f'wc -c "{tmp}{i}.stdout"',
@@ -262,7 +272,8 @@ class ActionModule(PosixActionBase, ActionBase):
         # commands are semicolon-separated (e.g., "cmd & pid=$!; wait $pid"
         # results in "wait: argument must be %job or process id").
         # Newline separation works correctly on both bash and ksh.
-        return "\n".join(cmds)
+        script = "\n".join(cmds)
+        return script
 
     def _estimate_script_length(
         self,
@@ -426,8 +437,9 @@ class ActionModule(PosixActionBase, ActionBase):
         self.result = super(ActionModule, self).run(task_vars=task_vars)
         self.result["invocation"] = self._task.args.copy()
 
-        # Use connection's tmpdir for remote temporary files
-        tmp = self._connection._shell.tmpdir
+        # Ensure tmp is a valid path for remote temporary files
+        tmp = self._make_tmp_path()
+        self._display.vvv(f"[{self.inventory_hostname}] tmp path: {tmp}")
 
         # Check mode: validate we could run, but don't actually execute
         if self._task.check_mode:
