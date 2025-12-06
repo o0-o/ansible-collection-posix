@@ -79,12 +79,12 @@ class ActionModule(ReadPosixActionBase, ActionBase):
                 "aliases": ["path"],
                 "description": "Path or list of paths to inspect",
             },
-            "metadata": {
+            "attributes": {
                 "type": "bool",
                 "default": True,
                 "description": (
-                    "Include basic metadata and extended filesystem "
-                    "attributes: type, mode, owner, group, size, writable, "
+                    "Include basic file attributes and extended filesystem "
+                    "metadata: type, mode, owner, group, size, writable, "
                     "hardlinks, inode, timestamps (modified, created, "
                     "changed), ACL, filesystem flags, and SELinux context "
                     "(but NOT xattrs)"
@@ -95,7 +95,7 @@ class ActionModule(ReadPosixActionBase, ActionBase):
                 "default": False,
                 "description": (
                     "Include extended attributes (xattrs). "
-                    "Implies metadata=true"
+                    "Implies attributes=true"
                 ),
             },
             "content": {
@@ -170,6 +170,15 @@ class ActionModule(ReadPosixActionBase, ActionBase):
                     "following or recursing"
                 ),
             },
+            "list": {
+                "type": "bool",
+                "default": False,
+                "description": (
+                    "Add 'children' field to directory entries containing "
+                    "the list of child paths. Independent of the 'children' "
+                    "parameter which controls recursive reading"
+                ),
+            },
             "children": {
                 "type": "raw",
                 "default": False,
@@ -183,8 +192,8 @@ class ActionModule(ReadPosixActionBase, ActionBase):
             },
         }
 
-        # Check if user explicitly provided metadata before validation
-        metadata_explicitly_set = "metadata" in self._task.args
+        # Check if user explicitly provided attributes before validation
+        attributes_explicitly_set = "attributes" in self._task.args
 
         validation_result, new_module_args = self.validate_argument_spec(
             argument_spec=argument_spec
@@ -192,7 +201,7 @@ class ActionModule(ReadPosixActionBase, ActionBase):
 
         # Set instance variables from validated args
         self.paths = new_module_args["paths"]
-        self.metadata = new_module_args["metadata"]
+        self.attributes = new_module_args["attributes"]
         self.extended = new_module_args["extended"]
         self.content = new_module_args["content"]
         self.lines = new_module_args["lines"]
@@ -202,19 +211,35 @@ class ActionModule(ReadPosixActionBase, ActionBase):
         self.sha1 = new_module_args["sha1"]
         self.sha256 = new_module_args["sha256"]
         self.sha512 = new_module_args["sha512"]
+        self.list = new_module_args["list"]
 
-        # Extended implies metadata
+        # Extended implies attributes
         if self.extended:
-            self.metadata = True
+            self.attributes = True
 
         # Encoding implies content reading (but not lines)
         if self.encoding:
             self.content = True
 
-        # If content/lines requested, default metadata to false
+        # Process children parameter early (needed for list implication)
+        try:
+            # Process children parameter (boolean or positive integer)
+            self.children = truthy_or_integer(
+                new_module_args["children"],
+                only_positive=True,
+                zero_is_false=True,
+            )
+        except ValueError as e:
+            raise AnsibleActionFail(str(e)) from e
+
+        # Children implies list (need directory contents to recurse)
+        if self.children and not self.list:
+            self.list = True
+
+        # If content/lines requested, default attributes to false
         # (unless user explicitly set it)
-        if (self.content or self.lines) and not metadata_explicitly_set:
-            self.metadata = False
+        if (self.content or self.lines) and not attributes_explicitly_set:
+            self.attributes = False
 
         try:
             # Process follow parameter (boolean or 'recursive')
@@ -225,13 +250,6 @@ class ActionModule(ReadPosixActionBase, ActionBase):
             # Process parents parameter (boolean or positive integer)
             self.parents = truthy_or_integer(
                 new_module_args["parents"],
-                only_positive=True,
-                zero_is_false=True,
-            )
-
-            # Process children parameter (boolean or positive integer)
-            self.children = truthy_or_integer(
-                new_module_args["children"],
                 only_positive=True,
                 zero_is_false=True,
             )
@@ -307,7 +325,7 @@ class ActionModule(ReadPosixActionBase, ActionBase):
 
         # Build options dict from parameters
         options = {
-            "metadata": self.metadata,
+            "attributes": self.attributes,
             "extended": self.extended,
             "content": self.content,
             "lines": self.lines,
@@ -323,15 +341,17 @@ class ActionModule(ReadPosixActionBase, ActionBase):
         # detected capabilities for remaining paths to avoid redundant commands
         file_data: dict[str, Any] = {}
 
-        if self.paths:
-            # Phase 1: Process first path with all command variants (detection)
-            first_path = self.paths[0]
-            detection_commands = self._get_read_commands(
-                [first_path],
-                options,
-                need_dir_contents=bool(self.children),
-                platform=None,  # Detection mode: run all variants
-            )
+        try:
+            if self.paths:
+                # Phase 1: Process first path with all command variants
+                # (detection)
+                first_path = self.paths[0]
+                detection_commands = self._get_read_commands(
+                    [first_path],
+                    options,
+                    need_dir_contents=self.list,
+                    platform=None,  # Detection mode: run all variants
+                )
             self._display.vvv(
                 f"[{self.inventory_hostname}] Platform detection: generated "
                 f"{len(detection_commands)} commands for {first_path}"
@@ -374,7 +394,7 @@ class ActionModule(ReadPosixActionBase, ActionBase):
                 commands = self._get_read_commands(
                     remaining_paths,
                     options,
-                    need_dir_contents=bool(self.children),
+                    need_dir_contents=self.list,
                     platform=platform,
                 )
                 self._display.vvv(
@@ -401,102 +421,98 @@ class ActionModule(ReadPosixActionBase, ActionBase):
                 )
                 file_data.update(remaining_file_data)
 
-        # If children is set, recursively read child entries within directories
-        if self.children:
-            max_depth = None if self.children is True else self.children
-            self._display.vvv(
-                f"[{self.inventory_hostname}] Children processing enabled "
-                f"(max_depth={max_depth})"
-            )
-
-            # Track directories to process with their depth
-            # Start with original paths that are directories
-            # (don't process children for auto-added parent paths)
-            dirs_to_process = []
-            for path in self.original_paths:
-                if (
-                    path in file_data
-                    and file_data[path]
-                    and file_data[path].get("type") == "directory"
-                ):
-                    dirs_to_process.append((path, 0))
-
-            self._display.vvv(
-                f"[{self.inventory_hostname}] Found {len(dirs_to_process)} "
-                f"initial directories to process"
-            )
-
-            processed_dirs = set()
-
-            while dirs_to_process:
-                current_dir, current_depth = dirs_to_process.pop(0)
-
-                # Skip if already processed or exceeded depth
-                if current_dir in processed_dirs:
-                    continue
-                if max_depth is not None and current_depth >= max_depth:
-                    continue
-
-                processed_dirs.add(current_dir)
-
-                # Get children from this directory
-                dir_data = file_data.get(current_dir)
-                if not dir_data or "children" not in dir_data:
-                    self._display.vvv(
-                        f"[{self.inventory_hostname}] Skipping {current_dir} "
-                        f"(no children)"
-                    )
-                    continue
-
-                child_paths = dir_data["children"]
-                if not child_paths:
-                    self._display.vvv(
-                        f"[{self.inventory_hostname}] Directory {current_dir} "
-                        f"is empty"
-                    )
-                    continue
-
+            # If children is set, recursively read child entries within
+            # directories
+            if self.children:
+                max_depth = None if self.children is True else self.children
                 self._display.vvv(
-                    f"[{self.inventory_hostname}] Processing {current_dir} "
-                    f"(depth={current_depth}, {len(child_paths)} children)"
+                    f"[{self.inventory_hostname}] Children processing enabled "
+                    f"(max_depth={max_depth})"
                 )
 
-                # Filter out children that are already in file_data
-                new_children = [
-                    child for child in child_paths if child not in file_data
-                ]
+                # Track directories to process with their depth
+                # Start with original paths that are directories
+                # (don't process children for auto-added parent paths)
+                dirs_to_process = []
+                for path in self.original_paths:
+                    if (
+                        path in file_data
+                        and file_data[path]
+                        and file_data[path].get("type") == "directory"
+                    ):
+                        dirs_to_process.append((path, 0))
 
                 self._display.vvv(
-                    f"[{self.inventory_hostname}] Found {len(new_children)} "
-                    f"new children to read"
+                    f"[{self.inventory_hostname}] Found "
+                    f"{len(dirs_to_process)} initial directories to process"
                 )
 
-                if new_children:
-                    # Process children in batches to avoid SSH buffer overflow
-                    batch_size = 50
-                    for batch_start in range(0, len(new_children), batch_size):
-                        batch_end = min(
-                            batch_start + batch_size, len(new_children)
-                        )
-                        batch_paths = new_children[batch_start:batch_end]
+                processed_dirs = set()
 
+                while dirs_to_process:
+                    current_dir, current_depth = dirs_to_process.pop(0)
+
+                    # Skip if already processed or exceeded depth
+                    if current_dir in processed_dirs:
+                        continue
+                    if max_depth is not None and current_depth >= max_depth:
+                        continue
+
+                    processed_dirs.add(current_dir)
+
+                    # Get children from this directory
+                    dir_data = file_data.get(current_dir)
+                    if not dir_data or "children" not in dir_data:
                         self._display.vvv(
-                            f"[{self.inventory_hostname}] Processing batch "
-                            f"{batch_start // batch_size + 1} "
-                            f"({len(batch_paths)} paths)"
+                            f"[{self.inventory_hostname}] Skipping "
+                            f"{current_dir} (no children)"
                         )
+                        continue
 
-                        # Read metadata for this batch of children
+                    child_paths = dir_data["children"]
+                    if not child_paths:
+                        self._display.vvv(
+                            f"[{self.inventory_hostname}] Directory "
+                            f"{current_dir} is empty"
+                        )
+                        continue
+
+                    self._display.vvv(
+                        f"[{self.inventory_hostname}] Processing "
+                        f"{current_dir} (depth={current_depth}, "
+                        f"{len(child_paths)} children)"
+                    )
+
+                    # Filter out children that are already in file_data
+                    new_children = [
+                        child
+                        for child in child_paths
+                        if child not in file_data
+                    ]
+
+                    self._display.vvv(
+                        f"[{self.inventory_hostname}] Found "
+                        f"{len(new_children)} new children to read"
+                    )
+
+                    if new_children:
+                        # Validate that no child paths are None
+                        if any(child is None for child in new_children):
+                            none_count = sum(
+                                1 for child in new_children if child is None
+                            )
+                            raise AnsibleActionFail(
+                                f"Internal error: {none_count} child paths "
+                                f"are None in directory {current_dir}. "
+                                f"Children list: {child_paths}"
+                            )
+
+                        # Read metadata for children
                         child_commands = self._get_read_commands(
-                            batch_paths,
+                            new_children,
                             options,
                             need_dir_contents=True,
                             platform=platform,
-                        )
-                        self._display.vvv(
-                            f"[{self.inventory_hostname}] Generated "
-                            f"{len(child_commands)} commands for "
-                            f"{len(batch_paths)} paths"
                         )
                         child_result = self._run(
                             commands=child_commands,
@@ -505,123 +521,63 @@ class ActionModule(ReadPosixActionBase, ActionBase):
                         )
                         total_commands += child_result.get("count", 0)
                         total_batches += child_result.get("batches", 0)
-                        self._display_longest_command(
-                            child_result,
-                            f"children batch {batch_start // batch_size + 1}",
-                        )
+                        self._display_longest_command(child_result, "children")
                         child_data = self._process_read_results(
                             results=child_result["commands"],
-                            paths=batch_paths,
+                            paths=new_children,
                             options=options,
                         )
                         file_data.update(child_data)
 
-                # Add subdirectories to processing queue (outside batch loop)
-                subdirs_found = 0
-                for child_path in new_children:
-                    if (
-                        child_path in file_data
-                        and file_data[child_path]
-                        and file_data[child_path].get("type") == "directory"
-                    ):
-                        dirs_to_process.append((child_path, current_depth + 1))
-                        subdirs_found += 1
+                    # Add subdirectories to processing queue
+                    subdirs_found = 0
+                    for child_path in new_children:
+                        if (
+                            child_path in file_data
+                            and file_data[child_path]
+                            and file_data[child_path].get("type")
+                            == "directory"
+                        ):
+                            dirs_to_process.append(
+                                (child_path, current_depth + 1)
+                            )
+                            subdirs_found += 1
 
-                if subdirs_found > 0:
-                    self._display.vvv(
-                        f"[{self.inventory_hostname}] Added "
-                        f"{subdirs_found} subdirectories to queue "
-                        f"(queue size now: {len(dirs_to_process)})"
-                    )
+                    if subdirs_found > 0:
+                        self._display.vvv(
+                            f"[{self.inventory_hostname}] Added "
+                            f"{subdirs_found} subdirectories to queue "
+                            f"(queue size now: {len(dirs_to_process)})"
+                        )
 
-        # Handle symbolic links based on follow parameter
-        if self.follow == "recursive":
-            # Recursively add symlink targets until non-symlink found
-            processed_paths = set(file_data.keys())
+            # Handle symbolic links based on follow parameter
+            if self.follow == "recursive":
+                # Recursively add symlink targets until non-symlink found
+                processed_paths = set(file_data.keys())
 
-            while True:
-                new_targets = []
-                for path, data in file_data.items():
-                    if (
-                        data
-                        and data.get("type") == "link"
-                        and "target" in data
-                        and data["target"]
-                    ):
-                        target = data["target"]
-                        # Resolve relative paths to absolute
-                        if not isabs(target):
-                            target = normpath(join(dirname(path), target))
-                        if target not in processed_paths:
-                            new_targets.append(target)
-                            processed_paths.add(target)
+                while True:
+                    new_targets = []
+                    for path, data in file_data.items():
+                        if (
+                            data
+                            and data.get("type") == "link"
+                            and "target" in data
+                            and data["target"]
+                        ):
+                            target = data["target"]
+                            # Resolve relative paths to absolute
+                            if not isabs(target):
+                                target = normpath(join(dirname(path), target))
+                            if target not in processed_paths:
+                                new_targets.append(target)
+                                processed_paths.add(target)
 
-                if not new_targets:
-                    break
+                    if not new_targets:
+                        break
 
-                # Read metadata for link targets
-                target_commands = self._get_read_commands(
-                    new_targets, options, platform=platform
-                )
-                target_result = self._run(
-                    commands=target_commands,
-                    task_vars=task_vars,
-                    check_mode=False,
-                )
-                total_commands += target_result.get("count", 0)
-                total_batches += target_result.get("batches", 0)
-                self._display_longest_command(
-                    target_result, "recursive symlink targets"
-                )
-                target_data = self._process_read_results(
-                    results=target_result["commands"],
-                    paths=new_targets,
-                    options=options,
-                )
-                file_data.update(target_data)
-
-        elif self.follow is True:
-            # Resolve symlinks to their ultimate targets
-            links_to_resolve = []
-            for path, data in file_data.items():
-                if data and data.get("type") == "link":
-                    links_to_resolve.append(path)
-
-            if links_to_resolve:
-                # Use readlink -f to resolve ultimate targets
-                readlink_commands = {}
-                for link_path in links_to_resolve:
-                    readlink_commands[f"{link_path}_readlink"] = [
-                        "readlink",
-                        "-f",
-                        link_path,
-                    ]
-
-                readlink_result = self._run(
-                    commands=readlink_commands,
-                    task_vars=task_vars,
-                    check_mode=False,
-                )
-                total_commands += readlink_result.get("count", 0)
-                total_batches += readlink_result.get("batches", 0)
-                self._display_longest_command(readlink_result, "readlink -f")
-
-                # Get resolved targets and read their metadata
-                resolved_targets = {}
-                for link_path in links_to_resolve:
-                    result_key = f"{link_path}_readlink"
-                    if result_key in readlink_result["commands"]:
-                        cmd_result = readlink_result["commands"][result_key]
-                        if cmd_result.get("rc") == 0:
-                            target = cmd_result.get("stdout", "").strip()
-                            if target:
-                                resolved_targets[link_path] = target
-
-                # Read metadata for resolved targets
-                if resolved_targets:
-                    unique_targets = list(set(resolved_targets.values()))
+                    # Read metadata for link targets
                     target_commands = self._get_read_commands(
-                        unique_targets, options, platform=platform
+                        new_targets, options, platform=platform
                     )
                     target_result = self._run(
                         commands=target_commands,
@@ -631,22 +587,107 @@ class ActionModule(ReadPosixActionBase, ActionBase):
                     total_commands += target_result.get("count", 0)
                     total_batches += target_result.get("batches", 0)
                     self._display_longest_command(
-                        target_result, "resolved symlink targets"
+                        target_result, "recursive symlink targets"
                     )
                     target_data = self._process_read_results(
                         results=target_result["commands"],
-                        paths=unique_targets,
+                        paths=new_targets,
                         options=options,
                     )
+                    file_data.update(target_data)
 
-                    # Replace symlink data with target data
-                    for link_path, target in resolved_targets.items():
-                        if target in target_data and target_data[target]:
-                            file_data[link_path] = target_data[target]
-                            # Add realpath key when it differs from
-                            # original path
-                            if target != link_path:
-                                file_data[link_path]["realpath"] = target
+            elif self.follow is True:
+                # Resolve symlinks to their ultimate targets
+                links_to_resolve = []
+                for path, data in file_data.items():
+                    if data and data.get("type") == "link":
+                        links_to_resolve.append(path)
+
+                if links_to_resolve:
+                    # Use readlink -f to resolve ultimate targets
+                    readlink_commands = {}
+                    for link_path in links_to_resolve:
+                        readlink_commands[f"{link_path}_readlink"] = [
+                            "readlink",
+                            "-f",
+                            link_path,
+                        ]
+
+                    readlink_result = self._run(
+                        commands=readlink_commands,
+                        task_vars=task_vars,
+                        check_mode=False,
+                    )
+                    total_commands += readlink_result.get("count", 0)
+                    total_batches += readlink_result.get("batches", 0)
+                    self._display_longest_command(
+                        readlink_result, "readlink -f"
+                    )
+
+                    # Get resolved targets and read their metadata
+                    resolved_targets = {}
+                    for link_path in links_to_resolve:
+                        result_key = f"{link_path}_readlink"
+                        if result_key in readlink_result["commands"]:
+                            cmd_result = readlink_result["commands"][
+                                result_key
+                            ]
+                            if cmd_result.get("rc") == 0:
+                                target = cmd_result.get("stdout", "").strip()
+                                if target:
+                                    resolved_targets[link_path] = target
+
+                    # Read metadata for resolved targets
+                    if resolved_targets:
+                        unique_targets = list(set(resolved_targets.values()))
+                        target_commands = self._get_read_commands(
+                            unique_targets, options, platform=platform
+                        )
+                        target_result = self._run(
+                            commands=target_commands,
+                            task_vars=task_vars,
+                            check_mode=False,
+                        )
+                        total_commands += target_result.get("count", 0)
+                        total_batches += target_result.get("batches", 0)
+                        self._display_longest_command(
+                            target_result, "resolved symlink targets"
+                        )
+                        target_data = self._process_read_results(
+                            results=target_result["commands"],
+                            paths=unique_targets,
+                            options=options,
+                        )
+
+                        # Replace symlink data with target data
+                        for link_path, target in resolved_targets.items():
+                            if target in target_data and target_data[target]:
+                                file_data[link_path] = target_data[target]
+                                # Add realpath key when it differs from
+                                # original path
+                                if target != link_path:
+                                    file_data[link_path]["realpath"] = target
+
+        except (ValueError, RuntimeError, IOError) as e:
+            # Convert standard Python exceptions to module failure
+            result.update({"failed": True, "msg": str(e)})
+            return result
+        except KeyError as e:
+            # Handle missing keys in command results
+            import traceback
+
+            tb = traceback.format_exc()
+            result.update(
+                {
+                    "failed": True,
+                    "msg": (
+                        f"Internal error: missing key {e} in command "
+                        f"results. This usually means _run() failed to "
+                        f"execute commands. Traceback: {tb}"
+                    ),
+                }
+            )
+            return result
 
         # Note: children field is always kept in output since it's controlled
         # by the children parameter (not the old include list)

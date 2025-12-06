@@ -17,8 +17,6 @@ import base64
 from os.path import join
 from typing import Any, Optional
 
-from ansible.errors import AnsibleActionFail
-
 from ansible_collections.o0_o.posix.plugins.module_utils.jc_utils import (
     jc_parse,
 )
@@ -50,7 +48,7 @@ class ReadPosixActionBase(PosixActionBase):
         capabilities.
 
         :param list[str] paths: Paths to inspect
-        :param dict[str, Any] options: Options dict with keys: metadata,
+        :param dict[str, Any] options: Options dict with keys: attributes,
             extended, content, encoding, mime, md5, sha1, sha256, sha512
         :param bool need_dir_contents: If True, add commands to list
             directory contents (for children feature)
@@ -60,7 +58,7 @@ class ReadPosixActionBase(PosixActionBase):
         :returns dict: Command dictionary keyed by path-prefixed tags
         """
         commands: dict[str, Any] = {}
-        include_metadata = options.get("metadata", False) or options.get(
+        include_metadata = options.get("attributes", False) or options.get(
             "extended", False
         )
         include_extended = options.get("extended", False)
@@ -529,11 +527,13 @@ class ReadPosixActionBase(PosixActionBase):
         encoding: str,
         path: str,
         options: dict[str, Any],
+        forced: bool = False,
     ) -> None:
         """
         Add content to metadata with specified encoding.
 
         Handles special encodings (hex, base64) and text encodings.
+        Falls back to base64 if auto-detected encoding fails.
         Fails if text decode fails with forced encoding.
 
         :param dict metadata: Metadata dict to update
@@ -541,15 +541,15 @@ class ReadPosixActionBase(PosixActionBase):
         :param str encoding: Encoding to use (forced or auto-detected)
         :param str path: File path (for error messages)
         :param dict options: Options dict with content/lines flags
+        :param bool forced: True if encoding was user-specified, False
+            if auto-detected
         """
         # Convert raw_content back to bytes
         # Ansible may have decoded it with surrogateescape
         try:
             content_bytes = raw_content.encode("utf-8", "surrogateescape")
         except (UnicodeEncodeError, UnicodeDecodeError) as e:
-            raise AnsibleActionFail(
-                f"Failed to process content for {path}: {e}"
-            )
+            raise RuntimeError(f"Failed to process content for {path}: {e}")
 
         encoding_lower = encoding.lower()
         want_content = options.get("content", False)
@@ -562,7 +562,7 @@ class ReadPosixActionBase(PosixActionBase):
             "binary",
             "unknown",
         }:
-            raise AnsibleActionFail(
+            raise ValueError(
                 f"Cannot split binary content into lines for {path}. "
                 f"The 'lines' parameter requires text content, but "
                 f"encoding is '{encoding}'. Remove lines=true or use "
@@ -604,10 +604,26 @@ class ReadPosixActionBase(PosixActionBase):
             except (UnicodeDecodeError, LookupError) as e:
                 # LookupError: unknown encoding
                 # UnicodeDecodeError: decode failed
-                raise AnsibleActionFail(
-                    f"Failed to decode content for {path} with "
-                    f"encoding '{encoding}': {e}"
-                )
+                if forced:
+                    # User specified this encoding - fail with error
+                    raise RuntimeError(
+                        f"Failed to decode content for {path} with "
+                        f"forced encoding '{encoding}': {e}"
+                    )
+                else:
+                    # Auto-detected encoding failed - fall back to base64
+                    metadata["content"] = base64.b64encode(
+                        content_bytes
+                    ).decode("ascii")
+                    metadata["encoding"] = "base64"
+                    # Cannot provide lines for binary content
+                    if want_lines:
+                        raise ValueError(
+                            f"Cannot split binary content into lines for "
+                            f"{path}. Auto-detected encoding '{encoding}' "
+                            f"failed to decode, falling back to base64. "
+                            f"Remove lines=true or specify a text encoding."
+                        )
 
     def _process_read_results(
         self,
@@ -627,7 +643,7 @@ class ReadPosixActionBase(PosixActionBase):
         :returns dict: Dictionary mapping paths to parsed file data or
             None if path doesn't exist
         """
-        options = options or {"metadata": True}
+        options = options or {"attributes": True}
         file_data: dict[str, Optional[dict[str, Any]]] = {}
 
         for path in paths:
@@ -656,7 +672,7 @@ class ReadPosixActionBase(PosixActionBase):
 
                 # Extract basic metadata
                 metadata = {}
-                include_metadata = options.get("metadata", False)
+                include_metadata = options.get("attributes", False)
 
                 # Extract file type from first char of flags
                 # (always needed for content/extended logic)
@@ -756,7 +772,7 @@ class ReadPosixActionBase(PosixActionBase):
                         if cat_result.get("rc") != 0:
                             # cat command failed
                             if forced_encoding or options.get("content"):
-                                raise AnsibleActionFail(
+                                raise IOError(
                                     f"Failed to read content for {path}: "
                                     f"cat command failed"
                                 )
@@ -826,7 +842,7 @@ class ReadPosixActionBase(PosixActionBase):
                                         )
 
                             if not encoding:
-                                raise AnsibleActionFail(
+                                raise RuntimeError(
                                     f"Content requested for {path} but "
                                     f"encoding detection failed. Ensure the "
                                     f"file command is installed."
@@ -834,7 +850,12 @@ class ReadPosixActionBase(PosixActionBase):
 
                         # Process content with determined encoding
                         self._add_content_with_encoding(
-                            metadata, raw_content, encoding, path, options
+                            metadata,
+                            raw_content,
+                            encoding,
+                            path,
+                            options,
+                            forced=bool(forced_encoding),
                         )
 
                     # Add MIME type if requested
@@ -865,7 +886,7 @@ class ReadPosixActionBase(PosixActionBase):
 
                         if not mimetype or "/" not in mimetype:
                             # MIME type was requested but failed
-                            raise AnsibleActionFail(
+                            raise RuntimeError(
                                 f"MIME type detection requested for {path} "
                                 f"but file command failed. Ensure the file "
                                 f"command is installed and accessible."
@@ -1088,7 +1109,7 @@ class ReadPosixActionBase(PosixActionBase):
                                 metadata["md5"] = md5_hash
                         else:
                             # MD5 was requested but failed
-                            raise AnsibleActionFail(
+                            raise RuntimeError(
                                 f"MD5 checksum requested for {path} but "
                                 f"all hash commands failed. Ensure md5sum "
                                 f"or md5 is installed."
@@ -1114,7 +1135,7 @@ class ReadPosixActionBase(PosixActionBase):
                                 metadata["sha1"] = sha1_hash
                         else:
                             # SHA-1 was requested but failed
-                            raise AnsibleActionFail(
+                            raise RuntimeError(
                                 f"SHA-1 checksum requested for {path} but "
                                 f"all hash commands failed. Ensure sha1sum, "
                                 f"shasum, or sha1 is installed."
@@ -1144,7 +1165,7 @@ class ReadPosixActionBase(PosixActionBase):
                                 metadata["sha256"] = sha256_hash
                         else:
                             # SHA-256 was requested but failed
-                            raise AnsibleActionFail(
+                            raise RuntimeError(
                                 f"SHA-256 checksum requested for {path} "
                                 f"but all hash commands failed. Ensure "
                                 f"sha256sum, shasum, or sha256 is installed."
@@ -1174,7 +1195,7 @@ class ReadPosixActionBase(PosixActionBase):
                                 metadata["sha512"] = sha512_hash
                         else:
                             # SHA-512 was requested but failed
-                            raise AnsibleActionFail(
+                            raise RuntimeError(
                                 f"SHA-512 checksum requested for {path} "
                                 f"but all hash commands failed. Ensure "
                                 f"sha512sum, shasum, or sha512 is installed."
