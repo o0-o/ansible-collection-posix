@@ -58,7 +58,7 @@ class ReadPosixActionBase(PosixActionBase):
         :returns dict: Command dictionary keyed by path-prefixed tags
         """
         commands: dict[str, Any] = {}
-        include_metadata = options.get("attributes", False) or options.get(
+        include_attributes = options.get("attributes", False) or options.get(
             "extended", False
         )
         include_extended = options.get("extended", False)
@@ -109,8 +109,8 @@ class ReadPosixActionBase(PosixActionBase):
             else:  # bsd
                 commands[f"{path}_inode_bsd"] = ["stat", "-f", "%i", path]
 
-            # Timestamps if metadata requested
-            if include_metadata:
+            # Timestamps if attributes requested
+            if include_attributes:
                 if stat_variant is None:
                     # Detection mode: run both
                     commands[f"{path}_stat"] = [
@@ -253,8 +253,8 @@ class ReadPosixActionBase(PosixActionBase):
                 elif platform.get("has_sha512_bsd"):
                     commands[f"{path}_sha512_bsd"] = ["sha512", "-q", path]
 
-            # ACL info if metadata requested
-            if include_metadata:
+            # ACL info if attributes requested
+            if include_attributes:
                 if has_getfacl is None:
                     # Detection mode: run all ACL variants
                     commands[f"{path}_acl"] = ["getfacl", "-p", path]
@@ -292,8 +292,8 @@ class ReadPosixActionBase(PosixActionBase):
                     commands[f"{path}_xattr_macos"] = ["xattr", "-lx", path]
                 # else: no xattr command available, skip
 
-            # Filesystem flags if metadata requested
-            if include_metadata:
+            # Filesystem flags if attributes requested
+            if include_attributes:
                 if has_lsattr is None:
                     # Detection mode: run both
                     commands[f"{path}_flags"] = ["lsattr", "-d", path]
@@ -304,8 +304,8 @@ class ReadPosixActionBase(PosixActionBase):
                     commands[f"{path}_flags_macos"] = ["ls", "-ldO", path]
                 # else: no flags command available, skip
 
-            # SELinux context if metadata requested
-            if include_metadata:
+            # SELinux context if attributes requested
+            if include_attributes:
                 if ls_supports_selinux is None:
                     # Detection mode: run both
                     commands[f"{path}_selinux"] = ["stat", "-c", "%C", path]
@@ -522,7 +522,7 @@ class ReadPosixActionBase(PosixActionBase):
 
     def _add_content_with_encoding(
         self,
-        metadata: dict[str, Any],
+        attributes: dict[str, Any],
         raw_content: str,
         encoding: str,
         path: str,
@@ -530,13 +530,13 @@ class ReadPosixActionBase(PosixActionBase):
         forced: bool = False,
     ) -> None:
         """
-        Add content to metadata with specified encoding.
+        Add content to attributes with specified encoding.
 
         Handles special encodings (hex, base64) and text encodings.
         Falls back to base64 if auto-detected encoding fails.
         Fails if text decode fails with forced encoding.
 
-        :param dict metadata: Metadata dict to update
+        :param dict attributes: Metadata dict to update
         :param str raw_content: Raw content from cat command
         :param str encoding: Encoding to use (forced or auto-detected)
         :param str path: File path (for error messages)
@@ -572,34 +572,34 @@ class ReadPosixActionBase(PosixActionBase):
         # Handle special encodings (only valid with content, not lines)
         if encoding_lower == "hex":
             # Hexadecimal representation
-            metadata["content"] = content_bytes.hex()
-            metadata["encoding"] = "hex"
+            attributes["content"] = content_bytes.hex()
+            attributes["encoding"] = "hex"
         elif encoding_lower == "base64":
             # Base64 representation (user forced or auto-detected binary)
-            metadata["content"] = base64.b64encode(content_bytes).decode(
+            attributes["content"] = base64.b64encode(content_bytes).decode(
                 "ascii"
             )
-            metadata["encoding"] = "base64"
+            attributes["encoding"] = "base64"
         elif encoding_lower in {"binary", "unknown"}:
             # Auto-detected binary: use base64
-            metadata["content"] = base64.b64encode(content_bytes).decode(
+            attributes["content"] = base64.b64encode(content_bytes).decode(
                 "ascii"
             )
-            metadata["encoding"] = "base64"
+            attributes["encoding"] = "base64"
         else:
             # Text encoding: try to decode with specified encoding
             try:
                 decoded_content = content_bytes.decode(encoding)
                 clean_content = decoded_content.replace("\r", "")
-                metadata["encoding"] = encoding
+                attributes["encoding"] = encoding
 
                 # Add content key if requested
                 if want_content:
-                    metadata["content"] = clean_content
+                    attributes["content"] = clean_content
 
                 # Add lines key if requested
                 if want_lines:
-                    metadata["lines"] = clean_content.splitlines()
+                    attributes["lines"] = clean_content.splitlines()
 
             except (UnicodeDecodeError, LookupError) as e:
                 # LookupError: unknown encoding
@@ -612,10 +612,10 @@ class ReadPosixActionBase(PosixActionBase):
                     )
                 else:
                     # Auto-detected encoding failed - fall back to base64
-                    metadata["content"] = base64.b64encode(
+                    attributes["content"] = base64.b64encode(
                         content_bytes
                     ).decode("ascii")
-                    metadata["encoding"] = "base64"
+                    attributes["encoding"] = "base64"
                     # Cannot provide lines for binary content
                     if want_lines:
                         raise ValueError(
@@ -634,12 +634,12 @@ class ReadPosixActionBase(PosixActionBase):
         """
         Process raw command results into structured file data.
 
-        Parses ls -din output using jc and extracts file metadata.
+        Parses ls -din output using jc and extracts file attributes.
 
         :param dict results: Raw command results from _run()
         :param list[str] paths: Original paths that were inspected
         :param Optional[dict[str, bool]] options: Boolean options dict
-            (metadata, extended, content, md5, sha1, sha256, sha512)
+            (attributes, extended, content, md5, sha1, sha256, sha512)
         :returns dict: Dictionary mapping paths to parsed file data or
             None if path doesn't exist
         """
@@ -670,9 +670,9 @@ class ReadPosixActionBase(PosixActionBase):
                 # ls returns a list, get first entry
                 entry = parsed[0] if parsed else {}
 
-                # Extract basic metadata
-                metadata = {}
-                include_metadata = options.get("attributes", False)
+                # Extract basic attributes
+                attributes = {}
+                include_attributes = options.get("attributes", False)
 
                 # Extract file type from first char of flags
                 # (always needed for content/extended logic)
@@ -689,17 +689,17 @@ class ReadPosixActionBase(PosixActionBase):
                         "b": "block",
                     }
                     file_type = type_map.get(type_char, "unknown")
-                    # Only add type if metadata requested
-                    if include_metadata:
-                        metadata["type"] = file_type
+                    # Only add type if attributes requested
+                    if include_attributes:
+                        attributes["type"] = file_type
                 else:
                     file_type = "unknown"
 
-                # Add optional metadata fields only if requested
-                if include_metadata:
+                # Add optional attributes fields only if requested
+                if include_attributes:
                     # Extract octal mode from flags
                     if flags:
-                        metadata["mode"] = self._flags_to_octal_mode(flags)
+                        attributes["mode"] = self._flags_to_octal_mode(flags)
 
                     # Add other fields from ls output
                     # Only include size for regular files
@@ -707,59 +707,69 @@ class ReadPosixActionBase(PosixActionBase):
                         size_bytes = entry["size"]
                         # Format size with bytes and pretty keys
                         size_str = f"{size_bytes}B"
-                        metadata["size"] = parse_si(
+                        attributes["size"] = parse_si(
                             size_str, binary=True, optimize=True
                         )
                     if "owner" in entry:
-                        metadata["owner"] = entry["owner"]
+                        attributes["owner"] = entry["owner"]
                     if "group" in entry:
-                        metadata["group"] = entry["group"]
+                        attributes["group"] = entry["group"]
 
                     # Calculate permission flags
                     if flags and len(flags) >= 10:
                         perms = self._stat_permission_booleans(flags)
-                        metadata["readable"] = perms.get("readable", False)
-                        metadata["writable"] = perms.get("writeable", False)
-                        metadata["executable"] = perms.get("executable", False)
+                        attributes["readable"] = perms.get("readable", False)
+                        attributes["writable"] = perms.get("writeable", False)
+                        attributes["executable"] = perms.get("executable", False)
 
                 # Add content/hardlinks field based on file type
-                if file_type == "link" and include_metadata:
+                if file_type == "link" and include_attributes:
                     # For symlinks, target is the link target
                     # jc returns link_to field for symlink targets
                     if "link_to" in entry:
-                        metadata["target"] = entry["link_to"]
+                        attributes["target"] = entry["link_to"]
                     else:
-                        metadata["target"] = ""
-                elif file_type == "regular" and include_metadata:
+                        attributes["target"] = ""
+                elif file_type == "regular" and include_attributes:
                     # For regular files, hardlinks is the count of OTHER links
                     # (raw count - 1), omit if zero
+                    has_hardlinks = False
                     if "links" in entry:
                         other_links = entry["links"] - 1
                         if other_links > 0:
-                            metadata["hardlinks"] = other_links
-                            # Get inode from stat for hardlink identification
-                            inode_key = f"{path}_inode"
-                            inode_bsd_key = f"{path}_inode_bsd"
-                            if (
-                                inode_key in results
-                                or inode_bsd_key in results
-                            ):
-                                # Try GNU stat first
-                                inode_result = results.get(inode_key, {})
-                                if inode_result.get("rc") != 0:
-                                    # Fall back to BSD stat
-                                    inode_result = results.get(
-                                        inode_bsd_key, {}
-                                    )
+                            has_hardlinks = True
+                            attributes["hardlinks"] = other_links
 
-                                if inode_result.get("rc") == 0:
-                                    inode_str = inode_result.get(
-                                        "stdout", ""
-                                    ).strip()
-                                    try:
-                                        metadata["inode"] = int(inode_str)
-                                    except (ValueError, TypeError):
-                                        pass
+                    # Determine if inode should be included
+                    # User can explicitly set inode=true/false
+                    # Default: true if hardlinks exist, false otherwise
+                    want_inode = options.get("inode")
+                    if want_inode is None:
+                        # Smart default: include if has hardlinks
+                        include_inode = has_hardlinks
+                    else:
+                        # User explicitly set it
+                        include_inode = want_inode
+
+                    if include_inode:
+                        # Get inode from stat for hardlink identification
+                        inode_key = f"{path}_inode"
+                        inode_bsd_key = f"{path}_inode_bsd"
+                        if inode_key in results or inode_bsd_key in results:
+                            # Try GNU stat first
+                            inode_result = results.get(inode_key, {})
+                            if inode_result.get("rc") != 0:
+                                # Fall back to BSD stat
+                                inode_result = results.get(inode_bsd_key, {})
+
+                            if inode_result.get("rc") == 0:
+                                inode_str = inode_result.get(
+                                    "stdout", ""
+                                ).strip()
+                                try:
+                                    attributes["inode"] = int(inode_str)
+                                except (ValueError, TypeError):
+                                    pass
 
                 # Add content and encoding if requested and available
                 if file_type == "regular":
@@ -850,7 +860,7 @@ class ReadPosixActionBase(PosixActionBase):
 
                         # Process content with determined encoding
                         self._add_content_with_encoding(
-                            metadata,
+                            attributes,
                             raw_content,
                             encoding,
                             path,
@@ -894,7 +904,7 @@ class ReadPosixActionBase(PosixActionBase):
 
                         # Split into type and subtype
                         mime_parts = mimetype.split("/", 1)
-                        metadata["mime"] = {
+                        attributes["mime"] = {
                             "type": mime_parts[0],
                             "subtype": mime_parts[1],
                         }
@@ -918,15 +928,15 @@ class ReadPosixActionBase(PosixActionBase):
                             btime = int(times[2]) if times[2] != "0" else None
 
                             if mtime:
-                                metadata["modified"] = format_epoch_timestamp(
+                                attributes["modified"] = format_epoch_timestamp(
                                     mtime
                                 )
                             if ctime:
-                                metadata["changed"] = format_epoch_timestamp(
+                                attributes["changed"] = format_epoch_timestamp(
                                     ctime
                                 )
                             if btime:
-                                metadata["created"] = format_epoch_timestamp(
+                                attributes["created"] = format_epoch_timestamp(
                                     btime
                                 )
 
@@ -958,20 +968,20 @@ class ReadPosixActionBase(PosixActionBase):
                         acl_text = acl_result.get("stdout", "").strip()
                         if acl_text:
                             if acl_type == "macos":
-                                metadata["acl"] = self._parse_macos_acl(
+                                attributes["acl"] = self._parse_macos_acl(
                                     acl_text
                                 )
                             elif acl_type == "nfs4":
-                                metadata["acl"] = self._parse_nfs4_acl(
+                                attributes["acl"] = self._parse_nfs4_acl(
                                     acl_text
                                 )
                             else:
-                                metadata["acl"] = self._parse_posix_acl(
+                                attributes["acl"] = self._parse_posix_acl(
                                     acl_text
                                 )
                     else:
                         # All commands failed - system doesn't support ACLs
-                        metadata["acl"] = {}
+                        attributes["acl"] = {}
 
                 # Add extended attributes if requested
                 xattr_key = f"{path}_xattr"
@@ -993,18 +1003,18 @@ class ReadPosixActionBase(PosixActionBase):
                             )
                             # Add xattrs if any were found
                             if xattr_parsed.get("xattrs"):
-                                metadata["xattrs"] = xattr_parsed["xattrs"]
+                                attributes["xattrs"] = xattr_parsed["xattrs"]
                             # Merge SELinux from xattrs if not already set
                             if (
                                 "selinux" in xattr_parsed
-                                and "selinux" not in metadata
+                                and "selinux" not in attributes
                             ):
-                                metadata["selinux"] = xattr_parsed["selinux"]
+                                attributes["selinux"] = xattr_parsed["selinux"]
 
                             # Check for ACL xattrs when ACL commands failed
                             # Only POSIX ACLs use xattrs (macOS/APFS stores
-                            # ACLs in filesystem metadata)
-                            if metadata.get("acl") == {}:
+                            # ACLs in filesystem attributes)
+                            if attributes.get("acl") == {}:
                                 xattrs = xattr_parsed.get("xattrs", {})
                                 acl_xattrs = [
                                     "system.posix_acl_access",
@@ -1016,7 +1026,7 @@ class ReadPosixActionBase(PosixActionBase):
                                 if found_acl_xattrs:
                                     # Set type to indicate POSIX ACLs present
                                     # even though we couldn't read them
-                                    metadata["acl"] = {"type": "posix"}
+                                    attributes["acl"] = {"type": "posix"}
                                     xattr_list = ", ".join(found_acl_xattrs)
                                     self._display.warning(
                                         f"[{self.inventory_hostname}] "
@@ -1036,17 +1046,17 @@ class ReadPosixActionBase(PosixActionBase):
                     if flags_result.get("rc") == 0:
                         flags_output = flags_result.get("stdout", "")
                         flags = self._process_linux_flags(flags_output)
-                        metadata["flags"] = flags
+                        attributes["flags"] = flags
                     else:
                         # Fall back to macOS ls -ldO
                         flags_result = results.get(flags_macos_key, {})
                         if flags_result.get("rc") == 0:
                             flags_output = flags_result.get("stdout", "")
                             flags = self._process_macos_flags(flags_output)
-                            metadata["flags"] = flags
+                            attributes["flags"] = flags
                         else:
                             # Neither command succeeded, set empty default
-                            metadata["flags"] = []
+                            attributes["flags"] = []
 
                 # Add SELinux context if requested
                 selinux_key = f"{path}_selinux"
@@ -1061,12 +1071,12 @@ class ReadPosixActionBase(PosixActionBase):
                     if selinux_result.get("rc") == 0:
                         selinux_text = selinux_result.get("stdout", "").strip()
                         if selinux_text and not selinux_text.startswith("?"):
-                            metadata["selinux"] = selinux_text
+                            attributes["selinux"] = selinux_text
 
                 # Add directory children if this is a directory and
                 # ls command was run (either for children parameter or
                 # explicitly requested via include)
-                if metadata.get("type") == "directory":
+                if attributes.get("type") == "directory":
                     contents_key = f"{path}_contents"
                     if contents_key in results:
                         contents_result = results.get(contents_key, {})
@@ -1077,21 +1087,21 @@ class ReadPosixActionBase(PosixActionBase):
                             if contents_output:
                                 # Split by newlines and create full paths
                                 filenames = contents_output.split("\n")
-                                metadata["children"] = [
+                                attributes["children"] = [
                                     join(path, filename)
                                     for filename in filenames
                                     if filename
                                 ]
                             else:
                                 # Empty directory
-                                metadata["children"] = []
+                                attributes["children"] = []
                         else:
                             # Could not list directory (e.g., no permission)
-                            metadata["children"] = []
+                            attributes["children"] = []
 
                 # Add hash checksums if requested
                 # Only process for regular files
-                if metadata.get("type") == "regular":
+                if attributes.get("type") == "regular":
                     # MD5 - try GNU md5sum first, then BSD md5
                     if (
                         f"{path}_md5" in results
@@ -1106,7 +1116,7 @@ class ReadPosixActionBase(PosixActionBase):
                             # BSD format is just "hash"
                             md5_hash = md5_output.split()[0]
                             if md5_hash:
-                                metadata["md5"] = md5_hash
+                                attributes["md5"] = md5_hash
                         else:
                             # MD5 was requested but failed
                             raise RuntimeError(
@@ -1132,7 +1142,7 @@ class ReadPosixActionBase(PosixActionBase):
                             sha1_output = sha1_result.get("stdout", "").strip()
                             sha1_hash = sha1_output.split()[0]
                             if sha1_hash:
-                                metadata["sha1"] = sha1_hash
+                                attributes["sha1"] = sha1_hash
                         else:
                             # SHA-1 was requested but failed
                             raise RuntimeError(
@@ -1162,7 +1172,7 @@ class ReadPosixActionBase(PosixActionBase):
                             ).strip()
                             sha256_hash = sha256_output.split()[0]
                             if sha256_hash:
-                                metadata["sha256"] = sha256_hash
+                                attributes["sha256"] = sha256_hash
                         else:
                             # SHA-256 was requested but failed
                             raise RuntimeError(
@@ -1192,7 +1202,7 @@ class ReadPosixActionBase(PosixActionBase):
                             ).strip()
                             sha512_hash = sha512_output.split()[0]
                             if sha512_hash:
-                                metadata["sha512"] = sha512_hash
+                                attributes["sha512"] = sha512_hash
                         else:
                             # SHA-512 was requested but failed
                             raise RuntimeError(
@@ -1201,11 +1211,11 @@ class ReadPosixActionBase(PosixActionBase):
                                 f"sha512sum, shasum, or sha512 is installed."
                             )
 
-                file_data[path] = metadata
+                file_data[path] = attributes
 
             except Exception as e:
                 raise ValueError(
-                    f"Failed to parse file metadata for {path}: "
+                    f"Failed to parse file attributes for {path}: "
                     f"{type(e).__name__}: {e}"
                 ) from e
 
@@ -1424,7 +1434,7 @@ class ReadPosixActionBase(PosixActionBase):
             if not line:
                 continue
 
-            # Skip all comment lines (including metadata)
+            # Skip all comment lines (including attributes)
             if line.startswith("#"):
                 continue
 
