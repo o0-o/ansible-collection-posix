@@ -32,7 +32,7 @@ tags:
 repository: https://github.com/o0-o/ansible-collection-posix
 issues: https://github.com/o0-o/ansible-collection-posix/issues
 dependencies:
-  o0_o.utils: ">=1.5.0"
+  o0_o.utils: ">=2.1.0"
 build_ignore:
   - .git
   - .github
