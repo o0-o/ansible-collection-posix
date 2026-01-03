@@ -3,6 +3,12 @@
 ---
 releases:
 
+  v1.4.3:
+    changes:
+      fixed:
+        - Pinned o0_o.utils dependency to <1.4.0 since the SiFilter
+          export was removed in v1.4.0.
+
   v1.4.2:
     changes:
       fixed:
