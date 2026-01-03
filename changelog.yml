@@ -3,6 +3,16 @@
 ---
 releases:
 
+  v1.4.1:
+    changes:
+      added:
+        - Added `POSIX_CONNECTIONS` class constant to PosixBase listing
+          connection types that support POSIX shell operations.
+        - Added `_is_posix_connection()` method to PosixBase for validating
+          that the current connection is POSIX-compatible.
+      changed:
+        - Updated CI macOS test matrix from 13/14 to 14/15.
+
   v1.4.0:
     changes:
       added:

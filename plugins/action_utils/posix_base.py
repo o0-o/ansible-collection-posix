@@ -61,6 +61,41 @@ class PosixBase(ActionBase):
                 ...
     """
 
+    # Connection types that support POSIX shell operations.
+    # Includes SSH, container runtimes, and orchestration tools that
+    # provide shell access to POSIX systems. Excludes connections
+    # typically used for non-POSIX targets (network appliances, etc.).
+    POSIX_CONNECTIONS = frozenset(
+        {
+            # Core Ansible connections
+            "local",
+            "ssh",
+            # Container runtimes
+            "docker",
+            "podman",
+            "buildah",
+            "community.docker.docker",
+            "community.docker.docker_api",
+            "containers.podman.podman",
+            # Orchestration (Linux containers)
+            "kubectl",
+            "oc",
+            "kubernetes.core.kubectl",
+            # Jails/Zones (BSD/Solaris)
+            "jail",
+            "zone",
+            "community.general.jail",
+            "community.general.zone",
+            # Other POSIX-compatible
+            "lxc",
+            "lxd",
+            "chroot",
+            "community.general.lxc",
+            "community.general.lxd",
+            "community.general.chroot",
+        }
+    )
+
     def run(
         self,
         tmp: Optional[str] = None,
@@ -80,6 +115,23 @@ class PosixBase(ActionBase):
         :returns Dict[str, Any]: Initial result dictionary
         """
         return super().run(tmp, task_vars)
+
+    def _is_posix_connection(self) -> bool:
+        """
+        Check if the current connection type supports POSIX operations.
+
+        Uses the play context to determine the connection transport type
+        and checks it against the POSIX_CONNECTIONS frozenset. This allows
+        plugins to validate that they're running on a compatible connection
+        before attempting POSIX-specific operations.
+
+        :returns bool: True if the connection is POSIX-compatible, False
+            otherwise
+        """
+        transport = getattr(self._play_context, "connection", None)
+        if transport is None:
+            return False
+        return transport.lower() in self.POSIX_CONNECTIONS
 
     def _is_interpreter_missing(self, result: Dict[str, Any]) -> bool:
         """
