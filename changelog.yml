@@ -3,6 +3,12 @@
 ---
 releases:
 
+  v1.4.2:
+    changes:
+      fixed:
+        - Pinned o0_o.utils dependency to <2.0.0 to resolve import
+          compatibility issues with utils v3.0.0.
+
   v1.4.1:
     changes:
       added:
