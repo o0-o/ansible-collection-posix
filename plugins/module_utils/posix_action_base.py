@@ -26,8 +26,12 @@ from typing import Any, Optional, Union
 
 from ansible.module_utils.common.text.converters import to_native
 
+from ansible_collections.o0_o.core.plugins.module_utils import (
+    CoreActionBase,
+)
 
-class PosixActionBase:
+
+class PosixActionBase(CoreActionBase):
     """
     Mixin class for POSIX-compatible Ansible action plugins with raw
     fallback support.
@@ -192,106 +196,6 @@ class PosixActionBase:
             return True
 
         return False
-
-    def _def_inventory_hostname(
-        self, task_vars: Optional[dict[str, Any]] = None
-    ) -> str:
-        """Get/define the inventory hostname for log/warning messages.
-
-        Prefers the value from ``task_vars`` when provided, then falls
-        back to the task's vars mapping. Defaults to ``localhost`` when
-        no value can be determined (e.g., local actions).
-
-        Sets self.inventory_hostname and returns the value.
-
-        :param task_vars: Optional task vars mapping
-        :returns str: The inventory hostname or 'localhost' as fallback
-        """
-        if isinstance(task_vars, dict):
-            host = task_vars.get("inventory_hostname")
-            if host:
-                self.inventory_hostname = str(host)
-                return self.inventory_hostname
-
-        try:
-            mapping = getattr(self._task, "vars", None)
-            if isinstance(mapping, dict):
-                host = mapping.get("inventory_hostname")
-                if host:
-                    self.inventory_hostname = str(host)
-                    return self.inventory_hostname
-        except Exception:
-            pass
-
-        self.inventory_hostname = "localhost"
-        return self.inventory_hostname
-
-    def _run_action(
-        self,
-        plugin_name: str,
-        plugin_args: dict[str, Any],
-        task_vars: Optional[dict[str, Any]] = None,
-        check_mode: Optional[bool] = None,
-    ) -> dict[str, Any]:
-        """
-        Execute another action plugin using the provided arguments.
-
-        :param str plugin_name: Fully qualified name of the plugin to
-            run (e.g. 'ansible.builtin.command')
-        :param dict plugin_args: Dictionary of arguments to pass to the
-            plugin
-        :param Optional[dict] task_vars: Dictionary of task variables
-            from the calling task
-        :param Optional[bool] check_mode: Override check mode setting
-        :returns dict: The result dictionary returned by the plugin's
-            run method
-        """
-        current_fqcn = self._task.action.lower().strip()
-        requested_fqcn = plugin_name.lower().strip()
-
-        if requested_fqcn == current_fqcn:
-            raise RecursionError(
-                f"CompatAction attempted to call '{plugin_name}' from within "
-                "itself. This would result in infinite recursion."
-            )
-
-        task = self._task.copy()
-        task.args.clear()
-        task.args.update(plugin_args)
-
-        if getattr(self, "raw", False):
-            task.args["raw"] = True
-
-        plugin = self._shared_loader_obj.action_loader.get(
-            plugin_name,
-            task=task,
-            connection=self._connection,
-            play_context=self._play_context,
-            loader=self._loader,
-            templar=self._templar,
-            shared_loader_obj=self._shared_loader_obj,
-        )
-
-        if plugin is None:
-            return self._execute_module(
-                module_name=plugin_name,
-                module_args=plugin_args,
-                task_vars=task_vars,
-            )
-
-        if check_mode is not None:
-            plugin._task.check_mode = check_mode
-
-        result = plugin.run(task_vars=task_vars)
-
-        # Update raw mode based on delegated plugin's result
-        if "raw" in result:
-            if getattr(self, "raw", None) == "auto":
-                self.raw = result["raw"]
-            elif result["raw"]:
-                self.raw = True
-
-        return result
 
     def _cmd(
         self,
