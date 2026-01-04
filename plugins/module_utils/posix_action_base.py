@@ -88,19 +88,6 @@ class PosixActionBase:
             return " ".join(shlex.quote(str(arg)) for arg in cmd)
         return cmd
 
-    def _normalize_newlines(self, text: str) -> str:
-        """
-        Normalize Windows-style line endings to Unix-style.
-
-        Converts CRLF (\\r\\n) to LF (\\n) for consistent parsing
-        across platforms. This matches the behavior of the builtin
-        command module.
-
-        :param str text: Text with potential CRLF line endings
-        :returns str: Text with normalized LF line endings
-        """
-        return text.replace("\r\n", "\n")
-
     def _flags_to_octal_mode(self, flags: str) -> str:
         """
         Convert ls permission flags to octal mode string.
