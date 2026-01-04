@@ -22,7 +22,7 @@ when Python is not available on the remote host.
 from __future__ import annotations
 
 import shlex
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Optional, Union
 
 from ansible.module_utils.common.text.converters import to_native
 
@@ -56,7 +56,7 @@ class PosixActionBase:
                 ...
     """
 
-    def _format_command(self, cmd: Union[str, List[str]]) -> str:
+    def _format_command(self, cmd: Union[str, list[str]]) -> str:
         """
         Convert a command to a shell-safe string.
 
@@ -150,7 +150,7 @@ class PosixActionBase:
 
         return f"{octal:04o}"
 
-    def _is_interpreter_missing(self, result: Dict[str, Any]) -> bool:
+    def _is_interpreter_missing(self, result: dict[str, Any]) -> bool:
         """
         Check if failure was likely caused by a missing Python
         interpreter.
@@ -207,7 +207,7 @@ class PosixActionBase:
         return False
 
     def _def_inventory_hostname(
-        self, task_vars: Optional[Dict[str, Any]] = None
+        self, task_vars: Optional[dict[str, Any]] = None
     ) -> str:
         """Get/define the inventory hostname for log/warning messages.
 
@@ -242,10 +242,10 @@ class PosixActionBase:
     def _run_action(
         self,
         plugin_name: str,
-        plugin_args: Dict[str, Any],
-        task_vars: Optional[Dict[str, Any]] = None,
+        plugin_args: dict[str, Any],
+        task_vars: Optional[dict[str, Any]] = None,
         check_mode: Optional[bool] = None,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Execute another action plugin using the provided arguments.
 
@@ -308,19 +308,19 @@ class PosixActionBase:
 
     def _cmd(
         self,
-        cmd: Union[str, List[str]],
+        cmd: Union[str, list[str]],
         stdin: Optional[str] = None,
         chdir: Optional[str] = None,
         strip: bool = True,
-        task_vars: Optional[Dict[str, Any]] = None,
+        task_vars: Optional[dict[str, Any]] = None,
         check_mode: Optional[bool] = None,
         raw: Optional[Union[bool, str]] = None,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Run the fallback-compatible 'command' action plugin with
         arguments.
 
-        :param Union[str, List[str]] cmd: Command to execute. Can be a
+        :param Union[str, list[str]] cmd: Command to execute. Can be a
             shell string or a list of arguments
         :param Optional[str] stdin: Optional standard input to pass to
             the command
@@ -365,14 +365,14 @@ class PosixActionBase:
     def _run(
         self,
         commands: Union[
-            List[Union[str, List[str]]], Dict[str, Union[str, List[str]]]
+            list[Union[str, list[str]]], dict[str, Union[str, list[str]]]
         ],
         chdir: Optional[str] = None,
         parallel: bool = True,
         fail_fast: bool = False,
-        task_vars: Optional[Dict[str, Any]] = None,
+        task_vars: Optional[dict[str, Any]] = None,
         check_mode: Optional[bool] = None,
-    ) -> Union[List[Dict[str, Any]], Dict[str, Dict[str, Any]]]:
+    ) -> Union[list[dict[str, Any]], dict[str, dict[str, Any]]]:
         """
         Run multiple commands in a single SSH round trip using the run
         action plugin.
@@ -381,8 +381,8 @@ class PosixActionBase:
         remote execution instead of multiple individual SSH round trips.
         Commands execute in parallel by default for maximum efficiency.
 
-        :param Union[List[Union[str, List[str]]], Dict[str, Union[str,
-            List[str]]]] commands: Commands to execute. Can be either:
+        :param Union[list[Union[str, list[str]]], dict[str, Union[str,
+            list[str]]]] commands: Commands to execute. Can be either:
             - List of commands (returns list of results)
             - Dict mapping keys to commands (returns dict mapping same
               keys to results)
@@ -395,7 +395,7 @@ class PosixActionBase:
         :param Optional[dict] task_vars: Dictionary of task variables
         :param Optional[bool] check_mode: Optional override for Ansible
             check mode
-        :returns Union[List[Dict[str, Any]], Dict[str, Dict[str, Any]]]:
+        :returns Union[list[dict[str, Any]], dict[str, dict[str, Any]]]:
             If commands is a list, returns list of command results.
             If commands is a dict, returns dict mapping keys to results.
         """
@@ -417,7 +417,7 @@ class PosixActionBase:
             check_mode=check_mode,
         )
 
-    def _sanitize_args(self, args: Dict[str, Any]) -> Dict[str, Any]:
+    def _sanitize_args(self, args: dict[str, Any]) -> dict[str, Any]:
         """
         Return a copy of the argument dictionary with all None values
         removed.
@@ -446,7 +446,7 @@ class PosixActionBase:
         return getattr(shell, "quote", shlex.quote)(s)
 
     def _which(
-        self, cmd: str, task_vars: Optional[Dict[str, Any]] = None
+        self, cmd: str, task_vars: Optional[dict[str, Any]] = None
     ) -> Optional[str]:
         """
         Locate the full path of a command using POSIX-compliant methods.
