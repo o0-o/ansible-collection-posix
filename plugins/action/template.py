@@ -42,6 +42,9 @@ from ansible_collections.o0_o.utils.plugins.module_utils import (
 from ansible_collections.o0_o.posix.plugins.module_utils import (
     WritePosixActionBase,
 )
+from ansible_collections.o0_o.posix.plugins.module_utils.command_utils import (
+    is_interpreter_missing,
+)
 
 
 def _is_ansible_2_19_plus():
@@ -401,7 +404,7 @@ class ActionModule(WritePosixActionBase, ActionBase):
                 )
                 copy_result = copy_action.run(task_vars=task_vars)
 
-                if not self._is_interpreter_missing(copy_result):
+                if not is_interpreter_missing(copy_result):
                     self._display.vvv("Delegated to ansible.builtin.copy")
                     copy_result.pop("invocation", None)
                     self.result["raw"] = False

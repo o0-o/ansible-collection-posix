@@ -32,8 +32,6 @@ from ansible_collections.o0_o.posix.plugins.module_utils.command_spec import (
     COMMAND_SPEC,
 )
 from ansible_collections.o0_o.posix.plugins.module_utils.command_utils import (
-    format_command,
-    is_interpreter_missing,
     quote,
     sanitize_args,
 )
@@ -70,20 +68,6 @@ class PosixActionBase(CoreActionBase):
 
     # Override CoreActionBase.COMMAND_SPEC with POSIX-extended specs
     COMMAND_SPEC = COMMAND_SPEC
-
-    def _format_command(self, cmd: Union[str, list[str]]) -> str:
-        """
-        Convert a command to a shell-safe string.
-
-        Handles both string and list inputs, properly quoting list
-        elements for shell execution. List elements are automatically
-        converted to native strings to handle non-string types like
-        integers or Path objects.
-
-        :param cmd: Command as string or list of arguments
-        :returns str: Shell-safe command string
-        """
-        return format_command(cmd)
 
     def _flags_to_octal_mode(self, flags: str) -> str:
         """
@@ -133,18 +117,6 @@ class PosixActionBase(CoreActionBase):
             octal += 0o1000  # sticky bit
 
         return f"{octal:04o}"
-
-    def _is_interpreter_missing(self, result: dict[str, Any]) -> bool:
-        """
-        Check if failure was likely caused by a missing Python
-        interpreter.
-
-        :param result: A result dict from _execute_module or fallback
-            command
-        :returns bool: True if failure likely due to missing Python,
-            else False
-        """
-        return is_interpreter_missing(result, display=self._display)
 
     def _command(
         self,

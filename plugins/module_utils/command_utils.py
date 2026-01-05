@@ -55,16 +55,11 @@ def format_command(cmd: Union[str, list[str]]) -> str:
         return " ".join(shlex.quote(str(arg)) for arg in cmd)
 
 
-def is_interpreter_missing(
-    result: dict[str, Any],
-    display: Optional[Any] = None,
-) -> bool:
+def is_interpreter_missing(result: dict[str, Any]) -> bool:
     """Check if failure was likely caused by a missing Python interpreter.
 
     :param dict[str, Any] result: A result dict from _execute_module or
         fallback command
-    :param Optional[Any] display: Ansible Display object for verbose
-        output. If provided, logs detection via display.vv()
     :returns bool: True if failure likely due to missing Python,
         else False
     """
@@ -97,8 +92,6 @@ def is_interpreter_missing(
 
     # Check for the standard canary or signs of missing Python
     if canary_str.lower() in text_to_check:
-        if display is not None:
-            display.vv("Python interpreter not found")
         return True
 
     # Check for shell error indicating Python not found
@@ -110,8 +103,6 @@ def is_interpreter_missing(
     ]
 
     if any(pattern in text_to_check for pattern in python_patterns):
-        if display is not None:
-            display.vv("Python interpreter not found (shell error)")
         return True
 
     return False

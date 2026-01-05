@@ -25,6 +25,9 @@ from ansible_collections.o0_o.utils.plugins.module_utils import (
 )
 
 from ansible_collections.o0_o.posix.plugins.module_utils import PosixActionBase
+from ansible_collections.o0_o.posix.plugins.module_utils.command_utils import (
+    format_command,
+)
 
 __metaclass__ = type
 
@@ -219,7 +222,7 @@ class ActionModule(UtilsActionBase, PosixActionBase, ActionBase):
             # Write RC to file to avoid stdout interleaving
             for i, cmd in enumerate(commands):
                 if not isinstance(cmd, str):
-                    cmd = self._format_command(cmd)
+                    cmd = format_command(cmd)
                 cmds.append(
                     f'(date +%s >"{tmp}{i}.start" && '
                     f'({cmd}) 1>"{tmp}{i}.stdout" 2>"{tmp}{i}.stderr"; '
@@ -247,7 +250,7 @@ class ActionModule(UtilsActionBase, PosixActionBase, ActionBase):
             # Write RC to file for consistency with parallel mode
             for i, cmd in enumerate(commands):
                 if not isinstance(cmd, str):
-                    cmd = self._format_command(cmd)
+                    cmd = format_command(cmd)
                 cmds.extend(
                     [
                         # Execute and capture with timing

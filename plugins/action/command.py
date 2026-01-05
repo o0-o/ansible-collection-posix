@@ -28,6 +28,10 @@ from ansible_collections.o0_o.utils.plugins.module_utils import (
     UtilsActionBase,
 )
 from ansible_collections.o0_o.posix.plugins.module_utils import PosixActionBase
+from ansible_collections.o0_o.posix.plugins.module_utils.command_utils import (
+    format_command,
+    is_interpreter_missing,
+)
 
 try:
     from packaging.version import parse as parse_version
@@ -143,9 +147,7 @@ class ActionModule(UtilsActionBase, PosixActionBase, ActionBase):
 
             # Determine the final command to execute
             if self.shell:
-                self.command = self._format_command(
-                    ["/bin/sh", "-c", self.command]
-                )
+                self.command = format_command(["/bin/sh", "-c", self.command])
             # Execute the command
             exec_result = self._low_level_execute_command(
                 self.command,
@@ -258,7 +260,7 @@ class ActionModule(UtilsActionBase, PosixActionBase, ActionBase):
         argv = new_module_args["argv"]
         self.command = cmd or argv
         if not self.shell:
-            self.command = self._format_command(self.command)
+            self.command = format_command(self.command)
 
         # Stdin
         self.stdin = new_module_args["stdin"]
@@ -337,7 +339,7 @@ class ActionModule(UtilsActionBase, PosixActionBase, ActionBase):
             builtin_module_result.pop("invocation", None)
 
             # Auto mode: fall back to raw if interpreter missing
-            if self._is_interpreter_missing(builtin_module_result):
+            if is_interpreter_missing(builtin_module_result):
                 self._display.vvv(
                     f"Interpreter missing, self.raw={self.raw!r} "
                     f"(type={type(self.raw).__name__})"

@@ -9,36 +9,39 @@
 #
 # This file is part of the o0_o.posix Ansible Collection.
 
-"""Tests for utility methods in PosixActionBase."""
+"""Tests for utility methods in PosixActionBase and command_utils."""
 
 from __future__ import annotations
 
+from ansible_collections.o0_o.posix.plugins.module_utils.command_utils import (
+    format_command,
+)
 
-def test_format_command_string_input(base) -> None:
-    """Test _format_command with string input validates and
-    normalizes."""
-    result = base._format_command('echo "hello world"')
+
+def test_format_command_string_input() -> None:
+    """Test format_command with string input validates and normalizes."""
+    result = format_command('echo "hello world"')
 
     assert result == "echo 'hello world'"
 
 
-def test_format_command_list_input(base) -> None:
-    """Test _format_command with list input quotes properly."""
-    result = base._format_command(["echo", "hello world", "foo"])
+def test_format_command_list_input() -> None:
+    """Test format_command with list input quotes properly."""
+    result = format_command(["echo", "hello world", "foo"])
 
     assert result == "echo 'hello world' foo"
 
 
-def test_format_command_with_special_chars(base) -> None:
-    """Test _format_command handles special characters correctly."""
-    result = base._format_command(["echo", "$HOME", "*.txt"])
+def test_format_command_with_special_chars() -> None:
+    """Test format_command handles special characters correctly."""
+    result = format_command(["echo", "$HOME", "*.txt"])
 
     assert result == "echo '$HOME' '*.txt'"
 
 
-def test_format_command_with_integers(base) -> None:
-    """Test _format_command handles non-string types like integers."""
-    result = base._format_command(["sleep", 5])
+def test_format_command_with_integers() -> None:
+    """Test format_command handles non-string types like integers."""
+    result = format_command(["sleep", 5])
 
     assert result == "sleep 5"
 

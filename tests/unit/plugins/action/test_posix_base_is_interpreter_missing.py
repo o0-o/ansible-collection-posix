@@ -13,6 +13,10 @@ from __future__ import annotations
 
 import pytest
 
+from ansible_collections.o0_o.posix.plugins.module_utils.command_utils import (
+    is_interpreter_missing,
+)
+
 
 @pytest.mark.parametrize(
     "result, expected",
@@ -50,8 +54,6 @@ import pytest
         ("not a dict", False),
     ],
 )
-def test_is_interpreter_missing_canary_only(base, result, expected) -> None:
-    """
-    Test _is_interpreter_missing detects Python errors by msg content.
-    """
-    assert base._is_interpreter_missing(result) is expected
+def test_is_interpreter_missing_canary_only(result, expected) -> None:
+    """Test is_interpreter_missing detects Python errors by msg content."""
+    assert is_interpreter_missing(result) is expected
