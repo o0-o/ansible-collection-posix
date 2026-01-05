@@ -1,5 +1,23 @@
 ancestor: null
 releases:
+  1.4.3:
+    changes:
+      bugfixes:
+      - Pinned o0_o.utils dependency to <1.4.0 since the SiFilter export was
+        removed in v1.4.0.
+  1.4.2:
+    changes:
+      bugfixes:
+      - Pinned o0_o.utils dependency to <2.0.0 to resolve import compatibility
+        issues with utils v3.0.0.
+  1.4.1:
+    changes:
+      minor_changes:
+      - Added `POSIX_CONNECTIONS` class constant to PosixBase listing connection
+        types that support POSIX shell operations.
+      - Added `_is_posix_connection()` method to PosixBase for validating that
+        the current connection is POSIX-compatible.
+      - Updated CI macOS test matrix from 13/14 to 14/15.
   1.4.0:
     changes:
       major_changes:
