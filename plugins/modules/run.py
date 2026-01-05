@@ -43,16 +43,6 @@ options:
       - Each command is executed in a subshell so directory changes
         do not affect subsequent commands.
     type: path
-  creates:
-    description:
-      - Path to a file or directory.
-      - If it already exists, this step will be skipped.
-    type: path
-  removes:
-    description:
-      - Path to a file or directory.
-      - If it does not exist, this step will be skipped.
-    type: path
   parallel:
     description:
       - Execute commands in parallel using background jobs.
@@ -140,18 +130,6 @@ EXAMPLES = r"""
     parallel: false
     fail_fast: true
   register: hosts_check_reg
-
-- name: Skip if file already exists
-  o0_o.posix.run:
-    commands:
-      - curl -o /tmp/download.txt https://example.com/file.txt
-    creates: /tmp/download.txt
-
-- name: Only run if directory exists
-  o0_o.posix.run:
-    commands:
-      - find . -name "*.log" -delete
-    removes: /var/log/app
 """
 
 RETURN = r"""
@@ -252,16 +230,6 @@ raw:
   returned: always
   type: bool
   sample: false
-skipped:
-  description: Whether execution was skipped
-  returned: when skipped
-  type: bool
-  sample: false
-skip_reason:
-  description: Reason for skipping execution
-  returned: when skipped
-  type: str
-  sample: "Skipped because /tmp/file exists"
 """
 from ansible.module_utils.basic import AnsibleModule
 
@@ -276,8 +244,6 @@ def main() -> None:
             "required": True,
         },
         "chdir": {"type": "path"},
-        "creates": {"type": "path"},
-        "removes": {"type": "path"},
         "parallel": {"type": "bool"},  # Default derived from fail_fast
         "fail_fast": {"type": "bool", "default": False},
         "strip": {"type": "bool", "default": True},

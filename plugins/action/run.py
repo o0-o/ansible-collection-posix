@@ -365,7 +365,7 @@ class ActionModule(UtilsActionBase, PosixActionBase, ActionBase):
         # Parse output and return results
         return self._parse_batch_output(cmd_result["stdout"], batch_commands)
 
-    def _def_args(self) -> dict[str, Any]:
+    def _def_args(self) -> None:
         """Parse and validate module arguments."""
         argument_spec = {
             "commands": {
@@ -440,23 +440,22 @@ class ActionModule(UtilsActionBase, PosixActionBase, ActionBase):
 
         # Ensure tmp is a valid path for remote temporary files
         tmp = self._make_tmp_path()
-        self._display.vvv(f"[{self.inventory_hostname}] tmp path: {tmp}")
-
-        # Check mode: validate we could run, but don't actually execute
-        if self._task.check_mode:
-            self.result.update(
-                {
-                    "changed": False,
-                    "skipped": True,
-                    "msg": "Check mode: batch execution skipped",
-                }
-            )
-            return self.result
-
-        # Capture start time
-        start_time = time.time()
+        self._display.vvv(f"Temp path: {tmp}")
 
         try:
+            # Check mode: validate we could run, but don't actually execute
+            if self._task.check_mode:
+                self.result.update(
+                    {
+                        "changed": False,
+                        "skipped": True,
+                        "msg": "Check mode: batch execution skipped",
+                    }
+                )
+                return self.result
+
+            # Capture start time
+            start_time = time.time()
             # Check if we need to split into multiple batches
             max_command_length = 65536  # 64 KB safe default
             max_command_count = 63  # Safe limit for parallel execution
@@ -545,6 +544,7 @@ class ActionModule(UtilsActionBase, PosixActionBase, ActionBase):
                     "started": format_epoch_timestamp(start_time),
                     "ended": format_epoch_timestamp(end_time),
                     "elapsed": format_elapsed_seconds(elapsed_seconds),
+                    "raw": self.raw is True,
                 }
             )
 
@@ -563,6 +563,10 @@ class ActionModule(UtilsActionBase, PosixActionBase, ActionBase):
                     "started": format_epoch_timestamp(start_time),
                     "ended": format_epoch_timestamp(end_time),
                     "elapsed": format_elapsed_seconds(elapsed_seconds),
+                    "raw": self.raw is True,
                 }
             )
             return self.result
+        finally:
+            # Clean up remote temporary files
+            self._remove_tmp_path(tmp)
