@@ -14,12 +14,16 @@
 Standalone functions for gathering and processing POSIX, X/Open, and SUS
 compliance information using getconf commands. These functions are designed
 to be used independently of ActionBase classes.
+
+Each getconf variable has its own parser (defined in parsers.py) that returns
+a partial compliance dict. The partial dicts are merged here to build the
+complete compliance picture.
 """
 
 from __future__ import annotations
 
 from copy import deepcopy
-from typing import Any
+from typing import Any, Optional
 
 from ansible_collections.o0_o.core.plugins.module_utils.command_utils import (
     process_command_spec,
@@ -27,70 +31,21 @@ from ansible_collections.o0_o.core.plugins.module_utils.command_utils import (
 from ansible_collections.o0_o.posix.plugins.module_utils.command_spec import (
     COMMAND_SPEC,
 )
+from ansible_collections.o0_o.posix.plugins.module_utils.parsers import (
+    POSIX,
+    POSIX_UTILITIES,
+    POSIX_VERSIONS,
+    XOPEN_VERSIONS,
+    _is_undefined,
+)
 
-# Standards metadata
-SUS = {
-    "name": "Single UNIX Specification",
-    "abbreviation": "SUS",
-    "description": (
-        "Unified UNIX standard combining POSIX with XSI extensions"
-    ),
-}
-
-POSIX = {
-    "name": "Portable Operating System Interface",
-    "abbreviation": "POSIX",
-    "description": (
-        "IEEE standard for compatibility between operating systems"
-    ),
-}
-
-XSI = {
-    "name": "X/Open System Interface",
-    "abbreviation": "XSI",
-    "description": "Extensions to POSIX for UNIX systems",
-}
-
-XSH = {
-    "name": "System Interfaces",
-    "abbreviation": "XSH",
-    "description": "POSIX System Interfaces and Headers",
-}
-
-POSIX_UTILITIES = {
-    "name": "Shell & Utilities",
-    "abbreviation": "XCU",
-    "description": "POSIX Shell and Utilities",
-}
-
-# Version mappings
-XOPEN_VERSIONS = {
-    # Don't include legacy versions (XPG3, XPG4, SUSv2)
-    "600": {"version": {"id": 3, "name": "SUSv3"}},  # SUSv3 (2001)
-    "700": {  # SUSv4 (2008, includes 2017 revision)
-        "version": {"id": 4, "name": "SUSv4"}
-    },
-    # POSIX.1-2024 (Issue 8) - anticipated value
-    "800": {"version": {"id": 5, "name": "SUSv5"}},
-}
-
-POSIX_VERSIONS = {
-    # Don't include legacy POSIX versions before 2001
-    # (POSIX.1-1988, POSIX.1-1990, POSIX.1-1996)
-    "200112": {"version": {"id": "2001", "name": "POSIX.1-2001"}},
-    "200809": {"version": {"id": "2008", "name": "POSIX.1-2008"}},
-    # POSIX.1-2017 is a revision of 2008, likely keeps same getconf value
-    # POSIX.1-2024 (Issue 8) - anticipated value
-    "202405": {"version": {"id": "2024", "name": "POSIX.1-2024"}},
-}
-
-# Getconf variables to query for compliance detection
-COMPLIANCE_VARIABLES = (
-    "_POSIX_VERSION",
-    "_POSIX2_VERSION",
-    "_XOPEN_UNIX",
-    "_XOPEN_VERSION",
-    "_XOPEN_XCU_VERSION",
+# Command types for compliance checks
+COMPLIANCE_COMMANDS = (
+    "getconf_posix_version",
+    "getconf_posix2_version",
+    "getconf_xopen_unix",
+    "getconf_xopen_version",
+    "getconf_xopen_xcu_version",
 )
 
 
@@ -103,169 +58,162 @@ def get_compliance_commands() -> dict[str, list[str]]:
     :returns dict[str, list[str]]: Dict mapping tags to commands
     """
     commands = {}
-    for variable in COMPLIANCE_VARIABLES:
-        cmd_requests = process_command_spec(
-            COMMAND_SPEC, "getconf", variable=variable
-        )
+    for cmd_type in COMPLIANCE_COMMANDS:
+        cmd_requests = process_command_spec(COMMAND_SPEC, cmd_type)
         if cmd_requests:
-            # Tag is variable name without leading underscore, lowercase
-            tag = variable.lstrip("_").lower()
-            commands[tag] = cmd_requests[0]["command"]
+            commands[cmd_type] = cmd_requests[0]["command"]
     return commands
 
 
-def process_compliance_results(
-    commands_results: dict[str, dict[str, Any]],
-) -> tuple[dict[str, Any], list[str], list[str]]:
-    """Process command results into compliance facts.
+def merge_compliance_results(
+    partial_results: list[tuple[dict[str, Any], Optional[list[Exception]]]],
+) -> tuple[dict[str, Any], list[Exception], list[str]]:
+    """Merge partial compliance dicts into complete compliance structure.
 
-    Takes the results from executing compliance commands and processes
-    them into a structured compliance dictionary with POSIX, SUS, and
-    XSI information.
+    Handles interdependencies between getconf values, such as inferring
+    POSIX2 compliance from POSIX1 when XCU_VERSION is defined but invalid.
 
-    :param dict[str, dict[str, Any]] commands_results: Dictionary
-        mapping tag -> command result (each result has rc, stdout,
-        stderr, cmd keys)
-    :returns tuple[dict[str, Any], list[str], list[str]]: Tuple of
-        (compliance_dict, warnings_list, debug_messages_list)
+    :param list[tuple[dict[str, Any], Optional[list[Exception]]]]
+        partial_results: List of (partial_dict, errors) tuples from parsers
+    :returns tuple[dict[str, Any], list[Exception], list[str]]: Tuple of
+        (compliance_dict, errors_list, debug_messages_list)
     """
     compliance: dict[str, Any] = {}
-    warnings: list[str] = []
+    errors: list[Exception] = []
     debug_msgs: list[str] = []
+    raw_values: dict[str, Optional[str]] = {}
 
-    # Extract values from results (treat errors as "undefined")
-    values = {}
-    for tag, result in commands_results.items():
-        if result["rc"] == 0:
-            values[tag] = result["stdout"].strip()
-        else:
-            values[tag] = "undefined"
+    # Collect raw values and errors from all partial results
+    for partial, partial_errors in partial_results:
+        if "_raw" in partial:
+            raw_values.update(partial["_raw"])
+        if partial_errors:
+            errors.extend(partial_errors)
 
-    # Process POSIX.1 (XSH - System Interfaces and Headers)
-    posix1_version = values.get("posix_version", "undefined")
-    if posix1_version in POSIX_VERSIONS:
-        if "posix" not in compliance:
-            compliance["posix"] = POSIX.copy()
-            compliance["posix"]["components"] = {}
-        compliance["posix"]["components"]["xsh"] = XSH.copy()
-        compliance["posix"]["components"]["xsh"].update(
-            deepcopy(POSIX_VERSIONS[posix1_version])
-        )
-        compliance["posix"]["components"]["xsh"]["version"]["getconf"] = {
-            "_POSIX_VERSION": posix1_version
-        }
-    elif posix1_version not in ["undefined", "", "-1"]:
-        warnings.append(
-            f"Unrecognized POSIX.1 version: {posix1_version}. "
-            f"Known versions: {', '.join(POSIX_VERSIONS.keys())}"
-        )
+    # Merge POSIX.1 (XSH) from posix_version
+    for partial, _errors in partial_results:
+        if "posix" in partial:
+            compliance["posix"] = partial["posix"]
+            break
 
-    # Process POSIX.2 (XCU - Shell and Utilities)
-    posix2_version = values.get("posix2_version", "undefined")
-    xopen_xcu_version = values.get("xopen_xcu_version", "undefined")
-    posix2_assumed = False
+    # Merge POSIX.2 (XCU) - check for direct or inferred
+    posix2_partial = None
+    for partial, _errors in partial_results:
+        if "posix2" in partial:
+            posix2_partial = partial["posix2"]
+            break
 
-    # If POSIX2 is undefined but _XOPEN_XCU_VERSION exists and is
-    # not a valid POSIX or XOPEN version, then we can assume
-    # POSIX2 = POSIX1
-    if posix2_version in ["undefined", "", "-1"]:
+    # Get raw values for inference logic
+    posix_version = raw_values.get("posix_version")
+    posix2_version = raw_values.get("posix2_version")
+    xopen_xcu_version = raw_values.get("xopen_xcu_version")
+
+    # If POSIX2 is undefined but XCU_VERSION exists and is invalid,
+    # infer POSIX2 from POSIX1
+    if posix2_partial is None and _is_undefined(posix2_version):
         if (
-            xopen_xcu_version not in ["undefined", "", "-1"]
+            not _is_undefined(xopen_xcu_version)
             and xopen_xcu_version not in POSIX_VERSIONS
             and xopen_xcu_version not in XOPEN_VERSIONS
         ):
-            if posix1_version in POSIX_VERSIONS:
-                posix2_version = posix1_version
-                posix2_assumed = True
+            if posix_version is not None and posix_version in POSIX_VERSIONS:
                 debug_msgs.append(
                     f"POSIX2 undefined but "
                     f"_XOPEN_XCU_VERSION={xopen_xcu_version} "
                     f"(not a valid POSIX/XOPEN version), "
-                    f"assuming POSIX2={posix1_version}"
+                    f"assuming POSIX2={posix_version}"
+                )
+                # Create inferred POSIX2 entry
+                posix2_partial = {
+                    "version": posix_version,
+                    "xcu": POSIX_UTILITIES.copy(),
+                    "inferred": True,
+                }
+                posix2_partial["xcu"].update(
+                    deepcopy(POSIX_VERSIONS[posix_version])
+                )
+                posix2_partial["xcu"]["version"]["getconf"] = {
+                    "_POSIX2_VERSION": None,
+                    "_XOPEN_XCU_VERSION": xopen_xcu_version,
+                }
+                posix2_partial["xcu"]["note"] = (
+                    f"Assuming _POSIX_VERSION ({posix_version}) applies "
+                    f"because _XOPEN_XCU_VERSION is defined "
+                    f"({xopen_xcu_version}) but appears to be invalid"
                 )
 
-    if posix2_version in POSIX_VERSIONS:
+    # Add POSIX2 to compliance if we have it
+    if posix2_partial is not None:
         if "posix" not in compliance:
             compliance["posix"] = POSIX.copy()
             compliance["posix"]["components"] = {}
         elif "components" not in compliance["posix"]:
             compliance["posix"]["components"] = {}
-        compliance["posix"]["components"]["xcu"] = POSIX_UTILITIES.copy()
-        compliance["posix"]["components"]["xcu"].update(
-            deepcopy(POSIX_VERSIONS[posix2_version])
-        )
 
-        # Always include both _POSIX2_VERSION and _XOPEN_XCU_VERSION
-        # in getconf. Use None for undefined values to show what was
-        # actually found
-        getconf_xcu: dict[str, Any] = {}
-        if posix2_assumed:
-            # POSIX2 was undefined
-            getconf_xcu["_POSIX2_VERSION"] = None
-            getconf_xcu["_XOPEN_XCU_VERSION"] = xopen_xcu_version
-            compliance["posix"]["components"]["xcu"]["note"] = (
-                f"Assuming _POSIX_VERSION ({posix1_version}) applies "
-                f"because _XOPEN_XCU_VERSION is defined "
-                f"({xopen_xcu_version}) but appears to be invalid"
-            )
-        else:
-            # POSIX2 was defined
-            getconf_xcu["_POSIX2_VERSION"] = posix2_version
-            # Include XCU_VERSION if it exists (even if undefined)
-            if xopen_xcu_version not in ["undefined", "", "-1"]:
-                getconf_xcu["_XOPEN_XCU_VERSION"] = xopen_xcu_version
-            else:
-                getconf_xcu["_XOPEN_XCU_VERSION"] = None
+        compliance["posix"]["components"]["xcu"] = posix2_partial["xcu"]
 
-        compliance["posix"]["components"]["xcu"]["version"][
-            "getconf"
-        ] = getconf_xcu
-    elif posix2_version not in ["undefined", "", "-1"]:
-        warnings.append(
-            f"Unrecognized POSIX.2 version: {posix2_version}. "
-            f"Known versions: {', '.join(POSIX_VERSIONS.keys())}"
-        )
+        # Update getconf if not inferred
+        if not posix2_partial.get("inferred"):
+            # Include XCU_VERSION in getconf if it exists
+            compliance["posix"]["components"]["xcu"]["version"]["getconf"][
+                "_XOPEN_XCU_VERSION"
+            ] = xopen_xcu_version
 
-    # Process X/Open compliance
-    xopen_support = values.get("xopen_unix", "undefined")
-    xopen_version = values.get("xopen_version", "undefined")
+    # Merge XSI indicator if POSIX compliance exists
+    for partial, _errors in partial_results:
+        if "xsi" in partial and "posix" in compliance:
+            if "components" not in compliance["posix"]:
+                compliance["posix"]["components"] = {}
+            compliance["posix"]["components"]["xsi"] = partial["xsi"]
+            break
 
-    # Add XSI indicator to POSIX components if _XOPEN_UNIX > 0
-    if (
-        xopen_support not in ["undefined", "", "-1", "0"]
-        and "posix" in compliance
-    ):
-        try:
-            if int(xopen_support) > 0:
-                if "components" not in compliance["posix"]:
-                    compliance["posix"]["components"] = {}
-                compliance["posix"]["components"]["xsi"] = {
-                    "name": "X/Open System Interface",
-                    "abbreviation": "XSI",
-                    "description": "Extensions to POSIX for UNIX systems",
-                    "enabled": True,
-                    "getconf": {"_XOPEN_UNIX": xopen_support},
-                }
-        except (ValueError, TypeError):
-            pass
+    # Merge SUS compliance
+    for partial, _errors in partial_results:
+        if "sus" in partial:
+            compliance["sus"] = partial["sus"]
+            # Add _XOPEN_UNIX to sus level
+            xopen_unix = raw_values.get("xopen_unix")
+            compliance["sus"]["getconf"] = {"_XOPEN_UNIX": xopen_unix}
+            break
 
-    # Define SUS only when _XOPEN_VERSION is defined
-    if xopen_version in XOPEN_VERSIONS:
-        compliance["sus"] = SUS.copy()
-        compliance["sus"].update(deepcopy(XOPEN_VERSIONS[xopen_version]))
-        # Add getconf values - _XOPEN_VERSION under version,
-        # _XOPEN_UNIX at sus level
-        compliance["sus"]["version"]["getconf"] = {
-            "_XOPEN_VERSION": xopen_version
-        }
-        compliance["sus"]["getconf"] = {"_XOPEN_UNIX": xopen_support}
-    elif xopen_version not in ["undefined", "", "-1"]:
-        warnings.append(
-            f"Unrecognized X/Open version: {xopen_version}. "
-            f"Known versions: {', '.join(XOPEN_VERSIONS.keys())}"
-        )
+    return compliance, errors, debug_msgs
 
-    return compliance, warnings, debug_msgs
+
+def process_compliance_results(
+    commands_results: dict[str, dict[str, Any]],
+) -> tuple[dict[str, Any], list[Exception], list[str]]:
+    """Process compliance command results through their parsers.
+
+    Takes tagged command results from run plugin, calls the appropriate
+    parser for each command type, and merges the partial results.
+
+    :param dict[str, dict[str, Any]] commands_results: Dict mapping
+        command tags (e.g., "getconf_posix_version") to their results
+        containing 'rc' and 'stdout' keys
+    :returns tuple[dict[str, Any], list[Exception], list[str]]: Tuple of
+        (compliance_dict, errors_list, debug_messages_list)
+    """
+    partial_results: list[tuple[dict[str, Any], Optional[list[Exception]]]] = (
+        []
+    )
+
+    for cmd_type in COMPLIANCE_COMMANDS:
+        if cmd_type not in commands_results:
+            continue
+
+        cmd_result = commands_results[cmd_type]
+        rc = cmd_result.get("rc", 1)
+        stdout = cmd_result.get("stdout", "")
+
+        # Get parser from COMMAND_SPEC
+        spec = COMMAND_SPEC.get("posix", {}).get(cmd_type, {})
+        parser = spec.get("parser")
+
+        if parser:
+            parsed, errors = parser(rc, stdout, cmd_type)
+            partial_results.append((parsed, errors))
+
+    return merge_compliance_results(partial_results)
 
 
 def format_compliance_message(compliance: dict[str, Any]) -> str:

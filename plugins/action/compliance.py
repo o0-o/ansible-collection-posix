@@ -82,15 +82,15 @@ class ActionModule(PosixActionBase, ActionBase):
         commands_results = run_result["commands"]
 
         # Process results into compliance structure
-        compliance, warnings, debug_msgs = process_compliance_results(
+        compliance, errors, debug_msgs = process_compliance_results(
             commands_results
         )
 
-        # Emit any warnings or debug messages
+        # Emit any errors or debug messages
         for msg in debug_msgs:
             self._display.vvv(msg)
-        for msg in warnings:
-            self._display.warning(f"[{self.inventory_hostname}] {msg}")
+        for err in errors:
+            self._display.warning(f"[{self.inventory_hostname}] {err}")
 
         # Format message
         result["msg"] = format_compliance_message(compliance)
