@@ -20,6 +20,9 @@ from typing import Any, Optional
 from ansible_collections.o0_o.posix.plugins.module_utils.jc_utils import (
     jc_parse,
 )
+from ansible_collections.o0_o.posix.plugins.module_utils.path_utils import (
+    flags_to_octal_mode,
+)
 from ansible_collections.o0_o.posix.plugins.module_utils.posix_action_base import (  # noqa: E501
     PosixActionBase,
 )
@@ -699,7 +702,7 @@ class ReadPosixActionBase(PosixActionBase):
                 if include_attributes:
                     # Extract octal mode from flags
                     if flags:
-                        attributes["mode"] = self._flags_to_octal_mode(flags)
+                        attributes["mode"] = flags_to_octal_mode(flags)
 
                     # Add other fields from ls output
                     # Only include size for regular files
@@ -720,7 +723,9 @@ class ReadPosixActionBase(PosixActionBase):
                         perms = self._stat_permission_booleans(flags)
                         attributes["readable"] = perms.get("readable", False)
                         attributes["writable"] = perms.get("writeable", False)
-                        attributes["executable"] = perms.get("executable", False)
+                        attributes["executable"] = perms.get(
+                            "executable", False
+                        )
 
                 # Add content/hardlinks field based on file type
                 if file_type == "link" and include_attributes:
@@ -928,8 +933,8 @@ class ReadPosixActionBase(PosixActionBase):
                             btime = int(times[2]) if times[2] != "0" else None
 
                             if mtime:
-                                attributes["modified"] = format_epoch_timestamp(
-                                    mtime
+                                attributes["modified"] = (
+                                    format_epoch_timestamp(mtime)
                                 )
                             if ctime:
                                 attributes["changed"] = format_epoch_timestamp(

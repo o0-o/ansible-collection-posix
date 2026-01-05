@@ -9,13 +9,17 @@
 #
 # This file is part of the o0_o.posix Ansible Collection.
 
-"""Tests for utilities provided by PosixActionBase."""
+"""Tests for utilities provided by PosixActionBase and path_utils."""
 
 from __future__ import annotations
 
 from typing import Dict, List
 
 import pytest
+
+from ansible_collections.o0_o.posix.plugins.module_utils.path_utils import (
+    flags_to_octal_mode,
+)
 
 try:
     from ansible_collections.o0_o.posix.plugins.module_utils.posix_action_base import (  # type: ignore  # noqa: E501
@@ -156,17 +160,14 @@ def test_which_debug_message_emitted() -> None:
 )
 def test_flags_to_octal_mode(flags: str, expected: str) -> None:
     """Test conversion of ls flags to octal mode."""
-    dummy = DummyPosixAction([])
-    assert dummy._flags_to_octal_mode(flags) == expected
+    assert flags_to_octal_mode(flags) == expected
 
 
 def test_flags_to_octal_mode_empty_string() -> None:
     """Test that empty string returns 0000."""
-    dummy = DummyPosixAction([])
-    assert dummy._flags_to_octal_mode("") == "0000"
+    assert flags_to_octal_mode("") == "0000"
 
 
 def test_flags_to_octal_mode_short_string() -> None:
     """Test that strings shorter than 10 chars return 0000."""
-    dummy = DummyPosixAction([])
-    assert dummy._flags_to_octal_mode("-rw-") == "0000"
+    assert flags_to_octal_mode("-rw-") == "0000"
