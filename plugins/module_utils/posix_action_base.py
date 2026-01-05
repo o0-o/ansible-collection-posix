@@ -27,10 +27,6 @@ from typing import Any, Optional, Union
 from ansible_collections.o0_o.core.plugins.module_utils import (
     CoreActionBase,
 )
-
-from ansible_collections.o0_o.posix.plugins.module_utils.command_spec import (
-    COMMAND_SPEC,
-)
 from ansible_collections.o0_o.posix.plugins.module_utils.command_utils import (
     quote,
     sanitize_args,
@@ -65,9 +61,6 @@ class PosixActionBase(CoreActionBase):
             def run(self, tmp=None, task_vars=None):
                 ...
     """
-
-    # Override CoreActionBase.COMMAND_SPEC with POSIX-extended specs
-    COMMAND_SPEC = COMMAND_SPEC
 
     def _command(
         self,

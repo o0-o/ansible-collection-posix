@@ -16,6 +16,9 @@ from __future__ import annotations
 from copy import deepcopy
 from typing import Any, Dict
 
+from ansible_collections.o0_o.posix.plugins.module_utils.command_spec import (
+    COMMAND_SPEC,
+)
 from ansible_collections.o0_o.posix.plugins.module_utils.posix_action_base import (  # noqa: E501
     PosixActionBase,
 )
@@ -28,6 +31,9 @@ class CompliancePosixActionBase(PosixActionBase):
     compliance information using getconf commands. Can be used
     standalone or as part of a coordinated facts gathering operation.
     """
+
+    # Override CoreActionBase.COMMAND_SPEC with POSIX-extended specs
+    COMMAND_SPEC = COMMAND_SPEC
 
     # Standards metadata
     SUS = {
