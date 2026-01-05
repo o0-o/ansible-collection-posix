@@ -193,12 +193,14 @@ class ActionModule(PosixActionBase, ActionBase):
         :param Optional[dict[str, Any]] task_vars: Task variables
         :returns Optional[str]: File contents, or None if not found
         """
-        st = self._cmd(
+        st = self._command(
             ["test", "-f", path], task_vars=task_vars, check_mode=False
         )
         if st.get("rc") != 0:
             return None
-        cat = self._cmd(["cat", path], task_vars=task_vars, check_mode=False)
+        cat = self._command(
+            ["cat", path], task_vars=task_vars, check_mode=False
+        )
         if cat.get("rc") != 0:
             return None
         return (cat.get("stdout") or "").strip()
@@ -225,7 +227,7 @@ class ActionModule(PosixActionBase, ActionBase):
         :returns Optional[dict[str, Any]]: Timezone info or None
         """
         # Try readlink first
-        rl = self._cmd(
+        rl = self._command(
             ["readlink", "/etc/localtime"],
             task_vars=task_vars,
             check_mode=False,
@@ -235,7 +237,7 @@ class ActionModule(PosixActionBase, ActionBase):
             target = (rl.get("stdout") or "").strip()
         else:
             # Fallback to ls -l parsing
-            ls = self._cmd(
+            ls = self._command(
                 ["ls", "-l", "/etc/localtime"],
                 task_vars=task_vars,
                 check_mode=False,
@@ -258,7 +260,7 @@ class ActionModule(PosixActionBase, ActionBase):
         :param Optional[dict[str, Any]] task_vars: Task variables
         :returns Optional[dict[str, Any]]: Timezone info or None
         """
-        ss = self._cmd(
+        ss = self._command(
             ["systemsetup", "-gettimezone"],
             task_vars=task_vars,
             check_mode=False,
@@ -276,7 +278,7 @@ class ActionModule(PosixActionBase, ActionBase):
         :param Optional[dict[str, Any]] task_vars: Task variables
         :returns Optional[dict[str, Any]]: Timezone info or None
         """
-        td = self._cmd(
+        td = self._command(
             ["timedatectl", "show", "-p", "Timezone", "--value"],
             task_vars=task_vars,
             check_mode=False,
@@ -294,7 +296,7 @@ class ActionModule(PosixActionBase, ActionBase):
         :param Optional[dict[str, Any]] task_vars: Task variables
         :returns Optional[dict[str, Any]]: Timezone info or None
         """
-        date = self._cmd(
+        date = self._command(
             ["date", "+%Z"], task_vars=task_vars, check_mode=False
         )
         if date.get("rc") != 0:
@@ -303,7 +305,7 @@ class ActionModule(PosixActionBase, ActionBase):
         if not abbr:
             return None
 
-        offset_cmd = self._cmd(
+        offset_cmd = self._command(
             ["date", "+%z"], task_vars=task_vars, check_mode=False
         )
         offset = None
@@ -348,7 +350,7 @@ class ActionModule(PosixActionBase, ActionBase):
         :param Optional[dict[str, Any]] task_vars: Task variables
         :returns bool: True if path exists
         """
-        result = self._cmd(
+        result = self._command(
             ["test", "-f", candidate], task_vars=task_vars, check_mode=False
         )
         return result.get("rc") == 0
@@ -389,7 +391,7 @@ class ActionModule(PosixActionBase, ActionBase):
         :param Optional[dict[str, Any]] task_vars: Task variables
         :returns Optional[str]: POSIX timezone string, or None
         """
-        result = self._cmd(command, task_vars=task_vars, check_mode=False)
+        result = self._command(command, task_vars=task_vars, check_mode=False)
         if result.get("rc") != 0:
             return None
         stdout = result.get("stdout") or ""
@@ -405,7 +407,7 @@ class ActionModule(PosixActionBase, ActionBase):
         """
         result: dict[str, Any] = {}
 
-        abbr_cmd = self._cmd(
+        abbr_cmd = self._command(
             ["date", "+%Z"], task_vars=task_vars, check_mode=False
         )
         if abbr_cmd.get("rc") == 0:
@@ -413,7 +415,7 @@ class ActionModule(PosixActionBase, ActionBase):
             if abbr:
                 result["abbr"] = abbr
 
-        offset_cmd = self._cmd(
+        offset_cmd = self._command(
             ["date", "+%z"], task_vars=task_vars, check_mode=False
         )
         if offset_cmd.get("rc") == 0:

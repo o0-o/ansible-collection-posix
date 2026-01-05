@@ -48,7 +48,7 @@ class WritePosixActionBase(ReadPosixActionBase):
             (str or None), 'is_symlink' (bool), 'raw' (bool)
         :raises RuntimeError: if type cannot be determined
         """
-        exists_test = self._cmd(
+        exists_test = self._command(
             ["test", "-e", target_path], task_vars=task_vars, check_mode=False
         )
 
@@ -61,7 +61,7 @@ class WritePosixActionBase(ReadPosixActionBase):
 
         result["exists"] = True
 
-        symlink_test = self._cmd(
+        symlink_test = self._command(
             ["test", "-L", target_path], task_vars=task_vars, check_mode=False
         )
 
@@ -77,7 +77,7 @@ class WritePosixActionBase(ReadPosixActionBase):
         ]
 
         for type_name, flag in type_tests:
-            check = self._cmd(
+            check = self._command(
                 ["test"] + flag + [target_path],
                 task_vars=task_vars,
                 check_mode=False,
@@ -134,7 +134,7 @@ class WritePosixActionBase(ReadPosixActionBase):
             args.extend(["-m", mode])
         args.append(target_path)
 
-        mkdir_result = self._cmd(args, task_vars=task_vars)
+        mkdir_result = self._command(args, task_vars=task_vars)
         if mkdir_result["rc"] != 0:
             raise RuntimeError(
                 f"Failed to create directory '{target_path}': "
@@ -176,7 +176,7 @@ class WritePosixActionBase(ReadPosixActionBase):
             return
 
         cmd = validate_cmd % self._quote(tmpfile)
-        result = self._cmd(cmd, task_vars=task_vars)
+        result = self._command(cmd, task_vars=task_vars)
 
         if result["rc"] != 0:
             raise RuntimeError(
@@ -197,13 +197,13 @@ class WritePosixActionBase(ReadPosixActionBase):
             created
         :raises RuntimeError: If backup fails
         """
-        result = self._cmd(["test", "-e", dest], task_vars=task_vars)
+        result = self._command(["test", "-e", dest], task_vars=task_vars)
         if result["rc"] != 0:
             return None
 
         backup_path = self._generate_ansible_backup_path(dest)
         self._display.vvv(f"Creating backup at {backup_path}")
-        result = self._cmd(
+        result = self._command(
             ["cp", "--preserve=all", dest, backup_path], task_vars=task_vars
         )
 
@@ -249,7 +249,7 @@ class WritePosixActionBase(ReadPosixActionBase):
             ls_args.append("-ld")
         ls_args.append(target)
 
-        cmd_result = self._cmd(ls_args, task_vars=task_vars)
+        cmd_result = self._command(ls_args, task_vars=task_vars)
         if cmd_result["rc"] != 0:
             raise RuntimeError(
                 f"Could not stat {target}: {cmd_result['stderr']}"
@@ -311,7 +311,7 @@ class WritePosixActionBase(ReadPosixActionBase):
         """
         self._display.vvv(f"Writing to temp file: {tmpfile}")
         lines_str = "\n".join(lines)
-        write_result = self._cmd(
+        write_result = self._command(
             cmd=["tee", tmpfile],
             stdin=lines_str,
             task_vars=task_vars,
@@ -323,7 +323,7 @@ class WritePosixActionBase(ReadPosixActionBase):
             )
 
         self._display.vvv(f"Setting temp file permissions: {tmpfile}")
-        chmod_result = self._cmd(
+        chmod_result = self._command(
             ["chmod", "0600", tmpfile], task_vars=task_vars
         )
         if chmod_result.get("rc", 1) != 0:
@@ -460,7 +460,7 @@ class WritePosixActionBase(ReadPosixActionBase):
             permission or SELinux step
         """
         self._display.vvv(f"Applying permissions to {dest}")
-        cmd = self._cmd
+        cmd = self._command
 
         if perms:
             if perms.get("owner"):
@@ -567,7 +567,7 @@ class WritePosixActionBase(ReadPosixActionBase):
         """
         self._display.vvv(f"Starting _write_file to {dest}")
 
-        cmd = self._cmd
+        cmd = self._command
         shell = self._connection._shell
         backup_path = None
         check_mode = check_mode or False
@@ -715,7 +715,7 @@ class WritePosixActionBase(ReadPosixActionBase):
                 fcontext_type,
                 dest,
             ]
-            result = self._cmd(semanage_cmd, task_vars=task_vars)
+            result = self._command(semanage_cmd, task_vars=task_vars)
             if result["rc"] != 0:
                 raise RuntimeError(
                     "Failed to register SELinux context with semanage: "
@@ -723,7 +723,7 @@ class WritePosixActionBase(ReadPosixActionBase):
                 )
 
             restorecon_cmd = ["restorecon", dest]
-            result = self._cmd(restorecon_cmd, task_vars=task_vars)
+            result = self._command(restorecon_cmd, task_vars=task_vars)
             if result["rc"] != 0:
                 raise RuntimeError(
                     "Failed to apply SELinux context with restorecon: "
@@ -743,7 +743,7 @@ class WritePosixActionBase(ReadPosixActionBase):
             chcon_cmd += ["-l", selevel]
         chcon_cmd.append(dest)
 
-        result = self._cmd(chcon_cmd, task_vars=task_vars)
+        result = self._command(chcon_cmd, task_vars=task_vars)
         if result["rc"] != 0:
             raise RuntimeError(
                 "Failed to set SELinux context with chcon: "
@@ -846,7 +846,7 @@ class WritePosixActionBase(ReadPosixActionBase):
         :returns str: The path to the created temporary directory
         :raises RuntimeError: If directory creation fails
         """
-        cmd = self._cmd
+        cmd = self._command
         shell = self._connection._shell
         task_vars = task_vars or {}
 

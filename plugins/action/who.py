@@ -46,7 +46,7 @@ class ActionModule(TimezonePosixActionBase, ActionBase):
         target_tz = self._get_target_timezone(task_vars)
         reference_time = datetime.now(target_tz)
 
-        cmd_result = self._cmd(["who"], task_vars=task_vars)
+        cmd_result = self._command(["who"], task_vars=task_vars)
         if cmd_result.get("rc", 0) != 0:
             stderr = cmd_result.get("stderr", "").strip()
             raise AnsibleActionFail(f"who command failed: {stderr}")

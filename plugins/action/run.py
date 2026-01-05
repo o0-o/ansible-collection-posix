@@ -349,7 +349,7 @@ class ActionModule(UtilsActionBase, PosixActionBase, ActionBase):
         self._display.vvv(f"Batch command:\n{script}")
 
         # Execute batch
-        cmd_result = self._cmd(
+        cmd_result = self._command(
             script,
             chdir=self.chdir,
             strip=False,

@@ -62,7 +62,7 @@ class ActionModule(PosixActionBase, ActionBase):
         )
 
         # Execute dmidecode command
-        cmd_result = self._cmd(
+        cmd_result = self._command(
             ["dmidecode"], task_vars=task_vars, check_mode=False
         )
 

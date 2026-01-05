@@ -183,7 +183,7 @@ class ActionModule(PosixActionBase, ActionBase):
         """
         try:
             # Execute df command
-            df_result = self._cmd(
+            df_result = self._command(
                 "df -P", task_vars=task_vars, check_mode=False
             )
 
@@ -216,7 +216,7 @@ class ActionModule(PosixActionBase, ActionBase):
         """
         try:
             # Execute mount command
-            mount_result = self._cmd(
+            mount_result = self._command(
                 "mount", task_vars=task_vars, check_mode=False
             )
 
@@ -238,7 +238,7 @@ class ActionModule(PosixActionBase, ActionBase):
         """
         try:
             # Read /etc/fstab
-            cat_result = self._cmd(
+            cat_result = self._command(
                 "cat /etc/fstab", task_vars=task_vars, check_mode=False
             )
 

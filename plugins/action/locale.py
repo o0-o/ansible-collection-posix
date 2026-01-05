@@ -100,7 +100,7 @@ class ActionModule(PosixActionBase, ActionBase):
             command
         """
 
-        lc = self._cmd(["locale"], task_vars=task_vars, check_mode=False)
+        lc = self._command(["locale"], task_vars=task_vars, check_mode=False)
         if lc.get("rc") != 0:
             return {}
         return self._parse_assignments(lc.get("stdout"))
@@ -115,7 +115,7 @@ class ActionModule(PosixActionBase, ActionBase):
         :returns dict[str, str]: Environment variables from env command
         """
 
-        env_cmd = self._cmd(["env"], task_vars=task_vars, check_mode=False)
+        env_cmd = self._command(["env"], task_vars=task_vars, check_mode=False)
         if env_cmd.get("rc") != 0:
             return {}
         return self._parse_assignments(env_cmd.get("stdout"))

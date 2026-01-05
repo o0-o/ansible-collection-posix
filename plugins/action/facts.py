@@ -78,7 +78,7 @@ class ActionModule(PosixActionBase, ActionBase):
         :param Optional[dict[str, Any]] task_vars: Task variables
         :returns dict[str, Any]: Uname facts
         """
-        cmd_result = self._cmd(["uname", "-a"], task_vars=task_vars)
+        cmd_result = self._command(["uname", "-a"], task_vars=task_vars)
         uname_output = cmd_result.get("stdout", "")
         uname_facts = uname(uname_output)
 
@@ -111,7 +111,7 @@ class ActionModule(PosixActionBase, ActionBase):
         :returns dict[str, Any]: Locale facts
         """
         # Use the locale action plugin logic
-        cmd_result = self._cmd(["locale"], task_vars=task_vars)
+        cmd_result = self._command(["locale"], task_vars=task_vars)
         locale_output = cmd_result.get("stdout", "")
 
         # Parse locale output (key=value format)
@@ -141,13 +141,13 @@ class ActionModule(PosixActionBase, ActionBase):
         """
         # Get current time
         current_epoch = int(time.time())
-        cmd_result = self._cmd(
+        cmd_result = self._command(
             ["date", "+%Y-%m-%d %H:%M:%S %Z"], task_vars=task_vars
         )
         pretty_time = cmd_result.get("stdout", "").strip()
 
         # Get timezone info
-        tz_cmd = self._cmd(["date", "+%Z %z"], task_vars=task_vars)
+        tz_cmd = self._command(["date", "+%Z %z"], task_vars=task_vars)
         tz_output = tz_cmd.get("stdout", "").strip()
         tz_parts = tz_output.split()
         tz_name = tz_parts[0] if tz_parts else ""
@@ -202,7 +202,7 @@ class ActionModule(PosixActionBase, ActionBase):
         :returns dict[str, Any]: Hardware facts
         """
         # Run dmidecode command
-        cmd_result = self._cmd(
+        cmd_result = self._command(
             ["dmidecode"], task_vars=task_vars, check_mode=False
         )
 
@@ -261,7 +261,7 @@ class ActionModule(PosixActionBase, ActionBase):
         :param Optional[dict[str, Any]] task_vars: Task variables
         :returns dict[str, Any]: Mount facts
         """
-        cmd_result = self._cmd(["mount"], task_vars=task_vars)
+        cmd_result = self._command(["mount"], task_vars=task_vars)
         mount_output = cmd_result.get("stdout", "")
         mount_facts = mount(mount_output)
 

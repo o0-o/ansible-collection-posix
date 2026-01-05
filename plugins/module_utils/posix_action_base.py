@@ -197,7 +197,7 @@ class PosixActionBase(CoreActionBase):
 
         return False
 
-    def _cmd(
+    def _command(
         self,
         cmd: Union[str, list[str]],
         stdin: Optional[str] = None,
@@ -208,13 +208,17 @@ class PosixActionBase(CoreActionBase):
         raw: Optional[Union[bool, str]] = None,
     ) -> dict[str, Any]:
         """
-        Run the fallback-compatible 'command' action plugin with
-        arguments.
+        Run the fallback-compatible POSIX command action plugin.
+
+        Overrides CoreActionBase._command() to use o0_o.posix.command
+        which supports raw fallback execution on systems without Python.
 
         :param Union[str, list[str]] cmd: Command to execute. Can be a
             shell string or a list of arguments
         :param Optional[str] stdin: Optional standard input to pass to
             the command
+        :param Optional[str] chdir: Change to this directory before
+            executing
         :param bool strip: Strip trailing whitespace from output
         :param Optional[dict] task_vars: Dictionary of task variables
             from the calling task
@@ -350,13 +354,13 @@ class PosixActionBase(CoreActionBase):
         :param str cmd: The name of the command to locate
             (e.g., "chcon")
         :param Optional[dict] task_vars: Ansible task variables passed
-            to the ``_cmd`` method
+            to the ``_command`` method
         :returns Optional[str]: Path to the command or the name if it's
             a shell builtin
         """
         quoted = shlex.quote(cmd)
         shell_cmd = f"unalias -a 2>/dev/null; command -v {quoted}"
-        cmd_result = self._cmd(shell_cmd, task_vars=task_vars)
+        cmd_result = self._command(shell_cmd, task_vars=task_vars)
         stdout = cmd_result.get("stdout", "").strip()
 
         if cmd_result["rc"] == 0 and stdout:
@@ -369,7 +373,7 @@ class PosixActionBase(CoreActionBase):
             self._display.vvv(f"command -v {cmd} failed, trying which")
 
         # Fallback to 'which' if available
-        cmd_result = self._cmd(["which", cmd], task_vars=task_vars)
+        cmd_result = self._command(["which", cmd], task_vars=task_vars)
         stdout = cmd_result.get("stdout", "").strip()
         stdout_lower = stdout.lower()
 

@@ -117,7 +117,7 @@ class ActionModule(PosixActionBase, ActionBase):
             ps_cmd = ["ps", "-axww", "-o", ",".join(ps_fields)]
 
             # Execute ps command
-            ps_result = self._cmd(ps_cmd, task_vars=task_vars)
+            ps_result = self._command(ps_cmd, task_vars=task_vars)
 
             self._display.vvv(f"ps command returned rc={ps_result['rc']}")
 

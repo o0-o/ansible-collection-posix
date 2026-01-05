@@ -99,7 +99,7 @@ class ActionModule(ReadPosixActionBase, ActionBase):
         return result
 
     def _read_text_file(self, path: str, task_vars: dict[str, Any]) -> str:
-        cmd_result = self._cmd(
+        cmd_result = self._command(
             ["cat", path], task_vars=task_vars, check_mode=False
         )
         if cmd_result.get("rc") != 0:
@@ -391,7 +391,7 @@ class ActionModule(ReadPosixActionBase, ActionBase):
         :param dict[str, Any] task_vars: Task variables
         :returns bool: True if directory is readable
         """
-        cmd_result = self._cmd(
+        cmd_result = self._command(
             ["test", "-r", path, "-a", "-d", path],
             task_vars=task_vars,
             check_mode=False,
@@ -423,7 +423,7 @@ class ActionModule(ReadPosixActionBase, ActionBase):
 
         for key_name, file_path in auth_files.items():
             # Check if file exists and is readable
-            check_cmd = self._cmd(
+            check_cmd = self._command(
                 ["test", "-f", file_path, "-a", "-r", file_path],
                 task_vars=task_vars,
                 check_mode=False,
@@ -469,7 +469,7 @@ class ActionModule(ReadPosixActionBase, ActionBase):
                     readable_files.remove(key_name)
             else:
                 # Check if file exists but is not readable
-                exists_cmd = self._cmd(
+                exists_cmd = self._command(
                     ["test", "-f", file_path],
                     task_vars=task_vars,
                     check_mode=False,
@@ -508,7 +508,7 @@ class ActionModule(ReadPosixActionBase, ActionBase):
             None if .ssh not readable
         """
         # Find all .pub files
-        find_cmd = self._cmd(
+        find_cmd = self._command(
             [
                 "find",
                 ssh_dir,
