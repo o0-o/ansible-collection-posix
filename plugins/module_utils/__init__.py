@@ -67,25 +67,27 @@ from ansible_collections.o0_o.posix.plugins.module_utils.ps_utils import (
 from ansible_collections.o0_o.posix.plugins.module_utils.shells_utils import (
     parse_shells,
 )
-from ansible_collections.o0_o.posix.plugins.module_utils.timezone_utils import (  # noqa: E501
-    parse_posix_tz,
-    parse_etc_timezone,
-    parse_localtime_symlink,
-    parse_systemsetup_output,
-    parse_timedatectl_output,
-    parse_date_abbr,
-    parse_posix_candidate,
-    merge_timezone_config,
-)
+# TODO: Recreate timezone_utils.py - lost during restore
+# from ansible_collections.o0_o.posix.plugins.module_utils.timezone_utils import (
+#     parse_posix_tz,
+#     parse_etc_timezone,
+#     parse_localtime_symlink,
+#     parse_systemsetup_output,
+#     parse_timedatectl_output,
+#     parse_date_abbr,
+#     parse_posix_candidate,
+#     merge_timezone_config,
+# )
 from ansible_collections.o0_o.posix.plugins.module_utils.uptime_utils import (
     parse_uptime,
 )
 from ansible_collections.o0_o.posix.plugins.module_utils.who_utils import (
     parse_who,
 )
-from ansible_collections.o0_o.posix.plugins.module_utils.stat_utils import (
-    stat,
-)
+# TODO: Recreate stat_utils.py - lost during restore
+# from ansible_collections.o0_o.posix.plugins.module_utils.stat_utils import (
+#     stat,
+# )
 from ansible_collections.o0_o.posix.plugins.module_utils.posix_action_base import (  # noqa: E501
     PosixActionBase,
 )
@@ -135,19 +137,21 @@ __all__ = [
     "parse_mount",
     "parse_mount_entry",
     "parse_shells",
-    "parse_posix_tz",
-    "parse_etc_timezone",
-    "parse_localtime_symlink",
-    "parse_systemsetup_output",
-    "parse_timedatectl_output",
-    "parse_date_abbr",
-    "parse_posix_candidate",
-    "merge_timezone_config",
+    # TODO: Restore timezone exports when timezone_utils.py is recreated
+    # "parse_posix_tz",
+    # "parse_etc_timezone",
+    # "parse_localtime_symlink",
+    # "parse_systemsetup_output",
+    # "parse_timedatectl_output",
+    # "parse_date_abbr",
+    # "parse_posix_candidate",
+    # "merge_timezone_config",
     "parse_uptime",
     "parse_who",
     "ps",
     "restructure_process",
-    "stat",
+    # TODO: Restore stat export when stat_utils.py is recreated
+    # "stat",
     "normalize_source",
     "process_registered_result",
     "uname",

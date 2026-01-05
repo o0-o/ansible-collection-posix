@@ -86,22 +86,33 @@ class CompliancePosixActionBase(PosixActionBase):
         "202405": {"version": {"id": "2024", "name": "POSIX.1-2024"}},
     }
 
+    # Getconf variables to query for compliance detection
+    COMPLIANCE_VARIABLES = (
+        "_POSIX_VERSION",
+        "_POSIX2_VERSION",
+        "_XOPEN_UNIX",
+        "_XOPEN_VERSION",
+        "_XOPEN_XCU_VERSION",
+    )
+
     def _get_compliance_commands(self) -> dict[str, list[str]]:
         """Return tagged commands needed for compliance facts.
 
-        Returns dict mapping tags to commands for batching. Each
-        command queries a specific getconf variable needed for
-        determining POSIX, X/Open, and SUS compliance.
+        Uses COMMAND_SPEC to build getconf commands for each compliance
+        variable. Returns dict mapping tags to commands for batching.
 
         :returns dict[str, list[str]]: Dict mapping tags to commands
         """
-        return {
-            "posix_version": ["getconf", "_POSIX_VERSION"],
-            "posix2_version": ["getconf", "_POSIX2_VERSION"],
-            "xopen_unix": ["getconf", "_XOPEN_UNIX"],
-            "xopen_version": ["getconf", "_XOPEN_VERSION"],
-            "xopen_xcu_version": ["getconf", "_XOPEN_XCU_VERSION"],
-        }
+        commands = {}
+        for variable in self.COMPLIANCE_VARIABLES:
+            cmd_requests = self._process_command_spec(
+                "getconf", variable=variable
+            )
+            if cmd_requests:
+                # Tag is variable name without leading underscore, lowercase
+                tag = variable.lstrip("_").lower()
+                commands[tag] = cmd_requests[0]["command"]
+        return commands
 
     def _process_compliance_results(
         self, commands_results: Dict[str, Dict[str, Any]]

@@ -30,6 +30,10 @@ from ansible_collections.o0_o.core.plugins.module_utils import (
     CoreActionBase,
 )
 
+from ansible_collections.o0_o.posix.plugins.module_utils.command_spec import (
+    COMMAND_SPEC,
+)
+
 
 class PosixActionBase(CoreActionBase):
     """
@@ -59,6 +63,9 @@ class PosixActionBase(CoreActionBase):
             def run(self, tmp=None, task_vars=None):
                 ...
     """
+
+    # Override CoreActionBase.COMMAND_SPEC with POSIX-extended specs
+    COMMAND_SPEC = COMMAND_SPEC
 
     def _format_command(self, cmd: Union[str, list[str]]) -> str:
         """
