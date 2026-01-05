@@ -67,8 +67,10 @@ from ansible_collections.o0_o.posix.plugins.module_utils.ps_utils import (
 from ansible_collections.o0_o.posix.plugins.module_utils.shells_utils import (
     parse_shells,
 )
+
 # TODO: Recreate timezone_utils.py - lost during restore
-# from ansible_collections.o0_o.posix.plugins.module_utils.timezone_utils import (
+# from ansible_collections.o0_o.posix.plugins.module_utils. \
+#     timezone_utils import (
 #     parse_posix_tz,
 #     parse_etc_timezone,
 #     parse_localtime_symlink,
@@ -84,6 +86,7 @@ from ansible_collections.o0_o.posix.plugins.module_utils.uptime_utils import (
 from ansible_collections.o0_o.posix.plugins.module_utils.who_utils import (
     parse_who,
 )
+
 # TODO: Recreate stat_utils.py - lost during restore
 # from ansible_collections.o0_o.posix.plugins.module_utils.stat_utils import (
 #     stat,
@@ -104,15 +107,19 @@ from ansible_collections.o0_o.posix.plugins.module_utils.read_posix_action_base 
 from ansible_collections.o0_o.posix.plugins.module_utils.write_posix_action_base import (  # noqa: E501
     WritePosixActionBase,
 )
-from ansible_collections.o0_o.posix.plugins.module_utils.compliance_posix_action_base import (  # noqa: E501
-    CompliancePosixActionBase,
+from ansible_collections.o0_o.posix.plugins.module_utils.compliance_utils import (  # noqa: E501
+    format_compliance_message,
+    get_compliance_commands,
+    process_compliance_results,
 )
 
 __all__ = [
     "PosixActionBase",
     "ReadPosixActionBase",
     "WritePosixActionBase",
-    "CompliancePosixActionBase",
+    "format_compliance_message",
+    "get_compliance_commands",
+    "process_compliance_results",
     "device_from_hex_major_minor",
     "device_from_major_minor",
     "device_value",

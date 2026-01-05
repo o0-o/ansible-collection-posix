@@ -16,11 +16,16 @@ from typing import Any, Optional
 from ansible.plugins.action import ActionBase
 
 from ansible_collections.o0_o.posix.plugins.module_utils import (
-    CompliancePosixActionBase,
+    PosixActionBase,
+)
+from ansible_collections.o0_o.posix.plugins.module_utils.compliance_utils import (  # noqa: E501
+    format_compliance_message,
+    get_compliance_commands,
+    process_compliance_results,
 )
 
 
-class ActionModule(CompliancePosixActionBase, ActionBase):
+class ActionModule(PosixActionBase, ActionBase):
     """Check POSIX and UNIX standards compliance of the target host.
 
     This action plugin checks the standards compliance of the target
@@ -32,9 +37,6 @@ class ActionModule(CompliancePosixActionBase, ActionBase):
     (XSH/XCU), SUS, and XSI when available. Use the 'posix' Jinja2 test
     to check if the system is POSIX-compliant based on the returned
     compliance data.
-
-    This module uses the CompliancePosixActionBase mixin which provides
-    batched command execution via the run action plugin for efficiency.
     """
 
     TRANSFERS_FILES = False
@@ -64,8 +66,8 @@ class ActionModule(CompliancePosixActionBase, ActionBase):
         result = super().run(task_vars=task_vars)
         del tmp  # unused
 
-        # Get tagged commands from mixin (returns dict)
-        commands = self._get_compliance_commands()
+        # Get tagged commands for compliance checks
+        commands = get_compliance_commands()
 
         # Execute all commands in parallel via run plugin (using dict mode)
         run_result = self._run(
@@ -79,11 +81,19 @@ class ActionModule(CompliancePosixActionBase, ActionBase):
         # Dict mode returns results already keyed by tag
         commands_results = run_result["commands"]
 
-        # Process via mixin method
-        compliance = self._process_compliance_results(commands_results)
+        # Process results into compliance structure
+        compliance, warnings, debug_msgs = process_compliance_results(
+            commands_results
+        )
+
+        # Emit any warnings or debug messages
+        for msg in debug_msgs:
+            self._display.vvv(msg)
+        for msg in warnings:
+            self._display.warning(f"[{self.inventory_hostname}] {msg}")
 
         # Format message
-        result["msg"] = self._format_compliance_message(compliance)
+        result["msg"] = format_compliance_message(compliance)
         result["compliance"] = compliance
         result["changed"] = False
 
