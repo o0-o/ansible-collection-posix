@@ -107,7 +107,7 @@ from ansible_collections.o0_o.posix.plugins.module_utils.read_posix_action_base 
 from ansible_collections.o0_o.posix.plugins.module_utils.write_posix_action_base import (  # noqa: E501
     WritePosixActionBase,
 )
-from ansible_collections.o0_o.posix.plugins.module_utils.compliance_utils import (  # noqa: E501
+from ansible_collections.o0_o.posix.plugins.module_utils.compliance import (
     format_compliance_message,
     get_compliance_commands,
     process_compliance_results,

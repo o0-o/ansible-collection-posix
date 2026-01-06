@@ -18,7 +18,7 @@ from ansible.plugins.action import ActionBase
 from ansible_collections.o0_o.posix.plugins.module_utils import (
     PosixActionBase,
 )
-from ansible_collections.o0_o.posix.plugins.module_utils.compliance_utils import (  # noqa: E501
+from ansible_collections.o0_o.posix.plugins.module_utils.compliance import (
     format_compliance_message,
     get_compliance_commands,
     process_compliance_results,
