@@ -217,6 +217,9 @@ class ActionModule(UtilsActionBase, PosixActionBase, ActionBase):
         else:
             cmds = ["set +e"]  # Don't exit on command errors
 
+        # Remove aliases to ensure consistent command behavior
+        cmds.append("unalias -a 2>/dev/null || :")
+
         if self.parallel:
             # Launch all commands in background with timing
             # Write RC to file to avoid stdout interleaving
