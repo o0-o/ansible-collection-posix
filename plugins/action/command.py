@@ -43,7 +43,7 @@ else:
     PACKAGING_IMPORT_ERROR = None
 
 
-class ActionModule(CoreActionBase, PosixActionBase, ActionBase):
+class ActionModule(PosixActionBase, CoreActionBase, ActionBase):
     """
     Execute a command on the remote host with raw fallback support.
 
