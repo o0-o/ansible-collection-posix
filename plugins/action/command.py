@@ -26,7 +26,6 @@ from ansible.module_utils.common.text.converters import to_text
 from ansible_collections.o0_o.utils.plugins.module_utils import (
     truthy_or_string,
 )
-from ansible_collections.o0_o.core.plugins.module_utils import CoreActionBase
 from ansible_collections.o0_o.posix.plugins.module_utils import (
     PosixActionBase,
     format_command,
@@ -43,7 +42,7 @@ else:
     PACKAGING_IMPORT_ERROR = None
 
 
-class ActionModule(PosixActionBase, CoreActionBase, ActionBase):
+class ActionModule(PosixActionBase, ActionBase):
     """
     Execute a command on the remote host with raw fallback support.
 
