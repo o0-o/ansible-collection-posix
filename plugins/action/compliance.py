@@ -15,13 +15,21 @@ from typing import Any, Optional
 
 from ansible.plugins.action import ActionBase
 
+from ansible_collections.o0_o.utils.plugins.module_utils.typeguard_compat import (  # noqa: E501
+    typechecked,
+)
+
+from ansible_collections.o0_o.core.plugins.module_utils.command_utils import (
+    process_command_spec,
+)
 from ansible_collections.o0_o.posix.plugins.module_utils import (
     PosixActionBase,
 )
-from ansible_collections.o0_o.posix.plugins.module_utils.compliance import (
-    format_compliance_message,
-    get_compliance_commands,
-    process_compliance_results,
+from ansible_collections.o0_o.posix.plugins.module_utils.command_spec import (
+    COMPLIANCE_COMMAND_SPEC,
+)
+from ansible_collections.o0_o.posix.plugins.module_utils.compliance_utils import (  # noqa: E501
+    process_compliance_commands_result,
 )
 
 
@@ -45,6 +53,44 @@ class ActionModule(PosixActionBase, ActionBase):
     _supports_async = False
     _supports_diff = False
 
+    @typechecked
+    def _format_compliance_message(self, result: dict[str, Any]) -> str:
+        """Format a human-readable compliance status message.
+
+        :param dict[str, Any] result: Result dict containing 'compliance' key
+        :returns str: Human-readable status message
+        """
+        compliance = result.get("compliance", {})
+
+        sus = compliance.get("sus", {})
+        if sus.get("supported") is True:
+            version = sus.get("version", {}).get("pretty", "")
+            if version:
+                return f"System is SUS-compliant ({version})"
+            return "System is SUS-compliant"
+
+        posix = compliance.get("posix", {})
+        posix_support = posix.get("supported")
+        if posix_support is True:
+            components = []
+            for key in ("xsh", "xcu", "xsi"):
+                if compliance.get(key, {}).get("supported") is True:
+                    components.append(key.upper())
+            if components:
+                return f"System is POSIX-compliant ({', '.join(components)})"
+            return "System is POSIX-compliant"
+        elif posix_support == "partial":
+            components = []
+            for key in ("xsh", "xcu"):
+                if compliance.get(key, {}).get("supported") is True:
+                    components.append(key.upper())
+            if components:
+                parts = ", ".join(components)
+                return f"System is partially POSIX-compliant ({parts})"
+            return "System is partially POSIX-compliant"
+
+        return "System is not POSIX-compliant"
+
     def run(
         self,
         tmp: Optional[str] = None,
@@ -66,35 +112,59 @@ class ActionModule(PosixActionBase, ActionBase):
         result = super().run(task_vars=task_vars)
         del tmp  # unused
 
-        # Get tagged commands for compliance checks
-        commands = get_compliance_commands()
+        # Validate arguments
+        argument_spec = {
+            "gather": {
+                "type": "bool",
+                "default": False,
+            },
+        }
+        validation_result, new_args = self.validate_argument_spec(
+            argument_spec=argument_spec
+        )
+        result["invocation"] = self._task.args.copy()
+
+        gather = new_args.get("gather", False)
+
+        # Get tagged commands for compliance checks using process_command_spec
+        cmd_requests = process_command_spec(COMPLIANCE_COMMAND_SPEC)
+        cmds = {req["type"]: req["command"] for req in cmd_requests}
 
         # Execute all commands in parallel via run plugin (using dict mode)
-        run_result = self._run(
-            commands,
+        commands_result = self._run(
+            cmds,
             parallel=True,
             fail_fast=False,
             task_vars=task_vars,
             check_mode=False,  # Always run getconf even in check mode
         )
 
-        # Dict mode returns results already keyed by tag
-        commands_results = run_result["commands"]
-
         # Process results into compliance structure
-        compliance, errors, debug_msgs = process_compliance_results(
-            commands_results
+        processed_result, errors = process_compliance_commands_result(
+            commands_result
         )
+        result.update(processed_result)
 
-        # Emit any errors or debug messages
-        for msg in debug_msgs:
-            self._display.vvv(msg)
+        # Emit any errors
         for err in errors:
             self._display.warning(f"[{self.inventory_hostname}] {err}")
 
         # Format message
-        result["msg"] = format_compliance_message(compliance)
-        result["compliance"] = compliance
+        result["msg"] = self._format_compliance_message(result)
+
+        # Set ansible_facts when gather is enabled
+        if gather:
+            result["ansible_facts"] = {
+                "o0_os": {
+                    "compliance": result["compliance"],
+                    "shells": result["shells"],
+                },
+                "o0_paths": result["paths"],
+                "o0_missing": {
+                    "commands": result["missing_commands"],
+                },
+            }
+
         result["changed"] = False
 
         return result

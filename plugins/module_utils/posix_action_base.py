@@ -170,12 +170,14 @@ class PosixActionBase(CoreActionBase):
         if chdir:
             args["chdir"] = chdir
 
-        return self._run_action(
+        run_result = self._run_action(
             "o0_o.posix.run",
             args,
             task_vars=task_vars,
             check_mode=check_mode,
         )
+
+        return run_result.get("commands")
 
     def _sanitize_args(self, args: dict[str, Any]) -> dict[str, Any]:
         """

@@ -22,7 +22,44 @@
       - compliance_result_reg['msg'] is string
       - compliance_result_reg['compliance'] is defined
       - compliance_result_reg['compliance'] is mapping
+      - compliance_result_reg['shells'] is defined
+      - compliance_result_reg['shells'] is mapping
+      - compliance_result_reg['paths'] is defined
+      - compliance_result_reg['paths'] is mapping
+      - compliance_result_reg['missing_commands'] is defined
+      - compliance_result_reg['missing_commands'] is sequence
     fail_msg: 'Compliance module did not return expected structure'
+
+- name: Verify compliance dict contains all standards
+  ansible.builtin.assert:
+    that:
+      - compliance_result_reg['compliance']['xsh'] is defined
+      - compliance_result_reg['compliance']['xcu'] is defined
+      - compliance_result_reg['compliance']['xsi'] is defined
+      - compliance_result_reg['compliance']['posix'] is defined
+      - compliance_result_reg['compliance']['sus'] is defined
+    fail_msg: 'Compliance dict missing required standard keys'
+
+- name: Verify standard metadata fields
+  ansible.builtin.assert:
+    that:
+      - compliance_result_reg['compliance']['xsh']['name'] is defined
+      - compliance_result_reg['compliance']['xsh']['abbreviation'] == 'XSH'
+      - compliance_result_reg['compliance']['xcu']['abbreviation'] == 'XCU'
+      - compliance_result_reg['compliance']['xsi']['abbreviation'] == 'XSI'
+      - compliance_result_reg['compliance']['posix']['abbreviation'] == 'POSIX'
+      - compliance_result_reg['compliance']['sus']['abbreviation'] == 'SUS'
+    fail_msg: 'Standard metadata fields missing or incorrect'
+
+- name: Verify support fields exist
+  ansible.builtin.assert:
+    that:
+      - compliance_result_reg['compliance']['xsh']['supported'] is defined
+      - compliance_result_reg['compliance']['xcu']['supported'] is defined
+      - compliance_result_reg['compliance']['xsi']['supported'] is defined
+      - compliance_result_reg['compliance']['posix']['supported'] is defined
+      - compliance_result_reg['compliance']['sus']['supported'] is defined
+    fail_msg: 'Support fields missing from compliance standards'
 
 - name: Run in check mode
   o0_o.posix.compliance:
@@ -35,9 +72,36 @@
       - compliance_check_reg is defined
       - compliance_check_reg['changed'] == false
       - compliance_check_reg['compliance'] is defined
+      - compliance_check_reg['shells'] is defined
+      - compliance_check_reg['paths'] is defined
+      - compliance_check_reg['missing_commands'] is defined
     fail_msg: 'Compliance module did not work in check mode'
+
+- name: Verify check mode returns same results
+  ansible.builtin.assert:
+    that:
+      - >-
+        compliance_check_reg['compliance']['posix']['supported']
+        == compliance_result_reg['compliance']['posix']['supported']
+      - >-
+        compliance_check_reg['compliance']['sus']['supported']
+        == compliance_result_reg['compliance']['sus']['supported']
+    fail_msg: 'Check mode returned different results than normal mode'
 
 - name: Display compliance info
   ansible.builtin.debug:
     msg: >-
       {{ compliance_result_reg['msg'] }}
+
+- name: Display detailed compliance
+  ansible.builtin.debug:
+    var: compliance_result_reg['compliance']
+    verbosity: 1
+
+- name: Display command inventory
+  ansible.builtin.debug:
+    msg:
+      shells: "{{ compliance_result_reg['shells'] }}"
+      paths_count: "{{ compliance_result_reg['paths'] | length }}"
+      missing: "{{ compliance_result_reg['missing_commands'] }}"
+    verbosity: 1

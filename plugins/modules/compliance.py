@@ -27,6 +27,14 @@ description:
   - Use the C(posix) Jinja2 test to check if the system is
     POSIX-compliant based on the returned compliance data.
   - Does not require Python on the target host.
+options:
+  gather:
+    description:
+      - When true, also sets compliance data in ansible_facts.o0_os.compliance.
+      - This allows the compliance data to be used by subsequent tasks via
+        ansible_facts without needing to register the result.
+    type: bool
+    default: false
 author:
   - oØ.o (@o0-o)
 notes:
@@ -54,7 +62,17 @@ EXAMPLES = r"""
   o0_o.posix.compliance:
   register: posix_compliance
 
-- name: Set compliance facts
+- name: Gather compliance as ansible_facts
+  o0_o.posix.compliance:
+    gather: true
+
+- name: Use compliance facts in subsequent tasks
+  ansible.builtin.debug:
+    msg: >-
+      POSIX support:
+      {{ ansible_facts['o0_os']['compliance']['posix']['supported'] }}
+
+- name: Set compliance facts (alternative to gather option)
   ansible.builtin.set_fact:
     compliance: "{{ posix_compliance.compliance }}"
 
@@ -79,14 +97,145 @@ EXAMPLES = r"""
 """
 
 RETURN = r"""
+ansible_facts:
+  description: >-
+    Ansible facts set when gather=true. Contains o0_os.compliance with
+    the same structure as the compliance return value.
+  returned: when gather=true
+  type: dict
+  contains:
+    o0_os:
+      description: Operating system facts namespace
+      type: dict
+      contains:
+        compliance:
+          description: >-
+            Compliance data (same structure as compliance return value)
+          type: dict
 compliance:
-  description: Dictionary of compliance standards detected
+  description: >-
+    Dictionary of compliance standards detected. Contains top-level keys for
+    each standard (xsh, xcu, xsi, posix, sus) with their support status.
   returned: always
   type: dict
   contains:
+    xsh:
+      description: POSIX System Interfaces (XSH) compliance
+      type: dict
+      contains:
+        name:
+          description: Full name of the standard
+          type: str
+          sample: "System Interfaces"
+        abbreviation:
+          description: Common abbreviation
+          type: str
+          sample: "XSH"
+        description:
+          description: Description of the standard
+          type: str
+          sample: "POSIX System Interfaces and Headers"
+        supported:
+          description: Whether XSH is supported
+          type: bool
+          sample: true
+        version:
+          description: Version information (when supported)
+          type: dict
+          contains:
+            id:
+              description: Year identifier
+              type: str
+              sample: "2008"
+            name:
+              description: Full version name
+              type: str
+              sample: "POSIX.1-2008"
+        canaries:
+          description: Raw getconf values for verification
+          type: dict
+          sample:
+            getconf:
+              _POSIX_VERSION: "200809"
+    xcu:
+      description: POSIX Shell and Utilities (XCU) compliance
+      type: dict
+      contains:
+        name:
+          description: Full name of the standard
+          type: str
+          sample: "Shell & Utilities"
+        abbreviation:
+          description: Common abbreviation
+          type: str
+          sample: "XCU"
+        description:
+          description: Description of the standard
+          type: str
+          sample: "POSIX Shell and Utilities"
+        supported:
+          description: Whether XCU is supported
+          type: bool
+          sample: true
+        version:
+          description: Version information (when supported)
+          type: dict
+          contains:
+            id:
+              description: Year identifier
+              type: str
+              sample: "2008"
+            name:
+              description: Full version name
+              type: str
+              sample: "POSIX.1-2008"
+        canaries:
+          description: Raw getconf values for verification
+          type: dict
+          sample:
+            getconf:
+              _POSIX2_VERSION: "200809"
+    xsi:
+      description: X/Open System Interfaces (XSI) extensions
+      type: dict
+      contains:
+        name:
+          description: Full name of the standard
+          type: str
+          sample: "X/Open System Interfaces"
+        abbreviation:
+          description: Common abbreviation
+          type: str
+          sample: "XSI"
+        description:
+          description: Description of the standard
+          type: str
+          sample: "SUS X/Open System Interfaces (UNIX extensions to POSIX)"
+        supported:
+          description: Whether XSI is supported
+          type: bool
+          sample: true
+        version:
+          description: Version information (when supported)
+          type: dict
+          contains:
+            issue:
+              description: X/Open Issue number
+              type: float
+              sample: 7.0
+            pretty:
+              description: Human-readable issue string
+              type: str
+              sample: "Issue 7"
+        canaries:
+          description: Raw getconf values for verification
+          type: dict
+          sample:
+            getconf:
+              _XOPEN_UNIX: "1"
+              _XOPEN_VERSION: "700"
     posix:
-      description: POSIX compliance information
-      returned: when POSIX compliance is detected
+      description: Overall POSIX compliance (requires XSH + XCU)
       type: dict
       contains:
         name:
@@ -101,117 +250,14 @@ compliance:
           description: Description of the standard
           type: str
           sample: "IEEE standard for compatibility between operating systems"
-        components:
-          description: POSIX components detected on the system
-          returned: when POSIX components are found
-          type: dict
-          contains:
-            xsh:
-              description: System Interfaces and Headers compliance
-              returned: when _POSIX_VERSION is defined
-              type: dict
-              contains:
-                name:
-                  description: Full name of the standard
-                  type: str
-                  sample: "System Interfaces"
-                abbreviation:
-                  description: Common abbreviation
-                  type: str
-                  sample: "XSH"
-                description:
-                  description: Description of the standard
-                  type: str
-                  sample: "POSIX System Interfaces and Headers"
-                version:
-                  description: Version information
-                  type: dict
-                  contains:
-                    id:
-                      description: Version identifier
-                      type: str
-                      sample: "2008"
-                    name:
-                      description: Full version name
-                      type: str
-                      sample: "POSIX.1-2008"
-                    getconf:
-                      description: Raw values from getconf commands
-                      type: dict
-                      sample:
-                        _POSIX_VERSION: "200809"
-            xcu:
-              description: Shell and Utilities compliance
-              returned: when _POSIX2_VERSION is defined
-              type: dict
-              contains:
-                name:
-                  description: Full name of the standard
-                  type: str
-                  sample: "Shell & Utilities"
-                abbreviation:
-                  description: Common abbreviation
-                  type: str
-                  sample: "XCU"
-                description:
-                  description: Description of the standard
-                  type: str
-                  sample: "POSIX Shell and Utilities"
-                version:
-                  description: Version information
-                  type: dict
-                  contains:
-                    id:
-                      description: Version identifier
-                      type: str
-                      sample: "2008"
-                    name:
-                      description: Full version name
-                      type: str
-                      sample: "POSIX.1-2008"
-                    getconf:
-                      description: Raw values from getconf commands
-                        (None if undefined)
-                      type: dict
-                      sample:
-                        _POSIX2_VERSION: "200809"
-                        _XOPEN_XCU_VERSION: null
-                note:
-                  description: Additional information about XCU detection
-                  returned: when POSIX2 is assumed from XCU_VERSION
-                  type: str
-                  sample: |
-                    Assuming _POSIX_VERSION (200809) applies because
-                    _XOPEN_XCU_VERSION is defined (4) but appears to be invalid
-            xsi:
-              description: X/Open System Interface extensions
-              returned: when _XOPEN_UNIX > 0
-              type: dict
-              contains:
-                name:
-                  description: Full name of the standard
-                  type: str
-                  sample: "X/Open System Interface"
-                abbreviation:
-                  description: Common abbreviation
-                  type: str
-                  sample: "XSI"
-                description:
-                  description: Description of the standard
-                  type: str
-                  sample: "Extensions to POSIX for UNIX systems"
-                enabled:
-                  description: Whether XSI extensions are enabled
-                  type: bool
-                  sample: true
-                getconf:
-                  description: Raw values from getconf commands
-                  type: dict
-                  sample:
-                    _XOPEN_UNIX: "1"
+        supported:
+          description: >-
+            Whether POSIX is supported. Can be true, false, or "partial" if
+            only XSH or XCU is supported.
+          type: raw
+          sample: true
     sus:
-      description: Single UNIX Specification compliance
-      returned: when X/Open compliance is detected
+      description: Single UNIX Specification compliance (requires POSIX + XSI)
       type: dict
       contains:
         name:
@@ -226,35 +272,59 @@ compliance:
           description: Description of the standard
           type: str
           sample: "Unified UNIX standard combining POSIX with XSI extensions"
+        supported:
+          description: Whether SUS is supported
+          type: bool
+          sample: true
         version:
-          description: Version information
+          description: Version information (when supported)
           type: dict
           contains:
+            issue:
+              description: X/Open Issue number
+              type: float
+              sample: 7.0
             id:
-              description: Version identifier
+              description: SUS version number
               type: int
               sample: 4
-            name:
-              description: Full version name
+            pretty:
+              description: Human-readable version string
               type: str
-              sample: "SUSv4"
-            getconf:
-              description: Raw values from getconf commands
-              type: dict
-              sample:
-                _XOPEN_VERSION: "700"
-        getconf:
-          description: Raw values from getconf commands
-          type: dict
-          sample:
-            _XOPEN_UNIX: "1"
+              sample: "v4"
+shells:
+  description: >-
+    Dictionary mapping shell paths to their properties, including detected
+    builtins.
+  returned: always
+  type: dict
+  sample:
+    /bin/sh:
+      builtins:
+        - command
+        - test
+        - "["
+paths:
+  description: Dictionary of command paths found on the system
+  returned: always
+  type: dict
+  sample:
+    /bin/cat: {}
+    /usr/bin/grep: {}
+    /bin/sh: {}
+missing_commands:
+  description: List of required commands not found on the system
+  returned: always
+  type: list
+  elements: str
+  sample: []
 msg:
   description: Human-readable message about the compliance status
   returned: always
   type: str
-  sample: "System is POSIX-compliant (XSH, XCU, XSI)"
+  sample: "System is SUS-compliant (v4)"
 changed:
-  description: Always false as this is a test module
+  description: Always false as this module only tests the system
   returned: always
   type: bool
   sample: false
@@ -265,8 +335,16 @@ from ansible.module_utils.basic import AnsibleModule
 
 def main() -> None:
     """Fail if this module is run directly without the action plugin."""
+    argument_spec = {
+        "gather": {
+            "type": "bool",
+            "default": False,
+        },
+    }
 
-    module = AnsibleModule(argument_spec={}, supports_check_mode=True)
+    module = AnsibleModule(
+        argument_spec=argument_spec, supports_check_mode=True
+    )
     module.fail_json(msg="This module must be run via its action plugin.")
 
 
