@@ -21,9 +21,8 @@ from ansible_collections.o0_o.utils.plugins.module_utils import (
     format_elapsed_seconds,
     format_epoch_timestamp,
     truthy_or_string,
-    UtilsActionBase,
 )
-
+from ansible_collections.o0_o.core.plugins.module_utils import CoreActionBase
 from ansible_collections.o0_o.posix.plugins.module_utils import PosixActionBase
 from ansible_collections.o0_o.posix.plugins.module_utils.command_utils import (
     format_command,
@@ -32,7 +31,7 @@ from ansible_collections.o0_o.posix.plugins.module_utils.command_utils import (
 __metaclass__ = type
 
 
-class ActionModule(UtilsActionBase, PosixActionBase, ActionBase):
+class ActionModule(CoreActionBase, PosixActionBase, ActionBase):
     """
     Execute multiple commands in a single SSH round trip.
 
