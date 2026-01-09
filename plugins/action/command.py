@@ -27,9 +27,11 @@ from ansible_collections.o0_o.utils.plugins.module_utils import (
     truthy_or_string,
 )
 from ansible_collections.o0_o.core.plugins.module_utils import CoreActionBase
-from ansible_collections.o0_o.posix.plugins.module_utils import PosixActionBase
-from ansible_collections.o0_o.posix.plugins.module_utils.command_utils import (
+from ansible_collections.o0_o.posix.plugins.module_utils import (
+    PosixActionBase,
     format_command,
+)
+from ansible_collections.o0_o.posix.plugins.module_utils.command_utils import (
     is_interpreter_missing,
 )
 
