@@ -49,11 +49,25 @@ class ActionModule(PosixActionBase, ActionBase):
         commands: list[Union[str, list[str]]],
     ) -> list[dict[str, Any]]:
         """
-        Parse length-prefixed batch output.
+        Parse length-prefixed batch output into command results.
 
-        :param str output: Raw batch output string
-        :param list commands: Commands that were executed
-        :returns list: List of command result dictionaries
+        Parses the structured output format produced by _build_batch_script.
+        Each command's output block contains:
+        - Return code line
+        - Start timestamp line (epoch seconds)
+        - End timestamp line (epoch seconds)
+        - Stdout length line (format: "N /path/to/file")
+        - Stdout content (exactly N bytes)
+        - Stderr length line (format: "N /path/to/file")
+        - Stderr content (exactly N bytes)
+
+        :param str output: Raw batch output string from shell execution
+        :param list[Union[str, list[str]]] commands: Commands that were
+            executed, used to populate the 'cmd' field in results
+        :returns list[dict[str, Any]]: List of result dicts, each containing
+            'cmd', 'rc', 'stdout', 'stderr', 'stdout_lines', 'stderr_lines',
+            and 'elapsed' keys
+        :raises ValueError: If output format is malformed or incomplete
         """
         results = []
 
@@ -202,11 +216,22 @@ class ActionModule(PosixActionBase, ActionBase):
         tmp: str,
     ) -> str:
         """
-        Build the batched shell script using Ansible's tmp.
+        Build a shell script that executes commands and captures output.
 
-        :param list commands: Commands to include in the batch
-        :param str tmp: Temporary directory path
-        :returns str: Shell script content
+        Generates a POSIX-compatible shell script that:
+        - Executes each command in a subshell
+        - Captures stdout/stderr to temporary files
+        - Records start/end timestamps for timing
+        - Outputs results in length-prefixed format for parsing
+
+        The script respects self.parallel and self.fail_fast settings.
+        In parallel mode, commands run as background jobs. In sequential
+        mode with fail_fast, the script exits on first failure.
+
+        :param list[Union[str, list[str]]] commands: Commands to execute.
+            Strings are used as-is; lists are converted via format_command
+        :param str tmp: Temporary directory path prefix for output files
+        :returns str: Complete shell script as a single string
         """
         if self.fail_fast:
             cmds = ["set -e"]  # Exit on command errors
@@ -284,11 +309,18 @@ class ActionModule(PosixActionBase, ActionBase):
         tmp: str,
     ) -> int:
         """
-        Estimate the length of the batch script for given commands.
+        Estimate the byte length of a batch script for given commands.
 
-        :param list commands: List of commands to estimate
-        :param str tmp: Temporary directory path
-        :returns int: Estimated script length in bytes
+        Builds the actual script and returns twice its length as a safety
+        margin to account for shell escaping and JSON serialization overhead
+        during transmission.
+
+        Used by _split_commands_by_length to determine when to split
+        commands into multiple batches to avoid exceeding shell limits.
+
+        :param list[Union[str, list[str]]] commands: Commands to include
+        :param str tmp: Temporary directory path prefix
+        :returns int: Estimated script length in bytes (2x actual length)
         """
         script = self._build_batch_script(commands, tmp)
 
@@ -301,11 +333,19 @@ class ActionModule(PosixActionBase, ActionBase):
         max_count: int = 63,  # Max commands per batch
     ) -> list[list[Union[str, list[str]]]]:
         """
-        Split commands into batches that fit within limits.
+        Split self.commands into batches respecting size and count limits.
 
-        :param int max_length: Maximum script length in bytes
-        :param int max_count: Maximum commands per batch
-        :returns list: List of command batches
+        Iterates through self.commands and groups them into batches where
+        each batch's estimated script length stays under max_length and
+        the command count stays under max_count. This prevents shell
+        command-line length limits from being exceeded.
+
+        :param int max_length: Maximum estimated script length in bytes.
+            Defaults to 64KB which is safe for most systems
+        :param int max_count: Maximum commands per batch. Defaults to 63
+            to stay under typical shell job limits for parallel execution
+        :returns list[list[Union[str, list[str]]]]: List of command batches,
+            where each batch is a list of commands
         """
         batches = []
         current_batch = []
@@ -367,6 +407,32 @@ class ActionModule(PosixActionBase, ActionBase):
         # Parse output and return results
         return self._parse_batch_output(cmd_result["stdout"], batch_commands)
 
+    def _extract_command(
+        self, item: Union[str, list, dict[str, Any]]
+    ) -> Union[str, list[str]]:
+        """
+        Extract the command from a command item.
+
+        Supports three formats:
+        - String: returned as-is
+        - List: returned as-is (list of arguments)
+        - Dict with "command" key: extracts the command value
+
+        This allows passing process_command_spec output directly to run.
+
+        :param item: Command item (string, list, or dict)
+        :returns: Command string or list of arguments
+        :raises AnsibleActionFail: If dict is missing "command" key
+        """
+        if isinstance(item, dict):
+            if "command" not in item:
+                raise AnsibleActionFail(
+                    "Command dict must contain a 'command' key. "
+                    f"Got keys: {list(item.keys())}"
+                )
+            return item["command"]
+        return item
+
     def _def_args(self) -> None:
         """Parse and validate module arguments."""
         argument_spec = {
@@ -390,10 +456,14 @@ class ActionModule(PosixActionBase, ActionBase):
         self.is_dict_mode = isinstance(commands_input, dict)
         if self.is_dict_mode:
             self.command_keys = list(commands_input.keys())
-            self.commands = list(commands_input.values())
+            # Extract command from each value (may be string, list, or dict)
+            self.commands = [
+                self._extract_command(v) for v in commands_input.values()
+            ]
         else:
             self.command_keys = None
-            self.commands = commands_input
+            # Extract command from each item (may be string, list, or dict)
+            self.commands = [self._extract_command(c) for c in commands_input]
 
         # Set instance variables from validated args
         self.chdir = new_module_args["chdir"]

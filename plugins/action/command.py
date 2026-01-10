@@ -176,29 +176,23 @@ class ActionModule(PosixActionBase, ActionBase):
         # Strip trailing newlines from output if requested and define
         # module stdout/err and stdout/err lines lists.
         if self.result.get("stdout"):
-            # Normalize CRLF to LF for consistent parsing
-            self.result["stdout"] = self._normalize_newlines(
-                to_text(self.result["stdout"])
-            )
+            self.result["stdout"] = to_text(self.result["stdout"])
             if self.strip:
-                self.result["stdout"] = self.result["stdout"].rstrip("\r\n")
+                self.result["stdout"] = self.result["stdout"].rstrip("\n")
             self.result["module_stdout"] = self.result["stdout"]
             self.result["stdout_lines"] = self.result["stdout"].splitlines()
 
         if self.result.get("stderr"):
-            # Normalize CRLF to LF for consistent parsing
-            stderr_text = self._normalize_newlines(
-                to_text(self.result["stderr"])
-            )
+            stderr_text = to_text(self.result["stderr"])
             # Remove SSH "Shared connection to ... closed." message
             self.result["stderr"] = re.sub(
-                r"^Shared connection to .* closed\.\r?\n?",
+                r"^Shared connection to .* closed\.\n?",
                 "",
                 stderr_text,
                 flags=re.MULTILINE,
             )
             if self.strip:
-                self.result["stderr"] = self.result["stderr"].rstrip("\r\n")
+                self.result["stderr"] = self.result["stderr"].rstrip("\n")
             self.result["module_stderr"] = self.result["stderr"]
             self.result["stderr_lines"] = self.result["stderr"].splitlines()
 

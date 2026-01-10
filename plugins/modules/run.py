@@ -30,11 +30,18 @@ description:
 options:
   commands:
     description:
-      - List of commands to execute.
-      - Each command can be a string (executed as-is) or a list of
-        arguments (properly quoted for shell execution).
-    type: list
-    elements: raw
+      - Commands to execute, either as a list or a dict.
+      - When a list, results are returned in the same order as input.
+      - When a dict, keys are preserved and results are returned as a
+        dict mapping the same keys to their command results.
+      - Each command can be a string, a list of arguments, or a dict
+        with a C(command) key.
+      - String commands are executed as-is.
+      - List commands are properly quoted for shell execution.
+      - Dict commands extract the C(command) key value (other keys are
+        ignored). This allows passing C(process_command_spec) output
+        directly.
+    type: raw
     required: true
   chdir:
     description:
@@ -129,6 +136,31 @@ EXAMPLES = r"""
     parallel: false
     fail_fast: true
   register: hosts_check_reg
+
+- name: Execute commands with named keys (dict mode)
+  o0_o.posix.run:
+    commands:
+      kernel: uname -s
+      arch: uname -m
+      hostname: hostname
+  register: sysinfo_dict_reg
+
+- name: Access dict results by key
+  ansible.builtin.debug:
+    msg: >-
+      Kernel: {{ sysinfo_dict_reg['commands']['kernel']['stdout'] }},
+      Arch: {{ sysinfo_dict_reg['commands']['arch']['stdout'] }}
+
+- name: Pass process_command_spec output directly
+  o0_o.posix.run:
+    commands:
+      posix_uname:
+        command: uname -a
+        parser: uname
+      posix_uptime:
+        command: uptime
+        parser: uptime
+  register: spec_result_reg
 """
 
 RETURN = r"""
@@ -234,12 +266,26 @@ from ansible.module_utils.basic import AnsibleModule
 
 
 def main() -> None:
-    """Fail if this module is run directly without the action plugin."""
+    """
+    Module stub for run action plugin.
 
+    This module executes multiple commands in a single SSH round trip.
+    Commands can be provided as:
+    - A list of commands (returns list of results)
+    - A dict mapping keys to commands (returns dict of results)
+
+    Each command item can be:
+    - A string (executed as shell command)
+    - A list of arguments (properly quoted)
+    - A dict with 'command' key (extracts command, ignores other keys)
+
+    The dict format allows passing process_command_spec output directly.
+
+    This module must be run via its action plugin.
+    """
     argument_spec = {
         "commands": {
-            "type": "list",
-            "elements": "raw",
+            "type": "raw",
             "required": True,
         },
         "chdir": {"type": "path"},

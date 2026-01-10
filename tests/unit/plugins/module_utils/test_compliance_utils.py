@@ -69,16 +69,16 @@ class TestProcessGetconfResults:
         """Test merging valid XSH version into compliance dict."""
         compliance = {"xsh": {}, "xsi": {}, "xcu": {}}
         processed_cmds = {
-            "getconf_xsh_version": {
+            "posix_xsh_version": {
                 "xsh": {"supported": True, "version": {"id": "2008"}}
             },
-            "getconf_xopen_support": {"xsi": {"supported": False}},
-            "xopen_version": None,
-            "xcu_version": None,
+            "posix_xopen_support": {"xsi": {"supported": False}},
+            "posix_xopen_version": None,
+            "posix_xcu_version": None,
         }
         cmd_errors = {
-            "getconf_xsh_version": None,
-            "getconf_xopen_support": None,
+            "posix_xsh_version": None,
+            "posix_xopen_support": None,
         }
         commands_result = {}
 
@@ -94,17 +94,17 @@ class TestProcessGetconfResults:
         """Test error generated when getconf returns None."""
         compliance = {"xsh": {}, "xsi": {}, "xcu": {}}
         processed_cmds = {
-            "getconf_xsh_version": None,
-            "getconf_xopen_support": {"xsi": {"supported": False}},
-            "xopen_version": None,
-            "xcu_version": None,
+            "posix_xsh_version": None,
+            "posix_xopen_support": {"xsi": {"supported": False}},
+            "posix_xopen_version": None,
+            "posix_xcu_version": None,
         }
         cmd_errors = {
-            "getconf_xsh_version": None,
-            "getconf_xopen_support": None,
+            "posix_xsh_version": None,
+            "posix_xopen_support": None,
         }
         commands_result = {
-            "getconf_xsh_version": {"command": "getconf _POSIX_VERSION"},
+            "posix_xsh_version": {"command": "getconf _POSIX_VERSION"},
         }
 
         errors = _process_getconf_results(
@@ -119,17 +119,17 @@ class TestProcessGetconfResults:
         """Test command tuple is joined into string for error message."""
         compliance = {"xsh": {}, "xsi": {}, "xcu": {}}
         processed_cmds = {
-            "getconf_xsh_version": None,
-            "getconf_xopen_support": {"xsi": {"supported": False}},
-            "xopen_version": None,
-            "xcu_version": None,
+            "posix_xsh_version": None,
+            "posix_xopen_support": {"xsi": {"supported": False}},
+            "posix_xopen_version": None,
+            "posix_xcu_version": None,
         }
         cmd_errors = {
-            "getconf_xsh_version": None,
-            "getconf_xopen_support": None,
+            "posix_xsh_version": None,
+            "posix_xopen_support": None,
         }
         commands_result = {
-            "getconf_xsh_version": {
+            "posix_xsh_version": {
                 "command": ("getconf", "_POSIX_VERSION"),
             },
         }
@@ -146,17 +146,17 @@ class TestProcessGetconfResults:
         compliance = {"xsh": {}, "xsi": {}, "xcu": {}}
         parser_error = ValueError("Parser error")
         processed_cmds = {
-            "getconf_xsh_version": None,
-            "getconf_xopen_support": {"xsi": {"supported": False}},
-            "xopen_version": None,
-            "xcu_version": None,
+            "posix_xsh_version": None,
+            "posix_xopen_support": {"xsi": {"supported": False}},
+            "posix_xopen_version": None,
+            "posix_xcu_version": None,
         }
         cmd_errors = {
-            "getconf_xsh_version": [parser_error],
-            "getconf_xopen_support": None,
+            "posix_xsh_version": [parser_error],
+            "posix_xopen_support": None,
         }
         commands_result = {
-            "getconf_xsh_version": {"command": "getconf"},
+            "posix_xsh_version": {"command": "getconf"},
         }
 
         errors = _process_getconf_results(
@@ -170,17 +170,17 @@ class TestProcessGetconfResults:
         """Test error on XSI support mismatch between getconf vars."""
         compliance = {"xsh": {}, "xsi": {"supported": True}, "xcu": {}}
         processed_cmds = {
-            "getconf_xsh_version": {"xsh": {"supported": True}},
-            "getconf_xopen_support": {"xsi": {"supported": True}},
-            "xopen_version": {
+            "posix_xsh_version": {"xsh": {"supported": True}},
+            "posix_xopen_support": {"xsi": {"supported": True}},
+            "posix_xopen_version": {
                 "xsi": {"supported": False},
                 "xsh": {"version": None},
             },
-            "xcu_version": None,
+            "posix_xcu_version": None,
         }
         cmd_errors = {
-            "getconf_xsh_version": None,
-            "getconf_xopen_support": None,
+            "posix_xsh_version": None,
+            "posix_xopen_support": None,
         }
         commands_result = {}
 
@@ -198,19 +198,19 @@ class TestProcessGetconfResults:
             "xcu": {},
         }
         processed_cmds = {
-            "getconf_xsh_version": {
+            "posix_xsh_version": {
                 "xsh": {"supported": True, "version": {"id": "2008"}}
             },
-            "getconf_xopen_support": {"xsi": {"supported": True}},
-            "xopen_version": {
+            "posix_xopen_support": {"xsi": {"supported": True}},
+            "posix_xopen_version": {
                 "xsi": {"supported": True},
                 "xsh": {"version": {"id": "2001"}},
             },
-            "xcu_version": None,
+            "posix_xcu_version": None,
         }
         cmd_errors = {
-            "getconf_xsh_version": None,
-            "getconf_xopen_support": None,
+            "posix_xsh_version": None,
+            "posix_xopen_support": None,
         }
         commands_result = {}
 
@@ -220,7 +220,7 @@ class TestProcessGetconfResults:
 
         assert any("XSH version mismatch" in str(e) for e in errors)
 
-    def test_detects_xcu_version_mismatch(self) -> None:
+    def test_detects_posix_xcu_version_mismatch(self) -> None:
         """Test error on XCU version mismatch."""
         compliance = {
             "xsh": {},
@@ -228,16 +228,16 @@ class TestProcessGetconfResults:
             "xcu": {"version": {"id": "2008"}},
         }
         processed_cmds = {
-            "getconf_xsh_version": {"xsh": {"supported": True}},
-            "getconf_xopen_support": {"xsi": {"supported": False}},
-            "xopen_version": None,
-            "xcu_version": {
+            "posix_xsh_version": {"xsh": {"supported": True}},
+            "posix_xopen_support": {"xsi": {"supported": False}},
+            "posix_xopen_version": None,
+            "posix_xcu_version": {
                 "xcu": {"version": {"id": "2001"}},
             },
         }
         cmd_errors = {
-            "getconf_xsh_version": None,
-            "getconf_xopen_support": None,
+            "posix_xsh_version": None,
+            "posix_xopen_support": None,
         }
         commands_result = {}
 
@@ -255,16 +255,16 @@ class TestProcessGetconfResults:
             "xcu": {"supported": True},
         }
         processed_cmds = {
-            "getconf_xsh_version": {"xsh": {"supported": True}},
-            "getconf_xopen_support": {"xsi": {"supported": False}},
-            "xopen_version": None,
-            "xcu_version": {
+            "posix_xsh_version": {"xsh": {"supported": True}},
+            "posix_xopen_support": {"xsi": {"supported": False}},
+            "posix_xopen_version": None,
+            "posix_xcu_version": {
                 "xcu": {"supported": False},
             },
         }
         cmd_errors = {
-            "getconf_xsh_version": None,
-            "getconf_xopen_support": None,
+            "posix_xsh_version": None,
+            "posix_xopen_support": None,
         }
         commands_result = {}
 
@@ -278,16 +278,16 @@ class TestProcessGetconfResults:
         """Test XCU merging when no existing xcu in compliance."""
         compliance = {"xsh": {}, "xsi": {}}
         processed_cmds = {
-            "getconf_xsh_version": {"xsh": {"supported": True}},
-            "getconf_xopen_support": {"xsi": {"supported": False}},
-            "xopen_version": None,
-            "xcu_version": {
+            "posix_xsh_version": {"xsh": {"supported": True}},
+            "posix_xopen_support": {"xsi": {"supported": False}},
+            "posix_xopen_version": None,
+            "posix_xcu_version": {
                 "xcu": {"supported": True, "version": {"id": "2008"}},
             },
         }
         cmd_errors = {
-            "getconf_xsh_version": None,
-            "getconf_xopen_support": None,
+            "posix_xsh_version": None,
+            "posix_xopen_support": None,
         }
         commands_result = {}
 
@@ -554,20 +554,20 @@ class TestProcessComplianceCommandsResult:
         """Test compliance dict initialized with standard metadata."""
         mock_process_all.return_value = (
             {
-                "lookup_xcu_commands": {"sh": "/bin/sh", "cat": "/bin/cat"},
-                "lookup_xsi_commands": {"getconf": None},
-                "getconf_xsh_version": None,
-                "getconf_xopen_support": None,
-                "xopen_version": None,
-                "xcu_version": None,
+                "posix_lookup_xcu_commands": {"sh": "/bin/sh", "cat": "/bin/cat"},
+                "posix_lookup_xsi_commands": {"getconf": None},
+                "posix_xsh_version": None,
+                "posix_xopen_support": None,
+                "posix_xopen_version": None,
+                "posix_xcu_version": None,
             },
             {
-                "lookup_xcu_commands": None,
-                "lookup_xsi_commands": None,
-                "getconf_xsh_version": None,
-                "getconf_xopen_support": None,
-                "xopen_version": None,
-                "xcu_version": None,
+                "posix_lookup_xcu_commands": None,
+                "posix_lookup_xsi_commands": None,
+                "posix_xsh_version": None,
+                "posix_xopen_support": None,
+                "posix_xopen_version": None,
+                "posix_xcu_version": None,
             },
         )
 
@@ -583,24 +583,24 @@ class TestProcessComplianceCommandsResult:
         """Test result includes shells, paths, and missing_commands."""
         mock_process_all.return_value = (
             {
-                "lookup_xcu_commands": {
+                "posix_lookup_xcu_commands": {
                     "sh": "/bin/sh",
                     "cat": "/bin/cat",
                     "command": "command",
                 },
-                "lookup_xsi_commands": {"getconf": None},
-                "getconf_xsh_version": None,
-                "getconf_xopen_support": None,
-                "xopen_version": None,
-                "xcu_version": None,
+                "posix_lookup_xsi_commands": {"getconf": None},
+                "posix_xsh_version": None,
+                "posix_xopen_support": None,
+                "posix_xopen_version": None,
+                "posix_xcu_version": None,
             },
             {
-                "lookup_xcu_commands": None,
-                "lookup_xsi_commands": None,
-                "getconf_xsh_version": None,
-                "getconf_xopen_support": None,
-                "xopen_version": None,
-                "xcu_version": None,
+                "posix_lookup_xcu_commands": None,
+                "posix_lookup_xsi_commands": None,
+                "posix_xsh_version": None,
+                "posix_xopen_support": None,
+                "posix_xopen_version": None,
+                "posix_xcu_version": None,
             },
         )
 
@@ -617,20 +617,20 @@ class TestProcessComplianceCommandsResult:
         """Test getconf processing skipped when getconf not found."""
         mock_process_all.return_value = (
             {
-                "lookup_xcu_commands": {"sh": "/bin/sh"},
-                "lookup_xsi_commands": {"getconf": None},
-                "getconf_xsh_version": {"xsh": {"supported": True}},
-                "getconf_xopen_support": None,
-                "xopen_version": None,
-                "xcu_version": None,
+                "posix_lookup_xcu_commands": {"sh": "/bin/sh"},
+                "posix_lookup_xsi_commands": {"getconf": None},
+                "posix_xsh_version": {"xsh": {"supported": True}},
+                "posix_xopen_support": None,
+                "posix_xopen_version": None,
+                "posix_xcu_version": None,
             },
             {
-                "lookup_xcu_commands": None,
-                "lookup_xsi_commands": None,
-                "getconf_xsh_version": None,
-                "getconf_xopen_support": None,
-                "xopen_version": None,
-                "xcu_version": None,
+                "posix_lookup_xcu_commands": None,
+                "posix_lookup_xsi_commands": None,
+                "posix_xsh_version": None,
+                "posix_xopen_support": None,
+                "posix_xopen_version": None,
+                "posix_xcu_version": None,
             },
         )
 
@@ -646,17 +646,17 @@ class TestProcessComplianceCommandsResult:
         """Test getconf results processed when getconf is available."""
         mock_process_all.return_value = (
             {
-                "lookup_xcu_commands": {"sh": "/bin/sh"},
-                "lookup_xsi_commands": {"getconf": "/usr/bin/getconf"},
-                "getconf_xsh_version": {
+                "posix_lookup_xcu_commands": {"sh": "/bin/sh"},
+                "posix_lookup_xsi_commands": {"getconf": "/usr/bin/getconf"},
+                "posix_xsh_version": {
                     "xsh": {
                         "supported": True,
                         "version": {"id": "2008", "name": "POSIX.1-2008"},
                     }
                 },
-                "getconf_xopen_support": {"xsi": {"supported": True}},
-                "xopen_version": None,
-                "xcu_version": {
+                "posix_xopen_support": {"xsi": {"supported": True}},
+                "posix_xopen_version": None,
+                "posix_xcu_version": {
                     "xcu": {
                         "supported": True,
                         "version": {"id": "2008", "name": "POSIX.1-2008"},
@@ -664,12 +664,12 @@ class TestProcessComplianceCommandsResult:
                 },
             },
             {
-                "lookup_xcu_commands": None,
-                "lookup_xsi_commands": None,
-                "getconf_xsh_version": None,
-                "getconf_xopen_support": None,
-                "xopen_version": None,
-                "xcu_version": None,
+                "posix_lookup_xcu_commands": None,
+                "posix_lookup_xsi_commands": None,
+                "posix_xsh_version": None,
+                "posix_xopen_support": None,
+                "posix_xopen_version": None,
+                "posix_xcu_version": None,
             },
         )
 
@@ -683,20 +683,20 @@ class TestProcessComplianceCommandsResult:
         lookup_error = ValueError("Test lookup error")
         mock_process_all.return_value = (
             {
-                "lookup_xcu_commands": {"sh": "/bin/sh"},
-                "lookup_xsi_commands": {"getconf": None},
-                "getconf_xsh_version": None,
-                "getconf_xopen_support": None,
-                "xopen_version": None,
-                "xcu_version": None,
+                "posix_lookup_xcu_commands": {"sh": "/bin/sh"},
+                "posix_lookup_xsi_commands": {"getconf": None},
+                "posix_xsh_version": None,
+                "posix_xopen_support": None,
+                "posix_xopen_version": None,
+                "posix_xcu_version": None,
             },
             {
-                "lookup_xcu_commands": [lookup_error],
-                "lookup_xsi_commands": None,
-                "getconf_xsh_version": None,
-                "getconf_xopen_support": None,
-                "xopen_version": None,
-                "xcu_version": None,
+                "posix_lookup_xcu_commands": [lookup_error],
+                "posix_lookup_xsi_commands": None,
+                "posix_xsh_version": None,
+                "posix_xopen_support": None,
+                "posix_xopen_version": None,
+                "posix_xcu_version": None,
             },
         )
 

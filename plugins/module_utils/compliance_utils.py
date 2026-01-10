@@ -20,13 +20,12 @@ from __future__ import annotations
 from collections.abc import Sequence
 from typing import Any, Optional
 
-from ansible.utils.vars import merge_hash
-
-from ansible_collections.o0_o.utils.plugins.module_utils.typeguard_compat import (  # noqa: E501
+from ansible_collections.o0_o.utils.plugins.module_utils import (
+    merge_hash,
     typechecked,
 )
 
-from ansible_collections.o0_o.core.plugins.module_utils.command_utils import (
+from ansible_collections.o0_o.core.plugins.module_utils import (
     process_all_command_results,
 )
 
@@ -85,7 +84,7 @@ def _process_getconf_results(
 
     # Process basic getconf results (xsh_version, xopen_support)
     for var in ("xsh_version", "xopen_support"):
-        getconf_key = f"getconf_{var}"
+        getconf_key = f"posix_{var}"
         getconf_dict = processed_cmds[getconf_key]
         getconf_errors = cmd_errors[getconf_key]
         if getconf_dict is None:
@@ -102,12 +101,10 @@ def _process_getconf_results(
             if getconf_errors:
                 errors.extend(getconf_errors)
         else:
-            compliance.update(
-                merge_hash(compliance, getconf_dict, recursive=True)
-            )
+            compliance.update(merge_hash(compliance, getconf_dict))
 
     # Cross-validate _XOPEN_VERSION against other getconf values
-    xopen = processed_cmds["xopen_version"]
+    xopen = processed_cmds["posix_xopen_version"]
     if xopen is not None:
         # Check for inconsistencies between _XOPEN_UNIX and _XOPEN_VERSION
         xsi_from_unix = compliance["xsi"].get("supported")
@@ -130,10 +127,10 @@ def _process_getconf_results(
                     f"{xsh_from_xopen}"
                 )
             )
-        compliance.update(merge_hash(compliance, xopen, recursive=True))
+        compliance.update(merge_hash(compliance, xopen))
 
     # Cross-validate _POSIX2_VERSION against _XOPEN_VERSION
-    xcu = processed_cmds["xcu_version"]
+    xcu = processed_cmds["posix_xcu_version"]
     if xcu is not None:
         if compliance.get("xcu"):
             xcu_ver_existing = compliance["xcu"].get("version")
@@ -156,7 +153,7 @@ def _process_getconf_results(
                         f"{xcu_sup_new}"
                     )
                 )
-        compliance.update(merge_hash(compliance, xcu, recursive=True))
+        compliance.update(merge_hash(compliance, xcu))
 
     return errors
 
@@ -315,12 +312,12 @@ def process_compliance_commands_result(
     processed_cmds, cmd_errors = process_all_command_results(commands_result)
 
     # Extract command lookup results (which commands exist on the system)
-    xcu_cmds = processed_cmds["lookup_xcu_commands"]
-    if cmd_errors["lookup_xcu_commands"]:
-        errors.extend(cmd_errors["lookup_xcu_commands"])
-    xsi_cmds = processed_cmds["lookup_xsi_commands"]
-    if cmd_errors["lookup_xsi_commands"]:
-        errors.extend(cmd_errors["lookup_xsi_commands"])
+    xcu_cmds = processed_cmds["posix_lookup_xcu_commands"]
+    if cmd_errors["posix_lookup_xcu_commands"]:
+        errors.extend(cmd_errors["posix_lookup_xcu_commands"])
+    xsi_cmds = processed_cmds["posix_lookup_xsi_commands"]
+    if cmd_errors["posix_lookup_xsi_commands"]:
+        errors.extend(cmd_errors["posix_lookup_xsi_commands"])
 
     # Only process getconf results if getconf is available
     if xsi_cmds.get("getconf"):

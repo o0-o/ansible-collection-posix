@@ -105,3 +105,59 @@
       paths_count: "{{ compliance_result_reg['paths'] | length }}"
       missing: "{{ compliance_result_reg['missing_commands'] }}"
     verbosity: 1
+
+- name: Run with gather enabled
+  o0_o.posix.compliance:
+    gather: true
+  register: compliance_gather_reg
+
+- name: Verify gather sets ansible_facts
+  vars:
+    facts_var: "{{ compliance_gather_reg['ansible_facts'] }}"
+  ansible.builtin.assert:
+    that:
+      - facts_var is defined
+      - facts_var is mapping
+      - facts_var['o0_os'] is defined
+      - facts_var['o0_os']['compliance'] is defined
+      - facts_var['o0_os']['shells'] is defined
+      - facts_var['o0_paths'] is defined
+      - facts_var['o0_missing'] is defined
+      - facts_var['o0_missing']['commands'] is defined
+    fail_msg: 'gather option did not set ansible_facts correctly'
+
+- name: Verify gathered facts match direct results
+  ansible.builtin.assert:
+    that:
+      - >-
+        compliance_gather_reg['ansible_facts']['o0_os']['compliance']
+        == compliance_gather_reg['compliance']
+      - >-
+        compliance_gather_reg['ansible_facts']['o0_os']['shells']
+        == compliance_gather_reg['shells']
+      - >-
+        compliance_gather_reg['ansible_facts']['o0_paths']
+        == compliance_gather_reg['paths']
+      - >-
+        compliance_gather_reg['ansible_facts']['o0_missing']['commands']
+        == compliance_gather_reg['missing_commands']
+    fail_msg: 'Gathered facts do not match direct return values'
+
+- name: Verify facts are accessible after gather
+  ansible.builtin.assert:
+    that:
+      - o0_os['compliance'] is defined
+      - o0_os['shells'] is defined
+      - o0_paths is defined
+      - o0_missing['commands'] is defined
+    fail_msg: 'Facts not accessible in hostvars after gather'
+
+- name: Run without gather (default)
+  o0_o.posix.compliance:
+  register: compliance_no_gather_reg
+
+- name: Verify no ansible_facts without gather
+  ansible.builtin.assert:
+    that:
+      - compliance_no_gather_reg['ansible_facts'] is not defined
+    fail_msg: 'ansible_facts should not be set when gather is false'

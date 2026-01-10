@@ -2,6 +2,7 @@
 
 # Core dependencies
 jc>=1.25.0                  # Command output parsing
+typeguard>=4.0.0            # Runtime type checking
 
 # Dependencies for o0_o.utils (used by multiple filters)
 pyparsing                   # Required for strip_comments in utils

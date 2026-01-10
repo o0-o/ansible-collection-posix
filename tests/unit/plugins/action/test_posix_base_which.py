@@ -20,75 +20,59 @@ import pytest
         # command -v returns absolute path
         (
             "true",
-            {
-                ("sh", "-c", "unalias -a 2>/dev/null; command -v true"): {
-                    "rc": 0,
-                    "stdout": "/usr/bin/true",
-                },
-            },
+            [
+                {"rc": 0, "stdout": "/usr/bin/true"},  # command -v
+            ],
             "/usr/bin/true",
         ),
-        # command -v returns shell builtin
+        # command -v returns shell builtin (no slash in output)
         (
             "echo",
-            {
-                (
-                    "sh",
-                    "-c",
-                    "unalias -a 2>/dev/null; command -v echo",
-                ): {"rc": 0, "stdout": "echo"},
-            },
+            [
+                {"rc": 0, "stdout": "echo"},  # command -v
+            ],
             "echo",
         ),
         # command -v fails, which succeeds with absolute path
         (
             "cat",
-            {
-                ("sh", "-c", "unalias -a 2>/dev/null; command -v cat"): {
-                    "rc": 1,
-                    "stdout": "",
-                },
-                ("which", "cat"): {"rc": 0, "stdout": "/bin/cat"},
-            },
+            [
+                {"rc": 1, "stdout": ""},  # command -v fails
+                {"rc": 0, "stdout": "/bin/cat"},  # which succeeds
+            ],
             "/bin/cat",
         ),
         # command -v fails, which returns shell builtin text
         (
             "printf",
-            {
-                (
-                    "sh",
-                    "-c",
-                    "unalias -a 2>/dev/null; command -v printf",
-                ): {"rc": 1, "stdout": ""},
-                ("which", "printf"): {
-                    "rc": 0,
-                    "stdout": "printf: shell built-in command",
-                },
-            },
+            [
+                {"rc": 1, "stdout": ""},  # command -v fails
+                {"rc": 0, "stdout": "printf: shell built-in command"},  # which
+            ],
             "printf",
         ),
         # neither method finds it
         (
             "fakecmd",
-            {
-                (
-                    "sh",
-                    "-c",
-                    "unalias -a 2>/dev/null; command -v fakecmd",
-                ): {"rc": 1, "stdout": ""},
-                ("which", "fakecmd"): {"rc": 1, "stdout": ""},
-            },
+            [
+                {"rc": 1, "stdout": ""},  # command -v fails
+                {"rc": 1, "stdout": ""},  # which fails
+            ],
             None,
         ),
     ],
 )
-def test_which_logic(base, binary, cmd_outputs, expected_result) -> None:
+def test_which_logic(monkeypatch, base, binary, cmd_outputs, expected_result):
     """Test PosixBase._which() behavior with various command outputs."""
+    call_count = [0]
 
-    def mock_cmd(cmd, task_vars=None):
-        return cmd_outputs.get(tuple(cmd), {"rc": 1, "stdout": ""})
+    def mock_command(cmd, task_vars=None, **kwargs):
+        idx = call_count[0]
+        call_count[0] += 1
+        if idx < len(cmd_outputs):
+            return cmd_outputs[idx]
+        return {"rc": 1, "stdout": ""}
 
-    base._cmd = mock_cmd
+    monkeypatch.setattr(base, "_command", mock_command)
     result = base._which(binary, task_vars={})
     assert result == expected_result

@@ -127,8 +127,7 @@ class ActionModule(PosixActionBase, ActionBase):
         gather = new_args.get("gather", False)
 
         # Get tagged commands for compliance checks using process_command_spec
-        cmd_requests = process_command_spec(COMPLIANCE_COMMAND_SPEC)
-        cmds = {req["type"]: req["command"] for req in cmd_requests}
+        cmds = process_command_spec(COMPLIANCE_COMMAND_SPEC)
 
         # Execute all commands in parallel via run plugin (using dict mode)
         commands_result = self._run(

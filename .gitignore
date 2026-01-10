@@ -21,3 +21,6 @@ docs/_build/
 docs/source/generated/
 docs/source/_build/
 site/
+
+# antsibull-changelog cache
+changelogs/.plugin-cache.yaml

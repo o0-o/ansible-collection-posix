@@ -46,42 +46,6 @@ def test_format_command_with_integers() -> None:
     assert result == "sleep 5"
 
 
-def test_normalize_newlines_crlf_to_lf(base) -> None:
-    """Test _normalize_newlines converts CRLF to LF."""
-    input_text = "line1\r\nline2\r\nline3\r\n"
-    expected = "line1\nline2\nline3\n"
-
-    result = base._normalize_newlines(input_text)
-
-    assert result == expected
-
-
-def test_normalize_newlines_preserves_lf(base) -> None:
-    """Test _normalize_newlines preserves existing LF."""
-    input_text = "line1\nline2\nline3\n"
-
-    result = base._normalize_newlines(input_text)
-
-    assert result == input_text
-
-
-def test_normalize_newlines_mixed_endings(base) -> None:
-    """Test _normalize_newlines handles mixed line endings."""
-    input_text = "line1\r\nline2\nline3\r\n"
-    expected = "line1\nline2\nline3\n"
-
-    result = base._normalize_newlines(input_text)
-
-    assert result == expected
-
-
-def test_normalize_newlines_empty_string(base) -> None:
-    """Test _normalize_newlines with empty string."""
-    result = base._normalize_newlines("")
-
-    assert result == ""
-
-
 def test_sanitize_args_removes_none_values(base) -> None:
     """Test _sanitize_args removes None values from dictionary."""
     input_args = {
