@@ -36,8 +36,8 @@
   ansible.builtin.assert:
     that:
       - sequential_reg['commands'] | length == 2
-      - sequential_reg['commands'][0]['cmd'] == 'echo hello'
-      - sequential_reg['commands'][1]['cmd'] == 'echo world'
+      - sequential_reg['commands'][0]['command'] == 'echo hello'
+      - sequential_reg['commands'][1]['command'] == 'echo world'
       - sequential_reg['commands'][0]['rc'] == 0
       - sequential_reg['commands'][1]['rc'] == 0
   when: not ansible_check_mode
@@ -85,7 +85,8 @@
 - name: Assert shell operators work correctly
   ansible.builtin.assert:
     that:
-      - operators_reg['commands'][0]['stdout_lines'] | length == 2
+      - >-
+        operators_reg['commands'][0]['stdout_lines'] | length == 2
       - operators_reg['commands'][0]['stdout_lines'][0] == 'foo'
       - operators_reg['commands'][0]['stdout_lines'][1] == 'bar'
       - operators_reg['commands'][1]['stdout'] | trim == 'baz'

@@ -46,10 +46,9 @@ class ActionModule(PosixActionBase, ActionBase):
     def _parse_batch_output(
         self,
         output: str,
-        commands: list[Union[str, list[str]]],
+        command_requests: list[dict[str, Any]],
     ) -> list[dict[str, Any]]:
-        """
-        Parse length-prefixed batch output into command results.
+        """Parse length-prefixed batch output into command results.
 
         Parses the structured output format produced by _build_batch_script.
         Each command's output block contains:
@@ -61,12 +60,16 @@ class ActionModule(PosixActionBase, ActionBase):
         - Stderr length line (format: "N /path/to/file")
         - Stderr content (exactly N bytes)
 
+        The original request dict is merged with the result, preserving any
+        metadata (implementation, type, parser, validator, etc.) from
+        process_command_spec output.
+
         :param str output: Raw batch output string from shell execution
-        :param list[Union[str, list[str]]] commands: Commands that were
-            executed, used to populate the 'cmd' field in results
+        :param list[dict[str, Any]] command_requests: Command request dicts
+            that were executed. Each is merged with its result.
         :returns list[dict[str, Any]]: List of result dicts, each containing
-            'cmd', 'rc', 'stdout', 'stderr', 'stdout_lines', 'stderr_lines',
-            and 'elapsed' keys
+            the original request keys plus 'rc', 'stdout', 'stderr',
+            'stdout_lines', 'stderr_lines', and 'elapsed' keys
         :raises ValueError: If output format is malformed or incomplete
         """
         results = []
@@ -82,14 +85,14 @@ class ActionModule(PosixActionBase, ActionBase):
         ] in (b"\n", b"\r", b" ", b"\t"):
             offset += 1
 
-        for i, cmd in enumerate(commands):
+        for i, request in enumerate(command_requests):
+            # Start with defaults, will be overwritten by parsed values.
+            # Request values take precedence via update() in finally block.
             command_result = {
-                "cmd": cmd,
                 "rc": None,
                 "stdout": None,
                 "stderr": None,
             }
-
             try:
                 # Read RC line
                 rc_line_end = output_bytes.find(b"\n", offset)
@@ -206,30 +209,66 @@ class ActionModule(PosixActionBase, ActionBase):
                 raise e
 
             finally:
+                # Merge with original request, giving request precedence.
+                # This allows users to override rc, stderr, etc. and
+                # preserves metadata (implementation, type, parser, etc.)
+                command_result.update(request)
                 results.append(command_result)
 
         return results
 
+    def _build_command_wrapper(
+        self,
+        cmd: str,
+        tmp: str,
+        index: int,
+        non_error_codes: list[int],
+    ) -> str:
+        """Build a shell wrapper that executes a command with rc checking.
+
+        Creates a subshell wrapper that:
+        - Disables errexit locally to capture rc regardless of exit status
+        - Runs the command and captures stdout/stderr to files
+        - Saves the real rc to file for reporting
+        - Exits 0 if rc is in non_error_codes, else exits 1
+
+        This allows fail_fast (set -e) to respect non_error_codes.
+
+        :param str cmd: The command string to execute
+        :param str tmp: Temporary directory path prefix
+        :param int index: Command index for file naming
+        :param list[int] non_error_codes: Return codes to treat as success
+        :returns str: Shell wrapper command string
+        """
+        pattern = "|".join(str(c) for c in non_error_codes)
+        return (
+            f'( set +e; ({cmd}) 1>"{tmp}{index}.stdout" '
+            f'2>"{tmp}{index}.stderr"; __rc=$?; '
+            f'echo $__rc >"{tmp}{index}.rc"; '
+            f'case $__rc in {pattern}) exit 0;; *) exit 1;; esac )'
+        )
+
     def _build_batch_script(
         self,
-        commands: list[Union[str, list[str]]],
+        command_requests: list[dict[str, Any]],
         tmp: str,
     ) -> str:
-        """
-        Build a shell script that executes commands and captures output.
+        """Build a shell script that executes commands and captures output.
 
         Generates a POSIX-compatible shell script that:
         - Executes each command in a subshell
         - Captures stdout/stderr to temporary files
         - Records start/end timestamps for timing
         - Outputs results in length-prefixed format for parsing
+        - Respects non_error_codes for each command
 
         The script respects self.parallel and self.fail_fast settings.
         In parallel mode, commands run as background jobs. In sequential
-        mode with fail_fast, the script exits on first failure.
+        mode with fail_fast, the script exits on first failure (respecting
+        each command's non_error_codes).
 
-        :param list[Union[str, list[str]]] commands: Commands to execute.
-            Strings are used as-is; lists are converted via format_command
+        :param list[dict[str, Any]] command_requests: Command request dicts,
+            each with a 'command' key containing string or list
         :param str tmp: Temporary directory path prefix for output files
         :returns str: Complete shell script as a single string
         """
@@ -244,19 +283,23 @@ class ActionModule(PosixActionBase, ActionBase):
         if self.parallel:
             # Launch all commands in background with timing
             # Write RC to file to avoid stdout interleaving
-            for i, cmd in enumerate(commands):
+            for i, request in enumerate(command_requests):
+                cmd = request["command"]
                 if not isinstance(cmd, str):
                     cmd = format_command(cmd)
+                non_error_codes = request.get("non_error_codes", [0])
+                wrapper = self._build_command_wrapper(
+                    cmd, tmp, i, non_error_codes
+                )
                 cmds.append(
-                    f'(date +%s >"{tmp}{i}.start" && '
-                    f'({cmd}) 1>"{tmp}{i}.stdout" 2>"{tmp}{i}.stderr"; '
-                    f'echo $? >"{tmp}{i}.rc"; '
+                    f'(date +%s >"{tmp}{i}.start"; '
+                    f'{wrapper}; '
                     f'date +%s >"{tmp}{i}.end") & '
                     f"pid{i}=$!"
                 )
 
             # Wait for each and collect results
-            for i in range(len(commands)):
+            for i in range(len(command_requests)):
                 cmds.extend(
                     [
                         f'wait "$pid{i}"',
@@ -271,16 +314,18 @@ class ActionModule(PosixActionBase, ActionBase):
                 )
         else:
             # Sequential execution with timing
-            # Write RC to file for consistency with parallel mode
-            for i, cmd in enumerate(commands):
+            for i, request in enumerate(command_requests):
+                cmd = request["command"]
                 if not isinstance(cmd, str):
                     cmd = format_command(cmd)
+                non_error_codes = request.get("non_error_codes", [0])
+                wrapper = self._build_command_wrapper(
+                    cmd, tmp, i, non_error_codes
+                )
                 cmds.extend(
                     [
-                        # Execute and capture with timing
                         f'date +%s >"{tmp}{i}.start"',
-                        f'({cmd}) 1>"{tmp}{i}.stdout" 2>"{tmp}{i}.stderr"',
-                        f'echo $? >"{tmp}{i}.rc"',
+                        wrapper,
                         f'date +%s >"{tmp}{i}.end"',
                         f'cat "{tmp}{i}.rc"',
                         f'cat "{tmp}{i}.start"',
@@ -305,11 +350,10 @@ class ActionModule(PosixActionBase, ActionBase):
 
     def _estimate_script_length(
         self,
-        commands: list[Union[str, list[str]]],
+        command_requests: list[dict[str, Any]],
         tmp: str,
     ) -> int:
-        """
-        Estimate the byte length of a batch script for given commands.
+        """Estimate the byte length of a batch script for given commands.
 
         Builds the actual script and returns twice its length as a safety
         margin to account for shell escaping and JSON serialization overhead
@@ -318,11 +362,11 @@ class ActionModule(PosixActionBase, ActionBase):
         Used by _split_commands_by_length to determine when to split
         commands into multiple batches to avoid exceeding shell limits.
 
-        :param list[Union[str, list[str]]] commands: Commands to include
+        :param list[dict[str, Any]] command_requests: Command request dicts
         :param str tmp: Temporary directory path prefix
         :returns int: Estimated script length in bytes (2x actual length)
         """
-        script = self._build_batch_script(commands, tmp)
+        script = self._build_batch_script(command_requests, tmp)
 
         # Multiply by 2 for safety margin (shell escaping, JSON overhead)
         return len(script) * 2
@@ -331,28 +375,27 @@ class ActionModule(PosixActionBase, ActionBase):
         self,
         max_length: int = 65536,  # 64 KB default
         max_count: int = 63,  # Max commands per batch
-    ) -> list[list[Union[str, list[str]]]]:
-        """
-        Split self.commands into batches respecting size and count limits.
+    ) -> list[list[dict[str, Any]]]:
+        """Split self.command_requests into batches respecting size/count.
 
-        Iterates through self.commands and groups them into batches where
-        each batch's estimated script length stays under max_length and
-        the command count stays under max_count. This prevents shell
+        Iterates through self.command_requests and groups them into batches
+        where each batch's estimated script length stays under max_length
+        and the command count stays under max_count. This prevents shell
         command-line length limits from being exceeded.
 
         :param int max_length: Maximum estimated script length in bytes.
             Defaults to 64KB which is safe for most systems
         :param int max_count: Maximum commands per batch. Defaults to 63
             to stay under typical shell job limits for parallel execution
-        :returns list[list[Union[str, list[str]]]]: List of command batches,
-            where each batch is a list of commands
+        :returns list[list[dict[str, Any]]]: List of request batches,
+            where each batch is a list of command request dicts
         """
         batches = []
         current_batch = []
         tmp_estimate = "/tmp/ansible_tmp"  # Placeholder for estimation
 
-        for cmd in self.commands:
-            test_batch = current_batch + [cmd]
+        for request in self.command_requests:
+            test_batch = current_batch + [request]
             estimated_len = self._estimate_script_length(
                 test_batch, tmp_estimate
             )
@@ -363,9 +406,9 @@ class ActionModule(PosixActionBase, ActionBase):
             ):
                 # Current batch would exceed limit, save it and start new
                 batches.append(current_batch)
-                current_batch = [cmd]
+                current_batch = [request]
             else:
-                current_batch.append(cmd)
+                current_batch.append(request)
 
         if current_batch:
             batches.append(current_batch)
@@ -374,20 +417,21 @@ class ActionModule(PosixActionBase, ActionBase):
 
     def _execute_batch(
         self,
-        batch_commands: list[Union[str, list[str]]],
+        batch_requests: list[dict[str, Any]],
         tmp: str,
         task_vars: dict[str, Any],
     ) -> list[dict[str, Any]]:
-        """
-        Execute a single batch of commands and return results.
+        """Execute a single batch of commands and return results.
 
-        :param list batch_commands: Commands to execute in this batch
+        :param list[dict[str, Any]] batch_requests: Command request dicts
+            to execute in this batch
         :param str tmp: Temporary directory path
         :param dict task_vars: Task variables
-        :returns list: List of command results
+        :returns list[dict[str, Any]]: List of result dicts (merged with
+            original request dicts)
         """
         # Build batched script
-        script = self._build_batch_script(batch_commands, tmp)
+        script = self._build_batch_script(batch_requests, tmp)
         self._display.vvv(f"Batch command:\n{script}")
 
         # Execute batch
@@ -404,25 +448,40 @@ class ActionModule(PosixActionBase, ActionBase):
             error_msg = cmd_result.get("msg", "Unknown error")
             raise AnsibleActionFail(f"Batch execution failed: {error_msg}")
 
-        # Parse output and return results
-        return self._parse_batch_output(cmd_result["stdout"], batch_commands)
+        # Parse output and return results (merged with request dicts)
+        return self._parse_batch_output(cmd_result["stdout"], batch_requests)
 
-    def _extract_command(
-        self, item: Union[str, list, dict[str, Any]]
-    ) -> Union[str, list[str]]:
+    def _is_command_failed(self, result: dict[str, Any]) -> bool:
+        """Check if a command result indicates failure.
+
+        Uses non_error_codes from the result dict if present, otherwise
+        treats only rc=0 as success. This allows command specs to define
+        acceptable non-zero return codes.
+
+        :param dict[str, Any] result: Command result dict with 'rc' key
+            and optional 'non_error_codes' key
+        :returns bool: True if the command failed, False otherwise
         """
-        Extract the command from a command item.
+        rc = result.get("rc")
+        if rc is None:
+            return True
+        non_error_codes = result.get("non_error_codes", [0])
+        return rc not in non_error_codes
 
-        Supports three formats:
-        - String: returned as-is
-        - List: returned as-is (list of arguments)
-        - Dict with "command" key: extracts the command value
+    def _normalize_command_request(
+        self, item: Union[str, list, dict[str, Any]]
+    ) -> dict[str, Any]:
+        """Normalize a command item to a command request dict.
 
-        This allows passing process_command_spec output directly to run.
+        Accepts strings, lists (argv), or dicts with a 'command' key.
+        Returns a dict with at least a 'command' key. Dict inputs are
+        returned as-is (preserving metadata like implementation, type,
+        parser, validator from process_command_spec output).
 
-        :param item: Command item (string, list, or dict)
-        :returns: Command string or list of arguments
-        :raises AnsibleActionFail: If dict is missing "command" key
+        :param Union[str, list, dict[str, Any]] item: Command item to
+            normalize. Can be a command string, argv list, or request dict
+        :returns dict[str, Any]: Command request dict with 'command' key
+        :raises AnsibleActionFail: If dict input lacks 'command' key
         """
         if isinstance(item, dict):
             if "command" not in item:
@@ -430,8 +489,8 @@ class ActionModule(PosixActionBase, ActionBase):
                     "Command dict must contain a 'command' key. "
                     f"Got keys: {list(item.keys())}"
                 )
-            return item["command"]
-        return item
+            return item.copy()  # Copy to avoid mutating original
+        return {"command": item}
 
     def _def_args(self) -> None:
         """Parse and validate module arguments."""
@@ -451,19 +510,22 @@ class ActionModule(PosixActionBase, ActionBase):
             argument_spec=argument_spec,
         )
 
-        # Extract and process commands
+        # Extract and normalize command requests
         commands_input = new_module_args["commands"]
         self.is_dict_mode = isinstance(commands_input, dict)
         if self.is_dict_mode:
             self.command_keys = list(commands_input.keys())
-            # Extract command from each value (may be string, list, or dict)
-            self.commands = [
-                self._extract_command(v) for v in commands_input.values()
+            # Normalize each value to a request dict (preserves metadata)
+            self.command_requests = [
+                self._normalize_command_request(v)
+                for v in commands_input.values()
             ]
         else:
             self.command_keys = None
-            # Extract command from each item (may be string, list, or dict)
-            self.commands = [self._extract_command(c) for c in commands_input]
+            # Normalize each item to a request dict
+            self.command_requests = [
+                self._normalize_command_request(c) for c in commands_input
+            ]
 
         # Set instance variables from validated args
         self.chdir = new_module_args["chdir"]
@@ -531,23 +593,25 @@ class ActionModule(PosixActionBase, ActionBase):
             # Check if we need to split into multiple batches
             max_command_length = 65536  # 64 KB safe default
             max_command_count = 63  # Safe limit for parallel execution
-            estimated_length = self._estimate_script_length(self.commands, tmp)
+            estimated_length = self._estimate_script_length(
+                self.command_requests, tmp
+            )
 
             if (
                 estimated_length > max_command_length
-                or len(self.commands) >= max_command_count
+                or len(self.command_requests) >= max_command_count
             ):
                 # Split commands into batches
-                command_batches = self._split_commands_by_length(
+                request_batches = self._split_commands_by_length(
                     max_command_length, max_command_count
                 )
-                num_batches = len(command_batches)
+                num_batches = len(request_batches)
 
                 # Determine which threshold triggered batching
                 reasons = []
-                if len(self.commands) >= max_command_count:
+                if len(self.command_requests) >= max_command_count:
                     reasons.append(
-                        f"command count {len(self.commands)} >= "
+                        f"command count {len(self.command_requests)} >= "
                         f"{max_command_count}"
                     )
                 if estimated_length > max_command_length:
@@ -562,7 +626,7 @@ class ActionModule(PosixActionBase, ActionBase):
 
                 # Execute all batches and collect results
                 all_results = []
-                for i, batch in enumerate(command_batches, 1):
+                for i, batch in enumerate(request_batches, 1):
                     self._display.vvv(
                         f"Executing batch {i}/{num_batches} "
                         f"({len(batch)} commands)"
@@ -575,7 +639,7 @@ class ActionModule(PosixActionBase, ActionBase):
                 # Single batch execution
                 num_batches = 1
                 self.result["commands"] = self._execute_batch(
-                    self.commands, tmp, task_vars
+                    self.command_requests, tmp, task_vars
                 )
 
             # Convert to dict if dict mode
@@ -585,15 +649,14 @@ class ActionModule(PosixActionBase, ActionBase):
                     zip(self.command_keys, command_results)
                 )
 
-            # Check if any command failed
+            # Check if any command failed (respects non_error_codes)
             command_results = (
                 self.result["commands"].values()
                 if self.is_dict_mode
                 else self.result["commands"]
             )
             any_failed = any(
-                r.get("rc") is None or r.get("rc") != 0
-                for r in command_results
+                self._is_command_failed(r) for r in command_results
             )
 
             # Capture end time and calculate elapsed
@@ -604,7 +667,7 @@ class ActionModule(PosixActionBase, ActionBase):
             batch_suffix = (
                 f" in {num_batches} batches" if num_batches > 1 else ""
             )
-            cmd_count = len(self.commands)
+            cmd_count = len(self.command_requests)
             result_msg = f"Executed {cmd_count} commands{batch_suffix}"
             self.result.update(
                 {

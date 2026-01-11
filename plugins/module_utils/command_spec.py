@@ -11,7 +11,7 @@
 
 """Command specifications for POSIX compliance detection.
 
-Defines command templates with parsers for getconf compliance checks.
+Defines command commands with parsers for getconf compliance checks.
 Used with process_command_spec from core to build command requests.
 """
 
@@ -93,7 +93,7 @@ XSI_REQUIRED_COMMANDS = frozenset(
 COMPLIANCE_COMMAND_SPEC = {
     "posix": {
         "lookup_xcu_commands": {
-            "template": ("command", "-v", *XCU_REQUIRED_COMMANDS),
+            "command": ("command", "-v", *XCU_REQUIRED_COMMANDS),
             "non_error_codes": (0, 1),
             "parser": command_lookup_parser,
             "parser_kwargs": {
@@ -101,7 +101,7 @@ COMPLIANCE_COMMAND_SPEC = {
             },
         },
         "lookup_xsi_commands": {
-            "template": ("command", "-v", *XSI_REQUIRED_COMMANDS),
+            "command": ("command", "-v", *XSI_REQUIRED_COMMANDS),
             "non_error_codes": (0, 1),
             "parser": command_lookup_parser,
             "parser_kwargs": {
@@ -109,23 +109,23 @@ COMPLIANCE_COMMAND_SPEC = {
             },
         },
         "sh_test": {
-            "template": ("sh", "-c", 'x=1; [ "$x" = 1 ] && printf "posix sh"'),
+            "command": ("sh", "-c", 'x=1; [ "$x" = 1 ] && printf "posix sh"'),
             # TODO: add sh_test_validator
         },
         "xsh_version": {
-            "template": ("getconf", "_POSIX_VERSION"),
+            "command": ("getconf", "_POSIX_VERSION"),
             "parser": _parse_xsh_version,
         },
         "xcu_version": {
-            "template": ("getconf", "_POSIX2_VERSION"),
+            "command": ("getconf", "_POSIX2_VERSION"),
             "parser": _parse_xcu_version,
         },
         "xopen_support": {
-            "template": ("getconf", "_XOPEN_UNIX"),
+            "command": ("getconf", "_XOPEN_UNIX"),
             "parser": _parse_xopen_support,
         },
         "xopen_version": {
-            "template": ("getconf", "_XOPEN_VERSION"),
+            "command": ("getconf", "_XOPEN_VERSION"),
             "parser": _parse_xopen_versions,
         },
     },

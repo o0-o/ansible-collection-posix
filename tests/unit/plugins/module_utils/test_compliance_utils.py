@@ -23,6 +23,7 @@ from ansible_collections.o0_o.posix.plugins.module_utils.compliance_utils import
     XSH,
     XCU,
     XSI,
+    _get_result,
     _process_getconf_results,
     _verify_required_commands,
     _determine_compliance_levels,
@@ -62,29 +63,102 @@ class TestConstants:
         assert "name" in XSI
 
 
+class TestGetResult:
+    """Tests for _get_result helper function."""
+
+    def test_extracts_parsed_and_errors(self) -> None:
+        """Test extracting parsed result and errors from results dict."""
+        results = {
+            "xsh_version": [
+                {
+                    "implementation": "posix",
+                    "parsed": {"xsh": {"supported": True}},
+                    "errors": None,
+                }
+            ],
+        }
+
+        parsed, errors = _get_result(results, "xsh_version")
+
+        assert parsed == {"xsh": {"supported": True}}
+        assert errors is None
+
+    def test_returns_none_for_missing_type(self) -> None:
+        """Test returns None tuple for missing command type."""
+        results = {}
+
+        parsed, errors = _get_result(results, "nonexistent")
+
+        assert parsed is None
+        assert errors is None
+
+    def test_returns_errors_from_result(self) -> None:
+        """Test errors are extracted from result entry."""
+        test_error = ValueError("Test error")
+        results = {
+            "xsh_version": [
+                {
+                    "implementation": "posix",
+                    "parsed": None,
+                    "errors": [test_error],
+                }
+            ],
+        }
+
+        parsed, errors = _get_result(results, "xsh_version")
+
+        assert parsed is None
+        assert errors == [test_error]
+
+
 class TestProcessGetconfResults:
     """Tests for _process_getconf_results function."""
+
+    def _make_results(
+        self,
+        xsh_version=None,
+        xsh_errors=None,
+        xopen_support=None,
+        xopen_support_errors=None,
+        xopen_version=None,
+        xopen_version_errors=None,
+        xcu_version=None,
+        xcu_version_errors=None,
+    ):
+        """Helper to build results dict in new format."""
+        results = {}
+        if xsh_version is not None or xsh_errors is not None:
+            results["xsh_version"] = [
+                {"implementation": "posix", "parsed": xsh_version,
+                 "errors": xsh_errors}
+            ]
+        if xopen_support is not None or xopen_support_errors is not None:
+            results["xopen_support"] = [
+                {"implementation": "posix", "parsed": xopen_support,
+                 "errors": xopen_support_errors}
+            ]
+        if xopen_version is not None or xopen_version_errors is not None:
+            results["xopen_version"] = [
+                {"implementation": "posix", "parsed": xopen_version,
+                 "errors": xopen_version_errors}
+            ]
+        if xcu_version is not None or xcu_version_errors is not None:
+            results["xcu_version"] = [
+                {"implementation": "posix", "parsed": xcu_version,
+                 "errors": xcu_version_errors}
+            ]
+        return results
 
     def test_merges_valid_xsh_version(self) -> None:
         """Test merging valid XSH version into compliance dict."""
         compliance = {"xsh": {}, "xsi": {}, "xcu": {}}
-        processed_cmds = {
-            "posix_xsh_version": {
-                "xsh": {"supported": True, "version": {"id": "2008"}}
-            },
-            "posix_xopen_support": {"xsi": {"supported": False}},
-            "posix_xopen_version": None,
-            "posix_xcu_version": None,
-        }
-        cmd_errors = {
-            "posix_xsh_version": None,
-            "posix_xopen_support": None,
-        }
-        commands_result = {}
-
-        errors = _process_getconf_results(
-            processed_cmds, cmd_errors, commands_result, compliance
+        results = self._make_results(
+            xsh_version={"xsh": {"supported": True, "version": {"id": "2008"}}},
+            xopen_support={"xsi": {"supported": False}},
         )
+        command_results = []
+
+        errors = _process_getconf_results(results, command_results, compliance)
 
         assert errors == []
         assert compliance["xsh"]["supported"] is True
@@ -93,23 +167,15 @@ class TestProcessGetconfResults:
     def test_error_when_getconf_returns_none(self) -> None:
         """Test error generated when getconf returns None."""
         compliance = {"xsh": {}, "xsi": {}, "xcu": {}}
-        processed_cmds = {
-            "posix_xsh_version": None,
-            "posix_xopen_support": {"xsi": {"supported": False}},
-            "posix_xopen_version": None,
-            "posix_xcu_version": None,
-        }
-        cmd_errors = {
-            "posix_xsh_version": None,
-            "posix_xopen_support": None,
-        }
-        commands_result = {
-            "posix_xsh_version": {"command": "getconf _POSIX_VERSION"},
-        }
-
-        errors = _process_getconf_results(
-            processed_cmds, cmd_errors, commands_result, compliance
+        results = self._make_results(
+            xsh_version=None,
+            xopen_support={"xsi": {"supported": False}},
         )
+        command_results = [
+            {"type": "xsh_version", "command": "getconf _POSIX_VERSION"},
+        ]
+
+        errors = _process_getconf_results(results, command_results, compliance)
 
         assert len(errors) == 1
         assert "getconf _POSIX_VERSION" in str(errors[0])
@@ -118,25 +184,15 @@ class TestProcessGetconfResults:
     def test_handles_tuple_command(self) -> None:
         """Test command tuple is joined into string for error message."""
         compliance = {"xsh": {}, "xsi": {}, "xcu": {}}
-        processed_cmds = {
-            "posix_xsh_version": None,
-            "posix_xopen_support": {"xsi": {"supported": False}},
-            "posix_xopen_version": None,
-            "posix_xcu_version": None,
-        }
-        cmd_errors = {
-            "posix_xsh_version": None,
-            "posix_xopen_support": None,
-        }
-        commands_result = {
-            "posix_xsh_version": {
-                "command": ("getconf", "_POSIX_VERSION"),
-            },
-        }
-
-        errors = _process_getconf_results(
-            processed_cmds, cmd_errors, commands_result, compliance
+        results = self._make_results(
+            xsh_version=None,
+            xopen_support={"xsi": {"supported": False}},
         )
+        command_results = [
+            {"type": "xsh_version", "command": ("getconf", "_POSIX_VERSION")},
+        ]
+
+        errors = _process_getconf_results(results, command_results, compliance)
 
         assert len(errors) == 1
         assert "getconf _POSIX_VERSION" in str(errors[0])
@@ -145,23 +201,16 @@ class TestProcessGetconfResults:
         """Test parser errors are extended to error list."""
         compliance = {"xsh": {}, "xsi": {}, "xcu": {}}
         parser_error = ValueError("Parser error")
-        processed_cmds = {
-            "posix_xsh_version": None,
-            "posix_xopen_support": {"xsi": {"supported": False}},
-            "posix_xopen_version": None,
-            "posix_xcu_version": None,
-        }
-        cmd_errors = {
-            "posix_xsh_version": [parser_error],
-            "posix_xopen_support": None,
-        }
-        commands_result = {
-            "posix_xsh_version": {"command": "getconf"},
-        }
-
-        errors = _process_getconf_results(
-            processed_cmds, cmd_errors, commands_result, compliance
+        results = self._make_results(
+            xsh_version=None,
+            xsh_errors=[parser_error],
+            xopen_support={"xsi": {"supported": False}},
         )
+        command_results = [
+            {"type": "xsh_version", "command": "getconf"},
+        ]
+
+        errors = _process_getconf_results(results, command_results, compliance)
 
         assert len(errors) == 2
         assert parser_error in errors
@@ -169,24 +218,17 @@ class TestProcessGetconfResults:
     def test_detects_xsi_support_mismatch(self) -> None:
         """Test error on XSI support mismatch between getconf vars."""
         compliance = {"xsh": {}, "xsi": {"supported": True}, "xcu": {}}
-        processed_cmds = {
-            "posix_xsh_version": {"xsh": {"supported": True}},
-            "posix_xopen_support": {"xsi": {"supported": True}},
-            "posix_xopen_version": {
+        results = self._make_results(
+            xsh_version={"xsh": {"supported": True}},
+            xopen_support={"xsi": {"supported": True}},
+            xopen_version={
                 "xsi": {"supported": False},
                 "xsh": {"version": None},
             },
-            "posix_xcu_version": None,
-        }
-        cmd_errors = {
-            "posix_xsh_version": None,
-            "posix_xopen_support": None,
-        }
-        commands_result = {}
-
-        errors = _process_getconf_results(
-            processed_cmds, cmd_errors, commands_result, compliance
         )
+        command_results = []
+
+        errors = _process_getconf_results(results, command_results, compliance)
 
         assert any("XSI support mismatch" in str(e) for e in errors)
 
@@ -197,26 +239,17 @@ class TestProcessGetconfResults:
             "xsi": {"supported": True},
             "xcu": {},
         }
-        processed_cmds = {
-            "posix_xsh_version": {
-                "xsh": {"supported": True, "version": {"id": "2008"}}
-            },
-            "posix_xopen_support": {"xsi": {"supported": True}},
-            "posix_xopen_version": {
+        results = self._make_results(
+            xsh_version={"xsh": {"supported": True, "version": {"id": "2008"}}},
+            xopen_support={"xsi": {"supported": True}},
+            xopen_version={
                 "xsi": {"supported": True},
                 "xsh": {"version": {"id": "2001"}},
             },
-            "posix_xcu_version": None,
-        }
-        cmd_errors = {
-            "posix_xsh_version": None,
-            "posix_xopen_support": None,
-        }
-        commands_result = {}
-
-        errors = _process_getconf_results(
-            processed_cmds, cmd_errors, commands_result, compliance
         )
+        command_results = []
+
+        errors = _process_getconf_results(results, command_results, compliance)
 
         assert any("XSH version mismatch" in str(e) for e in errors)
 
@@ -227,23 +260,14 @@ class TestProcessGetconfResults:
             "xsi": {},
             "xcu": {"version": {"id": "2008"}},
         }
-        processed_cmds = {
-            "posix_xsh_version": {"xsh": {"supported": True}},
-            "posix_xopen_support": {"xsi": {"supported": False}},
-            "posix_xopen_version": None,
-            "posix_xcu_version": {
-                "xcu": {"version": {"id": "2001"}},
-            },
-        }
-        cmd_errors = {
-            "posix_xsh_version": None,
-            "posix_xopen_support": None,
-        }
-        commands_result = {}
-
-        errors = _process_getconf_results(
-            processed_cmds, cmd_errors, commands_result, compliance
+        results = self._make_results(
+            xsh_version={"xsh": {"supported": True}},
+            xopen_support={"xsi": {"supported": False}},
+            xcu_version={"xcu": {"version": {"id": "2001"}}},
         )
+        command_results = []
+
+        errors = _process_getconf_results(results, command_results, compliance)
 
         assert any("XCU version mismatch" in str(e) for e in errors)
 
@@ -254,46 +278,28 @@ class TestProcessGetconfResults:
             "xsi": {},
             "xcu": {"supported": True},
         }
-        processed_cmds = {
-            "posix_xsh_version": {"xsh": {"supported": True}},
-            "posix_xopen_support": {"xsi": {"supported": False}},
-            "posix_xopen_version": None,
-            "posix_xcu_version": {
-                "xcu": {"supported": False},
-            },
-        }
-        cmd_errors = {
-            "posix_xsh_version": None,
-            "posix_xopen_support": None,
-        }
-        commands_result = {}
-
-        errors = _process_getconf_results(
-            processed_cmds, cmd_errors, commands_result, compliance
+        results = self._make_results(
+            xsh_version={"xsh": {"supported": True}},
+            xopen_support={"xsi": {"supported": False}},
+            xcu_version={"xcu": {"supported": False}},
         )
+        command_results = []
+
+        errors = _process_getconf_results(results, command_results, compliance)
 
         assert any("XCU support mismatch" in str(e) for e in errors)
 
     def test_merges_xcu_without_existing(self) -> None:
         """Test XCU merging when no existing xcu in compliance."""
         compliance = {"xsh": {}, "xsi": {}}
-        processed_cmds = {
-            "posix_xsh_version": {"xsh": {"supported": True}},
-            "posix_xopen_support": {"xsi": {"supported": False}},
-            "posix_xopen_version": None,
-            "posix_xcu_version": {
-                "xcu": {"supported": True, "version": {"id": "2008"}},
-            },
-        }
-        cmd_errors = {
-            "posix_xsh_version": None,
-            "posix_xopen_support": None,
-        }
-        commands_result = {}
-
-        errors = _process_getconf_results(
-            processed_cmds, cmd_errors, commands_result, compliance
+        results = self._make_results(
+            xsh_version={"xsh": {"supported": True}},
+            xopen_support={"xsi": {"supported": False}},
+            xcu_version={"xcu": {"supported": True, "version": {"id": "2008"}}},
         )
+        command_results = []
+
+        errors = _process_getconf_results(results, command_results, compliance)
 
         assert errors == []
         assert compliance["xcu"]["supported"] is True
@@ -548,30 +554,65 @@ class TestProcessComplianceCommandsResult:
         ) as mock:
             yield mock
 
+    def _make_mock_return(
+        self,
+        xcu_cmds=None,
+        xcu_errors=None,
+        xsi_cmds=None,
+        xsi_errors=None,
+        xsh_version=None,
+        xsh_errors=None,
+        xopen_support=None,
+        xopen_support_errors=None,
+        xopen_version=None,
+        xopen_version_errors=None,
+        xcu_version=None,
+        xcu_version_errors=None,
+    ):
+        """Helper to build mock return value in new format."""
+        results = {}
+        if xcu_cmds is not None or xcu_errors is not None:
+            results["lookup_xcu_commands"] = [
+                {"implementation": "posix", "parsed": xcu_cmds or {},
+                 "errors": xcu_errors}
+            ]
+        if xsi_cmds is not None or xsi_errors is not None:
+            results["lookup_xsi_commands"] = [
+                {"implementation": "posix", "parsed": xsi_cmds or {},
+                 "errors": xsi_errors}
+            ]
+        if xsh_version is not None or xsh_errors is not None:
+            results["xsh_version"] = [
+                {"implementation": "posix", "parsed": xsh_version,
+                 "errors": xsh_errors}
+            ]
+        if xopen_support is not None or xopen_support_errors is not None:
+            results["xopen_support"] = [
+                {"implementation": "posix", "parsed": xopen_support,
+                 "errors": xopen_support_errors}
+            ]
+        if xopen_version is not None or xopen_version_errors is not None:
+            results["xopen_version"] = [
+                {"implementation": "posix", "parsed": xopen_version,
+                 "errors": xopen_version_errors}
+            ]
+        if xcu_version is not None or xcu_version_errors is not None:
+            results["xcu_version"] = [
+                {"implementation": "posix", "parsed": xcu_version,
+                 "errors": xcu_version_errors}
+            ]
+        return results
+
     def test_initializes_compliance_with_metadata(
         self, mock_process_all
     ) -> None:
         """Test compliance dict initialized with standard metadata."""
-        mock_process_all.return_value = (
-            {
-                "posix_lookup_xcu_commands": {"sh": "/bin/sh", "cat": "/bin/cat"},
-                "posix_lookup_xsi_commands": {"getconf": None},
-                "posix_xsh_version": None,
-                "posix_xopen_support": None,
-                "posix_xopen_version": None,
-                "posix_xcu_version": None,
-            },
-            {
-                "posix_lookup_xcu_commands": None,
-                "posix_lookup_xsi_commands": None,
-                "posix_xsh_version": None,
-                "posix_xopen_support": None,
-                "posix_xopen_version": None,
-                "posix_xcu_version": None,
-            },
+        mock_process_all.return_value = self._make_mock_return(
+            xcu_cmds={"sh": "/bin/sh", "cat": "/bin/cat"},
+            xsi_cmds={"getconf": None},
         )
 
-        result, errors = process_compliance_commands_result({})
+        result, errors = process_compliance_commands_result([])
 
         assert result["compliance"]["xsh"]["abbreviation"] == "XSH"
         assert result["compliance"]["xcu"]["abbreviation"] == "XCU"
@@ -581,30 +622,16 @@ class TestProcessComplianceCommandsResult:
 
     def test_returns_shells_paths_missing(self, mock_process_all) -> None:
         """Test result includes shells, paths, and missing_commands."""
-        mock_process_all.return_value = (
-            {
-                "posix_lookup_xcu_commands": {
-                    "sh": "/bin/sh",
-                    "cat": "/bin/cat",
-                    "command": "command",
-                },
-                "posix_lookup_xsi_commands": {"getconf": None},
-                "posix_xsh_version": None,
-                "posix_xopen_support": None,
-                "posix_xopen_version": None,
-                "posix_xcu_version": None,
+        mock_process_all.return_value = self._make_mock_return(
+            xcu_cmds={
+                "sh": "/bin/sh",
+                "cat": "/bin/cat",
+                "command": "command",
             },
-            {
-                "posix_lookup_xcu_commands": None,
-                "posix_lookup_xsi_commands": None,
-                "posix_xsh_version": None,
-                "posix_xopen_support": None,
-                "posix_xopen_version": None,
-                "posix_xcu_version": None,
-            },
+            xsi_cmds={"getconf": None},
         )
 
-        result, errors = process_compliance_commands_result({})
+        result, errors = process_compliance_commands_result([])
 
         assert "shells" in result
         assert "paths" in result
@@ -615,26 +642,13 @@ class TestProcessComplianceCommandsResult:
 
     def test_skips_getconf_when_not_available(self, mock_process_all) -> None:
         """Test getconf processing skipped when getconf not found."""
-        mock_process_all.return_value = (
-            {
-                "posix_lookup_xcu_commands": {"sh": "/bin/sh"},
-                "posix_lookup_xsi_commands": {"getconf": None},
-                "posix_xsh_version": {"xsh": {"supported": True}},
-                "posix_xopen_support": None,
-                "posix_xopen_version": None,
-                "posix_xcu_version": None,
-            },
-            {
-                "posix_lookup_xcu_commands": None,
-                "posix_lookup_xsi_commands": None,
-                "posix_xsh_version": None,
-                "posix_xopen_support": None,
-                "posix_xopen_version": None,
-                "posix_xcu_version": None,
-            },
+        mock_process_all.return_value = self._make_mock_return(
+            xcu_cmds={"sh": "/bin/sh"},
+            xsi_cmds={"getconf": None},
+            xsh_version={"xsh": {"supported": True}},
         )
 
-        result, errors = process_compliance_commands_result({})
+        result, errors = process_compliance_commands_result([])
 
         # XSH should not be marked as supported since getconf wasn't available
         assert (
@@ -644,36 +658,25 @@ class TestProcessComplianceCommandsResult:
 
     def test_processes_getconf_when_available(self, mock_process_all) -> None:
         """Test getconf results processed when getconf is available."""
-        mock_process_all.return_value = (
-            {
-                "posix_lookup_xcu_commands": {"sh": "/bin/sh"},
-                "posix_lookup_xsi_commands": {"getconf": "/usr/bin/getconf"},
-                "posix_xsh_version": {
-                    "xsh": {
-                        "supported": True,
-                        "version": {"id": "2008", "name": "POSIX.1-2008"},
-                    }
-                },
-                "posix_xopen_support": {"xsi": {"supported": True}},
-                "posix_xopen_version": None,
-                "posix_xcu_version": {
-                    "xcu": {
-                        "supported": True,
-                        "version": {"id": "2008", "name": "POSIX.1-2008"},
-                    }
-                },
+        mock_process_all.return_value = self._make_mock_return(
+            xcu_cmds={"sh": "/bin/sh"},
+            xsi_cmds={"getconf": "/usr/bin/getconf"},
+            xsh_version={
+                "xsh": {
+                    "supported": True,
+                    "version": {"id": "2008", "name": "POSIX.1-2008"},
+                }
             },
-            {
-                "posix_lookup_xcu_commands": None,
-                "posix_lookup_xsi_commands": None,
-                "posix_xsh_version": None,
-                "posix_xopen_support": None,
-                "posix_xopen_version": None,
-                "posix_xcu_version": None,
+            xopen_support={"xsi": {"supported": True}},
+            xcu_version={
+                "xcu": {
+                    "supported": True,
+                    "version": {"id": "2008", "name": "POSIX.1-2008"},
+                }
             },
         )
 
-        result, errors = process_compliance_commands_result({})
+        result, errors = process_compliance_commands_result([])
 
         assert result["compliance"]["xsh"]["supported"] is True
         assert result["compliance"]["xcu"]["supported"] is True
@@ -681,25 +684,12 @@ class TestProcessComplianceCommandsResult:
     def test_collects_lookup_errors(self, mock_process_all) -> None:
         """Test errors from command lookup are collected."""
         lookup_error = ValueError("Test lookup error")
-        mock_process_all.return_value = (
-            {
-                "posix_lookup_xcu_commands": {"sh": "/bin/sh"},
-                "posix_lookup_xsi_commands": {"getconf": None},
-                "posix_xsh_version": None,
-                "posix_xopen_support": None,
-                "posix_xopen_version": None,
-                "posix_xcu_version": None,
-            },
-            {
-                "posix_lookup_xcu_commands": [lookup_error],
-                "posix_lookup_xsi_commands": None,
-                "posix_xsh_version": None,
-                "posix_xopen_support": None,
-                "posix_xopen_version": None,
-                "posix_xcu_version": None,
-            },
+        mock_process_all.return_value = self._make_mock_return(
+            xcu_cmds={"sh": "/bin/sh"},
+            xcu_errors=[lookup_error],
+            xsi_cmds={"getconf": None},
         )
 
-        result, errors = process_compliance_commands_result({})
+        result, errors = process_compliance_commands_result([])
 
         assert lookup_error in errors

@@ -38,9 +38,9 @@
       - dict_mode_reg['commands']['kernel']['rc'] == 0
       - dict_mode_reg['commands']['machine']['rc'] == 0
       - dict_mode_reg['commands']['hostname']['rc'] == 0
-      - dict_mode_reg['commands']['kernel']['cmd'] == 'uname -s'
-      - dict_mode_reg['commands']['machine']['cmd'] == 'uname -m'
-      - dict_mode_reg['commands']['hostname']['cmd'] == 'hostname'
+      - dict_mode_reg['commands']['kernel']['command'] == 'uname -s'
+      - dict_mode_reg['commands']['machine']['command'] == 'uname -m'
+      - dict_mode_reg['commands']['hostname']['command'] == 'hostname'
   when: not ansible_check_mode
 
 - name: Assert dict mode has stdout in each result
@@ -143,4 +143,92 @@
       - list_compat_reg['commands'] | length == 2
       - list_compat_reg['commands'][0]['stdout'] | trim == 'list1'
       - list_compat_reg['commands'][1]['stdout'] | trim == 'list2'
+  when: not ansible_check_mode
+
+# Test request dict override capability
+- name: Test request dict with rc override (simulates 2>/dev/null)
+  o0_o.posix.run:
+    commands:
+      suppress_failure:
+        command: 'false'
+        rc: 0
+  register: rc_override_reg
+
+- name: Assert rc override works
+  ansible.builtin.assert:
+    that:
+      - rc_override_reg['failed'] == false
+      - rc_override_reg['commands']['suppress_failure']['rc'] == 0
+  when: not ansible_check_mode
+
+- name: Test request dict with stderr override
+  o0_o.posix.run:
+    commands:
+      suppress_stderr:
+        command: 'printf error 1>&2'
+        stderr: ''
+  register: stderr_override_reg
+
+- name: Assert stderr override works
+  ansible.builtin.assert:
+    that:
+      - stderr_override_reg['commands']['suppress_stderr']['stderr'] == ''
+  when: not ansible_check_mode
+
+- name: Test list mode with dict command items
+  o0_o.posix.run:
+    commands:
+      - command: 'false'
+        rc: 0
+      - command: 'echo success'
+  register: list_dict_items_reg
+
+- name: Assert list mode dict items with override
+  ansible.builtin.assert:
+    that:
+      - list_dict_items_reg['failed'] == false
+      - list_dict_items_reg['commands'][0]['rc'] == 0
+      - list_dict_items_reg['commands'][1]['stdout'] | trim == 'success'
+  when: not ansible_check_mode
+
+# Test non_error_codes capability
+- name: Test non_error_codes allows non-zero return codes
+  o0_o.posix.run:
+    commands:
+      # false returns 1, but non_error_codes includes 1
+      expected_fail:
+        command: 'false'
+        non_error_codes: [0, 1]
+      # grep with no match returns 1, treat as success
+      no_match:
+        command: 'echo test | grep nonexistent'
+        non_error_codes: [0, 1]
+  register: non_error_codes_reg
+
+- name: Assert non_error_codes prevents task failure
+  ansible.builtin.assert:
+    that:
+      - non_error_codes_reg['failed'] == false
+      - non_error_codes_reg['commands']['expected_fail']['rc'] == 1
+      - non_error_codes_reg['commands']['no_match']['rc'] == 1
+  when: not ansible_check_mode
+
+- name: Test non_error_codes still fails for unlisted codes
+  block:
+
+    - name: Run command with rc not in non_error_codes
+      o0_o.posix.run:
+        commands:
+          will_fail:
+            command: 'exit 2'
+            non_error_codes: [0, 1]
+      register: non_error_codes_fail_reg
+
+  rescue:
+
+    - name: Assert task failed because rc=2 not in non_error_codes
+      ansible.builtin.assert:
+        that:
+          - ansible_failed_result['failed'] == true
+          - ansible_failed_result['commands']['will_fail']['rc'] == 2
   when: not ansible_check_mode

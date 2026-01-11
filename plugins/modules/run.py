@@ -38,9 +38,14 @@ options:
         with a C(command) key.
       - String commands are executed as-is.
       - List commands are properly quoted for shell execution.
-      - Dict commands extract the C(command) key value (other keys are
-        ignored). This allows passing C(process_command_spec) output
-        directly.
+      - Dict commands must have a C(command) key. Other keys are
+        preserved in the result and can override parsed values.
+      - Dict commands support C(non_error_codes) to specify return codes
+        that should not be treated as failures (default is C([0])).
+      - Dict commands can also include C(rc), C(stdout), or C(stderr)
+        to override the parsed command output (useful for suppressing
+        errors or stderr).
+      - This allows passing C(process_command_spec) output directly.
     type: raw
     required: true
   chdir:
@@ -89,6 +94,9 @@ notes:
     fallback.
   - Commands are executed in the order provided.
   - Each command runs in its own subshell for isolation.
+  - When I(fail_fast=true), C(non_error_codes) is respected. Commands
+    with return codes in their C(non_error_codes) list will not trigger
+    early termination.
 seealso:
   - module: ansible.builtin.command
     description: Execute commands on targets
@@ -161,6 +169,32 @@ EXAMPLES = r"""
         command: uptime
         parser: uptime
   register: spec_result_reg
+
+- name: Use non_error_codes to treat specific exit codes as success
+  o0_o.posix.run:
+    commands:
+      # grep returns 1 when no match found, treat as success
+      grep_check:
+        command: grep pattern /etc/hosts
+        non_error_codes: [0, 1]
+      # diff returns 1 when files differ, treat as success
+      diff_check:
+        command: diff file1 file2
+        non_error_codes: [0, 1]
+  register: check_result_reg
+
+- name: Override rc to suppress command failure
+  o0_o.posix.run:
+    commands:
+      # Command fails but we override rc to prevent task failure
+      optional_check:
+        command: 'false'
+        rc: 0
+      # Suppress stderr output
+      quiet_command:
+        command: 'some_command 2>&1'
+        stderr: ''
+  register: override_result_reg
 """
 
 RETURN = r"""
@@ -170,7 +204,10 @@ changed:
   type: bool
   sample: true
 failed:
-  description: Whether any command failed (rc != 0)
+  description: >-
+    Whether any command failed.
+    A command is considered failed if its rc is not in its non_error_codes
+    list (defaults to C([0]) if not specified).
   returned: always
   type: bool
   sample: false

@@ -109,3 +109,48 @@
         that:
           - ansible_failed_result is failed
           - "'required' in ansible_failed_result['msg'] | lower"
+
+# Test fail_fast with non_error_codes
+- name: Test fail_fast respects non_error_codes
+  o0_o.posix.run:
+    commands:
+      - command: 'echo first'
+      - command: 'false'
+        non_error_codes: [0, 1]
+      - command: 'echo third'
+    fail_fast: true
+  register: fail_fast_non_error_reg
+  when: not ansible_check_mode
+
+- name: Assert fail_fast continued because rc=1 was in non_error_codes
+  ansible.builtin.assert:
+    that:
+      - fail_fast_non_error_reg['failed'] == false
+      - fail_fast_non_error_reg['commands'] | length == 3
+      - fail_fast_non_error_reg['commands'][0]['rc'] == 0
+      - fail_fast_non_error_reg['commands'][1]['rc'] == 1
+      - fail_fast_non_error_reg['commands'][2]['rc'] == 0
+      - fail_fast_non_error_reg['commands'][0]['stdout'] | trim == 'first'
+      - fail_fast_non_error_reg['commands'][2]['stdout'] | trim == 'third'
+  when: not ansible_check_mode
+
+- name: 'Fail: Test fail_fast stops on rc not in non_error_codes'
+  block:
+
+    - name: Run commands with fail_fast and partial non_error_codes
+      o0_o.posix.run:
+        commands:
+          - command: 'echo first'
+          - command: 'exit 2'
+            non_error_codes: [0, 1]
+          - command: 'echo never'
+        fail_fast: true
+      register: fail_fast_stop_reg
+
+  rescue:
+
+    - name: Assert fail_fast stopped on rc=2 not in non_error_codes
+      ansible.builtin.assert:
+        that:
+          - ansible_failed_result is failed
+  when: not ansible_check_mode

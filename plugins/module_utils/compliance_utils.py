@@ -17,7 +17,6 @@ X/Open, and SUS compliance information.
 
 from __future__ import annotations
 
-from collections.abc import Sequence
 from typing import Any, Optional
 
 from ansible_collections.o0_o.utils.plugins.module_utils import (
@@ -63,10 +62,28 @@ XSI = {
 
 
 @typechecked
+def _get_result(
+    results: dict[str, list[dict[str, Any]]],
+    cmd_type: str,
+) -> tuple[Optional[Any], Optional[list[Exception]]]:
+    """Extract parsed result and errors for a command type.
+
+    :param dict results: Results from process_all_command_results
+    :param str cmd_type: Command type to look up
+    :returns tuple: (parsed_result, errors) - either may be None
+    """
+    type_results = results.get(cmd_type, [])
+    if not type_results:
+        return None, None
+    # Take first result (all commands use single "posix" implementation)
+    result = type_results[0]
+    return result.get("parsed"), result.get("errors")
+
+
+@typechecked
 def _process_getconf_results(
-    processed_cmds: dict[str, Any],
-    cmd_errors: dict[str, Optional[Sequence[Exception]]],
-    commands_result: dict[str, dict[str, Any]],
+    results: dict[str, list[dict[str, Any]]],
+    command_results: list[dict[str, Any]],
     compliance: dict[str, Any],
 ) -> list[Exception]:
     """Process getconf command results and merge into compliance dict.
@@ -74,21 +91,22 @@ def _process_getconf_results(
     Handles xsh_version, xopen_support, xopen_version, and xcu_version
     results. Cross-validates values between different getconf variables.
 
-    :param dict processed_cmds: Parsed command results from parsers
-    :param dict cmd_errors: Errors from command parsing
-    :param dict commands_result: Original command results for error msgs
+    :param dict results: Results from process_all_command_results keyed
+        by type
+    :param list command_results: Original command results for error msgs
     :param dict compliance: Compliance dict to merge results into
     :returns list[Exception]: Errors encountered during processing
     """
     errors = []
 
+    # Build lookup for original command results by type
+    cmd_by_type = {r["type"]: r for r in command_results}
+
     # Process basic getconf results (xsh_version, xopen_support)
     for var in ("xsh_version", "xopen_support"):
-        getconf_key = f"posix_{var}"
-        getconf_dict = processed_cmds[getconf_key]
-        getconf_errors = cmd_errors[getconf_key]
-        if getconf_dict is None:
-            cmd_info = commands_result[getconf_key]
+        parsed, parse_errors = _get_result(results, var)
+        if parsed is None:
+            cmd_info = cmd_by_type.get(var, {})
             cmd = cmd_info.get("command", var)
             # Command may be tuple (argv) or string
             cmd_str = " ".join(cmd) if isinstance(cmd, tuple) else cmd
@@ -98,13 +116,13 @@ def _process_getconf_results(
                     f"a valid result"
                 )
             )
-            if getconf_errors:
-                errors.extend(getconf_errors)
+            if parse_errors:
+                errors.extend(parse_errors)
         else:
-            compliance.update(merge_hash(compliance, getconf_dict))
+            compliance.update(merge_hash(compliance, parsed))
 
     # Cross-validate _XOPEN_VERSION against other getconf values
-    xopen = processed_cmds["posix_xopen_version"]
+    xopen, _ = _get_result(results, "xopen_version")
     if xopen is not None:
         # Check for inconsistencies between _XOPEN_UNIX and _XOPEN_VERSION
         xsi_from_unix = compliance["xsi"].get("supported")
@@ -130,7 +148,7 @@ def _process_getconf_results(
         compliance.update(merge_hash(compliance, xopen))
 
     # Cross-validate _POSIX2_VERSION against _XOPEN_VERSION
-    xcu = processed_cmds["posix_xcu_version"]
+    xcu, _ = _get_result(results, "xcu_version")
     if xcu is not None:
         if compliance.get("xcu"):
             xcu_ver_existing = compliance["xcu"].get("version")
@@ -237,7 +255,8 @@ def _determine_compliance_levels(
         # SUS version = XSI Issue - 3 (e.g., Issue 7 = SUSv4)
         xsi_issue = compliance["xsi"].get("version", {}).get("issue")
         if xsi_issue:
-            sus_version = int(xsi_issue) - 3
+            xsi_issue = int(xsi_issue)
+            sus_version = xsi_issue - 3
             compliance["sus"]["version"] = {
                 "issue": xsi_issue,
                 "id": sus_version,
@@ -284,16 +303,16 @@ def _build_command_inventory(
 
 @typechecked
 def process_compliance_commands_result(
-    commands_result: dict[str, dict[str, Any]],
+    command_results: list[dict[str, Any]],
 ) -> tuple[dict[str, Any], list[Exception]]:
     """Process compliance command results through their parsers.
 
-    Takes tagged command results from run plugin, calls the appropriate
+    Takes command results from run plugin, calls the appropriate
     parser for each command type, and merges the partial results.
 
-    :param dict[str, dict[str, Any]] commands_result: Dict mapping
-        command tags (e.g., "getconf_posix_version") to their results
-        containing 'rc' and 'stdout' keys
+    :param list[dict[str, Any]] command_results: List of command result
+        dicts, each containing 'type', 'implementation', 'rc', 'stdout',
+        and optionally 'parser' from the command spec
     :returns tuple[dict[str, Any], list[Exception]]: Tuple of
         (result_dict, errors_list) where result_dict contains
         'compliance', 'shells', 'paths', and 'missing_commands' keys
@@ -309,20 +328,25 @@ def process_compliance_commands_result(
     errors = []
 
     # Parse all command results through their registered parsers
-    processed_cmds, cmd_errors = process_all_command_results(commands_result)
+    # Returns dict keyed by type, each with list of {implementation,
+    # parsed, errors}
+    results = process_all_command_results(command_results)
 
     # Extract command lookup results (which commands exist on the system)
-    xcu_cmds = processed_cmds["posix_lookup_xcu_commands"]
-    if cmd_errors["posix_lookup_xcu_commands"]:
-        errors.extend(cmd_errors["posix_lookup_xcu_commands"])
-    xsi_cmds = processed_cmds["posix_lookup_xsi_commands"]
-    if cmd_errors["posix_lookup_xsi_commands"]:
-        errors.extend(cmd_errors["posix_lookup_xsi_commands"])
+    xcu_cmds, xcu_errors = _get_result(results, "lookup_xcu_commands")
+    if xcu_errors:
+        errors.extend(xcu_errors)
+    xcu_cmds = xcu_cmds or {}
+
+    xsi_cmds, xsi_errors = _get_result(results, "lookup_xsi_commands")
+    if xsi_errors:
+        errors.extend(xsi_errors)
+    xsi_cmds = xsi_cmds or {}
 
     # Only process getconf results if getconf is available
     if xsi_cmds.get("getconf"):
         getconf_errors = _process_getconf_results(
-            processed_cmds, cmd_errors, commands_result, compliance
+            results, command_results, compliance
         )
         errors.extend(getconf_errors)
 
