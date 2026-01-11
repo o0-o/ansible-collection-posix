@@ -265,7 +265,7 @@ def _parse_xopen_versions(
     for standard in result:
         if standard == "xsi":
             # XSI issue number is version/100 (e.g., 700 -> Issue 7)
-            xsi_issue = int(getconf_version) / 100
+            xsi_issue = int(getconf_version) // 100
             result["xsi"]["supported"] = True
             result["xsi"]["version"] = {
                 "issue": xsi_issue,
