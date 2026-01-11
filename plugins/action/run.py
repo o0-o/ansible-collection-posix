@@ -78,6 +78,11 @@ class ActionModule(PosixActionBase, ActionBase):
         # Use to_bytes() with surrogate_or_strict for round-trip safety
         output_bytes = to_bytes(output, errors="surrogate_or_strict")
 
+        # Normalize CRLF to LF. SSH with pseudo-terminal (-tt) translates
+        # \n to \r\n during transmission. This breaks byte-count parsing
+        # since wc -c on remote counts original bytes but we receive more.
+        output_bytes = output_bytes.replace(b"\r\n", b"\n")
+
         # Skip any leading whitespace/newlines
         offset = 0
         while offset < len(output_bytes) and output_bytes[
