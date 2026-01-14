@@ -340,11 +340,15 @@ def test_normalize_command_request_dict_with_list_command(plugin) -> None:
 
 def test_normalize_command_request_dict_missing_command_key(plugin) -> None:
     """Test _normalize_command_request raises error when dict lacks command."""
-    with pytest.raises(AnsibleActionFail, match="must contain a 'command' key"):
-        plugin._normalize_command_request({
-            "parser": "uname",
-            "other": "data",
-        })
+    with pytest.raises(
+        AnsibleActionFail, match="must contain a 'command' key"
+    ):
+        plugin._normalize_command_request(
+            {
+                "parser": "uname",
+                "other": "data",
+            }
+        )
 
 
 # Tests for _parse_batch_output
@@ -462,15 +466,16 @@ def test_parse_batch_output_preserves_metadata(plugin) -> None:
     """Test _parse_batch_output preserves request metadata in result."""
     plugin.strip = True
     output = (
-        "0\n1735689600\n1735689601\n4 /tmp/0.stdout\nfoo\n"
-        "0 /tmp/0.stderr\n"
+        "0\n1735689600\n1735689601\n4 /tmp/0.stdout\nfoo\n" "0 /tmp/0.stderr\n"
     )
-    command_requests = [{
-        "command": "echo foo",
-        "implementation": "posix",
-        "type": "test",
-        "parser": "custom_parser",
-    }]
+    command_requests = [
+        {
+            "command": "echo foo",
+            "implementation": "posix",
+            "type": "test",
+            "parser": "custom_parser",
+        }
+    ]
 
     result = plugin._parse_batch_output(output, command_requests)
 
@@ -494,11 +499,13 @@ def test_parse_batch_output_request_precedence(plugin) -> None:
         "fail\n"  # stderr content
     )
     # Request overrides rc and stderr
-    command_requests = [{
-        "command": "false",
-        "rc": 0,  # Override parsed rc=1
-        "stderr": "",  # Override parsed stderr="fail"
-    }]
+    command_requests = [
+        {
+            "command": "false",
+            "rc": 0,  # Override parsed rc=1
+            "stderr": "",  # Override parsed stderr="fail"
+        }
+    ]
 
     result = plugin._parse_batch_output(output, command_requests)
 
@@ -522,7 +529,6 @@ def test_build_batch_script_sequential(plugin) -> None:
     script = plugin._build_batch_script(command_requests, tmp)
 
     assert "set +e" in script  # not fail_fast
-    assert "unalias -a" in script
     assert "echo foo" in script
     assert "echo bar" in script
     # Sequential mode doesn't use background jobs
@@ -563,7 +569,9 @@ def test_build_batch_script_list_command(plugin) -> None:
     """Test _build_batch_script formats list commands correctly."""
     plugin.parallel = False
     plugin.fail_fast = False
-    command_requests = [{"command": ["echo", "hello world"]}]  # list with spaces
+    command_requests = [
+        {"command": ["echo", "hello world"]}
+    ]  # list with spaces
     tmp = "/tmp/test/"
 
     script = plugin._build_batch_script(command_requests, tmp)
@@ -645,7 +653,9 @@ def test_split_commands_by_length_single_batch(plugin) -> None:
         {"command": "echo c"},
     ]
 
-    batches = plugin._split_commands_by_length(max_length=100000, max_count=100)
+    batches = plugin._split_commands_by_length(
+        max_length=100000, max_count=100
+    )
 
     assert len(batches) == 1
     assert batches[0] == plugin.command_requests
@@ -752,9 +762,24 @@ def test_is_command_failed_grep_pattern(plugin) -> None:
     # Treat 0 and 1 as success
     non_error_codes = [0, 1]
 
-    assert plugin._is_command_failed({"rc": 0, "non_error_codes": non_error_codes}) is False
-    assert plugin._is_command_failed({"rc": 1, "non_error_codes": non_error_codes}) is False
-    assert plugin._is_command_failed({"rc": 2, "non_error_codes": non_error_codes}) is True
+    assert (
+        plugin._is_command_failed(
+            {"rc": 0, "non_error_codes": non_error_codes}
+        )
+        is False
+    )
+    assert (
+        plugin._is_command_failed(
+            {"rc": 1, "non_error_codes": non_error_codes}
+        )
+        is False
+    )
+    assert (
+        plugin._is_command_failed(
+            {"rc": 2, "non_error_codes": non_error_codes}
+        )
+        is True
+    )
 
 
 # Tests for _build_command_wrapper

@@ -15,6 +15,8 @@ from __future__ import annotations
 
 from ansible_collections.o0_o.posix.plugins.module_utils.command_utils import (
     format_command,
+    quote,
+    sanitize_args,
 )
 
 
@@ -46,8 +48,8 @@ def test_format_command_with_integers() -> None:
     assert result == "sleep 5"
 
 
-def test_sanitize_args_removes_none_values(base) -> None:
-    """Test _sanitize_args removes None values from dictionary."""
+def test_sanitize_args_removes_none_values() -> None:
+    """Test sanitize_args removes None values from dictionary."""
     input_args = {
         "name": "test",
         "path": "/tmp/file",
@@ -56,7 +58,7 @@ def test_sanitize_args_removes_none_values(base) -> None:
         "owner": None,
     }
 
-    result = base._sanitize_args(input_args)
+    result = sanitize_args(input_args)
 
     expected = {
         "name": "test",
@@ -66,8 +68,8 @@ def test_sanitize_args_removes_none_values(base) -> None:
     assert result == expected
 
 
-def test_sanitize_args_preserves_false_values(base) -> None:
-    """Test _sanitize_args preserves False and 0 values."""
+def test_sanitize_args_preserves_false_values() -> None:
+    """Test sanitize_args preserves False and 0 values."""
     input_args = {
         "enabled": False,
         "count": 0,
@@ -75,7 +77,7 @@ def test_sanitize_args_preserves_false_values(base) -> None:
         "value": None,
     }
 
-    result = base._sanitize_args(input_args)
+    result = sanitize_args(input_args)
 
     expected = {
         "enabled": False,
@@ -85,53 +87,54 @@ def test_sanitize_args_preserves_false_values(base) -> None:
     assert result == expected
 
 
-def test_sanitize_args_empty_dict(base) -> None:
-    """Test _sanitize_args with empty dictionary."""
-    result = base._sanitize_args({})
+def test_sanitize_args_empty_dict() -> None:
+    """Test sanitize_args with empty dictionary."""
+    result = sanitize_args({})
 
     assert result == {}
 
 
-def test_sanitize_args_all_none(base) -> None:
-    """Test _sanitize_args when all values are None."""
+def test_sanitize_args_all_none() -> None:
+    """Test sanitize_args when all values are None."""
     input_args = {"a": None, "b": None, "c": None}
 
-    result = base._sanitize_args(input_args)
+    result = sanitize_args(input_args)
 
     assert result == {}
 
 
-def test_quote_simple_string(base) -> None:
-    """Test _quote with simple string."""
-    result = base._quote("hello")
+def test_quote_simple_string() -> None:
+    """Test quote with simple string."""
+    result = quote("hello")
 
-    assert result == "'hello'"
+    # shlex.quote doesn't add quotes for simple strings
+    assert result == "hello"
 
 
-def test_quote_string_with_spaces(base) -> None:
-    """Test _quote handles strings with spaces."""
-    result = base._quote("hello world")
+def test_quote_string_with_spaces() -> None:
+    """Test quote handles strings with spaces."""
+    result = quote("hello world")
 
     assert result == "'hello world'"
 
 
-def test_quote_string_with_special_chars(base) -> None:
-    """Test _quote handles special shell characters."""
-    result = base._quote("$HOME/*.txt")
+def test_quote_string_with_special_chars() -> None:
+    """Test quote handles special shell characters."""
+    result = quote("$HOME/*.txt")
 
     assert result == "'$HOME/*.txt'"
 
 
-def test_quote_empty_string(base) -> None:
-    """Test _quote with empty string."""
-    result = base._quote("")
+def test_quote_empty_string() -> None:
+    """Test quote with empty string."""
+    result = quote("")
 
     assert result == "''"
 
 
-def test_quote_string_with_single_quote(base) -> None:
-    """Test _quote handles strings containing single quotes."""
-    result = base._quote("it's")
+def test_quote_string_with_single_quote() -> None:
+    """Test quote handles strings containing single quotes."""
+    result = quote("it's")
 
     # shlex.quote escapes single quotes by ending the quote,
     # adding escaped quote, then starting quote again

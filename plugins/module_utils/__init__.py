@@ -108,18 +108,22 @@ from ansible_collections.o0_o.posix.plugins.module_utils.write_posix_action_base
     WritePosixActionBase,
 )
 from ansible_collections.o0_o.posix.plugins.module_utils.compliance_utils import (  # noqa: E501
-    process_compliance_commands_result,
+    get_compliance_command_requests,
+    process_all_compliance_command_results,
 )
 from ansible_collections.o0_o.posix.plugins.module_utils.command_utils import (
     format_command,
+    process_command_lookups,
 )
 
 __all__ = [
     "PosixActionBase",
     "ReadPosixActionBase",
     "WritePosixActionBase",
-    "process_compliance_commands_result",
+    "get_compliance_command_requests",
+    "process_all_compliance_command_results",
     "format_command",
+    "process_command_lookups",
     "device_from_hex_major_minor",
     "device_from_major_minor",
     "device_value",

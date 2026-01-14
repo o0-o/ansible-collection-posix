@@ -19,17 +19,10 @@ from ansible_collections.o0_o.utils.plugins.module_utils.typeguard_compat import
     typechecked,
 )
 
-from ansible_collections.o0_o.core.plugins.module_utils.command_utils import (
-    process_command_spec,
-)
 from ansible_collections.o0_o.posix.plugins.module_utils import (
     PosixActionBase,
-)
-from ansible_collections.o0_o.posix.plugins.module_utils.command_spec import (
-    COMPLIANCE_COMMAND_SPEC,
-)
-from ansible_collections.o0_o.posix.plugins.module_utils.compliance_utils import (  # noqa: E501
-    process_compliance_commands_result,
+    get_compliance_command_requests,
+    process_all_compliance_command_results,
 )
 
 
@@ -126,8 +119,8 @@ class ActionModule(PosixActionBase, ActionBase):
 
         gather = new_args.get("gather", False)
 
-        # Get tagged commands for compliance checks using process_command_spec
-        cmds = process_command_spec(COMPLIANCE_COMMAND_SPEC)
+        # Get command requests for compliance checks
+        cmds = get_compliance_command_requests()
 
         # Execute all commands in parallel via run plugin (using dict mode)
         commands_result = self._run(
@@ -139,7 +132,7 @@ class ActionModule(PosixActionBase, ActionBase):
         )
 
         # Process results into compliance structure
-        processed_result, errors = process_compliance_commands_result(
+        processed_result, errors = process_all_compliance_command_results(
             commands_result
         )
         result.update(processed_result)

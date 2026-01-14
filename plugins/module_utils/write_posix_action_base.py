@@ -22,6 +22,9 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 from ansible_collections.o0_o.posix.plugins.module_utils.read_posix_action_base import (  # noqa: E501
     ReadPosixActionBase,
 )
+from ansible_collections.o0_o.posix.plugins.module_utils.command_utils import (
+    quote,
+)
 
 
 class WritePosixActionBase(ReadPosixActionBase):
@@ -175,7 +178,7 @@ class WritePosixActionBase(ReadPosixActionBase):
         if not validate_cmd:
             return
 
-        cmd = validate_cmd % self._quote(tmpfile)
+        cmd = validate_cmd % quote(tmpfile, shell=self._connection._shell)
         result = self._command(cmd, task_vars=task_vars)
 
         if result["rc"] != 0:

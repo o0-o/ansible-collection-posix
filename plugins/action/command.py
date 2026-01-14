@@ -32,6 +32,8 @@ from ansible_collections.o0_o.posix.plugins.module_utils import (
 )
 from ansible_collections.o0_o.posix.plugins.module_utils.command_utils import (
     is_interpreter_missing,
+    quote,
+    sanitize_args,
 )
 
 try:
@@ -94,7 +96,7 @@ class ActionModule(PosixActionBase, ActionBase):
         # If chdir is specified, validate the target directory
         # _low_level_command has no specific chdir exception
         if self.chdir:
-            quoted_chdir = self._quote(self.chdir)
+            quoted_chdir = quote(self.chdir, shell=self._connection._shell)
             cd_result = self._low_level_execute_command(
                 f"cd {quoted_chdir}", executable=self.executable
             )
@@ -108,7 +110,7 @@ class ActionModule(PosixActionBase, ActionBase):
         shoulda = "Would" if self._task.check_mode else "Did"
 
         if self.creates:
-            quoted_creates = self._quote(self.creates)
+            quoted_creates = quote(self.creates, shell=self._connection._shell)
             created = self._low_level_execute_command(
                 f"test -e {quoted_creates}"
             )
@@ -123,7 +125,7 @@ class ActionModule(PosixActionBase, ActionBase):
                 return
 
         if self.removes:
-            quoted_removes = self._quote(self.removes)
+            quoted_removes = quote(self.removes, shell=self._connection._shell)
             removed = self._low_level_execute_command(
                 f"test -e {quoted_removes}"
             )
@@ -324,7 +326,7 @@ class ActionModule(PosixActionBase, ActionBase):
 
         # Handle raw mode: True (force raw), False (no raw), "auto" (fallback)
         if self.raw is not True:
-            builtin_module_args = self._sanitize_args(new_module_args)
+            builtin_module_args = sanitize_args(new_module_args)
 
             builtin_module_result = self._execute_module(
                 module_name="ansible.builtin.command",

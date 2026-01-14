@@ -27,10 +27,6 @@ from typing import Any, Optional, Union
 from ansible_collections.o0_o.core.plugins.module_utils import (
     CoreActionBase,
 )
-from ansible_collections.o0_o.posix.plugins.module_utils.command_utils import (
-    quote,
-    sanitize_args,
-)
 
 
 class PosixActionBase(CoreActionBase):
@@ -178,33 +174,6 @@ class PosixActionBase(CoreActionBase):
         )
 
         return run_result.get("commands")
-
-    def _sanitize_args(self, args: dict[str, Any]) -> dict[str, Any]:
-        """
-        Return a copy of the argument dictionary with all None values
-        removed.
-
-        This is useful when passing arguments to Ansible modules that
-        enforce mutually exclusive parameters or expect missing values
-        to be omitted rather than explicitly set to null/None.
-
-        :param dict args: Dictionary of module arguments to sanitize
-        :returns dict: A new dictionary with all None values removed
-        """
-        return sanitize_args(args)
-
-    def _quote(self, s: str) -> str:
-        """
-        Quote a string for safe use in shell commands.
-
-        Uses the remote connection's shell quoting logic if available
-        (e.g., for non-POSIX shells), falling back to Python's
-        ``shlex.quote()`` for standard POSIX-compatible escaping.
-
-        :param str s: The string to quote
-        :returns str: The safely quoted string
-        """
-        return quote(s, shell=self._connection._shell)
 
     def _which(
         self, cmd: str, task_vars: Optional[dict[str, Any]] = None

@@ -20,18 +20,7 @@ from __future__ import annotations
 
 from typing import Any, Optional, Union
 
-from ansible_collections.o0_o.utils.plugins.module_utils.typeguard_compat import (  # noqa: E501
-    typechecked,
-)
-
-
-# X/Open Issue -> POSIX version (YYYYMM format)
-# Issue 6 = SUSv3/POSIX.1-2001, Issue 7 = SUSv4/POSIX.1-2008, etc.
-XOPEN_POSIX_VERSION_MAP = {
-    "600": 200112,  # POSIX.1-2001
-    "700": 200809,  # POSIX.1-2008
-    "800": 202406,  # POSIX.1-2024
-}
+from ansible_collections.o0_o.utils.plugins.module_utils import typechecked
 
 
 @typechecked
@@ -52,10 +41,9 @@ def _normalize_output(value: Union[str, int]) -> Union[str, int]:
 
 
 @typechecked
-def _parse_posix_standard(
+def _parse_posix_version(
     output: str,
     e_prefix: str,
-    getconf_var: Optional[str],
 ) -> tuple[Optional[dict[str, Any]], Optional[list[Exception]]]:
     """Parse POSIX version string into compliance dict fragment.
 
@@ -64,26 +52,17 @@ def _parse_posix_standard(
 
     :param str output: Raw getconf output (POSIX version string)
     :param str e_prefix: Error prefix for error messages
-    :param Optional[str] getconf_var: Name of the getconf variable to
-        record in canaries, or None to skip canary recording
     :returns tuple: (partial_compliance_dict, errors_or_none) where the
         dict contains 'supported', 'version', and optionally 'canaries'
     """
     result = {}
     errors = []
 
-    # Record raw getconf output for debugging/verification
-    if getconf_var:
-        result["canaries"] = {
-            "getconf": {
-                getconf_var: output,
-            },
-        }
-
     getconf_version = _normalize_output(output)
 
     if getconf_version == -1:
-        return {"supported": False}, None
+        result["supported"] = False
+        return result, None
 
     # POSIX versions are YYYYMM format, first standard was 199009
     try:
@@ -125,87 +104,27 @@ def _parse_posix_standard(
 
 
 @typechecked
-def _parse_xsh_version(
-    rc: int,
-    output: str,
-    e_prefix: str,
-) -> tuple[Optional[dict[str, Any]], Optional[list[Exception]]]:
-    """Parse _POSIX_VERSION getconf output.
-
-    Returns partial compliance dict with POSIX.1 (XSH) information.
-
-    :param int rc: Command return code
-    :param str output: Raw command output
-    :param str e_prefix: Error prefix for error messages
-    :returns tuple: (partial_compliance_dict, errors_or_none)
-    """
-    del rc
-
-    result = {}
-    xsh, errors = _parse_posix_standard(output, e_prefix, "_POSIX_VERSION")
-
-    if xsh:
-        result["xsh"] = xsh
-        return result, errors
-    else:
-        return None, errors
-
-
-@typechecked
-def _parse_xcu_version(
-    rc: int,
-    output: str,
-    e_prefix: str,
-) -> tuple[Optional[dict[str, Any]], Optional[list[Exception]]]:
-    """Parse _POSIX2_VERSION getconf output.
-
-    Returns partial compliance dict with POSIX.1 (XCU) information.
-
-    :param int rc: Command return code
-    :param str output: Raw command output
-    :param str e_prefix: Error prefix for error messages
-    :returns tuple: (partial_compliance_dict, errors_or_none)
-    """
-    del rc
-    result = {}
-    xcu, errors = _parse_posix_standard(output, e_prefix, "_POSIX2_VERSION")
-
-    if xcu:
-        result["xcu"] = xcu
-        return result, errors
-    else:
-        return None, errors
-
-
-@typechecked
 def _parse_xopen_support(
-    rc: int,
     output: str,
     e_prefix: str,
 ) -> tuple[Optional[dict[str, Any]], Optional[list[Exception]]]:
     """Parse _XOPEN_UNIX getconf output.
 
     Returns partial compliance dict with XSI support flag.
-    """
-    del rc
 
-    result = {
-        "xsi": {
-            "canaries": {
-                "getconf": {
-                    "_XOPEN_UNIX": output,
-                }
-            }
-        }
-    }
+    :param str output: Raw command output
+    :param str e_prefix: Error prefix for error messages
+    :returns tuple: (partial_compliance_dict, errors_or_none)
+    """
+    result = {}
     errors = []
 
     if _normalize_output(output) == -1:
-        result["xsi"]["supported"] = False
+        result["supported"] = False
         return result, None
 
     if output == "1":
-        result["xsi"]["supported"] = True
+        result["supported"] = True
         return result, None
 
     errors.append(
@@ -218,28 +137,21 @@ def _parse_xopen_support(
 
 
 @typechecked
-def _parse_xopen_versions(
-    rc: int,
+def _parse_xopen_version(
     output: str,
     e_prefix: str,
 ) -> tuple[Optional[dict[str, Any]], Optional[list[Exception]]]:
     """Parse _XOPEN_VERSION getconf output.
 
-    Returns partial compliance dict with SUS information.
+    Returns partial compliance dict with XSI and XSH information.
+    Note: XCU is NOT populated here - XCU conformance is exclusively
+    determined by _POSIX2_VERSION.
 
-    :param int rc: Command return code
     :param str output: Raw command output
     :param str e_prefix: Error prefix for error messages
     :returns tuple: (partial_compliance_dict, errors_or_none)
     """
-    del rc
-
-    # _XOPEN_VERSION provides info for all three standards at once
-    result = {
-        "xsi": {},
-        "xsh": {},
-        "xcu": {},
-    }
+    result = {}
     errors = []
 
     getconf_version = _normalize_output(output)
@@ -247,44 +159,70 @@ def _parse_xopen_versions(
     if getconf_version == -1:
         return {"supported": False}, None
 
-    # Validate against known X/Open versions (600, 700, 800)
-    valid_xopen_versions = XOPEN_POSIX_VERSION_MAP
-    if getconf_version not in valid_xopen_versions:
-        errors.append(
-            ValueError(
-                f"{e_prefix}Unrecognized XOPEN version from getconf "
-                f"(known versions are {valid_xopen_versions}): "
-                f"{repr(getconf_version)}"
+    try:
+        if int(getconf_version) < 500 or int(getconf_version) % 100 != 0:
+            errors.append(
+                ValueError(
+                    f"{e_prefix}Malformed XOPEN version from getconf "
+                    "(known versions are >= 500 and divisible by 100: "
+                    f"{repr(getconf_version)}"
+                )
             )
+    except TypeError:
+        raise TypeError(
+            f"{e_prefix}Malformed XOPEN version from getconf "
+            "(known versions are >= 500 and divisible by 100: "
+            f"{repr(getconf_version)}"
         )
 
     if errors:
         return None, errors
 
-    # Populate each standard's compliance info from the X/Open version
-    for standard in result:
-        if standard == "xsi":
-            # XSI issue number is version/100 (e.g., 700 -> Issue 7)
-            xsi_issue = int(getconf_version) // 100
-            result["xsi"]["supported"] = True
-            result["xsi"]["version"] = {
-                "issue": xsi_issue,
-                "pretty": f"Issue {xsi_issue}",
-            }
-        else:
-            posix_version = XOPEN_POSIX_VERSION_MAP[getconf_version]
-            result[standard], std_errors = _parse_posix_standard(
-                str(posix_version),
-                e_prefix,
-                None,
-            )
-            if std_errors:
-                errors.extend(std_errors)
-
-        result[standard]["canaries"] = {
-            "getconf": {
-                "_XOPEN_VERSION": output,
-            },
-        }
+    # Populate XSI info
+    xsi_issue = int(getconf_version) // 100
+    result["supported"] = True
+    result["version"] = {
+        "issue": xsi_issue,
+        "pretty": f"Issue {xsi_issue}",
+    }
 
     return result, errors
+
+
+@typechecked
+def _parse_sh_test(
+    output: str,
+    e_prefix: str,
+) -> tuple[Optional[dict[str, Any]], Optional[list[Exception]]]:
+    """Validate POSIX sh test output.
+
+    The sh_test command runs a basic POSIX shell compatibility test:
+    `x=1; [ "$x" = 1 ] && printf "posix sh"`
+
+    If the shell is POSIX-compliant, the output should be exactly
+    "posix sh".
+
+    :param str output: Raw command output
+    :param str e_prefix: Error prefix for error messages
+    :returns tuple: (partial_compliance_dict, errors_or_none)
+    """
+    result = {}
+
+    if output == "posix sh":
+        result["sh_posix_compliant"] = True
+        return result, None
+
+    # Shell test failed or produced unexpected output
+    errors = []
+    if output == "":
+        result["sh_posix_compliant"] = False
+    else:
+        errors.append(
+            ValueError(
+                f"{e_prefix}Unexpected sh test output, expected 'posix sh': "
+                f"{repr(output)}"
+            )
+        )
+        result["sh_posix_compliant"] = False
+
+    return result, errors if errors else None

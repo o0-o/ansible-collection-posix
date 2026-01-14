@@ -250,7 +250,7 @@ class ActionModule(PosixActionBase, ActionBase):
             f'( set +e; ({cmd}) 1>"{tmp}{index}.stdout" '
             f'2>"{tmp}{index}.stderr"; __rc=$?; '
             f'echo $__rc >"{tmp}{index}.rc"; '
-            f'case $__rc in {pattern}) exit 0;; *) exit 1;; esac )'
+            f"case $__rc in {pattern}) exit 0;; *) exit 1;; esac )"
         )
 
     def _build_batch_script(
@@ -282,9 +282,6 @@ class ActionModule(PosixActionBase, ActionBase):
         else:
             cmds = ["set +e"]  # Don't exit on command errors
 
-        # Remove aliases to ensure consistent command behavior
-        cmds.append("unalias -a 2>/dev/null || :")
-
         if self.parallel:
             # Launch all commands in background with timing
             # Write RC to file to avoid stdout interleaving
@@ -298,7 +295,7 @@ class ActionModule(PosixActionBase, ActionBase):
                 )
                 cmds.append(
                     f'(date +%s >"{tmp}{i}.start"; '
-                    f'{wrapper}; '
+                    f"{wrapper}; "
                     f'date +%s >"{tmp}{i}.end") & '
                     f"pid{i}=$!"
                 )

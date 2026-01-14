@@ -12,8 +12,9 @@
 """Command utilities for POSIX action plugins.
 
 Standalone functions for command formatting, argument sanitization,
-interpreter detection, and shell quoting. These functions are designed
-to be used independently of ActionBase classes.
+interpreter detection, shell quoting, and command lookup processing.
+These functions are designed to be used independently of ActionBase
+classes.
 """
 
 from __future__ import annotations
@@ -22,6 +23,10 @@ import shlex
 from typing import Any, Optional, Union
 
 from ansible.module_utils.common.text.converters import to_native
+
+from ansible_collections.o0_o.utils.plugins.module_utils import (
+    typechecked,
+)
 
 
 def format_command(cmd: Union[str, list[str]]) -> str:
@@ -138,3 +143,94 @@ def quote(s: str, shell: Optional[Any] = None) -> str:
         if quote_fn is not None:
             return quote_fn(s)
     return shlex.quote(s)
+
+
+@typechecked
+def process_command_lookups(
+    lookup_results_list: list[dict],
+) -> tuple[dict[str, Any], list[Exception]]:
+    """Process command lookup results into categorized output.
+
+    Takes a list of lookup_command results from process_all_command_results,
+    extracts command paths, aliases, builtins, and missing commands.
+
+    :param list[dict] lookup_results_list: List of lookup_command result
+        dicts, each containing 'args' with 'cmd' key and 'parsed' output
+    :returns tuple[dict[str, Any], list[Exception]]: (result, errors) where
+        result contains 'paths', 'shells' (with aliases/builtins), and
+        'missing_commands'
+    """
+    paths: dict[str, dict] = {}
+    aliases: dict[str, str] = {}
+    builtins: list[str] = []
+    missing: list[str] = []
+    errors: list[Exception] = []
+
+    lookup_results = {}
+    for lookup in lookup_results_list:
+        cmd = lookup["args"]["cmd"]
+        lookup_results[cmd] = lookup
+
+    # First check if `command` itself is missing
+    if "command" in lookup_results:
+        cmd_result = lookup_results["command"]
+        if cmd_result.get("parsed") is None:
+            # If `command` is missing, can't trust other lookups
+            missing.append("command")
+            result = {
+                "paths": paths,
+                "shells": {
+                    "/bin/sh": {"aliases": aliases, "builtins": builtins}
+                },
+                "missing_commands": missing,
+            }
+            return result, errors
+
+    # Process all lookup results
+    for cmd, cmd_result in lookup_results.items():
+        parsed = cmd_result.get("parsed")
+
+        # Command found
+        if parsed is not None:
+            # Alias
+            alias_declaration = f"alias {cmd}="
+            if parsed.startswith(alias_declaration):
+                alias_def = parsed[len(alias_declaration) :]
+                # Remove surrounding quotes if present
+                if f"{alias_def[0]}{alias_def[-1]}" in ['""', "''"]:
+                    alias_def = alias_def[1:-1]
+                aliases[cmd] = alias_def
+
+            # Path
+            elif parsed.startswith("/"):
+                paths[parsed] = {}
+
+            # Builtin (output equals command name)
+            elif parsed.startswith(cmd):
+                builtins.append(cmd)
+
+            # Unexpected output format
+            else:
+                errors.append(
+                    RuntimeError(
+                        f"Unexpected 'command -v {cmd}' output: "
+                        f"{repr(parsed)}"
+                    )
+                )
+
+        # Command not found
+        else:
+            missing.append(cmd)
+
+    result = {
+        "paths": paths,
+        "shells": {
+            "/bin/sh": {
+                "aliases": aliases,
+                "builtins": sorted(builtins),
+            },
+        },
+        "missing_commands": sorted(missing),
+    }
+
+    return result, errors
