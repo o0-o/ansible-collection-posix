@@ -41,6 +41,15 @@ from ansible_collections.o0_o.posix.plugins.module_utils.uname_utils import (
     _parse_uname,
 )
 
+# Env variable collection spec (no parser — true passthrough)
+ENV_COMMAND_SPEC = {
+    "posix": {
+        "env_var": {
+            "command": "set -eu; printf '%s' \"${{{env}}}\"",
+        },
+    },
+}
+
 # Generic reusable command specifications
 COMMAND_SPEC = {
     "posix": {

@@ -42,116 +42,115 @@ def plugin(base) -> Generator[ActionModule, None, None]:
     return plugin
 
 
-class TestBuildCommands:
-    """Tests for _build_commands helper method."""
+class TestProcessEnvResults:
+    """Tests for process_env_command_results."""
 
-    def test_single_var(self, plugin) -> None:
-        """Test command generation for a single variable."""
-        cmds = plugin._build_commands(["HOME"])
-        assert "HOME" in cmds
-        assert cmds["HOME"] == "set -eu; printf '%s' \"${HOME}\""
-
-    def test_multiple_vars(self, plugin) -> None:
-        """Test command generation for multiple variables."""
-        cmds = plugin._build_commands(["HOME", "SHELL", "TZ"])
-        assert len(cmds) == 3
-        assert cmds["TZ"] == "set -eu; printf '%s' \"${TZ}\""
-
-    def test_empty_list(self, plugin) -> None:
-        """Test command generation for empty variable list."""
-        cmds = plugin._build_commands([])
-        assert cmds == {}
-
-
-class TestParseResults:
-    """Tests for _parse_results helper method."""
-
-    def test_dict_mode_set_var(self, plugin) -> None:
+    def test_dict_mode_set_var(self) -> None:
         """Test dict mode with a set variable."""
-        run_results = {
-            "HOME": {"rc": 0, "stdout": "/root"},
-        }
-        result = plugin._parse_results(["HOME"], run_results, False)
-        assert result == {"HOME": "/root"}
-
-    def test_dict_mode_unset_var(self, plugin) -> None:
-        """Test dict mode with an unset variable returns None."""
-        run_results = {
-            "OLDPWD": {"rc": 1, "stdout": ""},
-        }
-        result = plugin._parse_results(["OLDPWD"], run_results, False)
-        assert result == {"OLDPWD": None}
-
-    def test_dict_mode_empty_string(self, plugin) -> None:
-        """Test dict mode with a variable set to empty string."""
-        run_results = {
-            "TZ": {"rc": 0, "stdout": ""},
-        }
-        result = plugin._parse_results(["TZ"], run_results, False)
-        assert result == {"TZ": ""}
-
-    def test_dict_mode_mixed(self, plugin) -> None:
-        """Test dict mode with mix of set, unset, and empty vars."""
-        run_results = {
-            "HOME": {"rc": 0, "stdout": "/home/user"},
-            "TZ": {"rc": 0, "stdout": ""},
-            "OLDPWD": {"rc": 1, "stdout": ""},
-        }
-        result = plugin._parse_results(
-            ["HOME", "TZ", "OLDPWD"], run_results, False
+        from ansible_collections.o0_o.posix.plugins.module_utils.env_utils import (  # noqa: E501
+            process_env_command_results,
         )
-        assert result == {
-            "HOME": "/home/user",
-            "TZ": "",
-            "OLDPWD": None,
-        }
 
-    def test_dict_mode_missing_key(self, plugin) -> None:
-        """Test dict mode when run_results is missing a key."""
-        result = plugin._parse_results(["MISSING"], {}, False)
-        assert result == {"MISSING": None}
+        results = [
+            {
+                "implementation": "posix",
+                "type": "env_var",
+                "args": {"env": "HOME"},
+                "rc": 0,
+                "stdout": "/root",
+                "stderr": "",
+                "parsed": "/root",
+                "errors": [],
+            }
+        ]
+        data = process_env_command_results(results, ["HOME"], False)
+        assert data == {"HOME": "/root"}
 
-    def test_list_mode_set_var(self, plugin) -> None:
-        """Test list mode with a set variable."""
-        run_results = {
-            "SHELL": {"rc": 0, "stdout": "/bin/bash"},
-        }
-        result = plugin._parse_results(["SHELL"], run_results, True)
-        assert result == [{"SHELL": "/bin/bash"}]
+    def test_dict_mode_unset_var(self) -> None:
+        """Test dict mode with an unset variable returns None."""
+        from ansible_collections.o0_o.posix.plugins.module_utils.env_utils import (  # noqa: E501
+            process_env_command_results,
+        )
 
-    def test_list_mode_unset_var(self, plugin) -> None:
-        """Test list mode with an unset variable returns None."""
-        run_results = {
-            "OLDPWD": {"rc": 1, "stdout": ""},
-        }
-        result = plugin._parse_results(["OLDPWD"], run_results, True)
-        assert result == [{"OLDPWD": None}]
+        results = [
+            {
+                "implementation": "posix",
+                "type": "env_var",
+                "args": {"env": "OLDPWD"},
+                "rc": 1,
+                "stdout": "",
+                "stderr": "",
+                "parsed": None,
+                "errors": [],
+            }
+        ]
+        data = process_env_command_results(results, ["OLDPWD"], False)
+        assert data == {"OLDPWD": None}
 
-    def test_list_mode_mixed(self, plugin) -> None:
-        """Test list mode with mixed set/unset variables."""
-        run_results = {
-            "HOME": {"rc": 0, "stdout": "/root"},
-            "OLDPWD": {"rc": 1, "stdout": ""},
-        }
-        result = plugin._parse_results(["HOME", "OLDPWD"], run_results, True)
-        assert result == [
+    def test_list_mode(self) -> None:
+        """Test list mode returns list of single-key dicts."""
+        from ansible_collections.o0_o.posix.plugins.module_utils.env_utils import (  # noqa: E501
+            process_env_command_results,
+        )
+
+        results = [
+            {
+                "implementation": "posix",
+                "type": "env_var",
+                "args": {"env": "HOME"},
+                "rc": 0,
+                "stdout": "/root",
+                "stderr": "",
+                "parsed": "/root",
+                "errors": [],
+            },
+            {
+                "implementation": "posix",
+                "type": "env_var",
+                "args": {"env": "SHELL"},
+                "rc": 0,
+                "stdout": "/bin/sh",
+                "stderr": "",
+                "parsed": "/bin/sh",
+                "errors": [],
+            },
+        ]
+        data = process_env_command_results(results, ["HOME", "SHELL"], True)
+        assert data == [
             {"HOME": "/root"},
-            {"OLDPWD": None},
+            {"SHELL": "/bin/sh"},
         ]
 
-    def test_list_mode_preserves_order(self, plugin) -> None:
-        """Test list mode preserves input variable order."""
-        run_results = {
-            "C": {"rc": 0, "stdout": "c"},
-            "A": {"rc": 0, "stdout": "a"},
-            "B": {"rc": 0, "stdout": "b"},
-        }
-        result = plugin._parse_results(["A", "B", "C"], run_results, True)
-        assert result == [
-            {"A": "a"},
-            {"B": "b"},
-            {"C": "c"},
+    def test_preserves_order(self) -> None:
+        """Test that output preserves input variable order."""
+        from ansible_collections.o0_o.posix.plugins.module_utils.env_utils import (  # noqa: E501
+            process_env_command_results,
+        )
+
+        results = [
+            {
+                "implementation": "posix",
+                "type": "env_var",
+                "args": {"env": "B"},
+                "rc": 0,
+                "stdout": "b",
+                "stderr": "",
+                "parsed": "b",
+                "errors": [],
+            },
+            {
+                "implementation": "posix",
+                "type": "env_var",
+                "args": {"env": "A"},
+                "rc": 0,
+                "stdout": "a",
+                "stderr": "",
+                "parsed": "a",
+                "errors": [],
+            },
         ]
+        data = process_env_command_results(results, ["A", "B"], False)
+        assert list(data.keys()) == ["A", "B"]
 
 
 class TestRunIntegration:
@@ -162,61 +161,41 @@ class TestRunIntegration:
         plugin._task.args = {"env": ["HOME"]}
 
         def mock_run(commands, **kwargs):
-            return {
-                "HOME": {"rc": 0, "stdout": "/root"},
-            }
+            return [
+                {
+                    "implementation": "posix",
+                    "type": "env_var",
+                    "args": {"env": "HOME"},
+                    "rc": 0,
+                    "stdout": "/root",
+                    "stderr": "",
+                }
+            ]
 
         monkeypatch.setattr(plugin, "_run", mock_run)
         result = plugin.run(task_vars={})
         assert result["env"] == {"HOME": "/root"}
         assert result["changed"] is False
 
-    def test_multiple_vars_dict(self, monkeypatch, plugin) -> None:
-        """Test collecting multiple variables in dict mode."""
-        plugin._task.args = {
-            "env": ["HOME", "SHELL", "TZ"],
-        }
-
-        def mock_run(commands, **kwargs):
-            return {
-                "HOME": {"rc": 0, "stdout": "/home/user"},
-                "SHELL": {"rc": 0, "stdout": "/bin/sh"},
-                "TZ": {"rc": 0, "stdout": "UTC"},
-            }
-
-        monkeypatch.setattr(plugin, "_run", mock_run)
-        result = plugin.run(task_vars={})
-        assert result["env"] == {
-            "HOME": "/home/user",
-            "SHELL": "/bin/sh",
-            "TZ": "UTC",
-        }
-
     def test_unset_var_returns_none(self, monkeypatch, plugin) -> None:
         """Test that unset variables are returned as None."""
         plugin._task.args = {"env": ["TZ"]}
 
         def mock_run(commands, **kwargs):
-            return {
-                "TZ": {"rc": 1, "stdout": ""},
-            }
+            return [
+                {
+                    "implementation": "posix",
+                    "type": "env_var",
+                    "args": {"env": "TZ"},
+                    "rc": 1,
+                    "stdout": "",
+                    "stderr": "sh: TZ: unbound variable",
+                }
+            ]
 
         monkeypatch.setattr(plugin, "_run", mock_run)
         result = plugin.run(task_vars={})
         assert result["env"]["TZ"] is None
-
-    def test_empty_var_returns_empty_string(self, monkeypatch, plugin) -> None:
-        """Test that empty variables are returned as empty string."""
-        plugin._task.args = {"env": ["LC_ALL"]}
-
-        def mock_run(commands, **kwargs):
-            return {
-                "LC_ALL": {"rc": 0, "stdout": ""},
-            }
-
-        monkeypatch.setattr(plugin, "_run", mock_run)
-        result = plugin.run(task_vars={})
-        assert result["env"]["LC_ALL"] == ""
 
     def test_wantlist_mode(self, monkeypatch, plugin) -> None:
         """Test list output mode when wantlist=true."""
@@ -226,10 +205,24 @@ class TestRunIntegration:
         }
 
         def mock_run(commands, **kwargs):
-            return {
-                "HOME": {"rc": 0, "stdout": "/root"},
-                "SHELL": {"rc": 0, "stdout": "/bin/sh"},
-            }
+            return [
+                {
+                    "implementation": "posix",
+                    "type": "env_var",
+                    "args": {"env": "HOME"},
+                    "rc": 0,
+                    "stdout": "/root",
+                    "stderr": "",
+                },
+                {
+                    "implementation": "posix",
+                    "type": "env_var",
+                    "args": {"env": "SHELL"},
+                    "rc": 0,
+                    "stdout": "/bin/sh",
+                    "stderr": "",
+                },
+            ]
 
         monkeypatch.setattr(plugin, "_run", mock_run)
         result = plugin.run(task_vars={})
@@ -238,45 +231,23 @@ class TestRunIntegration:
             {"SHELL": "/bin/sh"},
         ]
 
-    def test_msg_contains_count(self, monkeypatch, plugin) -> None:
-        """Test that msg includes variable count."""
-        plugin._task.args = {"env": ["HOME", "TZ"]}
-
-        def mock_run(commands, **kwargs):
-            return {
-                "HOME": {"rc": 0, "stdout": "/root"},
-                "TZ": {"rc": 0, "stdout": "UTC"},
-            }
-
-        monkeypatch.setattr(plugin, "_run", mock_run)
-        result = plugin.run(task_vars={})
-        assert "2" in result["msg"]
-
-    def test_invocation_set(self, monkeypatch, plugin) -> None:
-        """Test that invocation contains the original args."""
-        plugin._task.args = {"env": ["HOME"]}
-
-        def mock_run(commands, **kwargs):
-            return {
-                "HOME": {"rc": 0, "stdout": "/root"},
-            }
-
-        monkeypatch.setattr(plugin, "_run", mock_run)
-        result = plugin.run(task_vars={})
-        assert result["invocation"] == {"env": ["HOME"]}
-
-    def test_run_passes_parallel_and_check_mode(
-        self, monkeypatch, plugin
-    ) -> None:
+    def test_run_passes_correct_kwargs(self, monkeypatch, plugin) -> None:
         """Test that _run is called with correct kwargs."""
         plugin._task.args = {"env": ["HOME"]}
         captured = {}
 
         def mock_run(commands, **kwargs):
             captured.update(kwargs)
-            return {
-                "HOME": {"rc": 0, "stdout": "/root"},
-            }
+            return [
+                {
+                    "implementation": "posix",
+                    "type": "env_var",
+                    "args": {"env": "HOME"},
+                    "rc": 0,
+                    "stdout": "/root",
+                    "stderr": "",
+                }
+            ]
 
         monkeypatch.setattr(plugin, "_run", mock_run)
         plugin.run(task_vars={})

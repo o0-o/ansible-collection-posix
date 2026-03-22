@@ -18,6 +18,10 @@ from ansible_collections.o0_o.posix.plugins.module_utils.df_utils import (
     parse_df,
     parse_df_entry,
 )
+from ansible_collections.o0_o.posix.plugins.module_utils.env_utils import (
+    get_env_command_requests,
+    process_env_command_results,
+)
 from ansible_collections.o0_o.posix.plugins.module_utils.dmidecode_utils import (  # noqa: E501
     dmidecode,
     get_dmidecode_command_requests,
@@ -178,7 +182,9 @@ __all__ = [
     # "stat",
     "normalize_source",
     "process_registered_result",
+    "get_env_command_requests",
     "get_locale_command_requests",
+    "process_env_command_results",
     "process_locale_command_results",
     "get_uname_command_requests",
     "process_uname_command_results",

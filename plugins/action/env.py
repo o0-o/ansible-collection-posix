@@ -18,14 +18,19 @@ from ansible.plugins.action import ActionBase
 from ansible_collections.o0_o.posix.plugins.module_utils import (
     PosixActionBase,
 )
+from ansible_collections.o0_o.posix.plugins.module_utils.env_utils import (
+    get_env_command_requests,
+    process_env_command_results,
+)
 
 
 class ActionModule(PosixActionBase, ActionBase):
     """Collect specific environment variables from POSIX hosts.
 
-    Runs ``set -eu; printf '%s' "$VAR"`` for each requested variable
-    in parallel.  Unset variables produce a non-zero exit code (via
-    ``set -u``) and are returned as ``None``.
+    Uses the COMMAND_SPEC pattern to run
+    ``set -eu; printf '%s' "$VAR"`` for each requested variable
+    in parallel.  Unset variables produce a non-zero exit code
+    (via ``set -u``) and are returned as ``None``.
     """
 
     TRANSFERS_FILES = False
@@ -33,59 +38,6 @@ class ActionModule(PosixActionBase, ActionBase):
     _supports_check_mode = True
     _supports_async = False
     _supports_diff = False
-
-    def _build_commands(
-        self,
-        env_vars: list[str],
-    ) -> dict[str, str]:
-        """Build the command dict for parallel execution.
-
-        :param list[str] env_vars: Environment variable names to
-            collect
-        :returns dict[str, str]: Mapping of variable names to shell
-            commands
-        """
-        return {
-            var: f"set -eu; printf '%s' \"${{{var}}}\"" for var in env_vars
-        }
-
-    def _parse_results(
-        self,
-        env_vars: list[str],
-        run_results: dict[str, dict[str, Any]],
-        wantlist: bool,
-    ) -> Any:
-        """Parse run results into the requested output format.
-
-        :param list[str] env_vars: Original variable names (for
-            ordering)
-        :param dict[str, dict[str, Any]] run_results: Results from
-            _run() keyed by variable name
-        :param bool wantlist: Return list of single-key dicts when
-            True
-        :returns Any: Dict or list depending on wantlist
-        """
-        if wantlist:
-            result = []
-            for var in env_vars:
-                cmd_result = run_results.get(var, {})
-                value = (
-                    None
-                    if cmd_result.get("rc", 1) != 0
-                    else cmd_result.get("stdout", "")
-                )
-                result.append({var: value})
-            return result
-
-        result = {}
-        for var in env_vars:
-            cmd_result = run_results.get(var, {})
-            result[var] = (
-                None
-                if cmd_result.get("rc", 1) != 0
-                else cmd_result.get("stdout", "")
-            )
-        return result
 
     def run(
         self,
@@ -126,31 +78,31 @@ class ActionModule(PosixActionBase, ActionBase):
         env_vars = new_args["env"]
         wantlist = new_args.get("wantlist", False)
 
-        # Build and execute commands in parallel
-        commands = self._build_commands(env_vars)
-
         self._display.vvv(
-            f"Collecting {len(env_vars)} environment variable(s): "
-            f"{', '.join(env_vars)}"
+            f"Collecting {len(env_vars)} environment"
+            f" variable(s): {', '.join(env_vars)}"
         )
 
+        # Build and execute via COMMAND_SPEC
+        cmds = get_env_command_requests(env_vars)
+
         run_results = self._run(
-            commands,
+            cmds,
             parallel=True,
             fail_fast=False,
             task_vars=task_vars,
             check_mode=False,
         )
 
-        # Parse results
-        env_data = self._parse_results(env_vars, run_results, wantlist)
+        # Process results
+        env_data = process_env_command_results(run_results, env_vars, wantlist)
 
         result.update(
             {
                 "changed": False,
                 "env": env_data,
                 "msg": (
-                    f"Collected {len(env_vars)} environment" f" variable(s)"
+                    f"Collected {len(env_vars)}" f" environment variable(s)"
                 ),
             }
         )
