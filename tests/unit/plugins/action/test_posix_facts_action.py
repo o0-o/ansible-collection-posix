@@ -94,103 +94,94 @@ class TestResolveSubsets:
             plugin._resolve_subsets(["invalid_subset"])
 
 
-class TestGatherMethods:
-    """Tests for individual _gather_* methods."""
+class TestMergeFacts:
+    """Tests for _merge_facts helper."""
 
-    def test_gather_uname(self, monkeypatch, plugin) -> None:
-        """Test _gather_uname parses uname output."""
-        from ansible_collections.o0_o.posix.plugins.action import (
-            facts as facts_mod,
+    def test_merge_new_namespace(self, plugin) -> None:
+        """Test merging into empty accumulator."""
+        acc = {}
+        plugin._merge_facts(acc, {"o0_os": {"kernel": {"name": "linux"}}})
+        assert acc == {"o0_os": {"kernel": {"name": "linux"}}}
+
+    def test_merge_deep(self, plugin) -> None:
+        """Test deep merge of nested dicts."""
+        acc = {"o0_hardware": {"baseboard": {"arch": "x86_64"}}}
+        plugin._merge_facts(
+            acc,
+            {"o0_hardware": {"baseboard": {"make": "Dell"}}},
+        )
+        assert acc["o0_hardware"]["baseboard"] == {
+            "arch": "x86_64",
+            "make": "Dell",
+        }
+
+    def test_merge_replaces_non_dict(self, plugin) -> None:
+        """Test that non-dict values are replaced."""
+        acc = {"o0_os": {"shells": ["old"]}}
+        plugin._merge_facts(acc, {"o0_os": {"shells": ["new"]}})
+        assert acc["o0_os"]["shells"] == ["new"]
+
+
+class TestBatchedExecution:
+    """Tests for the batched COMMAND_SPEC path."""
+
+    def test_uname_in_batched_subsets(self, plugin) -> None:
+        """Test uname is listed as a batched subset."""
+        assert "uname" in plugin.BATCHED_SUBSETS
+
+    def test_compliance_in_batched_subsets(self, plugin) -> None:
+        """Test compliance is listed as a batched subset."""
+        assert "compliance" in plugin.BATCHED_SUBSETS
+
+    def test_batched_requests_callable(self, plugin) -> None:
+        """Test that batched request functions are callable."""
+        for subset, spec in plugin.BATCHED_SUBSETS.items():
+            assert callable(spec["requests"])
+            assert callable(spec["processor"])
+
+    def test_run_batched_uname_only(self, monkeypatch, plugin) -> None:
+        """Test run with only uname subset uses batched path."""
+        plugin._task.args = {"gather_subset": ["!all", "uname"]}
+
+        run_called = {}
+
+        def mock_run(commands, **kwargs):
+            run_called["commands"] = commands
+            return []
+
+        monkeypatch.setattr(plugin, "_run", mock_run)
+
+        # Patch the processor in the BATCHED_SUBSETS dict
+        mock_processor = lambda results: (
+            {
+                "o0_os": {"kernel": {"name": "linux"}},
+                "o0_network": {"hostname": {"short": "host"}},
+            },
+            [],
+        )
+        monkeypatch.setitem(
+            plugin.BATCHED_SUBSETS["uname"],
+            "processor",
+            mock_processor,
         )
 
-        def mock_parse(output, e_prefix):
-            return (
-                {
-                    "kernel": {"name": "linux", "pretty": "Linux"},
-                    "hostname": {"short": "host"},
-                    "architecture": "x86_64",
-                },
-                [],
-            )
+        result = plugin.run(tmp=None, task_vars={})
 
-        monkeypatch.setattr(facts_mod, "_parse_uname", mock_parse)
-
-        def mock_command(cmd, task_vars=None, **kwargs):
-            return {"rc": 0, "stdout": "Linux host 5.15.0"}
-
-        monkeypatch.setattr(plugin, "_command", mock_command)
-
-        result = plugin._gather_uname(task_vars={})
-        assert result["o0_os"]["kernel"]["name"] == "linux"
-        assert result["o0_network"]["hostname"]["short"] == "host"
-        assert result["o0_hardware"]["baseboard"]["architecture"] == "x86_64"
-
-    def test_gather_uname_empty_returns_empty(
-        self, monkeypatch, plugin
-    ) -> None:
-        """Test _gather_uname returns empty on parse failure."""
-        from ansible_collections.o0_o.posix.plugins.action import (
-            facts as facts_mod,
-        )
-
-        def mock_parse(output, e_prefix):
-            return None, [ValueError("empty")]
-
-        monkeypatch.setattr(facts_mod, "_parse_uname", mock_parse)
-
-        def mock_command(cmd, task_vars=None, **kwargs):
-            return {"rc": 0, "stdout": ""}
-
-        monkeypatch.setattr(plugin, "_command", mock_command)
-
-        result = plugin._gather_uname(task_vars={})
-        assert result == {}
-
-    def test_gather_compliance(self, monkeypatch, plugin) -> None:
-        """Test _gather_compliance delegates to compliance module."""
-
-        def mock_execute(module_name, module_args, task_vars=None):
-            if module_name == "o0_o.posix.compliance":
-                return {"compliance": {"posix": {"supported": True}}}
-            return {}
-
-        monkeypatch.setattr(plugin, "_execute_module", mock_execute)
-
-        result = plugin._gather_compliance(task_vars={})
-        assert result["o0_os"]["compliance"]["posix"]["supported"] is True
-
-    def test_gather_compliance_failure_returns_empty(
-        self, monkeypatch, plugin
-    ) -> None:
-        """Test _gather_compliance returns empty on failure."""
-
-        def mock_execute(module_name, module_args, task_vars=None):
-            return {"failed": True}
-
-        monkeypatch.setattr(plugin, "_execute_module", mock_execute)
-
-        result = plugin._gather_compliance(task_vars={})
-        assert result == {}
+        assert "commands" in run_called
+        assert result["ansible_facts"]["o0_os"]["kernel"]["name"] == "linux"
+        assert result["changed"] is False
 
 
-class TestRun:
-    """Tests for the full run() method."""
+class TestLegacyExecution:
+    """Tests for the legacy gather method path."""
 
-    def test_connection_failure_propagates(self, monkeypatch, plugin) -> None:
-        """Test that connection failures are propagated."""
-        plugin._task.args = {"gather_subset": ["uname"]}
+    def test_locale_in_legacy(self, plugin) -> None:
+        """Test locale is listed as a legacy subset."""
+        assert "locale" in plugin.LEGACY_METHODS
 
-        def mock_command(cmd, task_vars=None, **kwargs):
-            raise AnsibleConnectionFailure("connection lost")
-
-        monkeypatch.setattr(plugin, "_command", mock_command)
-
-        with pytest.raises(AnsibleConnectionFailure):
-            plugin.run(tmp=None, task_vars={})
-
-    def test_subset_failure_warns(self, monkeypatch, plugin) -> None:
-        """Test that subset failures emit warnings, not errors."""
-        plugin._task.args = {"gather_subset": ["hardware"]}
+    def test_legacy_failure_warns(self, monkeypatch, plugin) -> None:
+        """Test that legacy subset failures emit warnings."""
+        plugin._task.args = {"gather_subset": ["!all", "hardware"]}
 
         def mock_command(cmd, task_vars=None, **kwargs):
             raise RuntimeError("dmidecode not found")
@@ -202,26 +193,25 @@ class TestRun:
         assert "ansible_facts" in result
         plugin._display.warning.assert_called()
 
-    def test_result_has_invocation(self, monkeypatch, plugin) -> None:
-        """Test that result includes invocation."""
-        plugin._task.args = {"gather_subset": ["!all", "uname"]}
 
-        from ansible_collections.o0_o.posix.plugins.action import (
-            facts as facts_mod,
-        )
+class TestRun:
+    """Tests for the full run() method."""
 
-        def mock_parse(output, e_prefix):
-            return (
-                {"kernel": {"name": "linux"}},
-                [],
-            )
-
-        monkeypatch.setattr(facts_mod, "_parse_uname", mock_parse)
+    def test_connection_failure_propagates(self, monkeypatch, plugin) -> None:
+        """Test that connection failures are propagated."""
+        plugin._task.args = {"gather_subset": ["!all", "locale"]}
 
         def mock_command(cmd, task_vars=None, **kwargs):
-            return {"rc": 0, "stdout": "Linux"}
+            raise AnsibleConnectionFailure("connection lost")
 
         monkeypatch.setattr(plugin, "_command", mock_command)
+
+        with pytest.raises(AnsibleConnectionFailure):
+            plugin.run(tmp=None, task_vars={})
+
+    def test_result_has_invocation(self, monkeypatch, plugin) -> None:
+        """Test that result includes invocation."""
+        plugin._task.args = {"gather_subset": ["!all"]}
 
         result = plugin.run(tmp=None, task_vars={})
         assert "invocation" in result
@@ -232,3 +222,10 @@ class TestRun:
 
         result = plugin.run(tmp=None, task_vars={})
         assert result["changed"] is False
+
+    def test_empty_subset_returns_empty_facts(self, plugin) -> None:
+        """Test that !all returns empty ansible_facts."""
+        plugin._task.args = {"gather_subset": ["!all"]}
+
+        result = plugin.run(tmp=None, task_vars={})
+        assert result["ansible_facts"] == {}

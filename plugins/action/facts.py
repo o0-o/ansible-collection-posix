@@ -21,13 +21,16 @@ from ansible_collections.o0_o.posix.plugins.module_utils import (
     PosixActionBase,
     dmidecode,
     fstab,
+    get_compliance_command_requests,
+    group_info,
     mount,
     parse_shells,
     passwd_info,
-    group_info,
+    process_all_compliance_command_results,
 )
 from ansible_collections.o0_o.posix.plugins.module_utils.uname_utils import (
-    _parse_uname,
+    get_uname_command_requests,
+    process_uname_command_results,
 )
 
 
@@ -37,6 +40,10 @@ class ActionModule(PosixActionBase, ActionBase):
     Collects system information using shell commands and file reads,
     organized into logical namespaces: o0_os, o0_hardware,
     o0_storage, and o0_network.
+
+    Subsets with COMMAND_SPEC support (uname, compliance) are batched
+    into a single parallel ``_run()`` call.  Remaining subsets use
+    individual gather methods.
     """
 
     TRANSFERS_FILES = False
@@ -60,50 +67,56 @@ class ActionModule(PosixActionBase, ActionBase):
         "storage": {"mounts", "fstab"},
     }
 
-    # Map individual subsets to gathering methods
-    SUBSET_METHODS = {
-        "uname": "_gather_uname",
+    # Subsets that use the COMMAND_SPEC batched path
+    BATCHED_SUBSETS = {
+        "uname": {
+            "requests": get_uname_command_requests,
+            "processor": process_uname_command_results,
+        },
+        "compliance": {
+            "requests": get_compliance_command_requests,
+            "processor": process_all_compliance_command_results,
+        },
+    }
+
+    # Subsets that use individual gather methods (legacy path)
+    LEGACY_METHODS = {
         "locale": "_gather_locale",
         "timezone": "_gather_timezone",
         "hardware": "_gather_hardware",
-        "compliance": "_gather_compliance",
         "mounts": "_gather_mounts",
         "fstab": "_gather_fstab",
         "users": "_gather_users",
     }
 
-    def _gather_uname(
-        self, task_vars: Optional[dict[str, Any]] = None
-    ) -> dict[str, Any]:
-        """Gather kernel, hostname, and architecture from uname.
+    # All valid subsets (union of both)
+    SUBSET_METHODS = {
+        **{k: None for k in BATCHED_SUBSETS},
+        **LEGACY_METHODS,
+    }
 
-        :param Optional[dict[str, Any]] task_vars: Task variables
-        :returns dict[str, Any]: Uname facts
+    def _merge_facts(
+        self,
+        all_facts: dict[str, Any],
+        subset_facts: dict[str, Any],
+    ) -> None:
+        """Deep merge subset facts into the accumulator.
+
+        :param dict[str, Any] all_facts: Accumulator to merge into
+        :param dict[str, Any] subset_facts: Facts to merge
         """
-        cmd_result = self._command(["uname", "-a"], task_vars=task_vars)
-        uname_output = cmd_result.get("stdout", "")
-        parsed, errors = _parse_uname(uname_output, "[uname] ")
-
-        if errors:
-            for err in errors:
-                self._display.warning(f"[{self.inventory_hostname}] {err}")
-        if parsed is None:
-            return {}
-
-        facts = {}
-
-        if "kernel" in parsed:
-            facts.setdefault("o0_os", {})["kernel"] = parsed["kernel"]
-
-        if "hostname" in parsed:
-            facts.setdefault("o0_network", {})["hostname"] = parsed["hostname"]
-
-        if "architecture" in parsed:
-            facts.setdefault("o0_hardware", {}).setdefault("baseboard", {})[
-                "architecture"
-            ] = parsed["architecture"]
-
-        return facts
+        for ns, ns_facts in subset_facts.items():
+            if ns not in all_facts:
+                all_facts[ns] = {}
+            for key, value in ns_facts.items():
+                if (
+                    key in all_facts[ns]
+                    and isinstance(all_facts[ns][key], dict)
+                    and isinstance(value, dict)
+                ):
+                    all_facts[ns][key].update(value)
+                else:
+                    all_facts[ns][key] = value
 
     def _gather_locale(
         self, task_vars: Optional[dict[str, Any]] = None
@@ -168,7 +181,9 @@ class ActionModule(PosixActionBase, ActionBase):
         :returns dict[str, Any]: Hardware facts
         """
         cmd_result = self._command(
-            ["dmidecode"], task_vars=task_vars, check_mode=False
+            ["dmidecode"],
+            task_vars=task_vars,
+            check_mode=False,
         )
 
         if cmd_result.get("rc") != 0:
@@ -190,29 +205,6 @@ class ActionModule(PosixActionBase, ActionBase):
                 hw_facts[key] = hardware[key]
 
         return {"o0_hardware": hw_facts}
-
-    def _gather_compliance(
-        self, task_vars: Optional[dict[str, Any]] = None
-    ) -> dict[str, Any]:
-        """Gather POSIX/SUS compliance information.
-
-        :param Optional[dict[str, Any]] task_vars: Task variables
-        :returns dict[str, Any]: Compliance facts
-        """
-        compliance_result = self._execute_module(
-            module_name="o0_o.posix.compliance",
-            module_args={},
-            task_vars=task_vars,
-        )
-
-        if compliance_result.get("failed"):
-            return {}
-
-        compliance_data = compliance_result.get("compliance", {})
-        if not compliance_data:
-            return {}
-
-        return {"o0_os": {"compliance": compliance_data}}
 
     def _gather_mounts(
         self, task_vars: Optional[dict[str, Any]] = None
@@ -324,6 +316,10 @@ class ActionModule(PosixActionBase, ActionBase):
     ) -> dict[str, Any]:
         """Execute fact gathering for selected subsets.
 
+        Batched subsets (uname, compliance) have their command
+        requests aggregated and executed in a single parallel
+        ``_run()`` call.  Legacy subsets run individually.
+
         :param Optional[str] tmp: Unused temporary directory path
         :param Optional[dict[str, Any]] task_vars: Available Ansible
             variables
@@ -348,40 +344,67 @@ class ActionModule(PosixActionBase, ActionBase):
         )
         result["invocation"] = self._task.args.copy()
 
-        # Resolve subsets
         selected_subsets = self._resolve_subsets(new_args["gather_subset"])
 
         self._display.vvv(
-            f"Gathering fact subsets: {', '.join(sorted(selected_subsets))}"
+            "Gathering fact subsets: " f"{', '.join(sorted(selected_subsets))}"
         )
 
-        # Gather facts for each selected subset
         all_facts = {}
 
-        for subset in selected_subsets:
-            if subset not in self.SUBSET_METHODS:
-                continue
+        # Phase 1: Aggregate and execute batched subsets
+        batched_selected = selected_subsets & self.BATCHED_SUBSETS.keys()
+        if batched_selected:
+            # Collect command requests from all batched subsets
+            all_requests = []
+            for subset in batched_selected:
+                spec = self.BATCHED_SUBSETS[subset]
+                requests = spec["requests"]()
+                self._display.vvv(
+                    f"Batched {subset}: " f"{len(requests)} command(s)"
+                )
+                all_requests.extend(requests)
 
-            method_name = self.SUBSET_METHODS[subset]
+            self._display.vvv(
+                f"Executing {len(all_requests)} batched "
+                f"command(s) for "
+                f"{', '.join(sorted(batched_selected))}"
+            )
+
+            # Single _run() call for all batched commands
+            run_results = self._run(
+                all_requests,
+                parallel=True,
+                fail_fast=False,
+                task_vars=task_vars,
+                check_mode=False,
+            )
+
+            # Distribute results to each subset's processor
+            for subset in batched_selected:
+                spec = self.BATCHED_SUBSETS[subset]
+                try:
+                    facts, errors = spec["processor"](run_results)
+                    for err in errors:
+                        self._display.warning(
+                            f"[{self.inventory_hostname}] " f"{err}"
+                        )
+                    self._merge_facts(all_facts, facts)
+                except Exception as e:
+                    self._display.warning(
+                        f"[{self.inventory_hostname}] "
+                        f"Failed to process {subset}: {e}"
+                    )
+
+        # Phase 2: Execute legacy subsets individually
+        legacy_selected = selected_subsets & self.LEGACY_METHODS.keys()
+        for subset in legacy_selected:
+            method_name = self.LEGACY_METHODS[subset]
             gather_method = getattr(self, method_name)
 
             try:
                 subset_facts = gather_method(task_vars=task_vars)
-
-                # Deep merge subset_facts into all_facts
-                for ns, ns_facts in subset_facts.items():
-                    if ns not in all_facts:
-                        all_facts[ns] = {}
-                    for key, value in ns_facts.items():
-                        if (
-                            key in all_facts[ns]
-                            and isinstance(all_facts[ns][key], dict)
-                            and isinstance(value, dict)
-                        ):
-                            all_facts[ns][key].update(value)
-                        else:
-                            all_facts[ns][key] = value
-
+                self._merge_facts(all_facts, subset_facts)
             except AnsibleConnectionFailure:
                 raise
             except Exception as e:
