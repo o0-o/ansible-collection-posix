@@ -58,9 +58,11 @@ from ansible_collections.o0_o.posix.plugins.module_utils.passwd_utils import (
     passwd_info,
 )
 from ansible_collections.o0_o.posix.plugins.module_utils.mount_utils import (
+    get_mount_command_requests,
     mount,
     parse_mount,
     parse_mount_entry,
+    process_mount_command_results,
 )
 from ansible_collections.o0_o.posix.plugins.module_utils.ps_utils import (
     ps,
@@ -153,9 +155,11 @@ __all__ = [
     "group_info",
     "normalize_group_members",
     "passwd_info",
+    "get_mount_command_requests",
     "mount",
     "parse_mount",
     "parse_mount_entry",
+    "process_mount_command_results",
     "parse_shells",
     # TODO: Restore timezone exports when timezone_utils.py is recreated
     # "parse_posix_tz",

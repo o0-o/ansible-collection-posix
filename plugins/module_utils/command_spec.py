@@ -34,6 +34,9 @@ from ansible_collections.o0_o.posix.plugins.module_utils.locale_utils import (
     _parse_locale,
     _parse_locale_env,
 )
+from ansible_collections.o0_o.posix.plugins.module_utils.mount_utils import (
+    _parse_mount,
+)
 from ansible_collections.o0_o.posix.plugins.module_utils.uname_utils import (
     _parse_uname,
 )
@@ -71,6 +74,16 @@ LOCALE_COMMAND_SPEC = {
             "command": ("env",),
             "parser": _parse_locale_env,
             "non_error_codes": [0, 1],
+        },
+    },
+}
+
+# Mount command spec
+MOUNT_COMMAND_SPEC = {
+    "posix": {
+        "mount": {
+            "command": ("mount",),
+            "parser": _parse_mount,
         },
     },
 }

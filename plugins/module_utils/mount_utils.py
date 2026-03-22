@@ -9,11 +9,20 @@
 #
 # This file is part of the o0_o.posix Ansible Collection.
 
-"""Mount parsing utilities."""
+"""Mount parsing utilities.
+
+The canonical parser is ``_parse_mount`` which implements the
+COMMAND_SPEC ``(output, e_prefix) -> (parsed, errors)`` contract.
+"""
 
 from __future__ import annotations
 
-from typing import Any, Union
+from typing import Any, Optional, Union
+
+from ansible_collections.o0_o.core.plugins.module_utils import (
+    process_all_command_results,
+    process_command_spec,
+)
 
 from ansible_collections.o0_o.posix.plugins.module_utils.filter_utils import (
     normalize_source,
@@ -216,39 +225,98 @@ def parse_mount(content: str) -> list[dict[str, Any]]:
     return normalized
 
 
-def mount(config: Union[str, dict[str, Any]]) -> list[dict[str, Any]]:
-    """Process mount data - parse command output into structured format.
+def _parse_mount(
+    output: str,
+    e_prefix: str,
+) -> tuple[Optional[list[dict[str, Any]]], Optional[list[Exception]]]:
+    """Canonical COMMAND_SPEC parser for mount command output.
 
-    Mount is unidirectional - only parses mount output.
-    Returns data structure with these fields:
-    - source: device or filesystem source
-    - mount: mount point path
-    - type: filesystem type (string, never a list)
-    - options: merged dict with mount options (unlike fstab's list
-               of dicts)
+    Parses raw mount stdout into a list of normalized mount entry
+    dicts.
 
-    Note: Unlike fstab, mount doesn't have dump or pass fields, and
-    options
-    are returned as a single merged dict since mount doesn't support
-    duplicate
-    option keys like fstab does.
-
-    :param config: Mount command output as string or dict
-    :returns: List of normalized mount entries
-    :raises ValueError: If parsing fails
-    :raises ImportError: If jc is not available
+    :param str output: Raw stdout from ``mount``
+    :param str e_prefix: Error prefix for context
+    :returns tuple[Optional[list[dict[str, Any]]], Optional[list[Exception]]]:
+        Parsed mount entries and list of errors
     """
-    # Parse with jc_parse (handles both string and dict inputs)
-    parsed = jc_parse("mount", config)
+    errors = []
+    text = (output or "").strip()
+    if not text:
+        errors.append(ValueError(f"{e_prefix}Empty mount output"))
+        return None, errors
 
-    # Normalize each entry
+    try:
+        parsed = jc_parse("mount", text)
+    except Exception as e:
+        errors.append(ValueError(f"{e_prefix}Failed to parse mount: {e}"))
+        return None, errors
+
     normalized = []
     for entry in parsed:
         try:
             norm_entry = parse_mount_entry(entry)
             normalized.append(norm_entry)
         except ValueError:
-            # Skip invalid entries
             continue
 
-    return normalized
+    return normalized, errors
+
+
+def mount(config: Union[str, dict[str, Any]]) -> list[dict[str, Any]]:
+    """Parse mount command output into structured format.
+
+    Convenience wrapper around ``_parse_mount`` for filter use.
+
+    :param config: Mount command output as string or dict
+    :returns: List of normalized mount entries
+    :raises ValueError: If parsing fails
+    :raises ImportError: If jc is not available
+    """
+    if isinstance(config, dict):
+        config = config.get("stdout") or ""
+
+    parsed, errors = _parse_mount(str(config), "")
+    if parsed is not None:
+        return parsed
+    if errors:
+        raise errors[0]
+    raise ValueError("Failed to parse mount output")
+
+
+def get_mount_command_requests() -> list[dict[str, Any]]:
+    """Build command requests for mount fact gathering.
+
+    :returns list[dict[str, Any]]: Command requests for run plugin
+    """
+    from ansible_collections.o0_o.posix.plugins.module_utils.command_spec import (  # noqa: E501
+        MOUNT_COMMAND_SPEC,
+    )
+
+    return process_command_spec(MOUNT_COMMAND_SPEC)
+
+
+def process_mount_command_results(
+    cmds_completed: list[dict[str, Any]],
+) -> tuple[dict[str, Any], list[Exception]]:
+    """Process mount command results into structured facts.
+
+    :param list[dict[str, Any]] cmds_completed: List of command
+        result dicts from run plugin
+    :returns tuple[dict[str, Any], list[Exception]]: Tuple of
+        (facts_dict, errors) where facts_dict has o0_storage
+        namespace key
+    """
+    processed = process_all_command_results(cmds_completed)
+    errors = []
+
+    mount_result = processed.get("mount")
+    if mount_result is None:
+        return {}, [ValueError("No mount result found")]
+
+    errors.extend(mount_result.get("errors", []))
+    mount_facts = mount_result.get("parsed")
+
+    if mount_facts is None:
+        return {}, errors
+
+    return {"o0_storage": {"mounts": mount_facts}}, errors

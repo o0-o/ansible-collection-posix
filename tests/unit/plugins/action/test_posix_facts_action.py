@@ -160,6 +160,7 @@ class TestBatchedExecution:
                 },
                 [],
             )
+
         monkeypatch.setitem(
             plugin.BATCHED_SUBSETS["uname"],
             "processor",
@@ -182,10 +183,10 @@ class TestLegacyExecution:
 
     def test_legacy_failure_warns(self, monkeypatch, plugin) -> None:
         """Test that legacy subset failures emit warnings."""
-        plugin._task.args = {"gather_subset": ["!all", "mounts"]}
+        plugin._task.args = {"gather_subset": ["!all", "timezone"]}
 
         def mock_command(cmd, task_vars=None, **kwargs):
-            raise RuntimeError("mount not found")
+            raise RuntimeError("date not found")
 
         monkeypatch.setattr(plugin, "_command", mock_command)
 
@@ -200,7 +201,7 @@ class TestRun:
 
     def test_connection_failure_propagates(self, monkeypatch, plugin) -> None:
         """Test that connection failures are propagated."""
-        plugin._task.args = {"gather_subset": ["!all", "mounts"]}
+        plugin._task.args = {"gather_subset": ["!all", "timezone"]}
 
         def mock_command(cmd, task_vars=None, **kwargs):
             raise AnsibleConnectionFailure("connection lost")

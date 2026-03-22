@@ -23,13 +23,14 @@ from ansible_collections.o0_o.posix.plugins.module_utils import (
     get_compliance_command_requests,
     get_dmidecode_command_requests,
     get_locale_command_requests,
+    get_mount_command_requests,
     group_info,
-    mount,
     parse_shells,
     passwd_info,
     process_all_compliance_command_results,
     process_dmidecode_command_results,
     process_locale_command_results,
+    process_mount_command_results,
 )
 from ansible_collections.o0_o.posix.plugins.module_utils.uname_utils import (
     get_uname_command_requests,
@@ -45,7 +46,7 @@ class ActionModule(PosixActionBase, ActionBase):
     o0_storage, and o0_network.
 
     Subsets with COMMAND_SPEC support (uname, compliance, locale,
-    dmidecode) are batched
+    dmidecode, mounts) are batched
     into a single parallel ``_run()`` call.  Remaining subsets use
     individual gather methods.
     """
@@ -89,12 +90,15 @@ class ActionModule(PosixActionBase, ActionBase):
             "requests": get_dmidecode_command_requests,
             "processor": process_dmidecode_command_results,
         },
+        "mounts": {
+            "requests": get_mount_command_requests,
+            "processor": process_mount_command_results,
+        },
     }
 
     # Subsets that use individual gather methods (legacy path)
     LEGACY_METHODS = {
         "timezone": "_gather_timezone",
-        "mounts": "_gather_mounts",
         "fstab": "_gather_fstab",
         "users": "_gather_users",
     }
@@ -156,20 +160,6 @@ class ActionModule(PosixActionBase, ActionBase):
         }
 
         return {"o0_os": {"time": time_facts}}
-
-    def _gather_mounts(
-        self, task_vars: Optional[dict[str, Any]] = None
-    ) -> dict[str, Any]:
-        """Gather current mount points.
-
-        :param Optional[dict[str, Any]] task_vars: Task variables
-        :returns dict[str, Any]: Mount facts
-        """
-        cmd_result = self._command(["mount"], task_vars=task_vars)
-        mount_output = cmd_result.get("stdout", "")
-        mount_facts = mount(mount_output)
-
-        return {"o0_storage": {"mounts": mount_facts}}
 
     def _gather_fstab(
         self, task_vars: Optional[dict[str, Any]] = None

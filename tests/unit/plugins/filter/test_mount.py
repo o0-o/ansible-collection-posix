@@ -18,8 +18,9 @@ from unittest.mock import patch
 import pytest
 from ansible.errors import AnsibleFilterError
 
-from ansible_collections.o0_o.posix.plugins.filter.mount import FilterModule
-from tests.utils import boom
+from ansible_collections.o0_o.posix.plugins.filter.mount import (
+    FilterModule,
+)
 
 
 @pytest.fixture
@@ -29,40 +30,54 @@ def filter_module() -> FilterModule:
     return FilterModule()
 
 
-def test_mount_filter_exposes_helper(filter_module: FilterModule) -> None:
-    """filters() advertises the mount callable."""
+def test_mount_filter_exposes_helper(
+    filter_module: FilterModule,
+) -> None:
+    """Test that filters() advertises the mount callable."""
 
     filters = filter_module.filters()
     assert set(filters) == {"mount"}
 
 
-def test_mount_filter_delegates_to_helper(filter_module: FilterModule) -> None:
-    """Wrapper returns data from module_utils.mount unchanged."""
+def test_mount_filter_delegates_to_parse_mount(
+    filter_module: FilterModule,
+) -> None:
+    """Test wrapper calls _parse_mount and returns parsed data."""
 
     expected = [{"mount": "/proc"}]
     with patch(
-        "ansible_collections.o0_o.posix.plugins.filter.mount.mount",
-        return_value=expected,
-    ) as mock_mount:
+        "ansible_collections.o0_o.posix.plugins.filter" ".mount._parse_mount",
+        return_value=(expected, []),
+    ) as mock_parse:
         result = filter_module.filters()["mount"]("mount output")
 
-    mock_mount.assert_called_once_with("mount output")
+    mock_parse.assert_called_once_with("mount output", "")
     assert result is expected
 
 
-@pytest.mark.parametrize(
-    "exception", [ValueError("bad"), ImportError("missing")]
-)
-def test_mount_filter_wraps_exceptions(
+def test_mount_filter_raises_on_parse_error(
     filter_module: FilterModule,
-    exception: Exception,
-    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """ValueError/ImportError from helper become AnsibleFilterError."""
+    """Test that parse errors become AnsibleFilterError."""
 
-    monkeypatch.setattr(
-        "ansible_collections.o0_o.posix.plugins.filter.mount.mount",
-        boom(exception),
-    )
-    with pytest.raises(AnsibleFilterError, match="mount failed"):
-        filter_module.filters()["mount"]("broken")
+    with patch(
+        "ansible_collections.o0_o.posix.plugins.filter" ".mount._parse_mount",
+        return_value=(None, [ValueError("bad output")]),
+    ):
+        with pytest.raises(AnsibleFilterError, match="mount failed"):
+            filter_module.filters()["mount"]("broken")
+
+
+def test_mount_filter_normalizes_dict_input(
+    filter_module: FilterModule,
+) -> None:
+    """Test that dict input extracts stdout before parsing."""
+
+    expected = [{"mount": "/"}]
+    with patch(
+        "ansible_collections.o0_o.posix.plugins.filter" ".mount._parse_mount",
+        return_value=(expected, []),
+    ) as mock_parse:
+        filter_module.filters()["mount"]({"stdout": "mount output"})
+
+    mock_parse.assert_called_once_with("mount output", "")
