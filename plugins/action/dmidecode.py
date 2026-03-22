@@ -13,19 +13,21 @@ from __future__ import annotations
 
 from typing import Any, Optional
 
-from ansible.errors import AnsibleActionFail
 from ansible.plugins.action import ActionBase
 
 from ansible_collections.o0_o.posix.plugins.module_utils import (
     PosixActionBase,
-    dmidecode,
+    get_dmidecode_command_requests,
+    process_dmidecode_command_results,
 )
 
 
 class ActionModule(PosixActionBase, ActionBase):
     """Gather hardware information using dmidecode.
 
-    Executes dmidecode command and parses output into structured format.
+    Uses the COMMAND_SPEC pattern to run ``dmidecode`` via batched
+    ``_run()`` execution and parse the result into structured
+    hardware data.
     """
 
     TRANSFERS_FILES = False
@@ -39,57 +41,40 @@ class ActionModule(PosixActionBase, ActionBase):
         tmp: Optional[str] = None,
         task_vars: Optional[dict[str, Any]] = None,
     ) -> dict[str, Any]:
-        """Main entry point for the action plugin.
+        """Execute dmidecode and return structured hardware data.
 
-        Executes dmidecode command and parses output into structured
-        hardware information. Requires root privileges on most systems.
-
-        :param Optional[str] tmp: Temporary directory path (unused)
-        :param Optional[dict[str, Any]] task_vars: Task variables
-        :returns dict[str, Any]: Result with hardware information
+        :param Optional[str] tmp: Unused temporary directory path
+        :param Optional[dict[str, Any]] task_vars: Available Ansible
+            variables
+        :returns dict[str, Any]: Result with hardware data under
+            'hardware' key
         """
         task_vars = task_vars or {}
         self._def_inventory_hostname(task_vars)
 
-        result = super(ActionModule, self).run(task_vars=task_vars)
-        result["changed"] = False
+        result = super().run(tmp, task_vars=task_vars)
         del tmp  # unused
 
-        # Validate args (no arguments needed)
-        argument_spec = {}
-        validation_result, new_module_args = self.validate_argument_spec(
-            argument_spec=argument_spec
+        cmds = get_dmidecode_command_requests()
+
+        run_results = self._run(
+            cmds,
+            parallel=True,
+            fail_fast=False,
+            task_vars=task_vars,
+            check_mode=False,
         )
 
-        # Execute dmidecode command
-        cmd_result = self._command(
-            ["dmidecode"], task_vars=task_vars, check_mode=False
+        facts, errors = process_dmidecode_command_results(run_results)
+
+        for err in errors:
+            self._display.warning(f"[{self.inventory_hostname}] {err}")
+
+        result.update(
+            {
+                "changed": False,
+                "hardware": facts.get("o0_hardware", {}),
+            }
         )
-
-        if cmd_result.get("rc") != 0:
-            stderr = cmd_result.get("stderr", "")
-            stdout = cmd_result.get("stdout", "")
-            rc = cmd_result.get("rc")
-            error_msg = stderr or stdout or "Unknown error"
-            result.update(
-                {
-                    "failed": True,
-                    "msg": (
-                        f"dmidecode command failed with code {rc}: {error_msg}"
-                    ),
-                    "hardware": {},
-                }
-            )
-            return result
-
-        # Parse the output using the dmidecode filter
-        try:
-            hardware = dmidecode(cmd_result.get("stdout", ""))
-        except (ValueError, ImportError) as e:
-            raise AnsibleActionFail(
-                f"Failed to parse dmidecode output: {type(e).__name__}: {e}"
-            ) from e
-
-        result["hardware"] = hardware
 
         return result

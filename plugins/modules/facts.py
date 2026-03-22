@@ -38,6 +38,7 @@ options:
       - min
       - uname
       - compliance
+      - dmidecode
       - mounts
       - fstab
       - users
@@ -46,6 +47,7 @@ options:
       - '!all'
       - '!uname'
       - '!compliance'
+      - '!dmidecode'
       - '!mounts'
       - '!fstab'
       - '!users'
@@ -277,6 +279,7 @@ def main() -> None:
                 "min",
                 "uname",
                 "compliance",
+                "dmidecode",
                 "mounts",
                 "fstab",
                 "users",
@@ -285,6 +288,7 @@ def main() -> None:
                 "!all",
                 "!uname",
                 "!compliance",
+                "!dmidecode",
                 "!mounts",
                 "!fstab",
                 "!users",

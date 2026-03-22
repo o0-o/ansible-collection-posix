@@ -19,15 +19,16 @@ from ansible.plugins.action import ActionBase
 
 from ansible_collections.o0_o.posix.plugins.module_utils import (
     PosixActionBase,
-    dmidecode,
     fstab,
     get_compliance_command_requests,
+    get_dmidecode_command_requests,
     get_locale_command_requests,
     group_info,
     mount,
     parse_shells,
     passwd_info,
     process_all_compliance_command_results,
+    process_dmidecode_command_results,
     process_locale_command_results,
 )
 from ansible_collections.o0_o.posix.plugins.module_utils.uname_utils import (
@@ -43,7 +44,8 @@ class ActionModule(PosixActionBase, ActionBase):
     organized into logical namespaces: o0_os, o0_hardware,
     o0_storage, and o0_network.
 
-    Subsets with COMMAND_SPEC support (uname, compliance, locale) are batched
+    Subsets with COMMAND_SPEC support (uname, compliance, locale,
+    dmidecode) are batched
     into a single parallel ``_run()`` call.  Remaining subsets use
     individual gather methods.
     """
@@ -61,7 +63,7 @@ class ActionModule(PosixActionBase, ActionBase):
             "uname",
             "locale",
             "timezone",
-            "hardware",
+            "dmidecode",
             "compliance",
             "storage",
             "users",
@@ -83,12 +85,15 @@ class ActionModule(PosixActionBase, ActionBase):
             "requests": get_locale_command_requests,
             "processor": process_locale_command_results,
         },
+        "dmidecode": {
+            "requests": get_dmidecode_command_requests,
+            "processor": process_dmidecode_command_results,
+        },
     }
 
     # Subsets that use individual gather methods (legacy path)
     LEGACY_METHODS = {
         "timezone": "_gather_timezone",
-        "hardware": "_gather_hardware",
         "mounts": "_gather_mounts",
         "fstab": "_gather_fstab",
         "users": "_gather_users",
@@ -151,40 +156,6 @@ class ActionModule(PosixActionBase, ActionBase):
         }
 
         return {"o0_os": {"time": time_facts}}
-
-    def _gather_hardware(
-        self, task_vars: Optional[dict[str, Any]] = None
-    ) -> dict[str, Any]:
-        """Gather hardware information from dmidecode.
-
-        :param Optional[dict[str, Any]] task_vars: Task variables
-        :returns dict[str, Any]: Hardware facts
-        """
-        cmd_result = self._command(
-            ["dmidecode"],
-            task_vars=task_vars,
-            check_mode=False,
-        )
-
-        if cmd_result.get("rc") != 0:
-            raise AnsibleActionFail(
-                "dmidecode command failed: " f"{cmd_result.get('stderr', '')}"
-            )
-
-        hardware = dmidecode(cmd_result.get("stdout", ""))
-
-        hw_facts = {}
-        for key in (
-            "baseboard",
-            "processors",
-            "memory",
-            "chassis",
-            "power",
-        ):
-            if key in hardware:
-                hw_facts[key] = hardware[key]
-
-        return {"o0_hardware": hw_facts}
 
     def _gather_mounts(
         self, task_vars: Optional[dict[str, Any]] = None

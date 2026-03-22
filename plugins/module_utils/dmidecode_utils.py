@@ -9,12 +9,22 @@
 #
 # This file is part of the o0_o.posix Ansible Collection.
 
-"""Utilities for parsing dmidecode output."""
+"""Utilities for parsing dmidecode output.
+
+The canonical parser is ``_parse_dmidecode`` which implements the
+COMMAND_SPEC ``(output, e_prefix) -> (parsed, errors)`` contract.
+The ``dmidecode()`` function is a convenience wrapper for filter use.
+"""
 
 from __future__ import annotations
 
 import re
 from typing import Any, Optional, Union
+
+from ansible_collections.o0_o.core.plugins.module_utils import (
+    process_all_command_results,
+    process_command_spec,
+)
 
 from ansible_collections.o0_o.posix.plugins.module_utils.jc_utils import (
     jc_parse,
@@ -1521,19 +1531,66 @@ def _process_processors(
     return processors, sockets
 
 
+def _parse_dmidecode(
+    output: str,
+    e_prefix: str,
+) -> tuple[Optional[dict[str, Any]], Optional[list[Exception]]]:
+    """Canonical COMMAND_SPEC parser for dmidecode output.
+
+    Parses raw dmidecode stdout into a structured hardware dict
+    using jc for primary parsing.
+
+    :param str output: Raw stdout from ``dmidecode``
+    :param str e_prefix: Error prefix for context
+    :returns tuple[Optional[dict[str, Any]], Optional[list[Exception]]]:
+        Parsed hardware data and list of errors
+    """
+    errors = []
+    text = (output or "").strip()
+    if not text:
+        errors.append(ValueError(f"{e_prefix}Empty dmidecode output"))
+        return None, errors
+
+    try:
+        parsed = jc_parse("dmidecode", text, quiet=True, raw=False)
+    except Exception as e:
+        errors.append(ValueError(f"{e_prefix}Failed to parse dmidecode: {e}"))
+        return None, errors
+
+    return _build_hardware_dict(parsed), errors
+
+
 def dmidecode(data: Union[str, list[str], dict[str, Any]]) -> dict[str, Any]:
     """Parse dmidecode command output into structured hardware dict.
 
-    Uses jc parser to convert dmidecode output into a hierarchical
-    hardware structure reflecting physical reality.
+    Convenience wrapper around ``_parse_dmidecode`` for filter use.
 
     :param data: dmidecode command output - string, list of lines, or
         command result dict
     :returns: Structured hardware information dict
     :raises ValueError: If jc is not available or parsing fails
     """
-    # Parse using jc dmidecode parser (handles dict/string/list inputs)
-    parsed = jc_parse("dmidecode", data, quiet=True, raw=False)
+    if isinstance(data, list):
+        data = "\n".join(data)
+    elif isinstance(data, dict):
+        data = data.get("stdout") or ""
+
+    parsed, errors = _parse_dmidecode(str(data), "")
+    if parsed is not None:
+        return parsed
+    if errors:
+        raise errors[0]
+    raise ValueError("Failed to parse dmidecode output")
+
+
+def _build_hardware_dict(
+    parsed: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """Build structured hardware dict from jc-parsed entries.
+
+    :param list[dict[str, Any]] parsed: Parsed jc dmidecode entries
+    :returns dict[str, Any]: Structured hardware information dict
+    """
 
     # Group entries by type
     entries_by_type = {}
@@ -1674,3 +1731,42 @@ def dmidecode(data: Union[str, list[str], dict[str, Any]]) -> dict[str, Any]:
         hardware["processors"] = processors_data
 
     return hardware
+
+
+def get_dmidecode_command_requests() -> list[dict[str, Any]]:
+    """Build command requests for dmidecode fact gathering.
+
+    :returns list[dict[str, Any]]: Command requests for run plugin
+    """
+    from ansible_collections.o0_o.posix.plugins.module_utils.command_spec import (  # noqa: E501
+        DMIDECODE_COMMAND_SPEC,
+    )
+
+    return process_command_spec(DMIDECODE_COMMAND_SPEC)
+
+
+def process_dmidecode_command_results(
+    cmds_completed: list[dict[str, Any]],
+) -> tuple[dict[str, Any], list[Exception]]:
+    """Process dmidecode command results into structured facts.
+
+    :param list[dict[str, Any]] cmds_completed: List of command
+        result dicts from run plugin
+    :returns tuple[dict[str, Any], list[Exception]]: Tuple of
+        (facts_dict, errors) where facts_dict has o0_hardware
+        namespace key
+    """
+    processed = process_all_command_results(cmds_completed)
+    errors = []
+
+    dmi_result = processed.get("dmidecode")
+    if dmi_result is None:
+        return {}, [ValueError("No dmidecode result found")]
+
+    errors.extend(dmi_result.get("errors", []))
+    hw_facts = dmi_result.get("parsed")
+
+    if not hw_facts:
+        return {}, errors
+
+    return {"o0_hardware": hw_facts}, errors

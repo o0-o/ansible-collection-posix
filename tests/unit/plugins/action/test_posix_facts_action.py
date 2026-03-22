@@ -53,7 +53,7 @@ class TestResolveSubsets:
         assert "uname" in selected
         assert "locale" in selected
         assert "timezone" in selected
-        assert "hardware" in selected
+        assert "dmidecode" in selected
         assert "compliance" in selected
 
     def test_min(self, plugin) -> None:
@@ -73,9 +73,9 @@ class TestResolveSubsets:
 
     def test_exclusion(self, plugin) -> None:
         """Test subset exclusion with !subset."""
-        selected = plugin._resolve_subsets(["all", "!hardware"])
+        selected = plugin._resolve_subsets(["all", "!dmidecode"])
         assert "uname" in selected
-        assert "hardware" not in selected
+        assert "dmidecode" not in selected
 
     def test_exclude_all_then_add(self, plugin) -> None:
         """Test !all followed by specific subsets."""
@@ -84,9 +84,9 @@ class TestResolveSubsets:
 
     def test_only_exclusions_starts_from_all(self, plugin) -> None:
         """Test that only exclusions start from full set."""
-        selected = plugin._resolve_subsets(["!hardware"])
+        selected = plugin._resolve_subsets(["!dmidecode"])
         assert "uname" in selected
-        assert "hardware" not in selected
+        assert "dmidecode" not in selected
 
     def test_invalid(self, plugin) -> None:
         """Test invalid subset raises error."""
@@ -152,13 +152,14 @@ class TestBatchedExecution:
         monkeypatch.setattr(plugin, "_run", mock_run)
 
         # Patch the processor in the BATCHED_SUBSETS dict
-        mock_processor = lambda results: (
-            {
-                "o0_os": {"kernel": {"name": "linux"}},
-                "o0_network": {"hostname": {"short": "host"}},
-            },
-            [],
-        )
+        def mock_processor(results):
+            return (
+                {
+                    "o0_os": {"kernel": {"name": "linux"}},
+                    "o0_network": {"hostname": {"short": "host"}},
+                },
+                [],
+            )
         monkeypatch.setitem(
             plugin.BATCHED_SUBSETS["uname"],
             "processor",
@@ -181,10 +182,10 @@ class TestLegacyExecution:
 
     def test_legacy_failure_warns(self, monkeypatch, plugin) -> None:
         """Test that legacy subset failures emit warnings."""
-        plugin._task.args = {"gather_subset": ["!all", "hardware"]}
+        plugin._task.args = {"gather_subset": ["!all", "mounts"]}
 
         def mock_command(cmd, task_vars=None, **kwargs):
-            raise RuntimeError("dmidecode not found")
+            raise RuntimeError("mount not found")
 
         monkeypatch.setattr(plugin, "_command", mock_command)
 
@@ -199,7 +200,7 @@ class TestRun:
 
     def test_connection_failure_propagates(self, monkeypatch, plugin) -> None:
         """Test that connection failures are propagated."""
-        plugin._task.args = {"gather_subset": ["!all", "hardware"]}
+        plugin._task.args = {"gather_subset": ["!all", "mounts"]}
 
         def mock_command(cmd, task_vars=None, **kwargs):
             raise AnsibleConnectionFailure("connection lost")

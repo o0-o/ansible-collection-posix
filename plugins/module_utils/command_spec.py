@@ -27,6 +27,9 @@ from ansible_collections.o0_o.posix.plugins.module_utils.compliance_parsers impo
     _parse_xopen_support,
     _parse_xopen_version,
 )
+from ansible_collections.o0_o.posix.plugins.module_utils.dmidecode_utils import (  # noqa: E501
+    _parse_dmidecode,
+)
 from ansible_collections.o0_o.posix.plugins.module_utils.locale_utils import (
     _parse_locale,
     _parse_locale_env,
@@ -68,6 +71,16 @@ LOCALE_COMMAND_SPEC = {
             "command": ("env",),
             "parser": _parse_locale_env,
             "non_error_codes": [0, 1],
+        },
+    },
+}
+
+# Dmidecode command spec
+DMIDECODE_COMMAND_SPEC = {
+    "posix": {
+        "dmidecode": {
+            "command": ("dmidecode",),
+            "parser": _parse_dmidecode,
         },
     },
 }
