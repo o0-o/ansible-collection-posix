@@ -19,7 +19,6 @@ import pytest
 from ansible.errors import AnsibleFilterError
 
 from ansible_collections.o0_o.posix.plugins.filter.uname import FilterModule
-from tests.utils import boom
 
 
 @pytest.fixture
@@ -29,40 +28,69 @@ def filter_module() -> FilterModule:
     return FilterModule()
 
 
-def test_uname_filter_exposes_helper(filter_module: FilterModule) -> None:
-    """filters() advertises the uname callable."""
+def test_uname_filter_exposes_helper(
+    filter_module: FilterModule,
+) -> None:
+    """Test that filters() advertises the uname callable."""
 
     filters = filter_module.filters()
     assert set(filters) == {"uname"}
 
 
-def test_uname_filter_delegates_to_helper(filter_module: FilterModule) -> None:
-    """Wrapper returns data from module_utils.uname unchanged."""
+def test_uname_filter_delegates_to_parse_uname(
+    filter_module: FilterModule,
+) -> None:
+    """Test wrapper calls _parse_uname and returns parsed data."""
 
     expected = {"kernel": {"name": "linux"}}
     with patch(
-        "ansible_collections.o0_o.posix.plugins.filter.uname.uname",
-        return_value=expected,
-    ) as mock_uname:
+        "ansible_collections.o0_o.posix.plugins.filter" ".uname._parse_uname",
+        return_value=(expected, []),
+    ) as mock_parse:
         result = filter_module.filters()["uname"]("uname -a")
 
-    mock_uname.assert_called_once_with("uname -a")
+    mock_parse.assert_called_once_with("uname -a", "")
     assert result is expected
 
 
-@pytest.mark.parametrize(
-    "exception", [ValueError("bad"), ImportError("missing")]
-)
-def test_uname_filter_wraps_exceptions(
+def test_uname_filter_raises_on_parse_error(
     filter_module: FilterModule,
-    exception: Exception,
-    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """ValueError/ImportError from helper become AnsibleFilterError."""
+    """Test that parse errors become AnsibleFilterError."""
 
-    monkeypatch.setattr(
-        "ansible_collections.o0_o.posix.plugins.filter.uname.uname",
-        boom(exception),
-    )
-    with pytest.raises(AnsibleFilterError, match="uname failed"):
-        filter_module.filters()["uname"]("broken")
+    with patch(
+        "ansible_collections.o0_o.posix.plugins.filter" ".uname._parse_uname",
+        return_value=(None, [ValueError("bad output")]),
+    ):
+        with pytest.raises(AnsibleFilterError, match="uname failed"):
+            filter_module.filters()["uname"]("broken")
+
+
+def test_uname_filter_normalizes_list_input(
+    filter_module: FilterModule,
+) -> None:
+    """Test that list input is joined before parsing."""
+
+    expected = {"kernel": {"name": "linux"}}
+    with patch(
+        "ansible_collections.o0_o.posix.plugins.filter" ".uname._parse_uname",
+        return_value=(expected, []),
+    ) as mock_parse:
+        filter_module.filters()["uname"](["line1", "line2"])
+
+    mock_parse.assert_called_once_with("line1\nline2", "")
+
+
+def test_uname_filter_normalizes_dict_input(
+    filter_module: FilterModule,
+) -> None:
+    """Test that dict input extracts stdout before parsing."""
+
+    expected = {"kernel": {"name": "linux"}}
+    with patch(
+        "ansible_collections.o0_o.posix.plugins.filter" ".uname._parse_uname",
+        return_value=(expected, []),
+    ) as mock_parse:
+        filter_module.filters()["uname"]({"stdout": "uname output"})
+
+    mock_parse.assert_called_once_with("uname output", "")

@@ -18,11 +18,13 @@ from ansible.errors import AnsibleActionFail, AnsibleConnectionFailure
 from ansible.plugins.action import ActionBase
 from ansible_collections.o0_o.posix.plugins.module_utils import (
     PosixActionBase,
-    uname,
     dmidecode,
     mount,
     fstab,
     parse_shells,
+)
+from ansible_collections.o0_o.posix.plugins.module_utils.uname_utils import (
+    _parse_uname,
 )
 
 
@@ -80,25 +82,26 @@ class ActionModule(PosixActionBase, ActionBase):
         """
         cmd_result = self._command(["uname", "-a"], task_vars=task_vars)
         uname_output = cmd_result.get("stdout", "")
-        uname_facts = uname(uname_output)
+        parsed, errors = _parse_uname(uname_output, "[uname] ")
+
+        if errors:
+            for err in errors:
+                self._display.warning(f"[{self.inventory_hostname}] {err}")
+        if parsed is None:
+            return {}
 
         facts = {}
 
-        # o0_os.kernel
-        if "kernel" in uname_facts:
-            facts.setdefault("o0_os", {})["kernel"] = uname_facts["kernel"]
+        if "kernel" in parsed:
+            facts.setdefault("o0_os", {})["kernel"] = parsed["kernel"]
 
-        # o0_network.hostname
-        if "hostname" in uname_facts:
-            facts.setdefault("o0_network", {})["hostname"] = uname_facts[
-                "hostname"
-            ]
+        if "hostname" in parsed:
+            facts.setdefault("o0_network", {})["hostname"] = parsed["hostname"]
 
-        # o0_hardware.baseboard.architecture (just the string)
-        if "architecture" in uname_facts:
+        if "architecture" in parsed:
             facts.setdefault("o0_hardware", {}).setdefault("baseboard", {})[
                 "architecture"
-            ] = uname_facts["architecture"]
+            ] = parsed["architecture"]
 
         return facts
 

@@ -15,7 +15,9 @@ from typing import Any, Union
 
 from ansible.errors import AnsibleFilterError
 from ansible.module_utils.common.text.converters import to_native
-from ansible_collections.o0_o.posix.plugins.module_utils import uname
+from ansible_collections.o0_o.posix.plugins.module_utils.uname_utils import (
+    _parse_uname,
+)
 
 DOCUMENTATION = r"""
 ---
@@ -130,9 +132,13 @@ class FilterModule:
         :returns: Normalized uname data structure
         :raises AnsibleFilterError: If parsing fails
         """
-        try:
-            return uname(config)
-        except (ValueError, ImportError) as e:
-            raise AnsibleFilterError(
-                f"uname failed: {type(e).__name__}: {to_native(e)}"
-            ) from e
+        if isinstance(config, list):
+            config = "\n".join(config)
+        elif isinstance(config, dict):
+            config = config.get("stdout") or ""
+
+        parsed, errors = _parse_uname(str(config), "")
+        if parsed is not None:
+            return parsed
+        msg = to_native(errors[0]) if errors else "unknown error"
+        raise AnsibleFilterError(f"uname failed: {msg}")

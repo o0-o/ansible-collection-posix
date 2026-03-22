@@ -11,7 +11,7 @@
 
 """Command specifications for POSIX operations.
 
-Defines generic command specs and compliance-specific command specs.
+Defines generic command specs and module-specific command specs.
 Used with process_command_spec from core to build command requests.
 """
 
@@ -27,6 +27,9 @@ from ansible_collections.o0_o.posix.plugins.module_utils.compliance_parsers impo
     _parse_xopen_support,
     _parse_xopen_version,
 )
+from ansible_collections.o0_o.posix.plugins.module_utils.uname_utils import (
+    _parse_uname,
+)
 
 # Generic reusable command specifications
 COMMAND_SPEC = {
@@ -36,6 +39,16 @@ COMMAND_SPEC = {
             # Use cmd as a list to generate one request per command.
             "command": ("command", "-v", "{cmd}"),
             "parser": strip_only,
+        },
+    },
+}
+
+# Uname command spec
+UNAME_COMMAND_SPEC = {
+    "posix": {
+        "uname": {
+            "command": ("uname", "-a"),
+            "parser": _parse_uname,
         },
     },
 }

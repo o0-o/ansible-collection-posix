@@ -95,7 +95,8 @@ from ansible_collections.o0_o.posix.plugins.module_utils.posix_action_base impor
     PosixActionBase,
 )
 from ansible_collections.o0_o.posix.plugins.module_utils.uname_utils import (
-    uname,
+    get_uname_command_requests,
+    process_uname_command_results,
 )
 from ansible_collections.o0_o.posix.plugins.module_utils.user_utils import (
     lookup_group,
@@ -165,7 +166,8 @@ __all__ = [
     # "stat",
     "normalize_source",
     "process_registered_result",
-    "uname",
+    "get_uname_command_requests",
+    "process_uname_command_results",
     "lookup_group",
     "lookup_user",
 ]

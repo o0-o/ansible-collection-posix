@@ -44,7 +44,7 @@ def test_parse_uname_entry_builds_kernel_arch_and_hostname(
         "node_name": "web.example",
     }
 
-    result = uname_utils.parse_uname_entry(entry)
+    result = uname_utils._parse_uname_entry(entry)
 
     assert result["kernel"]["name"] == "linux"
     assert result["kernel"]["version"]["id"] == "5.15.0"
@@ -56,11 +56,11 @@ def test_parse_uname_entry_architecture_fallbacks(hostname_patch) -> None:
     """Use processor/hardware_platform when machine is missing."""
 
     entry = {"processor": "amd64"}
-    result = uname_utils.parse_uname_entry(entry)
+    result = uname_utils._parse_uname_entry(entry)
     assert result["architecture"] == "amd64"
 
     entry = {"processor": "unknown", "hardware_platform": "ppc"}
-    result = uname_utils.parse_uname_entry(entry)
+    result = uname_utils._parse_uname_entry(entry)
     assert result["architecture"] == "ppc"
 
 
@@ -70,11 +70,11 @@ def test_parse_uname_entry_requires_utils_collection() -> None:
     entry = {"node_name": "web"}
     with patch.object(uname_utils, "HAS_PARSE_HOSTNAME", False):
         with pytest.raises(ValueError, match="o0_o.utils collection"):
-            uname_utils.parse_uname_entry(entry)
+            uname_utils._parse_uname_entry(entry)
 
 
-def test_uname_uses_jc_parse() -> None:
-    """uname helper delegates to jc_parse and normalizes entry."""
+def test_parse_uname_delegates_to_jc() -> None:
+    """Test _parse_uname delegates to jc_parse and normalizes entry."""
 
     jc_result = {
         "kernel_name": "Linux",
@@ -89,25 +89,39 @@ def test_uname_uses_jc_parse() -> None:
             "parse_hostname",
             return_value={"short": "host"},
         ):
-            result = uname_utils.uname("uname -a output")
+            parsed, errors = uname_utils._parse_uname("uname -a output", "")
 
     mock_parse.assert_called_once_with("uname", "uname -a output")
-    assert result["hostname"]["short"] == "host"
+    assert parsed["hostname"]["short"] == "host"
+    assert errors == []
 
 
-def test_uname_fallback_openbsd() -> None:
-    """Fallback parsing handles OpenBSD uname when jc fails."""
+def test_parse_uname_fallback_openbsd() -> None:
+    """Test _parse_uname fallback handles OpenBSD when jc fails."""
 
-    obsd = "OpenBSD openbsd.home.johnandlaurel.com 7.6 GENERIC.MP#196 arm64"
+    obsd = "OpenBSD openbsd.home.johnandlaurel.com" " 7.6 GENERIC.MP#196 arm64"
 
     with patch.object(
-        uname_utils, "jc_parse", side_effect=ValueError("pop from empty list")
+        uname_utils,
+        "jc_parse",
+        side_effect=ValueError("pop from empty list"),
     ):
         with patch.object(
-            uname_utils, "parse_hostname", return_value={"short": "openbsd"}
+            uname_utils,
+            "parse_hostname",
+            return_value={"short": "openbsd"},
         ):
-            result = uname_utils.uname(obsd)
+            parsed, errors = uname_utils._parse_uname(obsd, "")
 
-    assert result["kernel"]["name"] == "openbsd"
-    assert result["kernel"]["version"]["id"] == "7.6"
-    assert result["architecture"] == "arm64"
+    assert parsed["kernel"]["name"] == "openbsd"
+    assert parsed["kernel"]["version"]["id"] == "7.6"
+    assert parsed["architecture"] == "arm64"
+    assert errors == []
+
+
+def test_parse_uname_empty_output() -> None:
+    """Test _parse_uname returns error for empty output."""
+
+    parsed, errors = uname_utils._parse_uname("", "")
+    assert parsed is None
+    assert len(errors) == 1
