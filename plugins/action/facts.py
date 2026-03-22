@@ -11,17 +11,20 @@
 
 from __future__ import annotations
 
-from typing import Any, Optional, Set
 import time
+from typing import Any, Optional
 
 from ansible.errors import AnsibleActionFail, AnsibleConnectionFailure
 from ansible.plugins.action import ActionBase
+
 from ansible_collections.o0_o.posix.plugins.module_utils import (
     PosixActionBase,
     dmidecode,
-    mount,
     fstab,
+    mount,
     parse_shells,
+    passwd_info,
+    group_info,
 )
 from ansible_collections.o0_o.posix.plugins.module_utils.uname_utils import (
     _parse_uname,
@@ -31,11 +34,8 @@ from ansible_collections.o0_o.posix.plugins.module_utils.uname_utils import (
 class ActionModule(PosixActionBase, ActionBase):
     """Gather comprehensive POSIX facts from the managed host.
 
-    This action plugin collects system information using various
-    module_utils functions including uname, dmidecode, mount, fstab,
-    users/groups, locale, and timezone data.
-
-    Facts are organized into logical namespaces: o0_os, o0_hardware,
+    Collects system information using shell commands and file reads,
+    organized into logical namespaces: o0_os, o0_hardware,
     o0_storage, and o0_network.
     """
 
@@ -45,7 +45,7 @@ class ActionModule(PosixActionBase, ActionBase):
     _supports_async = False
     _supports_diff = False
 
-    # Define subset groups
+    # Subset groups
     SUBSET_GROUPS = {
         "min": {"uname", "locale", "timezone", "compliance"},
         "all": {
@@ -113,22 +113,18 @@ class ActionModule(PosixActionBase, ActionBase):
         :param Optional[dict[str, Any]] task_vars: Task variables
         :returns dict[str, Any]: Locale facts
         """
-        # Use the locale action plugin logic
         cmd_result = self._command(["locale"], task_vars=task_vars)
         locale_output = cmd_result.get("stdout", "")
 
-        # Parse locale output (key=value format)
         locale_facts = {}
         for line in locale_output.strip().split("\n"):
             if "=" in line:
                 key, value = line.split("=", 1)
-                # Remove quotes
                 value = value.strip('"')
                 if key == "LANG":
                     locale_facts["language"] = value
                 elif key == "LC_ALL":
                     locale_facts["all"] = value
-                # Store other LC_* variables
                 elif key.startswith("LC_"):
                     locale_facts[key.lower()] = value
 
@@ -142,14 +138,13 @@ class ActionModule(PosixActionBase, ActionBase):
         :param Optional[dict[str, Any]] task_vars: Task variables
         :returns dict[str, Any]: Time/timezone facts
         """
-        # Get current time
         current_epoch = int(time.time())
         cmd_result = self._command(
-            ["date", "+%Y-%m-%d %H:%M:%S %Z"], task_vars=task_vars
+            ["date", "+%Y-%m-%d %H:%M:%S %Z"],
+            task_vars=task_vars,
         )
         pretty_time = cmd_result.get("stdout", "").strip()
 
-        # Get timezone info
         tz_cmd = self._command(["date", "+%Z %z"], task_vars=task_vars)
         tz_output = tz_cmd.get("stdout", "").strip()
         tz_parts = tz_output.split()
@@ -162,38 +157,6 @@ class ActionModule(PosixActionBase, ActionBase):
             "zone": {"name": tz_name, "offset": tz_offset},
         }
 
-        # Get /etc/localtime symlink info
-        localtime_result = self._execute_module(
-            module_name="o0_o.posix.read",
-            module_args={
-                "path": "/etc/localtime",
-                "metadata": False,
-                "type": True,
-                "links": True,
-            },
-            task_vars=task_vars,
-        )
-
-        if not localtime_result.get("failed") and localtime_result.get(
-            "file", {}
-        ).get("exists"):
-            file_info = localtime_result["file"]
-            localtime_info = {}
-
-            file_type = file_info.get("type")
-            if file_type:
-                localtime_info["type"] = file_type
-                # Include links only for symlinks
-                if file_type == "link":
-                    links = file_info.get("links")
-                    if links:
-                        localtime_info["links"] = links
-
-            if localtime_info:
-                time_facts["zone"]["config"] = {
-                    "/etc/localtime": localtime_info
-                }
-
         return {"o0_os": {"time": time_facts}}
 
     def _gather_hardware(
@@ -204,30 +167,27 @@ class ActionModule(PosixActionBase, ActionBase):
         :param Optional[dict[str, Any]] task_vars: Task variables
         :returns dict[str, Any]: Hardware facts
         """
-        # Run dmidecode command
         cmd_result = self._command(
             ["dmidecode"], task_vars=task_vars, check_mode=False
         )
 
         if cmd_result.get("rc") != 0:
             raise AnsibleActionFail(
-                f"dmidecode command failed: {cmd_result.get('stderr', '')}"
+                "dmidecode command failed: " f"{cmd_result.get('stderr', '')}"
             )
 
         hardware = dmidecode(cmd_result.get("stdout", ""))
 
-        # Map dmidecode output to o0_hardware namespace
         hw_facts = {}
-        if "baseboard" in hardware:
-            hw_facts["baseboard"] = hardware["baseboard"]
-        if "processors" in hardware:
-            hw_facts["processors"] = hardware["processors"]
-        if "memory" in hardware:
-            hw_facts["memory"] = hardware["memory"]
-        if "chassis" in hardware:
-            hw_facts["chassis"] = hardware["chassis"]
-        if "power" in hardware:
-            hw_facts["power"] = hardware["power"]
+        for key in (
+            "baseboard",
+            "processors",
+            "memory",
+            "chassis",
+            "power",
+        ):
+            if key in hardware:
+                hw_facts[key] = hardware[key]
 
         return {"o0_hardware": hw_facts}
 
@@ -239,14 +199,12 @@ class ActionModule(PosixActionBase, ActionBase):
         :param Optional[dict[str, Any]] task_vars: Task variables
         :returns dict[str, Any]: Compliance facts
         """
-        # Execute the compliance action plugin
         compliance_result = self._execute_module(
             module_name="o0_o.posix.compliance",
             module_args={},
             task_vars=task_vars,
         )
 
-        # Extract compliance data from result
         if compliance_result.get("failed"):
             return {}
 
@@ -285,7 +243,6 @@ class ActionModule(PosixActionBase, ActionBase):
         )
 
         if slurp_result.get("failed"):
-            # fstab might not exist or be readable
             return {}
 
         fstab_facts = fstab(slurp_result)
@@ -300,21 +257,18 @@ class ActionModule(PosixActionBase, ActionBase):
         :param Optional[dict[str, Any]] task_vars: Task variables
         :returns dict[str, Any]: User/group facts
         """
-        # Read /etc/passwd
         passwd_slurp = self._execute_module(
             module_name="ansible.builtin.slurp",
             module_args={"src": "/etc/passwd"},
             task_vars=task_vars,
         )
 
-        # Read /etc/group
         group_slurp = self._execute_module(
             module_name="ansible.builtin.slurp",
             module_args={"src": "/etc/group"},
             task_vars=task_vars,
         )
 
-        # Read /etc/shells
         shells_slurp = self._execute_module(
             module_name="ansible.builtin.slurp",
             module_args={"src": "/etc/shells"},
@@ -323,62 +277,40 @@ class ActionModule(PosixActionBase, ActionBase):
 
         facts = {"o0_os": {}}
 
-        # Parse users
         if not passwd_slurp.get("failed"):
-            from ansible_collections.o0_o.posix.plugins.module_utils import (
-                passwd_info,
-            )
+            facts["o0_os"]["users"] = passwd_info(passwd_slurp)
 
-            users = passwd_info(passwd_slurp)
-            facts["o0_os"]["users"] = users
-
-        # Parse groups
         if not group_slurp.get("failed"):
-            from ansible_collections.o0_o.posix.plugins.module_utils import (
-                group_info,
-            )
+            facts["o0_os"]["groups"] = group_info(group_slurp)
 
-            groups = group_info(group_slurp)
-            facts["o0_os"]["groups"] = groups
-
-        # Parse shells
         if not shells_slurp.get("failed"):
-            shells = parse_shells(shells_slurp)
-            facts["o0_os"]["shells"] = shells
+            facts["o0_os"]["shells"] = parse_shells(shells_slurp)
 
         return facts
 
-    def _resolve_subsets(self, gather_subset: list) -> Set[str]:
+    def _resolve_subsets(self, gather_subset: list[str]) -> set[str]:
         """Resolve gather_subset into individual subsets.
 
-        :param list gather_subset: List of subset specifications
-        :returns Set[str]: Set of individual subsets to gather
+        :param list[str] gather_subset: List of subset specs
+        :returns set[str]: Set of individual subsets to gather
         """
-        # Start with empty set if only exclusions, otherwise empty
         if all(s.startswith("!") for s in gather_subset):
-            # All exclusions - start with all subsets
             selected = set(self.SUBSET_METHODS.keys())
         else:
             selected = set()
 
         for subset in gather_subset:
             if subset == "all":
-                # Add all individual subsets
                 selected.update(self.SUBSET_GROUPS["all"])
             elif subset == "min":
-                # Add minimal subsets
                 selected.update(self.SUBSET_GROUPS["min"])
             elif subset == "storage":
-                # Add storage subsets
                 selected.update(self.SUBSET_GROUPS["storage"])
             elif subset == "!all":
-                # Remove all subsets
                 selected.clear()
             elif subset.startswith("!"):
-                # Remove specific subset
                 selected.discard(subset[1:])
             elif subset in self.SUBSET_METHODS:
-                # Add specific subset
                 selected.add(subset)
             else:
                 raise AnsibleActionFail(f"Invalid gather_subset: {subset}")
@@ -390,14 +322,18 @@ class ActionModule(PosixActionBase, ActionBase):
         tmp: Optional[str] = None,
         task_vars: Optional[dict[str, Any]] = None,
     ) -> dict[str, Any]:
-        """Main entry point for the action plugin.
+        """Execute fact gathering for selected subsets.
 
-        :param Optional[str] tmp: Temporary directory path
-        :param Optional[dict[str, Any]] task_vars: Task variables
+        :param Optional[str] tmp: Unused temporary directory path
+        :param Optional[dict[str, Any]] task_vars: Available Ansible
+            variables
         :returns dict[str, Any]: Result dictionary with ansible_facts
         """
         task_vars = task_vars or {}
-        tmp = None
+        self._def_inventory_hostname(task_vars)
+
+        result = super().run(tmp, task_vars=task_vars)
+        del tmp  # unused
 
         # Validate arguments
         argument_spec = {
@@ -407,88 +343,54 @@ class ActionModule(PosixActionBase, ActionBase):
                 "default": ["all"],
             }
         }
-
-        validation_result, new_module_args = self.validate_argument_spec(
+        validation_result, new_args = self.validate_argument_spec(
             argument_spec=argument_spec
         )
-        gather_subset = new_module_args["gather_subset"]
-
-        result = super().run(task_vars=task_vars)
-
-        # TODO: Add POSIX compliance check back later
-        compliance_facts = {}
+        result["invocation"] = self._task.args.copy()
 
         # Resolve subsets
-        selected_subsets = self._resolve_subsets(gather_subset)
+        selected_subsets = self._resolve_subsets(new_args["gather_subset"])
+
+        self._display.vvv(
+            f"Gathering fact subsets: {', '.join(sorted(selected_subsets))}"
+        )
 
         # Gather facts for each selected subset
         all_facts = {}
 
-        # Include compliance facts if compliance is in selected subsets
-        if "compliance" in selected_subsets and compliance_facts:
-            for namespace, namespace_facts in compliance_facts.items():
-                if namespace not in all_facts:
-                    all_facts[namespace] = {}
-                # Deep merge for nested dicts like config
-                for key, value in namespace_facts.items():
-                    if (
-                        key in all_facts[namespace]
-                        and isinstance(all_facts[namespace][key], dict)
-                        and isinstance(value, dict)
-                    ):
-                        # Merge nested dicts
-                        all_facts[namespace][key].update(value)
-                    else:
-                        all_facts[namespace][key] = value
-
         for subset in selected_subsets:
-            # Skip compliance as it's already been gathered
-            if subset == "compliance":
+            if subset not in self.SUBSET_METHODS:
                 continue
 
-            if subset in self.SUBSET_METHODS:
-                method_name = self.SUBSET_METHODS[subset]
-                gather_method = getattr(self, method_name)
+            method_name = self.SUBSET_METHODS[subset]
+            gather_method = getattr(self, method_name)
 
-                try:
-                    subset_facts = gather_method(task_vars=task_vars)
+            try:
+                subset_facts = gather_method(task_vars=task_vars)
 
-                    # Deep merge subset_facts into all_facts
-                    for namespace, namespace_facts in subset_facts.items():
-                        if namespace not in all_facts:
-                            all_facts[namespace] = {}
-                        # Deep merge for nested dicts like config
-                        for key, value in namespace_facts.items():
-                            if (
-                                key in all_facts[namespace]
-                                and isinstance(all_facts[namespace][key], dict)
-                                and isinstance(value, dict)
-                            ):
-                                # Merge nested dicts
-                                all_facts[namespace][key].update(value)
-                            else:
-                                all_facts[namespace][key] = value
+                # Deep merge subset_facts into all_facts
+                for ns, ns_facts in subset_facts.items():
+                    if ns not in all_facts:
+                        all_facts[ns] = {}
+                    for key, value in ns_facts.items():
+                        if (
+                            key in all_facts[ns]
+                            and isinstance(all_facts[ns][key], dict)
+                            and isinstance(value, dict)
+                        ):
+                            all_facts[ns][key].update(value)
+                        else:
+                            all_facts[ns][key] = value
 
-                except AnsibleConnectionFailure:
-                    raise
-                except Exception as e:
-                    host = self._get_inventory_hostname(task_vars)
-                    self._display.warning(
-                        f"[{host}] Failed to gather {subset} facts: {e}"
-                    )
+            except AnsibleConnectionFailure:
+                raise
+            except Exception as e:
+                self._display.warning(
+                    f"[{self.inventory_hostname}] "
+                    f"Failed to gather {subset} facts: {e}"
+                )
 
-        # Special case: merge architecture into hardware.baseboard if
-        # both uname and hardware were gathered
-        if (
-            "uname" in selected_subsets
-            and "hardware" in selected_subsets
-            and "o0_hardware" in all_facts
-        ):
-            # Architecture from uname is already in
-            # o0_hardware.baseboard.architecture
-            # If dmidecode also has baseboard, merge them
-            pass  # Already handled in _gather_uname
-
-        result.update({"ansible_facts": all_facts})
+        result["ansible_facts"] = all_facts
+        result["changed"] = False
 
         return result

@@ -9,7 +9,6 @@
 #
 # This file is part of the o0_o.posix Ansible Collection.
 
-from __future__ import absolute_import, division, print_function
 from __future__ import annotations
 
 
@@ -266,7 +265,7 @@ ansible_facts:
 from ansible.module_utils.basic import AnsibleModule
 
 
-def main():
+def main() -> None:
     """Fail if this module is run directly without the action plugin."""
     argument_spec = {
         "gather_subset": {
