@@ -268,6 +268,15 @@ def process_all_compliance_command_results(
             version_result = processed_results[cmd_type]
             parsed = version_result["parsed"]
 
+            # Fallback: _POSIX2_VERSION may not exist on some
+            # systems (e.g. Debian/glibc) since POSIX.2 was
+            # merged into POSIX.1. Use _POSIX_VERSION instead.
+            if not parsed and standard == "xcu":
+                xsh_result = processed_results["xsh_version"]
+                parsed = xsh_result["parsed"]
+                if parsed:
+                    version_result = xsh_result
+
             if parsed and compliance[standard].get("supported") is not False:
                 compliance[standard].update(parsed)
                 getconf_var = version_result["command"][1]
