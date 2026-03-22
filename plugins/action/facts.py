@@ -11,7 +11,6 @@
 
 from __future__ import annotations
 
-import time
 from typing import Any, Optional
 
 from ansible.errors import AnsibleActionFail, AnsibleConnectionFailure
@@ -22,14 +21,14 @@ from ansible_collections.o0_o.posix.plugins.module_utils import (
     fstab,
     get_compliance_command_requests,
     get_dmidecode_command_requests,
-    get_locale_command_requests,
+    get_env_command_requests,
     get_mount_command_requests,
     group_info,
     parse_shells,
     passwd_info,
     process_all_compliance_command_results,
     process_dmidecode_command_results,
-    process_locale_command_results,
+    process_env_command_results,
     process_mount_command_results,
 )
 from ansible_collections.o0_o.posix.plugins.module_utils.uname_utils import (
@@ -37,18 +36,77 @@ from ansible_collections.o0_o.posix.plugins.module_utils.uname_utils import (
     process_uname_command_results,
 )
 
+# POSIX-defined environment variables to collect
+POSIX_ENV_VARS = [
+    # Mandatory (shall be set)
+    "HOME",
+    "LOGNAME",
+    "PATH",
+    # Shell-maintained
+    "PWD",
+    "OLDPWD",
+    # Commonly defined by POSIX
+    "SHELL",
+    "USER",
+    "TERM",
+    "LANG",
+    "LC_ALL",
+    "LC_COLLATE",
+    "LC_CTYPE",
+    "LC_MESSAGES",
+    "LC_MONETARY",
+    "LC_NUMERIC",
+    "LC_TIME",
+    "TZ",
+    "TMPDIR",
+    "EDITOR",
+    "VISUAL",
+    "PAGER",
+    "MAIL",
+    "CDPATH",
+    "ENV",
+    "COLUMNS",
+    "LINES",
+    "IFS",
+]
+
+
+def _get_environment_requests() -> list[dict[str, Any]]:
+    """Build command requests for POSIX environment collection.
+
+    :returns list[dict[str, Any]]: Command requests for run plugin
+    """
+    return get_env_command_requests(POSIX_ENV_VARS)
+
+
+def _process_environment_results(
+    cmds_completed: list[dict[str, Any]],
+) -> tuple[dict[str, Any], list[Exception]]:
+    """Process environment results into o0_users namespace.
+
+    Returns raw env data — the caller is responsible for keying
+    it under the effective username.
+
+    :param list[dict[str, Any]] cmds_completed: Command results
+    :returns tuple[dict[str, Any], list[Exception]]: Tuple of
+        (env_dict, errors) where env_dict maps var names to values
+    """
+    env_data = process_env_command_results(
+        cmds_completed, POSIX_ENV_VARS, False
+    )
+    return env_data, []
+
 
 class ActionModule(PosixActionBase, ActionBase):
     """Gather comprehensive POSIX facts from the managed host.
 
     Collects system information using shell commands and file reads,
     organized into logical namespaces: o0_os, o0_hardware,
-    o0_storage, and o0_network.
+    o0_storage, o0_network, and o0_users.
 
-    Subsets with COMMAND_SPEC support (uname, compliance, locale,
-    dmidecode, mounts) are batched
-    into a single parallel ``_run()`` call.  Remaining subsets use
-    individual gather methods.
+    Subsets with COMMAND_SPEC support are batched into a single
+    parallel ``_run()`` call.  Remaining subsets use individual
+    gather methods.
     """
 
     TRANSFERS_FILES = False
@@ -59,11 +117,10 @@ class ActionModule(PosixActionBase, ActionBase):
 
     # Subset groups
     SUBSET_GROUPS = {
-        "min": {"uname", "locale", "timezone", "compliance"},
+        "min": {"uname", "environment", "compliance"},
         "all": {
             "uname",
-            "locale",
-            "timezone",
+            "environment",
             "dmidecode",
             "compliance",
             "storage",
@@ -82,10 +139,6 @@ class ActionModule(PosixActionBase, ActionBase):
             "requests": get_compliance_command_requests,
             "processor": process_all_compliance_command_results,
         },
-        "locale": {
-            "requests": get_locale_command_requests,
-            "processor": process_locale_command_results,
-        },
         "dmidecode": {
             "requests": get_dmidecode_command_requests,
             "processor": process_dmidecode_command_results,
@@ -94,11 +147,14 @@ class ActionModule(PosixActionBase, ActionBase):
             "requests": get_mount_command_requests,
             "processor": process_mount_command_results,
         },
+        "environment": {
+            "requests": _get_environment_requests,
+            "processor": _process_environment_results,
+        },
     }
 
     # Subsets that use individual gather methods (legacy path)
     LEGACY_METHODS = {
-        "timezone": "_gather_timezone",
         "fstab": "_gather_fstab",
         "users": "_gather_users",
     }
@@ -131,35 +187,6 @@ class ActionModule(PosixActionBase, ActionBase):
                     all_facts[ns][key].update(value)
                 else:
                     all_facts[ns][key] = value
-
-    def _gather_timezone(
-        self, task_vars: Optional[dict[str, Any]] = None
-    ) -> dict[str, Any]:
-        """Gather time and timezone information.
-
-        :param Optional[dict[str, Any]] task_vars: Task variables
-        :returns dict[str, Any]: Time/timezone facts
-        """
-        current_epoch = int(time.time())
-        cmd_result = self._command(
-            ["date", "+%Y-%m-%d %H:%M:%S %Z"],
-            task_vars=task_vars,
-        )
-        pretty_time = cmd_result.get("stdout", "").strip()
-
-        tz_cmd = self._command(["date", "+%Z %z"], task_vars=task_vars)
-        tz_output = tz_cmd.get("stdout", "").strip()
-        tz_parts = tz_output.split()
-        tz_name = tz_parts[0] if tz_parts else ""
-        tz_offset = tz_parts[1] if len(tz_parts) > 1 else ""
-
-        time_facts = {
-            "epoch": current_epoch,
-            "pretty": pretty_time,
-            "zone": {"name": tz_name, "offset": tz_offset},
-        }
-
-        return {"o0_os": {"time": time_facts}}
 
     def _gather_fstab(
         self, task_vars: Optional[dict[str, Any]] = None
@@ -208,16 +235,16 @@ class ActionModule(PosixActionBase, ActionBase):
             task_vars=task_vars,
         )
 
-        facts = {"o0_os": {}}
+        facts = {}
 
         if not passwd_slurp.get("failed"):
-            facts["o0_os"]["users"] = passwd_info(passwd_slurp)
+            facts["o0_users"] = passwd_info(passwd_slurp, key="name")
 
         if not group_slurp.get("failed"):
-            facts["o0_os"]["groups"] = group_info(group_slurp)
+            facts["o0_groups"] = group_info(group_slurp)
 
         if not shells_slurp.get("failed"):
-            facts["o0_os"]["shells"] = parse_shells(shells_slurp)
+            facts["o0_shells"] = parse_shells(shells_slurp)
 
         return facts
 
@@ -257,9 +284,11 @@ class ActionModule(PosixActionBase, ActionBase):
     ) -> dict[str, Any]:
         """Execute fact gathering for selected subsets.
 
-        Batched subsets (uname, compliance) have their command
-        requests aggregated and executed in a single parallel
-        ``_run()`` call.  Legacy subsets run individually.
+        Batched subsets are aggregated and executed in a single
+        parallel ``_run()`` call.  Legacy subsets run individually.
+
+        The ``environment`` subset collects POSIX env vars and
+        places them under ``o0_users[effective_user]['environment']``.
 
         :param Optional[str] tmp: Unused temporary directory path
         :param Optional[dict[str, Any]] task_vars: Available Ansible
@@ -268,6 +297,7 @@ class ActionModule(PosixActionBase, ActionBase):
         """
         task_vars = task_vars or {}
         self._def_inventory_hostname(task_vars)
+        self._def_effective_user(task_vars)
 
         result = super().run(tmp, task_vars=task_vars)
         del tmp  # unused
@@ -296,7 +326,6 @@ class ActionModule(PosixActionBase, ActionBase):
         # Phase 1: Aggregate and execute batched subsets
         batched_selected = selected_subsets & self.BATCHED_SUBSETS.keys()
         if batched_selected:
-            # Collect command requests from all batched subsets
             all_requests = []
             for subset in batched_selected:
                 spec = self.BATCHED_SUBSETS[subset]
@@ -312,7 +341,6 @@ class ActionModule(PosixActionBase, ActionBase):
                 f"{', '.join(sorted(batched_selected))}"
             )
 
-            # Single _run() call for all batched commands
             run_results = self._run(
                 all_requests,
                 parallel=True,
@@ -321,7 +349,6 @@ class ActionModule(PosixActionBase, ActionBase):
                 check_mode=False,
             )
 
-            # Distribute results to each subset's processor
             for subset in batched_selected:
                 spec = self.BATCHED_SUBSETS[subset]
                 try:
@@ -330,7 +357,33 @@ class ActionModule(PosixActionBase, ActionBase):
                         self._display.warning(
                             f"[{self.inventory_hostname}] " f"{err}"
                         )
-                    self._merge_facts(all_facts, facts)
+
+                    # Environment goes under o0_users
+                    if subset == "environment":
+                        user = self.effective_user
+                        env_facts = {
+                            "o0_users": {user: {"environment": facts}}
+                        }
+
+                        # Warn if LOGNAME/USER mismatch
+                        logname = facts.get("LOGNAME")
+                        env_user = facts.get("USER")
+                        for var, val in [
+                            ("LOGNAME", logname),
+                            ("USER", env_user),
+                        ]:
+                            if val is not None and val != user:
+                                self._display.warning(
+                                    f"[{self.inventory_hostname}]"
+                                    f" {var}={val} does not"
+                                    f" match effective user"
+                                    f" {user}"
+                                )
+
+                        self._merge_facts(all_facts, env_facts)
+                    else:
+                        self._merge_facts(all_facts, facts)
+
                 except Exception as e:
                     self._display.warning(
                         f"[{self.inventory_hostname}] "

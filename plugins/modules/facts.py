@@ -42,8 +42,7 @@ options:
       - mounts
       - fstab
       - users
-      - locale
-      - timezone
+      - environment
       - '!all'
       - '!uname'
       - '!compliance'
@@ -51,8 +50,7 @@ options:
       - '!mounts'
       - '!fstab'
       - '!users'
-      - '!locale'
-      - '!timezone'
+      - '!environment'
 author:
   - oØ.o (@o0-o)
 seealso:
@@ -283,8 +281,7 @@ def main() -> None:
                 "mounts",
                 "fstab",
                 "users",
-                "locale",
-                "timezone",
+                "environment",
                 "!all",
                 "!uname",
                 "!compliance",
@@ -292,8 +289,7 @@ def main() -> None:
                 "!mounts",
                 "!fstab",
                 "!users",
-                "!locale",
-                "!timezone",
+                "!environment",
             ],
         }
     }

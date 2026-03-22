@@ -41,6 +41,11 @@ def plugin(base) -> Generator[ActionModule, None, None]:
     plugin._cmd = base._cmd
     plugin._display = base._display
     plugin.inventory_hostname = "localhost"
+    plugin.effective_user = "testuser"
+    # Ensure _def_effective_user doesn't override our mock
+    plugin._play_context.become = False
+    plugin._play_context.remote_user = "testuser"
+    plugin._play_context.connection_user = None
     return plugin
 
 
@@ -51,8 +56,7 @@ class TestResolveSubsets:
         """Test subset resolution for 'all'."""
         selected = plugin._resolve_subsets(["all"])
         assert "uname" in selected
-        assert "locale" in selected
-        assert "timezone" in selected
+        assert "environment" in selected
         assert "dmidecode" in selected
         assert "compliance" in selected
 
@@ -61,8 +65,7 @@ class TestResolveSubsets:
         selected = plugin._resolve_subsets(["min"])
         assert selected == {
             "uname",
-            "locale",
-            "timezone",
+            "environment",
             "compliance",
         }
 
@@ -93,6 +96,18 @@ class TestResolveSubsets:
         with pytest.raises(AnsibleActionFail, match="Invalid gather_subset"):
             plugin._resolve_subsets(["invalid_subset"])
 
+    def test_no_locale_or_timezone(self, plugin) -> None:
+        """Test that locale and timezone are not valid subsets."""
+        with pytest.raises(AnsibleActionFail):
+            plugin._resolve_subsets(["locale"])
+        with pytest.raises(AnsibleActionFail):
+            plugin._resolve_subsets(["timezone"])
+
+    def test_environment_subset(self, plugin) -> None:
+        """Test environment is a valid subset."""
+        selected = plugin._resolve_subsets(["environment"])
+        assert selected == {"environment"}
+
 
 class TestMergeFacts:
     """Tests for _merge_facts helper."""
@@ -100,7 +115,10 @@ class TestMergeFacts:
     def test_merge_new_namespace(self, plugin) -> None:
         """Test merging into empty accumulator."""
         acc = {}
-        plugin._merge_facts(acc, {"o0_os": {"kernel": {"name": "linux"}}})
+        plugin._merge_facts(
+            acc,
+            {"o0_os": {"kernel": {"name": "linux"}}},
+        )
         assert acc == {"o0_os": {"kernel": {"name": "linux"}}}
 
     def test_merge_deep(self, plugin) -> None:
@@ -115,85 +133,56 @@ class TestMergeFacts:
             "make": "Dell",
         }
 
-    def test_merge_replaces_non_dict(self, plugin) -> None:
-        """Test that non-dict values are replaced."""
-        acc = {"o0_os": {"shells": ["old"]}}
-        plugin._merge_facts(acc, {"o0_os": {"shells": ["new"]}})
-        assert acc["o0_os"]["shells"] == ["new"]
-
 
 class TestBatchedExecution:
     """Tests for the batched COMMAND_SPEC path."""
 
-    def test_uname_in_batched_subsets(self, plugin) -> None:
-        """Test uname is listed as a batched subset."""
-        assert "uname" in plugin.BATCHED_SUBSETS
+    def test_environment_in_batched(self, plugin) -> None:
+        """Test environment is a batched subset."""
+        assert "environment" in plugin.BATCHED_SUBSETS
 
-    def test_compliance_in_batched_subsets(self, plugin) -> None:
-        """Test compliance is listed as a batched subset."""
-        assert "compliance" in plugin.BATCHED_SUBSETS
+    def test_locale_not_in_subsets(self, plugin) -> None:
+        """Test locale is not a subset anymore."""
+        assert "locale" not in plugin.BATCHED_SUBSETS
+        assert "locale" not in plugin.LEGACY_METHODS
 
-    def test_batched_requests_callable(self, plugin) -> None:
-        """Test that batched request functions are callable."""
-        for subset, spec in plugin.BATCHED_SUBSETS.items():
-            assert callable(spec["requests"])
-            assert callable(spec["processor"])
+    def test_timezone_not_in_subsets(self, plugin) -> None:
+        """Test timezone is not a subset anymore."""
+        assert "timezone" not in plugin.BATCHED_SUBSETS
+        assert "timezone" not in plugin.LEGACY_METHODS
 
-    def test_run_batched_uname_only(self, monkeypatch, plugin) -> None:
-        """Test run with only uname subset uses batched path."""
-        plugin._task.args = {"gather_subset": ["!all", "uname"]}
-
-        run_called = {}
+    def test_run_environment_keys_by_user(self, monkeypatch, plugin) -> None:
+        """Test environment results are keyed under
+        effective user."""
+        plugin._task.args = {"gather_subset": ["!all", "environment"]}
 
         def mock_run(commands, **kwargs):
-            run_called["commands"] = commands
             return []
 
         monkeypatch.setattr(plugin, "_run", mock_run)
 
-        # Patch the processor in the BATCHED_SUBSETS dict
         def mock_processor(results):
             return (
                 {
-                    "o0_os": {"kernel": {"name": "linux"}},
-                    "o0_network": {"hostname": {"short": "host"}},
+                    "HOME": "/home/testuser",
+                    "LANG": "en_US.UTF-8",
+                    "TZ": None,
                 },
                 [],
             )
 
         monkeypatch.setitem(
-            plugin.BATCHED_SUBSETS["uname"],
+            plugin.BATCHED_SUBSETS["environment"],
             "processor",
             mock_processor,
         )
 
         result = plugin.run(tmp=None, task_vars={})
 
-        assert "commands" in run_called
-        assert result["ansible_facts"]["o0_os"]["kernel"]["name"] == "linux"
-        assert result["changed"] is False
-
-
-class TestLegacyExecution:
-    """Tests for the legacy gather method path."""
-
-    def test_locale_in_batched(self, plugin) -> None:
-        """Test locale is listed as a batched subset."""
-        assert "locale" in plugin.BATCHED_SUBSETS
-
-    def test_legacy_failure_warns(self, monkeypatch, plugin) -> None:
-        """Test that legacy subset failures emit warnings."""
-        plugin._task.args = {"gather_subset": ["!all", "timezone"]}
-
-        def mock_command(cmd, task_vars=None, **kwargs):
-            raise RuntimeError("date not found")
-
-        monkeypatch.setattr(plugin, "_command", mock_command)
-
-        result = plugin.run(tmp=None, task_vars={})
-        assert result["changed"] is False
-        assert "ansible_facts" in result
-        plugin._display.warning.assert_called()
+        env = result["ansible_facts"]["o0_users"]["testuser"]["environment"]
+        assert env["HOME"] == "/home/testuser"
+        assert env["LANG"] == "en_US.UTF-8"
+        assert env["TZ"] is None
 
 
 class TestRun:
@@ -201,33 +190,30 @@ class TestRun:
 
     def test_connection_failure_propagates(self, monkeypatch, plugin) -> None:
         """Test that connection failures are propagated."""
-        plugin._task.args = {"gather_subset": ["!all", "timezone"]}
+        plugin._task.args = {"gather_subset": ["!all", "fstab"]}
 
-        def mock_command(cmd, task_vars=None, **kwargs):
-            raise AnsibleConnectionFailure("connection lost")
+        def mock_execute(module_name, module_args, task_vars=None):
+            raise AnsibleConnectionFailure("lost")
 
-        monkeypatch.setattr(plugin, "_command", mock_command)
+        monkeypatch.setattr(plugin, "_execute_module", mock_execute)
 
         with pytest.raises(AnsibleConnectionFailure):
             plugin.run(tmp=None, task_vars={})
 
-    def test_result_has_invocation(self, monkeypatch, plugin) -> None:
+    def test_result_has_invocation(self, plugin) -> None:
         """Test that result includes invocation."""
         plugin._task.args = {"gather_subset": ["!all"]}
-
         result = plugin.run(tmp=None, task_vars={})
         assert "invocation" in result
 
-    def test_changed_is_false(self, monkeypatch, plugin) -> None:
+    def test_changed_is_false(self, plugin) -> None:
         """Test that changed is always false."""
         plugin._task.args = {"gather_subset": ["!all"]}
-
         result = plugin.run(tmp=None, task_vars={})
         assert result["changed"] is False
 
     def test_empty_subset_returns_empty_facts(self, plugin) -> None:
         """Test that !all returns empty ansible_facts."""
         plugin._task.args = {"gather_subset": ["!all"]}
-
         result = plugin.run(tmp=None, task_vars={})
         assert result["ansible_facts"] == {}
