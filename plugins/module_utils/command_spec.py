@@ -27,6 +27,10 @@ from ansible_collections.o0_o.posix.plugins.module_utils.compliance_parsers impo
     _parse_xopen_support,
     _parse_xopen_version,
 )
+from ansible_collections.o0_o.posix.plugins.module_utils.locale_utils import (
+    _parse_locale,
+    _parse_locale_env,
+)
 from ansible_collections.o0_o.posix.plugins.module_utils.uname_utils import (
     _parse_uname,
 )
@@ -49,6 +53,21 @@ UNAME_COMMAND_SPEC = {
         "uname": {
             "command": ("uname", "-a"),
             "parser": _parse_uname,
+        },
+    },
+}
+
+# Locale command spec (with env fallback)
+LOCALE_COMMAND_SPEC = {
+    "posix": {
+        "locale": {
+            "command": ("locale",),
+            "parser": _parse_locale,
+        },
+        "locale_env": {
+            "command": ("env",),
+            "parser": _parse_locale_env,
+            "non_error_codes": [0, 1],
         },
     },
 }

@@ -94,6 +94,10 @@ from ansible_collections.o0_o.posix.plugins.module_utils.who_utils import (
 from ansible_collections.o0_o.posix.plugins.module_utils.posix_action_base import (  # noqa: E501
     PosixActionBase,
 )
+from ansible_collections.o0_o.posix.plugins.module_utils.locale_utils import (
+    get_locale_command_requests,
+    process_locale_command_results,
+)
 from ansible_collections.o0_o.posix.plugins.module_utils.uname_utils import (
     get_uname_command_requests,
     process_uname_command_results,
@@ -166,6 +170,8 @@ __all__ = [
     # "stat",
     "normalize_source",
     "process_registered_result",
+    "get_locale_command_requests",
+    "process_locale_command_results",
     "get_uname_command_requests",
     "process_uname_command_results",
     "lookup_group",

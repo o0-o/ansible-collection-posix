@@ -175,9 +175,9 @@ class TestBatchedExecution:
 class TestLegacyExecution:
     """Tests for the legacy gather method path."""
 
-    def test_locale_in_legacy(self, plugin) -> None:
-        """Test locale is listed as a legacy subset."""
-        assert "locale" in plugin.LEGACY_METHODS
+    def test_locale_in_batched(self, plugin) -> None:
+        """Test locale is listed as a batched subset."""
+        assert "locale" in plugin.BATCHED_SUBSETS
 
     def test_legacy_failure_warns(self, monkeypatch, plugin) -> None:
         """Test that legacy subset failures emit warnings."""
@@ -199,7 +199,7 @@ class TestRun:
 
     def test_connection_failure_propagates(self, monkeypatch, plugin) -> None:
         """Test that connection failures are propagated."""
-        plugin._task.args = {"gather_subset": ["!all", "locale"]}
+        plugin._task.args = {"gather_subset": ["!all", "hardware"]}
 
         def mock_command(cmd, task_vars=None, **kwargs):
             raise AnsibleConnectionFailure("connection lost")

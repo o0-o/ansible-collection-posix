@@ -9,18 +9,22 @@
 #
 # This file is part of the o0_o.posix Ansible Collection.
 
+"""Unit tests for locale action plugin."""
+
 from __future__ import annotations
 
 from typing import Generator
 
 import pytest
 
-from ansible_collections.o0_o.posix.plugins.action.locale import ActionModule
+from ansible_collections.o0_o.posix.plugins.action.locale import (
+    ActionModule,
+)
 
 
 @pytest.fixture
 def plugin(base) -> Generator[ActionModule, None, None]:
-    """Create an ActionModule instance for locale detection tests."""
+    """Create an ActionModule instance for locale tests."""
     base._task.async_val = False
     base._task.action = "locale"
     base._task.args = {}
@@ -38,79 +42,64 @@ def plugin(base) -> Generator[ActionModule, None, None]:
     return plugin
 
 
-def test_locale_from_locale_command(monkeypatch, plugin) -> None:
-    """Test successful parsing of locale command output into categories."""
+def test_run_returns_locale_data(monkeypatch, plugin) -> None:
+    """Test run returns parsed locale categories."""
 
-    locale_output = """
-LANG="en_US.UTF-8"
-LC_CTYPE="en_US.UTF-8"
-LC_COLLATE="en_US.UTF-8"
-LC_MESSAGES="en_US.UTF-8"
-LC_MONETARY="en_US.UTF-8"
-LC_NUMERIC="en_US.UTF-8"
-LC_TIME="en_US.UTF-8"
-LC_ALL=
-""".strip()
+    def mock_run(commands, **kwargs):
+        return []
 
-    def mock_cmd(cmd, task_vars=None, **kwargs):
-        if cmd == ["locale"]:
-            return {"rc": 0, "stdout": locale_output}
-        if cmd == ["env"]:
-            return {"rc": 1}
-        return {"rc": 1}
+    monkeypatch.setattr(plugin, "_run", mock_run)
 
-    monkeypatch.setattr(plugin, "_cmd", mock_cmd)
-    locale = plugin._get_locale(task_vars={})
-    assert locale == {
-        "language": "en_US.UTF-8",
-        "all": None,
-        "characters": "en_US.UTF-8",
-        "collation": "en_US.UTF-8",
-        "messages": "en_US.UTF-8",
-        "monetary": "en_US.UTF-8",
-        "numeric": "en_US.UTF-8",
-        "time": "en_US.UTF-8",
-    }
+    from ansible_collections.o0_o.posix.plugins.action import (
+        locale as locale_mod,
+    )
 
+    monkeypatch.setattr(
+        locale_mod,
+        "process_locale_command_results",
+        lambda results: (
+            {
+                "o0_os": {
+                    "locale": {
+                        "language": "en_US.UTF-8",
+                        "all": None,
+                        "characters": "en_US.UTF-8",
+                    }
+                }
+            },
+            [],
+        ),
+    )
 
-def test_locale_fallback_to_env(monkeypatch, plugin) -> None:
-    """Test fallback to environment variables when locale command fails."""
+    result = plugin.run(task_vars={})
 
-    env_output = """
-LANG=en_GB.UTF-8
-LC_ALL=en_GB.UTF-8
-LC_TIME=en_GB.UTF-8
-""".strip()
-
-    def mock_cmd(cmd, task_vars=None, **kwargs):
-        if cmd == ["locale"]:
-            return {"rc": 1}
-        if cmd == ["env"]:
-            return {"rc": 0, "stdout": env_output}
-        return {"rc": 1}
-
-    monkeypatch.setattr(plugin, "_cmd", mock_cmd)
-    locale = plugin._get_locale(task_vars={})
-    assert locale == {
-        "language": "en_GB.UTF-8",
-        "all": "en_GB.UTF-8",
-        "characters": None,
-        "collation": None,
-        "messages": None,
-        "monetary": None,
-        "numeric": None,
-        "time": "en_GB.UTF-8",
-    }
+    assert result["locale"]["language"] == "en_US.UTF-8"
+    assert result["locale"]["characters"] == "en_US.UTF-8"
+    assert result["changed"] is False
 
 
-def test_locale_detection_failure(monkeypatch, plugin) -> None:
-    """Test that RuntimeError is raised when all detection methods fail."""
+def test_run_emits_warnings_on_errors(monkeypatch, plugin) -> None:
+    """Test that processing errors emit warnings."""
 
-    def mock_cmd(cmd, task_vars=None, **kwargs):
-        return {"rc": 1}
+    def mock_run(commands, **kwargs):
+        return []
 
-    monkeypatch.setattr(plugin, "_cmd", mock_cmd)
-    with pytest.raises(
-        RuntimeError, match="Locale detection methods exhausted"
-    ):
-        plugin._get_locale(task_vars={})
+    monkeypatch.setattr(plugin, "_run", mock_run)
+
+    from ansible_collections.o0_o.posix.plugins.action import (
+        locale as locale_mod,
+    )
+
+    monkeypatch.setattr(
+        locale_mod,
+        "process_locale_command_results",
+        lambda results: (
+            {},
+            [ValueError("locale failed")],
+        ),
+    )
+
+    result = plugin.run(task_vars={})
+
+    assert result["locale"] == {}
+    plugin._display.warning.assert_called()

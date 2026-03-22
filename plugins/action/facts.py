@@ -22,11 +22,13 @@ from ansible_collections.o0_o.posix.plugins.module_utils import (
     dmidecode,
     fstab,
     get_compliance_command_requests,
+    get_locale_command_requests,
     group_info,
     mount,
     parse_shells,
     passwd_info,
     process_all_compliance_command_results,
+    process_locale_command_results,
 )
 from ansible_collections.o0_o.posix.plugins.module_utils.uname_utils import (
     get_uname_command_requests,
@@ -41,7 +43,7 @@ class ActionModule(PosixActionBase, ActionBase):
     organized into logical namespaces: o0_os, o0_hardware,
     o0_storage, and o0_network.
 
-    Subsets with COMMAND_SPEC support (uname, compliance) are batched
+    Subsets with COMMAND_SPEC support (uname, compliance, locale) are batched
     into a single parallel ``_run()`` call.  Remaining subsets use
     individual gather methods.
     """
@@ -77,11 +79,14 @@ class ActionModule(PosixActionBase, ActionBase):
             "requests": get_compliance_command_requests,
             "processor": process_all_compliance_command_results,
         },
+        "locale": {
+            "requests": get_locale_command_requests,
+            "processor": process_locale_command_results,
+        },
     }
 
     # Subsets that use individual gather methods (legacy path)
     LEGACY_METHODS = {
-        "locale": "_gather_locale",
         "timezone": "_gather_timezone",
         "hardware": "_gather_hardware",
         "mounts": "_gather_mounts",
@@ -117,31 +122,6 @@ class ActionModule(PosixActionBase, ActionBase):
                     all_facts[ns][key].update(value)
                 else:
                     all_facts[ns][key] = value
-
-    def _gather_locale(
-        self, task_vars: Optional[dict[str, Any]] = None
-    ) -> dict[str, Any]:
-        """Gather locale information.
-
-        :param Optional[dict[str, Any]] task_vars: Task variables
-        :returns dict[str, Any]: Locale facts
-        """
-        cmd_result = self._command(["locale"], task_vars=task_vars)
-        locale_output = cmd_result.get("stdout", "")
-
-        locale_facts = {}
-        for line in locale_output.strip().split("\n"):
-            if "=" in line:
-                key, value = line.split("=", 1)
-                value = value.strip('"')
-                if key == "LANG":
-                    locale_facts["language"] = value
-                elif key == "LC_ALL":
-                    locale_facts["all"] = value
-                elif key.startswith("LC_"):
-                    locale_facts[key.lower()] = value
-
-        return {"o0_os": {"locale": locale_facts}}
 
     def _gather_timezone(
         self, task_vars: Optional[dict[str, Any]] = None
