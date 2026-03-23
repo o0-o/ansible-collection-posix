@@ -38,6 +38,7 @@ options:
       - min
       - uname
       - compliance
+      - timezone
       - dmidecode
       - mounts
       - fstab
@@ -46,6 +47,7 @@ options:
       - '!all'
       - '!uname'
       - '!compliance'
+      - '!timezone'
       - '!dmidecode'
       - '!mounts'
       - '!fstab'
@@ -277,6 +279,7 @@ def main() -> None:
                 "min",
                 "uname",
                 "compliance",
+                "timezone",
                 "dmidecode",
                 "mounts",
                 "fstab",
@@ -285,6 +288,7 @@ def main() -> None:
                 "!all",
                 "!uname",
                 "!compliance",
+                "!timezone",
                 "!dmidecode",
                 "!mounts",
                 "!fstab",

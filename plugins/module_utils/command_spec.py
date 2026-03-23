@@ -37,6 +37,9 @@ from ansible_collections.o0_o.posix.plugins.module_utils.locale_utils import (
 from ansible_collections.o0_o.posix.plugins.module_utils.mount_utils import (
     _parse_mount,
 )
+from ansible_collections.o0_o.posix.plugins.module_utils.timezone_utils import (  # noqa: E501
+    _parse_timezone,
+)
 from ansible_collections.o0_o.posix.plugins.module_utils.uname_utils import (
     _parse_uname,
 )
@@ -93,6 +96,16 @@ MOUNT_COMMAND_SPEC = {
         "mount": {
             "command": ("mount",),
             "parser": _parse_mount,
+        },
+    },
+}
+
+# System timezone command spec (unset TZ to get system default)
+TIMEZONE_COMMAND_SPEC = {
+    "posix": {
+        "system_timezone": {
+            "command": "sh -c 'unset TZ; date \"+%Z %z\"'",
+            "parser": _parse_timezone,
         },
     },
 }

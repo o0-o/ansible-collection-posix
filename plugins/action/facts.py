@@ -23,6 +23,7 @@ from ansible_collections.o0_o.posix.plugins.module_utils import (
     get_dmidecode_command_requests,
     get_env_command_requests,
     get_mount_command_requests,
+    get_timezone_command_requests,
     group_info,
     parse_shells,
     passwd_info,
@@ -30,6 +31,7 @@ from ansible_collections.o0_o.posix.plugins.module_utils import (
     process_dmidecode_command_results,
     process_env_command_results,
     process_mount_command_results,
+    process_timezone_command_results,
 )
 from ansible_collections.o0_o.posix.plugins.module_utils.uname_utils import (
     get_uname_command_requests,
@@ -117,10 +119,11 @@ class ActionModule(PosixActionBase, ActionBase):
 
     # Subset groups
     SUBSET_GROUPS = {
-        "min": {"uname", "environment", "compliance"},
+        "min": {"uname", "environment", "timezone", "compliance"},
         "all": {
             "uname",
             "environment",
+            "timezone",
             "dmidecode",
             "compliance",
             "storage",
@@ -146,6 +149,10 @@ class ActionModule(PosixActionBase, ActionBase):
         "mounts": {
             "requests": get_mount_command_requests,
             "processor": process_mount_command_results,
+        },
+        "timezone": {
+            "requests": get_timezone_command_requests,
+            "processor": process_timezone_command_results,
         },
         "environment": {
             "requests": _get_environment_requests,

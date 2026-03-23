@@ -76,18 +76,10 @@ from ansible_collections.o0_o.posix.plugins.module_utils.shells_utils import (
     parse_shells,
 )
 
-# TODO: Recreate timezone_utils.py - lost during restore
-# from ansible_collections.o0_o.posix.plugins.module_utils. \
-#     timezone_utils import (
-#     parse_posix_tz,
-#     parse_etc_timezone,
-#     parse_localtime_symlink,
-#     parse_systemsetup_output,
-#     parse_timedatectl_output,
-#     parse_date_abbr,
-#     parse_posix_candidate,
-#     merge_timezone_config,
-# )
+from ansible_collections.o0_o.posix.plugins.module_utils.timezone_utils import (  # noqa: E501
+    get_timezone_command_requests,
+    process_timezone_command_results,
+)
 from ansible_collections.o0_o.posix.plugins.module_utils.uptime_utils import (
     parse_uptime,
 )
@@ -165,15 +157,8 @@ __all__ = [
     "parse_mount_entry",
     "process_mount_command_results",
     "parse_shells",
-    # TODO: Restore timezone exports when timezone_utils.py is recreated
-    # "parse_posix_tz",
-    # "parse_etc_timezone",
-    # "parse_localtime_symlink",
-    # "parse_systemsetup_output",
-    # "parse_timedatectl_output",
-    # "parse_date_abbr",
-    # "parse_posix_candidate",
-    # "merge_timezone_config",
+    "get_timezone_command_requests",
+    "process_timezone_command_results",
     "parse_uptime",
     "parse_who",
     "ps",

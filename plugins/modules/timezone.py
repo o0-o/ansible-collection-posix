@@ -15,139 +15,83 @@ from __future__ import annotations
 DOCUMENTATION = r"""
 ---
 module: timezone
-short_description: Detect the system timezone details on POSIX hosts
-version_added: "1.4.0"
+short_description: Detect the system-level timezone
+version_added: "1.5.0"
 description:
-  - Detects timezone information on POSIX systems.
-  - Discovers the tzdb zone when available, parses the POSIX TZ
-    definition from the zoneinfo file, and captures the active
-    abbreviation and offset from the C(date) command.
+  - Detects the system-level timezone by unsetting C(TZ) and
+    running C(date), which forces the implementation-defined
+    default timezone.
+  - Returns the timezone abbreviation and UTC offset.
+  - This reflects the system configuration, not any user-level
+    C(TZ) override.
+  - Does not require Python on the target host.
 options: {}
 author:
   - oØ.o (@o0-o)
 notes:
-  - This module is implemented as an action plugin and supports raw fallback.
+  - This module is implemented as an action plugin and supports
+    raw fallback.
+  - For user-level timezone (C(TZ) env var), use the
+    C(o0_o.posix.env) module or the C(environment) facts subset.
+attributes:
+  check_mode:
+    description: >-
+      This module supports check mode. Timezone detection is
+      read-only so behavior is identical.
+    support: full
+  async:
+    description: This module does not support async operation.
+    support: none
+  platform:
+    description: Only POSIX platforms are supported.
+    support: full
+    platforms: posix
 seealso:
   - module: o0_o.posix.facts
-    description: Minimal POSIX facts gathering
+    description: Gather comprehensive POSIX facts
+  - module: o0_o.posix.env
+    description: Collect environment variables
 """
 
 EXAMPLES = r"""
-- name: Get timezone
+- name: Get system timezone
   o0_o.posix.timezone:
-  register: tz
+  register: tz_reg
 
 - name: Show timezone
   ansible.builtin.debug:
-    var: tz.timezone
+    var: tz_reg['timezone']
+
+- name: Show abbreviation and offset
+  ansible.builtin.debug:
+    msg: >-
+      {{ tz_reg['timezone']['abbreviation'] }}
+      ({{ tz_reg['timezone']['offset'] }})
 """
 
 RETURN = r"""
 timezone:
-  description: Detected timezone information
+  description: System-level timezone information
   returned: always
   type: dict
   contains:
-    name:
-      description: TZ database identifier when detected
+    abbreviation:
+      description: Timezone abbreviation (e.g. EST, UTC, PDT)
       type: str
-      returned: when available
-      sample: America/New_York
-    zone:
-      description: Deprecated alias of C(name) retained for compatibility
-      type: str
-      returned: when available
-    config:
-      description: Mapping of examined timezone configuration files
-      type: dict
-      returned: when available
-      sample:
-        /etc/localtime:
-          link: /var/db/timezone/zoneinfo/America/New_York
-      contains:
-        /etc/localtime:
-          description: Entry for the active localtime reference
-          type: dict
-          contains:
-            link:
-              description: Symlink target or resolved zoneinfo file
-              type: str
-              returned: when available
-              sample: /var/db/timezone/zoneinfo/America/New_York
-    posix:
-      description: Raw POSIX TZ string parsed from the zoneinfo file
-      type: str
-      returned: when available
-      sample: EST5EDT,M3.2.0,M11.1.0
-    standard:
-      description: Standard time definition
-      type: dict
-      returned: when available
-      contains:
-        abbr:
-          description: Standard time abbreviation
-          type: str
-          sample: EST
-        offset:
-          description: Standard offset formatted +/-HH:MM[:SS]
-          type: str
-          sample: -05:00
-    daylight:
-      description: Daylight saving definition when present
-      type: dict
-      returned: when available
-      contains:
-        abbr:
-          description: Daylight time abbreviation
-          type: str
-          sample: EDT
-        offset:
-          description: Daylight offset formatted +/-HH:MM[:SS]
-          type: str
-          sample: -04:00
-        start:
-          description: Daylight saving start components
-          type: dict
-          contains:
-            month:
-              description: Month index (1-12)
-              type: int
-            week:
-              description: Week number (1-4, 5=last)
-              type: int
-            weekday:
-              description: Day of week (0=Sunday)
-              type: int
-            time:
-              description: Transition time (HH:MM[:SS])
-              type: str
-        end:
-          description: Daylight saving end components
-          type: dict
-          contains:
-            month:
-              description: Month index (1-12)
-              type: int
-            week:
-              description: Week number (1-4, 5=last)
-              type: int
-            weekday:
-              description: Day of week (0=Sunday)
-              type: int
-            time:
-              description: Transition time (HH:MM[:SS])
-              type: str
-    abbr:
-      description: Active timezone abbreviation from C(date +%Z)
-      type: str
-      returned: when available
-      sample: EDT
+      returned: always
+      sample: EST
     offset:
-      description: Active numeric offset from C(date +%z)
+      description: UTC offset in +/-HHMM format
       type: str
       returned: when available
-      sample: -0400
+      sample: "-0500"
+changed:
+  description: Always false as this is a read-only module
+  returned: always
+  type: bool
+  sample: false
 """
+
 from ansible.module_utils.basic import AnsibleModule
 
 
