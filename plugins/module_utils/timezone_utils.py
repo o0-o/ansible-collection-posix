@@ -86,7 +86,7 @@ def process_timezone_command_results(
     processed = process_all_command_results(cmds_completed)
     errors = []
 
-    tz_result = processed.get("system_timezone")
+    tz_result = processed.get("timezone")
     if tz_result is None:
         return {}, [ValueError("No timezone result found")]
 

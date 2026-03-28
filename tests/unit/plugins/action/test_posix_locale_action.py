@@ -59,13 +59,9 @@ def test_run_returns_locale_data(monkeypatch, plugin) -> None:
         "process_locale_command_results",
         lambda results: (
             {
-                "o0_os": {
-                    "locale": {
-                        "language": "en_US.UTF-8",
-                        "all": None,
-                        "characters": "en_US.UTF-8",
-                    }
-                }
+                "language": "en_US.UTF-8",
+                "all": None,
+                "characters": "en_US.UTF-8",
             },
             [],
         ),

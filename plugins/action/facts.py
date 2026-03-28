@@ -22,6 +22,7 @@ from ansible_collections.o0_o.posix.plugins.module_utils import (
     get_compliance_command_requests,
     get_dmidecode_command_requests,
     get_env_command_requests,
+    get_locale_command_requests,
     get_mount_command_requests,
     get_timezone_command_requests,
     group_info,
@@ -30,6 +31,7 @@ from ansible_collections.o0_o.posix.plugins.module_utils import (
     process_all_compliance_command_results,
     process_dmidecode_command_results,
     process_env_command_results,
+    process_locale_command_results,
     process_mount_command_results,
     process_timezone_command_results,
 )
@@ -119,10 +121,17 @@ class ActionModule(PosixActionBase, ActionBase):
 
     # Subset groups
     SUBSET_GROUPS = {
-        "min": {"uname", "environment", "timezone", "compliance"},
+        "min": {
+            "uname",
+            "environment",
+            "locale",
+            "timezone",
+            "compliance",
+        },
         "all": {
             "uname",
             "environment",
+            "locale",
             "timezone",
             "dmidecode",
             "compliance",
@@ -150,6 +159,10 @@ class ActionModule(PosixActionBase, ActionBase):
             "requests": get_mount_command_requests,
             "processor": process_mount_command_results,
         },
+        "locale": {
+            "requests": get_locale_command_requests,
+            "processor": process_locale_command_results,
+        },
         "timezone": {
             "requests": get_timezone_command_requests,
             "processor": process_timezone_command_results,
@@ -158,6 +171,13 @@ class ActionModule(PosixActionBase, ActionBase):
             "requests": _get_environment_requests,
             "processor": _process_environment_results,
         },
+    }
+
+    # Subsets whose results go under o0_users[effective_user]
+    USER_SCOPED_SUBSETS = {
+        "environment",
+        "locale",
+        "timezone",
     }
 
     # Subsets that use individual gather methods (legacy path)
@@ -365,29 +385,25 @@ class ActionModule(PosixActionBase, ActionBase):
                             f"[{self.inventory_hostname}] " f"{err}"
                         )
 
-                    # Environment goes under o0_users
-                    if subset == "environment":
+                    # User-scoped subsets go under
+                    # o0_users[effective_user]
+                    if subset in self.USER_SCOPED_SUBSETS:
                         user = self.effective_user
-                        env_facts = {
-                            "o0_users": {user: {"environment": facts}}
-                        }
+                        user_facts = {"o0_users": {user: {subset: facts}}}
 
-                        # Warn if LOGNAME/USER mismatch
-                        logname = facts.get("LOGNAME")
-                        env_user = facts.get("USER")
-                        for var, val in [
-                            ("LOGNAME", logname),
-                            ("USER", env_user),
-                        ]:
-                            if val is not None and val != user:
-                                self._display.warning(
-                                    f"[{self.inventory_hostname}]"
-                                    f" {var}={val} does not"
-                                    f" match effective user"
-                                    f" {user}"
-                                )
+                        # Validate LOGNAME/USER for env
+                        if subset == "environment":
+                            for var in ("LOGNAME", "USER"):
+                                val = facts.get(var)
+                                if val is not None and val != user:
+                                    self._display.warning(
+                                        f"[{self.inventory_hostname}]"
+                                        f" {var}={val} does"
+                                        f" not match effective"
+                                        f" user {user}"
+                                    )
 
-                        self._merge_facts(all_facts, env_facts)
+                        self._merge_facts(all_facts, user_facts)
                     else:
                         self._merge_facts(all_facts, facts)
 

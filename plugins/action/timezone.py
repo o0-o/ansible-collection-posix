@@ -23,11 +23,10 @@ from ansible_collections.o0_o.posix.plugins.module_utils import (
 
 
 class ActionModule(PosixActionBase, ActionBase):
-    """Detect the system-level timezone on POSIX hosts.
+    """Detect the effective timezone on POSIX hosts.
 
-    Unsets TZ and runs ``date "+%Z %z"`` to query the
-    implementation-defined system timezone default, bypassing
-    any user-level TZ override.
+    Runs ``date "+%Z %z"`` to query the effective timezone,
+    which reflects TZ if set or the system default via libc.
     """
 
     TRANSFERS_FILES = False

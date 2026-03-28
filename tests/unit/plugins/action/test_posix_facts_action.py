@@ -66,6 +66,7 @@ class TestResolveSubsets:
         assert selected == {
             "uname",
             "environment",
+            "locale",
             "timezone",
             "compliance",
         }
@@ -97,10 +98,10 @@ class TestResolveSubsets:
         with pytest.raises(AnsibleActionFail, match="Invalid gather_subset"):
             plugin._resolve_subsets(["invalid_subset"])
 
-    def test_no_locale_subset(self, plugin) -> None:
-        """Test that locale is not a valid subset."""
-        with pytest.raises(AnsibleActionFail):
-            plugin._resolve_subsets(["locale"])
+    def test_locale_subset(self, plugin) -> None:
+        """Test that locale is a valid subset."""
+        selected = plugin._resolve_subsets(["locale"])
+        assert selected == {"locale"}
 
     def test_timezone_subset(self, plugin) -> None:
         """Test that timezone is a valid subset."""
@@ -145,14 +146,15 @@ class TestBatchedExecution:
         """Test environment is a batched subset."""
         assert "environment" in plugin.BATCHED_SUBSETS
 
-    def test_locale_not_in_subsets(self, plugin) -> None:
-        """Test locale is not a subset anymore."""
-        assert "locale" not in plugin.BATCHED_SUBSETS
-        assert "locale" not in plugin.LEGACY_METHODS
+    def test_locale_in_batched(self, plugin) -> None:
+        """Test locale is a batched user-scoped subset."""
+        assert "locale" in plugin.BATCHED_SUBSETS
+        assert "locale" in plugin.USER_SCOPED_SUBSETS
 
     def test_timezone_in_batched(self, plugin) -> None:
-        """Test timezone is a batched subset."""
+        """Test timezone is a batched user-scoped subset."""
         assert "timezone" in plugin.BATCHED_SUBSETS
+        assert "timezone" in plugin.USER_SCOPED_SUBSETS
 
     def test_run_environment_keys_by_user(self, monkeypatch, plugin) -> None:
         """Test environment results are keyed under

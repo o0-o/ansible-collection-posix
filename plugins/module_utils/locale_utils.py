@@ -24,7 +24,7 @@ from ansible_collections.o0_o.core.plugins.module_utils import (
     process_command_spec,
 )
 
-# Mapping from environment variable names to human-readable keys
+# Mapping from POSIX locale variable names to readable keys
 LOCALE_MAPPING = {
     "LANG": "language",
     "LC_ALL": "all",
@@ -37,43 +37,6 @@ LOCALE_MAPPING = {
 }
 
 
-def _parse_assignments(
-    text: str,
-) -> dict[str, str]:
-    """Parse KEY=VALUE lines into a dictionary.
-
-    :param str text: Text containing KEY=VALUE lines
-    :returns dict[str, str]: Mapping of keys to values with
-        quotes stripped
-    """
-    data = {}
-    for line in text.splitlines():
-        if "=" not in line:
-            continue
-        key, value = line.split("=", 1)
-        key = key.strip()
-        value = value.strip().strip('"')
-        if key:
-            data[key] = value
-    return data
-
-
-def _map_locale_vars(
-    env_data: dict[str, str],
-) -> dict[str, Any]:
-    """Map locale environment variables to category names.
-
-    :param dict[str, str] env_data: Raw locale env vars
-    :returns dict[str, Any]: Mapped locale categories
-    """
-    result = {v: None for v in LOCALE_MAPPING.values()}
-    for env_key, category in LOCALE_MAPPING.items():
-        value = env_data.get(env_key)
-        if value:
-            result[category] = value
-    return result
-
-
 def _parse_locale(
     output: str,
     e_prefix: str,
@@ -81,12 +44,13 @@ def _parse_locale(
     """Canonical COMMAND_SPEC parser for locale command output.
 
     Parses KEY=VALUE output from the ``locale`` command into
-    structured locale categories.
+    a dict with readable key names.  Empty values become None.
 
     :param str output: Raw stdout from ``locale``
     :param str e_prefix: Error prefix for context
-    :returns tuple[Optional[dict[str, Any]], Optional[list[Exception]]]:
-        Parsed locale data and list of errors
+    :returns tuple[Optional[dict[str, Any]],
+        Optional[list[Exception]]]: Parsed locale data and
+        list of errors
     """
     errors = []
     text = (output or "").strip()
@@ -94,52 +58,38 @@ def _parse_locale(
         errors.append(ValueError(f"{e_prefix}Empty locale output"))
         return None, errors
 
-    env_data = _parse_assignments(text)
-    if not env_data:
-        errors.append(
-            ValueError(f"{e_prefix}No KEY=VALUE pairs in locale output")
-        )
+    # Parse KEY=VALUE lines
+    raw = {}
+    for line in text.splitlines():
+        if "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        key = key.strip()
+        value = value.strip().strip('"')
+        if key:
+            raw[key] = value
+
+    if not raw:
+        errors.append(ValueError(f"{e_prefix}No KEY=VALUE pairs in output"))
         return None, errors
 
-    return _map_locale_vars(env_data), errors
+    # Map to readable names, empty strings become None
+    result = {}
+    for env_key, readable_key in LOCALE_MAPPING.items():
+        value = raw.get(env_key)
+        if value == "" or value is None:
+            result[readable_key] = None
+        else:
+            result[readable_key] = value
 
-
-def _parse_locale_env(
-    output: str,
-    e_prefix: str,
-) -> tuple[Optional[dict[str, Any]], Optional[list[Exception]]]:
-    """COMMAND_SPEC parser for env command output (locale fallback).
-
-    Parses full ``env`` output but extracts only locale-related
-    variables.
-
-    :param str output: Raw stdout from ``env``
-    :param str e_prefix: Error prefix for context
-    :returns tuple[Optional[dict[str, Any]], Optional[list[Exception]]]:
-        Parsed locale data and list of errors
-    """
-    errors = []
-    text = (output or "").strip()
-    if not text:
-        errors.append(ValueError(f"{e_prefix}Empty env output"))
-        return None, errors
-
-    env_data = _parse_assignments(text)
-    # Filter to only locale-relevant keys
-    locale_data = {k: v for k, v in env_data.items() if k in LOCALE_MAPPING}
-    if not locale_data:
-        errors.append(
-            ValueError(f"{e_prefix}No locale variables in env output")
-        )
-        return None, errors
-
-    return _map_locale_vars(locale_data), errors
+    return result, errors
 
 
 def get_locale_command_requests() -> list[dict[str, Any]]:
-    """Build command requests for locale fact gathering.
+    """Build command requests for locale detection.
 
-    :returns list[dict[str, Any]]: Command requests for run plugin
+    :returns list[dict[str, Any]]: Command requests for run
+        plugin
     """
     from ansible_collections.o0_o.posix.plugins.module_utils.command_spec import (  # noqa: E501
         LOCALE_COMMAND_SPEC,
@@ -151,42 +101,23 @@ def get_locale_command_requests() -> list[dict[str, Any]]:
 def process_locale_command_results(
     cmds_completed: list[dict[str, Any]],
 ) -> tuple[dict[str, Any], list[Exception]]:
-    """Process locale command results into structured facts.
+    """Process locale command results into structured data.
 
-    Prefers ``locale`` command output over ``env`` fallback.
-
-    :param list[dict[str, Any]] cmds_completed: List of command
-        result dicts from run plugin
+    :param list[dict[str, Any]] cmds_completed: Command results
     :returns tuple[dict[str, Any], list[Exception]]: Tuple of
-        (facts_dict, errors) where facts_dict has o0_os namespace
+        (locale_dict, errors)
     """
     processed = process_all_command_results(cmds_completed)
     errors = []
 
-    # Prefer locale command over env fallback
     locale_result = processed.get("locale")
     if locale_result and locale_result.get("parsed"):
         errors.extend(locale_result.get("errors", []))
-        return (
-            {"o0_os": {"locale": locale_result["parsed"]}},
-            errors,
-        )
+        return locale_result["parsed"], errors
 
-    # Fall back to env
-    env_result = processed.get("locale_env")
-    if env_result and env_result.get("parsed"):
-        errors.extend(env_result.get("errors", []))
-        return (
-            {"o0_os": {"locale": env_result["parsed"]}},
-            errors,
-        )
-
-    # Both failed
     if locale_result:
         errors.extend(locale_result.get("errors", []))
-    if env_result:
-        errors.extend(env_result.get("errors", []))
     if not errors:
-        errors.append(ValueError("No locale data from locale or env"))
+        errors.append(ValueError("No locale data from locale command"))
 
     return {}, errors

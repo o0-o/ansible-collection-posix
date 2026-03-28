@@ -25,11 +25,10 @@ from ansible_collections.o0_o.posix.plugins.module_utils.locale_utils import (
 
 
 class ActionModule(PosixActionBase, ActionBase):
-    """Detect the system locale on POSIX systems.
+    """Detect the effective locale on POSIX hosts.
 
-    Uses the COMMAND_SPEC pattern to run ``locale`` (with ``env``
-    fallback) via batched ``_run()`` execution and parse the result
-    into structured locale categories.
+    Runs the ``locale`` command and maps POSIX-defined locale
+    categories to readable names.
     """
 
     TRANSFERS_FILES = False
@@ -43,12 +42,12 @@ class ActionModule(PosixActionBase, ActionBase):
         tmp: Optional[str] = None,
         task_vars: Optional[dict[str, Any]] = None,
     ) -> dict[str, Any]:
-        """Execute locale detection and return structured results.
+        """Execute locale detection.
 
         :param Optional[str] tmp: Unused temporary directory path
         :param Optional[dict[str, Any]] task_vars: Available Ansible
             variables
-        :returns dict[str, Any]: Result with locale categories under
+        :returns dict[str, Any]: Result with locale data under
             'locale' key
         """
         task_vars = task_vars or {}
@@ -67,12 +66,10 @@ class ActionModule(PosixActionBase, ActionBase):
             check_mode=False,
         )
 
-        facts, errors = process_locale_command_results(run_results)
+        locale_data, errors = process_locale_command_results(run_results)
 
         for err in errors:
             self._display.warning(f"[{self.inventory_hostname}] {err}")
-
-        locale_data = facts.get("o0_os", {}).get("locale", {})
 
         result.update(
             {

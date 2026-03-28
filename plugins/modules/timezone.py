@@ -18,12 +18,10 @@ module: timezone
 short_description: Detect the system-level timezone
 version_added: "1.5.0"
 description:
-  - Detects the system-level timezone by unsetting C(TZ) and
-    running C(date), which forces the implementation-defined
-    default timezone.
+  - Detects the effective timezone by running C(date "+%Z %z").
   - Returns the timezone abbreviation and UTC offset.
-  - This reflects the system configuration, not any user-level
-    C(TZ) override.
+  - Reflects the effective timezone for the user running the
+    command, including any C(TZ) override.
   - Does not require Python on the target host.
 options: {}
 author:
@@ -31,7 +29,7 @@ author:
 notes:
   - This module is implemented as an action plugin and supports
     raw fallback.
-  - For user-level timezone (C(TZ) env var), use the
+  - The raw C(TZ) environment variable is also available via the
     C(o0_o.posix.env) module or the C(environment) facts subset.
 attributes:
   check_mode:

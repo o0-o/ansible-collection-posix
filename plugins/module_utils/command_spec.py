@@ -32,7 +32,6 @@ from ansible_collections.o0_o.posix.plugins.module_utils.dmidecode_utils import 
 )
 from ansible_collections.o0_o.posix.plugins.module_utils.locale_utils import (
     _parse_locale,
-    _parse_locale_env,
 )
 from ansible_collections.o0_o.posix.plugins.module_utils.mount_utils import (
     _parse_mount,
@@ -75,17 +74,12 @@ UNAME_COMMAND_SPEC = {
     },
 }
 
-# Locale command spec (with env fallback)
+# Locale command spec
 LOCALE_COMMAND_SPEC = {
     "posix": {
         "locale": {
             "command": ("locale",),
             "parser": _parse_locale,
-        },
-        "locale_env": {
-            "command": ("env",),
-            "parser": _parse_locale_env,
-            "non_error_codes": [0, 1],
         },
     },
 }
@@ -100,11 +94,11 @@ MOUNT_COMMAND_SPEC = {
     },
 }
 
-# System timezone command spec (unset TZ to get system default)
+# Timezone command spec
 TIMEZONE_COMMAND_SPEC = {
     "posix": {
-        "system_timezone": {
-            "command": "sh -c 'unset TZ; date \"+%Z %z\"'",
+        "timezone": {
+            "command": ("date", "+%Z %z"),
             "parser": _parse_timezone,
         },
     },
