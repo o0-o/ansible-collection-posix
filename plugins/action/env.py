@@ -69,6 +69,11 @@ class ActionModule(PosixActionBase, ActionBase):
                 "type": "bool",
                 "default": False,
             },
+            "undefined": {
+                "type": "str",
+                "choices": ["exclude", "null"],
+                "default": "exclude",
+            },
         }
         validation_result, new_args = self.validate_argument_spec(
             argument_spec=argument_spec
@@ -77,6 +82,7 @@ class ActionModule(PosixActionBase, ActionBase):
 
         env_vars = new_args["env"]
         wantlist = new_args.get("wantlist", False)
+        include_undefined = new_args.get("undefined") == "null"
 
         self._display.vvv(
             f"Collecting {len(env_vars)} environment"
@@ -95,7 +101,9 @@ class ActionModule(PosixActionBase, ActionBase):
         )
 
         # Process results
-        env_data = process_env_command_results(run_results, env_vars, wantlist)
+        env_data = process_env_command_results(
+            run_results, env_vars, wantlist, include_undefined
+        )
 
         result.update(
             {

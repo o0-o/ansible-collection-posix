@@ -54,11 +54,13 @@ def process_env_command_results(
     cmds_completed: list[dict[str, Any]],
     env_vars: list[str],
     wantlist: bool = False,
+    include_undefined: bool = False,
 ) -> Any:
     """Process env command results into structured output.
 
-    Maps each variable to its value (from stdout) or ``None``
-    (when the command failed due to ``set -u``).
+    Maps each variable to its value (from stdout).  Unset
+    variables are excluded by default or included as ``None``
+    when ``include_undefined`` is True.
 
     :param list[dict[str, Any]] cmds_completed: Command results
         from run plugin
@@ -66,6 +68,7 @@ def process_env_command_results(
         ordering
     :param bool wantlist: Return list of single-key dicts when
         True
+    :param bool include_undefined: Include unset vars as None
     :returns Any: Dict or list depending on wantlist
     """
     processed = process_all_command_results(cmds_completed)
@@ -82,10 +85,17 @@ def process_env_command_results(
     for result in env_results:
         var_name = result.get("args", {}).get("env")
         if var_name:
-            # parsed is None when rc != 0 (unset var)
             values[var_name] = result.get("parsed")
 
     if wantlist:
-        return [{var: values.get(var)} for var in env_vars]
+        return [
+            {var: values.get(var)}
+            for var in env_vars
+            if include_undefined or values.get(var) is not None
+        ]
 
-    return {var: values.get(var) for var in env_vars}
+    return {
+        var: values.get(var)
+        for var in env_vars
+        if include_undefined or values.get(var) is not None
+    }

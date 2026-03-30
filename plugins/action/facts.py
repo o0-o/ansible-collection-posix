@@ -22,7 +22,6 @@ from ansible_collections.o0_o.posix.plugins.module_utils import (
     get_compliance_command_requests,
     get_dmidecode_command_requests,
     get_env_command_requests,
-    get_locale_command_requests,
     get_mount_command_requests,
     get_timezone_command_requests,
     group_info,
@@ -31,7 +30,6 @@ from ansible_collections.o0_o.posix.plugins.module_utils import (
     process_all_compliance_command_results,
     process_dmidecode_command_results,
     process_env_command_results,
-    process_locale_command_results,
     process_mount_command_results,
     process_timezone_command_results,
 )
@@ -40,7 +38,7 @@ from ansible_collections.o0_o.posix.plugins.module_utils.uname_utils import (
     process_uname_command_results,
 )
 
-# POSIX-defined environment variables to collect
+# All environment variables named in IEEE Std 1003.1 (POSIX)
 POSIX_ENV_VARS = [
     # Mandatory (shall be set)
     "HOME",
@@ -49,10 +47,15 @@ POSIX_ENV_VARS = [
     # Shell-maintained
     "PWD",
     "OLDPWD",
-    # Commonly defined by POSIX
-    "SHELL",
-    "USER",
-    "TERM",
+    "IFS",
+    "PPID",
+    "OPTARG",
+    "OPTIND",
+    # Shell prompts
+    "PS1",
+    "PS2",
+    "PS4",
+    # Locale
     "LANG",
     "LC_ALL",
     "LC_COLLATE",
@@ -61,17 +64,46 @@ POSIX_ENV_VARS = [
     "LC_MONETARY",
     "LC_NUMERIC",
     "LC_TIME",
+    # User environment
+    "SHELL",
+    "USER",
+    "TERM",
     "TZ",
     "TMPDIR",
+    "MAIL",
+    "MAILCHECK",
+    "MAILPATH",
+    # Editors and pagers
     "EDITOR",
     "VISUAL",
     "PAGER",
-    "MAIL",
+    "FCEDIT",
+    # Shell configuration
     "CDPATH",
     "ENV",
+    "HISTFILE",
+    "HISTSIZE",
+    # Terminal
     "COLUMNS",
     "LINES",
-    "IFS",
+    # Internationalization
+    "NLSPATH",
+    # Compilation and build
+    "CC",
+    "CFLAGS",
+    "LDFLAGS",
+    "ARFLAGS",
+    "YACC",
+    "YFLAGS",
+    "LEX",
+    "LFLAGS",
+    "MAKEFLAGS",
+    "GET",
+    "GFLAGS",
+    # Printing
+    "LPDEST",
+    # Editor init
+    "EXINIT",
 ]
 
 
@@ -124,14 +156,12 @@ class ActionModule(PosixActionBase, ActionBase):
         "min": {
             "uname",
             "environment",
-            "locale",
             "timezone",
             "compliance",
         },
         "all": {
             "uname",
             "environment",
-            "locale",
             "timezone",
             "dmidecode",
             "compliance",
@@ -159,10 +189,6 @@ class ActionModule(PosixActionBase, ActionBase):
             "requests": get_mount_command_requests,
             "processor": process_mount_command_results,
         },
-        "locale": {
-            "requests": get_locale_command_requests,
-            "processor": process_locale_command_results,
-        },
         "timezone": {
             "requests": get_timezone_command_requests,
             "processor": process_timezone_command_results,
@@ -174,11 +200,7 @@ class ActionModule(PosixActionBase, ActionBase):
     }
 
     # Subsets whose results go under o0_users[effective_user]
-    USER_SCOPED_SUBSETS = {
-        "environment",
-        "locale",
-        "timezone",
-    }
+    USER_SCOPED_SUBSETS = {"environment"}
 
     # Subsets that use individual gather methods (legacy path)
     LEGACY_METHODS = {
@@ -391,7 +413,7 @@ class ActionModule(PosixActionBase, ActionBase):
                         user = self.effective_user
                         user_facts = {"o0_users": {user: {subset: facts}}}
 
-                        # Validate LOGNAME/USER for env
+                        # Validate LOGNAME/USER
                         if subset == "environment":
                             for var in ("LOGNAME", "USER"):
                                 val = facts.get(var)
@@ -402,6 +424,14 @@ class ActionModule(PosixActionBase, ActionBase):
                                         f" not match effective"
                                         f" user {user}"
                                     )
+
+                            # Derive locale: LC_ALL > LANG > ASCII
+                            lc_all = facts.get("LC_ALL")
+                            lang = facts.get("LANG")
+                            locale = lc_all or lang or "ASCII"
+                            if locale in ("C", "POSIX"):
+                                locale = "ASCII"
+                            user_facts["o0_users"][user]["locale"] = locale
 
                         self._merge_facts(all_facts, user_facts)
                     else:

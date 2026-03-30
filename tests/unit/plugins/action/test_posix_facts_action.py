@@ -66,7 +66,6 @@ class TestResolveSubsets:
         assert selected == {
             "uname",
             "environment",
-            "locale",
             "timezone",
             "compliance",
         }
@@ -98,10 +97,10 @@ class TestResolveSubsets:
         with pytest.raises(AnsibleActionFail, match="Invalid gather_subset"):
             plugin._resolve_subsets(["invalid_subset"])
 
-    def test_locale_subset(self, plugin) -> None:
-        """Test that locale is a valid subset."""
-        selected = plugin._resolve_subsets(["locale"])
-        assert selected == {"locale"}
+    def test_locale_not_a_subset(self, plugin) -> None:
+        """Test that locale is not a standalone subset."""
+        with pytest.raises(AnsibleActionFail):
+            plugin._resolve_subsets(["locale"])
 
     def test_timezone_subset(self, plugin) -> None:
         """Test that timezone is a valid subset."""
@@ -146,19 +145,19 @@ class TestBatchedExecution:
         """Test environment is a batched subset."""
         assert "environment" in plugin.BATCHED_SUBSETS
 
-    def test_locale_in_batched(self, plugin) -> None:
-        """Test locale is a batched user-scoped subset."""
-        assert "locale" in plugin.BATCHED_SUBSETS
-        assert "locale" in plugin.USER_SCOPED_SUBSETS
+    def test_locale_derived_from_env(self, plugin) -> None:
+        """Test locale is not a separate subset."""
+        assert "locale" not in plugin.BATCHED_SUBSETS
+        assert "locale" not in plugin.LEGACY_METHODS
 
-    def test_timezone_in_batched(self, plugin) -> None:
-        """Test timezone is a batched user-scoped subset."""
+    def test_timezone_in_batched_system_scoped(self, plugin) -> None:
+        """Test timezone is batched and system-scoped."""
         assert "timezone" in plugin.BATCHED_SUBSETS
-        assert "timezone" in plugin.USER_SCOPED_SUBSETS
+        assert "timezone" not in plugin.USER_SCOPED_SUBSETS
 
     def test_run_environment_keys_by_user(self, monkeypatch, plugin) -> None:
-        """Test environment results are keyed under
-        effective user."""
+        """Test environment results keyed under effective user
+        with locale derived from LANG."""
         plugin._task.args = {"gather_subset": ["!all", "environment"]}
 
         def mock_run(commands, **kwargs):
@@ -171,7 +170,6 @@ class TestBatchedExecution:
                 {
                     "HOME": "/home/testuser",
                     "LANG": "en_US.UTF-8",
-                    "TZ": None,
                 },
                 [],
             )
@@ -184,10 +182,57 @@ class TestBatchedExecution:
 
         result = plugin.run(tmp=None, task_vars={})
 
-        env = result["ansible_facts"]["o0_users"]["testuser"]["environment"]
-        assert env["HOME"] == "/home/testuser"
-        assert env["LANG"] == "en_US.UTF-8"
-        assert env["TZ"] is None
+        user_facts = result["ansible_facts"]["o0_users"]["testuser"]
+        assert user_facts["environment"]["HOME"] == ("/home/testuser")
+        assert user_facts["environment"]["LANG"] == ("en_US.UTF-8")
+        assert user_facts["locale"] == "en_US.UTF-8"
+
+    def test_locale_defaults_to_ascii(self, monkeypatch, plugin) -> None:
+        """Test locale falls back to ASCII when LANG/LC_ALL
+        unset."""
+        plugin._task.args = {"gather_subset": ["!all", "environment"]}
+
+        def mock_run(commands, **kwargs):
+            return []
+
+        monkeypatch.setattr(plugin, "_run", mock_run)
+
+        def mock_processor(results):
+            return ({"HOME": "/home/testuser"}, [])
+
+        monkeypatch.setitem(
+            plugin.BATCHED_SUBSETS["environment"],
+            "processor",
+            mock_processor,
+        )
+
+        result = plugin.run(tmp=None, task_vars={})
+
+        user_facts = result["ansible_facts"]["o0_users"]["testuser"]
+        assert user_facts["locale"] == "ASCII"
+
+    def test_locale_c_becomes_ascii(self, monkeypatch, plugin) -> None:
+        """Test C locale is translated to ASCII."""
+        plugin._task.args = {"gather_subset": ["!all", "environment"]}
+
+        def mock_run(commands, **kwargs):
+            return []
+
+        monkeypatch.setattr(plugin, "_run", mock_run)
+
+        def mock_processor(results):
+            return ({"LANG": "C"}, [])
+
+        monkeypatch.setitem(
+            plugin.BATCHED_SUBSETS["environment"],
+            "processor",
+            mock_processor,
+        )
+
+        result = plugin.run(tmp=None, task_vars={})
+
+        user_facts = result["ansible_facts"]["o0_users"]["testuser"]
+        assert user_facts["locale"] == "ASCII"
 
 
 class TestRun:

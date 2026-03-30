@@ -38,7 +38,6 @@ options:
       - min
       - uname
       - compliance
-      - locale
       - timezone
       - dmidecode
       - mounts
@@ -48,7 +47,6 @@ options:
       - '!all'
       - '!uname'
       - '!compliance'
-      - '!locale'
       - '!timezone'
       - '!dmidecode'
       - '!mounts'
@@ -281,7 +279,6 @@ def main() -> None:
                 "min",
                 "uname",
                 "compliance",
-                "locale",
                 "timezone",
                 "dmidecode",
                 "mounts",
@@ -291,7 +288,6 @@ def main() -> None:
                 "!all",
                 "!uname",
                 "!compliance",
-                "!locale",
                 "!timezone",
                 "!dmidecode",
                 "!mounts",

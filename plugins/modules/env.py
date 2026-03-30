@@ -39,11 +39,20 @@ options:
         key/value pairs.
     type: bool
     default: false
+  undefined:
+    description:
+      - How to handle undefined (unset) environment variables.
+      - C(exclude) omits unset variables from the output.
+      - C(null) includes them with a C(null) value.
+    type: str
+    choices: [exclude, 'null']
+    default: exclude
 author:
   - oØ.o (@o0-o)
 notes:
-  - Variables that are not set on the target return C(null), while
-    variables set to an empty string return C("").
+  - Variables set to an empty string return C(""), which is
+    distinct from unset (excluded or C(null) per the
+    I(undefined) option).
   - This module is implemented as an action plugin and supports
     raw fallback.
 attributes:
@@ -108,7 +117,8 @@ RETURN = r"""
 env:
   description: >-
     Collected environment variables. By default a dictionary mapping
-    variable names to values (or C(null) for unset variables). When
+    variable names to values. Unset variables are excluded by
+    default or set to C(null) when I(undefined=null). When
     I(wantlist=true), a list of single-key dictionaries.
   returned: always
   type: raw
@@ -116,7 +126,6 @@ env:
     HOME: /root
     SHELL: /bin/sh
     TZ: America/New_York
-    OLDPWD: null
 changed:
   description: Always false as this is a read-only module
   returned: always
@@ -143,6 +152,11 @@ def main() -> None:
         "wantlist": {
             "type": "bool",
             "default": False,
+        },
+        "undefined": {
+            "type": "str",
+            "choices": ["exclude", "null"],
+            "default": "exclude",
         },
     }
 

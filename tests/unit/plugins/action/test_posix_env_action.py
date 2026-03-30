@@ -66,8 +66,8 @@ class TestProcessEnvResults:
         data = process_env_command_results(results, ["HOME"], False)
         assert data == {"HOME": "/root"}
 
-    def test_dict_mode_unset_var(self) -> None:
-        """Test dict mode with an unset variable returns None."""
+    def test_dict_mode_unset_var_excluded(self) -> None:
+        """Test dict mode excludes unset variables by default."""
         from ansible_collections.o0_o.posix.plugins.module_utils.env_utils import (  # noqa: E501
             process_env_command_results,
         )
@@ -85,6 +85,28 @@ class TestProcessEnvResults:
             }
         ]
         data = process_env_command_results(results, ["OLDPWD"], False)
+        assert data == {}
+
+    def test_dict_mode_unset_var_null(self) -> None:
+        """Test dict mode includes unset vars as None when
+        include_undefined is True."""
+        from ansible_collections.o0_o.posix.plugins.module_utils.env_utils import (  # noqa: E501
+            process_env_command_results,
+        )
+
+        results = [
+            {
+                "implementation": "posix",
+                "type": "env_var",
+                "args": {"env": "OLDPWD"},
+                "rc": 1,
+                "stdout": "",
+                "stderr": "",
+                "parsed": None,
+                "errors": [],
+            }
+        ]
+        data = process_env_command_results(results, ["OLDPWD"], False, True)
         assert data == {"OLDPWD": None}
 
     def test_list_mode(self) -> None:
@@ -177,9 +199,33 @@ class TestRunIntegration:
         assert result["env"] == {"HOME": "/root"}
         assert result["changed"] is False
 
-    def test_unset_var_returns_none(self, monkeypatch, plugin) -> None:
-        """Test that unset variables are returned as None."""
+    def test_unset_var_excluded_by_default(self, monkeypatch, plugin) -> None:
+        """Test that unset variables are excluded by default."""
         plugin._task.args = {"env": ["TZ"]}
+
+        def mock_run(commands, **kwargs):
+            return [
+                {
+                    "implementation": "posix",
+                    "type": "env_var",
+                    "args": {"env": "TZ"},
+                    "rc": 1,
+                    "stdout": "",
+                    "stderr": "sh: TZ: unbound variable",
+                }
+            ]
+
+        monkeypatch.setattr(plugin, "_run", mock_run)
+        result = plugin.run(task_vars={})
+        assert "TZ" not in result["env"]
+
+    def test_unset_var_null_when_requested(self, monkeypatch, plugin) -> None:
+        """Test that unset variables return None with
+        undefined=null."""
+        plugin._task.args = {
+            "env": ["TZ"],
+            "undefined": "null",
+        }
 
         def mock_run(commands, **kwargs):
             return [
