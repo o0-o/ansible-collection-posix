@@ -106,6 +106,7 @@ import pytest
     ],
 )
 def test_compare_content_and_perms(
+    monkeypatch,
     write_base,
     old_stat,
     old_content,
@@ -117,14 +118,22 @@ def test_compare_content_and_perms(
 ) -> None:
     """Test _compare_content_and_perms logic."""
     dest = "/tmp/testfile"
+    old_lines = old_content.splitlines() if old_content else []
 
-    write_base._pseudo_stat = lambda path, task_vars=None: old_stat
-    write_base._slurp = lambda src, task_vars=None: {
-        "content": old_content,
-        "content_lines": old_content.splitlines() if old_content else [],
-    }
-    write_base._get_perms = (
-        lambda path, selinux=False, task_vars=None: old_perms
+    monkeypatch.setattr(
+        write_base, "_pseudo_stat", lambda path, task_vars=None: old_stat
+    )
+    monkeypatch.setattr(
+        write_base,
+        "_read",
+        lambda **kwargs: {
+            "paths": {dest: {"content": old_content, "lines": old_lines}}
+        },
+    )
+    monkeypatch.setattr(
+        write_base,
+        "_get_perms",
+        lambda path, selinux=False, task_vars=None: old_perms,
     )
 
     if expect_change == "error":

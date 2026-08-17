@@ -1,0 +1,4 @@
+A::OWNER@:rwaDxtTnNcCoy
+A:g:GROUP@:rxtncy
+A::EVERYONE@:rxtncy
+A:fdi:john@example.com:rwaxtcy

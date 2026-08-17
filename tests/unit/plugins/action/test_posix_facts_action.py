@@ -24,7 +24,7 @@ from ansible_collections.o0_o.posix.plugins.action.facts import (
 
 
 @pytest.fixture
-def plugin(base) -> Generator[ActionModule, None, None]:
+def plugin(monkeypatch, base) -> Generator[ActionModule, None, None]:
     """Create an ActionModule instance with patched dependencies."""
     base._task.async_val = False
     base._task.action = "facts"
@@ -38,7 +38,7 @@ def plugin(base) -> Generator[ActionModule, None, None]:
         templar=base._templar,
         shared_loader_obj=base._shared_loader_obj,
     )
-    plugin._command = base._command
+    monkeypatch.setattr(plugin, "_command", base._command)
     plugin._display = base._display
     plugin.inventory_hostname = "localhost"
     plugin.effective_user = "testuser"

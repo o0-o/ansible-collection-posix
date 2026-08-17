@@ -55,27 +55,35 @@ def test_write_file_basic_write(write_base) -> None:
         cleanup_path(tmp_path)
 
 
-def test_write_file_backup_and_validate(write_base) -> None:
+def test_write_file_backup_and_validate(monkeypatch, write_base) -> None:
     """Test _write_file backup and validation features."""
     tmp_path = generate_temp_path()
     with open(tmp_path, "w") as f:
         f.write("existing")
 
-    write_base._validate_file = lambda tmp, cmd, task_vars: None
-    write_base._create_backup = lambda dest, task_vars: dest + ".bak"
+    monkeypatch.setattr(
+        write_base, "_validate_file", lambda tmp, cmd, task_vars: None
+    )
+    monkeypatch.setattr(
+        write_base, "_create_backup", lambda dest, task_vars: dest + ".bak"
+    )
 
-    # Mock _slurp to use real_cmd and cat to read the file
-    def mock_slurp(src, task_vars=None):
-        result = real_cmd(f"cat '{src}'")
+    # Mock _read to use real_cmd and cat to read the file
+    def mock_read(paths, task_vars=None, **kwargs):
+        result = real_cmd(f"cat '{paths}'")
         if result["rc"] != 0:
-            return {"content": "", "content_lines": []}
+            return {"paths": {paths: {"content": "", "lines": []}}}
         content = result["stdout"]
         return {
-            "content": content,
-            "content_lines": content.splitlines(),
+            "paths": {
+                paths: {
+                    "content": content,
+                    "lines": content.splitlines(),
+                }
+            }
         }
 
-    write_base._slurp = mock_slurp
+    monkeypatch.setattr(write_base, "_read", mock_read)
 
     result = write_base._write_file(
         content="new",
@@ -92,7 +100,7 @@ def test_write_file_backup_and_validate(write_base) -> None:
     cleanup_path(tmp_path + ".bak")
 
 
-def test_write_file_check_mode_and_diff(write_base) -> None:
+def test_write_file_check_mode_and_diff(monkeypatch, write_base) -> None:
     """Test _write_file check mode and diff functionality."""
     tmp_path = generate_temp_path()
     original = "old content\n"
@@ -101,10 +109,18 @@ def test_write_file_check_mode_and_diff(write_base) -> None:
         with open(tmp_path, "w") as f:
             f.write(original)
 
-        write_base._slurp = lambda src, task_vars=None: {
-            "content": original,
-            "content_lines": original.splitlines(),
-        }
+        monkeypatch.setattr(
+            write_base,
+            "_read",
+            lambda **kwargs: {
+                "paths": {
+                    tmp_path: {
+                        "content": original,
+                        "lines": original.splitlines(),
+                    }
+                }
+            },
+        )
 
         result = write_base._write_file(
             content=updated,
@@ -144,10 +160,14 @@ def test_write_file_applies_permissions(write_base) -> None:
         cleanup_path(tmp_path)
 
 
-def test_write_file_selinux_tools_missing(write_base) -> None:
+def test_write_file_selinux_tools_missing(monkeypatch, write_base) -> None:
     """Test _write_file error when SELinux tools missing."""
-    write_base._which = lambda name, task_vars=None: (
-        None if name == "chcon" else "/usr/sbin/semanage"
+    monkeypatch.setattr(
+        write_base,
+        "_which",
+        lambda name, task_vars=None: (
+            None if name == "chcon" else "/usr/sbin/semanage"
+        ),
     )
     write_base._display = MagicMock()
     tmp_path = generate_temp_path()

@@ -42,7 +42,7 @@ def plugin():
     return action
 
 
-def test_run_list_mode(plugin) -> None:
+def test_run_list_mode(monkeypatch, plugin) -> None:
     """Test run with list input returns list output."""
     plugin._task.args = {
         "commands": ["echo foo", "echo bar"],
@@ -65,7 +65,7 @@ def test_run_list_mode(plugin) -> None:
             "delta": "0:00:01",
         }
 
-    plugin._command = mock_cmd
+    monkeypatch.setattr(plugin, "_command", mock_cmd)
 
     result = plugin.run(task_vars={})
 
@@ -76,7 +76,7 @@ def test_run_list_mode(plugin) -> None:
     assert result["commands"][1]["command"] == "echo bar"
 
 
-def test_run_dict_mode(plugin) -> None:
+def test_run_dict_mode(monkeypatch, plugin) -> None:
     """Test run with dict input returns dict output."""
     plugin._task.args = {
         "commands": {"first": "echo foo", "second": "echo bar"},
@@ -99,7 +99,7 @@ def test_run_dict_mode(plugin) -> None:
             "delta": "0:00:01",
         }
 
-    plugin._command = mock_cmd
+    monkeypatch.setattr(plugin, "_command", mock_cmd)
 
     result = plugin.run(task_vars={})
 
@@ -111,7 +111,7 @@ def test_run_dict_mode(plugin) -> None:
     assert result["commands"]["second"]["command"] == "echo bar"
 
 
-def test_run_dict_mode_preserves_keys(plugin) -> None:
+def test_run_dict_mode_preserves_keys(monkeypatch, plugin) -> None:
     """Test dict mode preserves all keys from input."""
     plugin._task.args = {
         "commands": {
@@ -140,7 +140,7 @@ def test_run_dict_mode_preserves_keys(plugin) -> None:
             "delta": "0:00:01",
         }
 
-    plugin._command = mock_cmd
+    monkeypatch.setattr(plugin, "_command", mock_cmd)
 
     result = plugin.run(task_vars={})
 
@@ -151,7 +151,7 @@ def test_run_dict_mode_preserves_keys(plugin) -> None:
     assert result["commands"]["hostname"]["command"] == "hostname"
 
 
-def test_run_dict_mode_single_command(plugin) -> None:
+def test_run_dict_mode_single_command(monkeypatch, plugin) -> None:
     """Test dict mode with single command."""
     plugin._task.args = {
         "commands": {"only_one": "echo test"},
@@ -172,7 +172,7 @@ def test_run_dict_mode_single_command(plugin) -> None:
             "delta": "0:00:01",
         }
 
-    plugin._command = mock_cmd
+    monkeypatch.setattr(plugin, "_command", mock_cmd)
 
     result = plugin.run(task_vars={})
 
@@ -182,7 +182,7 @@ def test_run_dict_mode_single_command(plugin) -> None:
     assert result["commands"]["only_one"]["command"] == "echo test"
 
 
-def test_run_dict_mode_with_failures(plugin) -> None:
+def test_run_dict_mode_with_failures(monkeypatch, plugin) -> None:
     """Test dict mode properly handles command failures."""
     plugin._task.args = {
         "commands": {"pass": "true", "fail": "false"},
@@ -205,7 +205,7 @@ def test_run_dict_mode_with_failures(plugin) -> None:
             "delta": "0:00:01",
         }
 
-    plugin._command = mock_cmd
+    monkeypatch.setattr(plugin, "_command", mock_cmd)
 
     result = plugin.run(task_vars={})
 
@@ -215,7 +215,7 @@ def test_run_dict_mode_with_failures(plugin) -> None:
     assert result["commands"]["fail"]["rc"] == 1
 
 
-def test_run_dict_command_items(plugin) -> None:
+def test_run_dict_command_items(monkeypatch, plugin) -> None:
     """Test commands with dict items containing 'command' key."""
     plugin._task.args = {
         "commands": {
@@ -242,7 +242,7 @@ def test_run_dict_command_items(plugin) -> None:
             "delta": "0:00:01",
         }
 
-    plugin._command = mock_cmd
+    monkeypatch.setattr(plugin, "_command", mock_cmd)
 
     result = plugin.run(task_vars={})
 
@@ -258,7 +258,7 @@ def test_run_dict_command_items(plugin) -> None:
     assert result["commands"]["posix_uptime"]["parser"] == "uptime"
 
 
-def test_run_list_with_dict_command_items(plugin) -> None:
+def test_run_list_with_dict_command_items(monkeypatch, plugin) -> None:
     """Test list mode with dict items containing 'command' key."""
     plugin._task.args = {
         "commands": [
@@ -284,7 +284,7 @@ def test_run_list_with_dict_command_items(plugin) -> None:
             "delta": "0:00:01",
         }
 
-    plugin._command = mock_cmd
+    monkeypatch.setattr(plugin, "_command", mock_cmd)
 
     result = plugin.run(task_vars={})
 

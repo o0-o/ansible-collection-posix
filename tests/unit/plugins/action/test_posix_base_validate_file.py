@@ -32,7 +32,7 @@ def test_validate_file_success(monkeypatch, write_base) -> None:
         called["cmd"] = cmd
         return {"rc": 0}
 
-    write_base._command = mock_command
+    monkeypatch.setattr(write_base, "_command", mock_command)
 
     write_base._validate_file("/tmp/foo.conf", "validate %s")
 
@@ -45,7 +45,7 @@ def test_validate_file_failure_raises(monkeypatch, write_base) -> None:
     def mock_command(cmd, task_vars=None, **kwargs):
         return {"rc": 1, "stderr": "syntax error"}
 
-    write_base._command = mock_command
+    monkeypatch.setattr(write_base, "_command", mock_command)
 
     with pytest.raises(RuntimeError, match="Validation failed:"):
         write_base._validate_file("/etc/foo", "validate %s")

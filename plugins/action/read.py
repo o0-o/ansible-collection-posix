@@ -190,6 +190,15 @@ class ActionModule(ReadPosixActionBase, ActionBase):
                     "non-directory entries"
                 ),
             },
+            "raw": {
+                "type": "raw",
+                "default": "auto",
+                "description": (
+                    "Control raw execution mode: true forces raw "
+                    "fallback, false forces native execution, 'auto' "
+                    "detects and uses the best method"
+                ),
+            },
         }
 
         # Check if user explicitly provided attributes before validation
@@ -242,6 +251,9 @@ class ActionModule(ReadPosixActionBase, ActionBase):
             self.attributes = False
 
         try:
+            # Process raw parameter: accept boolean or 'auto'
+            self.raw = truthy_or_string(new_module_args["raw"], ["auto"])
+
             # Process follow parameter (boolean or 'recursive')
             self.follow = truthy_or_string(
                 new_module_args["follow"], ["recursive"]

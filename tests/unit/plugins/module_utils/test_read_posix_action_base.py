@@ -1,0 +1,511 @@
+# vim: ts=4:sw=4:sts=4:et:ft=python
+# -*- mode: python; tab-width: 4; indent-tabs-mode: nil; -*-
+#
+# GNU General Public License v3.0+
+# SPDX-License-Identifier: GPL-3.0-or-later
+# (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
+#
+# Copyright (c) 2025 oØ.o (@o0-o)
+#
+# This file is part of the o0_o.posix Ansible Collection.
+
+"""Unit tests for ReadPosixActionBase command planning helpers."""
+
+from __future__ import annotations
+
+import pytest
+
+try:
+    from ansible_collections.o0_o.posix.plugins.module_utils.read_posix_action_base import (  # type: ignore  # noqa: E501
+        ReadPosixActionBase,
+    )
+except ModuleNotFoundError:  # pragma: no cover - ansible missing in tests
+    ReadPosixActionBase = None  # type: ignore
+
+pytestmark = pytest.mark.skipif(
+    ReadPosixActionBase is None, reason="ansible package is required"
+)
+
+
+class DummyReadAction(ReadPosixActionBase):
+    """Minimal ReadPosixActionBase subclass with no Ansible plumbing."""
+
+    def __init__(self) -> None:
+        self.inventory_hostname = "testhost"
+
+
+@pytest.fixture
+def action() -> DummyReadAction:
+    """Provide a bare ReadPosixActionBase instance per test."""
+    return DummyReadAction()
+
+
+class TestStatPermissionBooleans:
+    """Tests for _stat_permission_booleans."""
+
+    def test_regular_file_permissions(self, action) -> None:
+        """Test every boolean derived from a plain 0644 mode string."""
+        assert action._stat_permission_booleans("-rw-r--r--") == {
+            "rusr": True,
+            "wusr": True,
+            "xusr": False,
+            "rgrp": True,
+            "wgrp": False,
+            "xgrp": False,
+            "roth": True,
+            "woth": False,
+            "xoth": False,
+            "isuid": False,
+            "isgid": False,
+            "readable": True,
+            "writeable": True,
+            "executable": False,
+        }
+
+    def test_setuid_setgid_and_sticky_bits(self, action) -> None:
+        """Test lowercase s and t set both execute and special bits."""
+        assert action._stat_permission_booleans("-rwsr-sr-t") == {
+            "rusr": True,
+            "wusr": True,
+            "xusr": True,
+            "rgrp": True,
+            "wgrp": False,
+            "xgrp": True,
+            "roth": True,
+            "woth": False,
+            "xoth": True,
+            "isuid": True,
+            "isgid": True,
+            "readable": True,
+            "writeable": True,
+            "executable": True,
+        }
+
+    @pytest.mark.parametrize(
+        "flags,key,expected",
+        [
+            ("-rwSr--r--", "isuid", True),
+            ("-rwSr--r--", "xusr", False),
+            ("-rw-r-Sr--", "isgid", True),
+            ("-rw-r-Sr--", "xgrp", False),
+            ("drwxr-xr-T", "xoth", False),
+            ("drwxr-xr-t", "xoth", True),
+        ],
+    )
+    def test_capitalized_special_bits(
+        self, action, flags, key, expected
+    ) -> None:
+        """Test capital S and T set the bit but not execute."""
+        assert action._stat_permission_booleans(flags)[key] is expected
+
+    def test_trailing_acl_marker_is_ignored(self, action) -> None:
+        """Test an ls ACL '+' suffix does not disturb the parse."""
+        perms = action._stat_permission_booleans("drwxr-xr-x+")
+
+        assert perms["readable"] is True
+        assert perms["executable"] is True
+        assert perms["woth"] is False
+
+    @pytest.mark.parametrize("flags", ["", "-rw-r--r", "x", "---------"])
+    def test_short_or_empty_flags_return_empty(self, action, flags) -> None:
+        """Test flag strings shorter than ten characters yield {}."""
+        assert action._stat_permission_booleans(flags) == {}
+
+
+class TestParseEncodingFromDesc:
+    """Tests for _parse_encoding_from_desc."""
+
+    @pytest.mark.parametrize(
+        "desc,expected",
+        [
+            ("ASCII text", "us-ascii"),
+            ("C source, ASCII text", "us-ascii"),
+            ("ISO-8859 text", "iso-8859-1"),
+            ("ISO 8859 text", "iso-8859-1"),
+            ("UTF-8 Unicode text", "utf-8"),
+            ("Little-endian UTF-16 Unicode text", "utf-16"),
+            ("Non-ISO extended-ASCII text", "utf-8"),
+            ("Algol 68 source text", "utf-8"),
+            ("data", "binary"),
+            ("empty", "binary"),
+            ("PDF document, version 1.4", "binary"),
+            ("", "binary"),
+        ],
+    )
+    def test_descriptions_map_to_encodings(
+        self, action, desc, expected
+    ) -> None:
+        """Test file -b descriptions map to the expected encoding."""
+        assert action._parse_encoding_from_desc(desc) == expected
+
+
+class TestGetReadCommands:
+    """Tests for _get_read_commands."""
+
+    def test_minimal_detection_mode(self, action) -> None:
+        """Test a bare request probes ls plus both stat variants."""
+        commands = action._get_read_commands(["/etc/hosts"], {})
+
+        assert commands == {
+            "/etc/hosts_ls": ["ls", "-dn", "/etc/hosts"],
+            "/etc/hosts_inode": ["stat", "-c", "%i", "/etc/hosts"],
+            "/etc/hosts_inode_bsd": ["stat", "-f", "%i", "/etc/hosts"],
+        }
+
+    def test_gnu_platform_drops_bsd_inode_probe(self, action) -> None:
+        """Test a known GNU platform only runs the GNU inode command."""
+        commands = action._get_read_commands(
+            ["/f"], {}, platform={"stat_variant": "gnu"}
+        )
+
+        assert commands == {
+            "/f_ls": ["ls", "-dn", "/f"],
+            "/f_inode": ["stat", "-c", "%i", "/f"],
+        }
+
+    def test_bsd_platform_drops_gnu_inode_probe(self, action) -> None:
+        """Test a known BSD platform only runs the BSD inode command."""
+        commands = action._get_read_commands(
+            ["/f"], {}, platform={"stat_variant": "bsd"}
+        )
+
+        assert commands == {
+            "/f_ls": ["ls", "-dn", "/f"],
+            "/f_inode_bsd": ["stat", "-f", "%i", "/f"],
+        }
+
+    def test_attributes_detection_mode_runs_all_variants(self, action) -> None:
+        """Test attributes without a platform probes every variant."""
+        commands = action._get_read_commands(["/f"], {"attributes": True})
+
+        assert sorted(commands) == [
+            "/f_acl",
+            "/f_acl_macos",
+            "/f_acl_nfs4",
+            "/f_flags",
+            "/f_flags_macos",
+            "/f_inode",
+            "/f_inode_bsd",
+            "/f_ls",
+            "/f_selinux",
+            "/f_selinux_ls",
+            "/f_stat",
+            "/f_stat_bsd",
+        ]
+        assert commands["/f_stat"] == ["stat", "-c", "%Y %Z %W", "/f"]
+        assert commands["/f_stat_bsd"] == ["stat", "-f", "%m %c %B", "/f"]
+        assert commands["/f_acl"] == ["getfacl", "-p", "/f"]
+        assert commands["/f_acl_nfs4"] == ["nfs4_getfacl", "/f"]
+        assert commands["/f_acl_macos"] == ["ls", "-le", "/f"]
+        assert commands["/f_flags"] == ["lsattr", "-d", "/f"]
+        assert commands["/f_flags_macos"] == ["ls", "-ldO", "/f"]
+        assert commands["/f_selinux"] == ["stat", "-c", "%C", "/f"]
+        assert commands["/f_selinux_ls"] == ["ls", "-Zd", "/f"]
+
+    def test_extended_implies_attributes_and_adds_xattrs(self, action) -> None:
+        """Test extended turns on attribute and xattr commands."""
+        commands = action._get_read_commands(["/f"], {"extended": True})
+
+        assert commands["/f_xattr"] == [
+            "getfattr",
+            "--absolute-names",
+            "-d",
+            "/f",
+        ]
+        assert commands["/f_xattr_macos"] == ["xattr", "-lx", "/f"]
+        assert "/f_stat" in commands
+        assert "/f_acl" in commands
+
+    def test_known_platform_selects_single_variants(self, action) -> None:
+        """Test a BSD/macOS platform keeps only the BSD command set."""
+        platform = {
+            "stat_variant": "bsd",
+            "has_lsattr": False,
+            "has_getfacl": False,
+            "has_nfs4_getfacl": False,
+            "has_getfattr": False,
+            "has_xattr": True,
+            "ls_supports_selinux": False,
+            "ls_supports_acl_macos": True,
+            "ls_supports_flags_bsd": True,
+        }
+
+        commands = action._get_read_commands(
+            ["/f"], {"extended": True}, platform=platform
+        )
+
+        assert sorted(commands) == [
+            "/f_acl_macos",
+            "/f_flags_macos",
+            "/f_inode_bsd",
+            "/f_ls",
+            "/f_stat_bsd",
+            "/f_xattr_macos",
+        ]
+
+    def test_content_without_forced_encoding_probes_file(self, action) -> None:
+        """Test content adds cat plus all three encoding probes."""
+        commands = action._get_read_commands(["/f"], {"content": True})
+
+        assert commands["/f_cat"] == ["cat", "/f"]
+        assert commands["/f_encoding"] == [
+            "file",
+            "-b",
+            "--mime-encoding",
+            "/f",
+        ]
+        assert commands["/f_encoding_bsd"] == ["file", "-b", "-I", "/f"]
+        assert commands["/f_encoding_desc"] == ["file", "-b", "/f"]
+
+    def test_forced_encoding_skips_detection(self, action) -> None:
+        """Test a forced encoding drops the file detection commands."""
+        commands = action._get_read_commands(
+            ["/f"], {"content": True, "encoding": "utf-8"}
+        )
+
+        assert sorted(commands) == [
+            "/f_cat",
+            "/f_inode",
+            "/f_inode_bsd",
+            "/f_ls",
+        ]
+
+    def test_lines_implies_content(self, action) -> None:
+        """Test requesting lines pulls in the content commands."""
+        commands = action._get_read_commands(["/f"], {"lines": True})
+
+        assert "/f_cat" in commands
+        assert "/f_encoding" in commands
+
+    def test_mime_requests_both_file_variants(self, action) -> None:
+        """Test mime adds the GNU and BSD file invocations."""
+        commands = action._get_read_commands(["/f"], {"mime": True})
+
+        assert commands["/f_mimetype"] == [
+            "file",
+            "-b",
+            "--mime-type",
+            "/f",
+        ]
+        assert commands["/f_mimetype_bsd"] == ["file", "-b", "-I", "/f"]
+
+    def test_hash_detection_mode_runs_all_variants(self, action) -> None:
+        """Test hashes without a platform probe every known tool."""
+        options = {
+            "md5": True,
+            "sha1": True,
+            "sha256": True,
+            "sha512": True,
+        }
+
+        commands = action._get_read_commands(["/f"], options)
+
+        assert commands["/f_md5"] == ["md5sum", "/f"]
+        assert commands["/f_md5_bsd"] == ["md5", "-q", "/f"]
+        assert commands["/f_sha1"] == ["sha1sum", "/f"]
+        assert commands["/f_sha1_shasum"] == ["shasum", "-a", "1", "/f"]
+        assert commands["/f_sha1_bsd"] == ["sha1", "-q", "/f"]
+        assert commands["/f_sha256_shasum"] == ["shasum", "-a", "256", "/f"]
+        assert commands["/f_sha512_shasum"] == ["shasum", "-a", "512", "/f"]
+
+    def test_hash_uses_platform_capability(self, action) -> None:
+        """Test a shasum-only platform picks the shasum variants."""
+        platform = {"stat_variant": "bsd", "has_shasum": True}
+        options = {"sha1": True, "sha256": True}
+
+        commands = action._get_read_commands(
+            ["/f"], options, platform=platform
+        )
+
+        assert sorted(commands) == [
+            "/f_inode_bsd",
+            "/f_ls",
+            "/f_sha1_shasum",
+            "/f_sha256_shasum",
+        ]
+
+    def test_empty_platform_dict_disables_hash_commands(self, action) -> None:
+        """Test an empty platform dict silently drops hash commands."""
+        commands = action._get_read_commands(
+            ["/f"], {"md5": True}, platform={}
+        )
+
+        # The falsy {} is treated as detection mode for the inode
+        # probes but as a known platform by the hash branches.
+        assert sorted(commands) == ["/f_inode", "/f_inode_bsd", "/f_ls"]
+
+    def test_dir_contents_adds_listing_per_path(self, action) -> None:
+        """Test need_dir_contents adds a listing command per path."""
+        commands = action._get_read_commands(
+            ["/a", "/b"], {}, need_dir_contents=True
+        )
+
+        assert commands["/a_contents"] == ["ls", "-1A", "/a"]
+        assert commands["/b_contents"] == ["ls", "-1A", "/b"]
+
+    def test_multiple_paths_are_keyed_by_path(self, action) -> None:
+        """Test each path gets its own prefixed command entries."""
+        commands = action._get_read_commands(["/a", "/b"], {})
+
+        assert sorted(commands) == [
+            "/a_inode",
+            "/a_inode_bsd",
+            "/a_ls",
+            "/b_inode",
+            "/b_inode_bsd",
+            "/b_ls",
+        ]
+
+    def test_no_paths_yields_no_commands(self, action) -> None:
+        """Test an empty path list produces an empty command dict."""
+        assert action._get_read_commands([], {"attributes": True}) == {}
+
+
+class TestDetectPlatformFromResults:
+    """Tests for _detect_platform_from_results."""
+
+    def test_empty_results_report_no_capabilities(self, action) -> None:
+        """Test absent results leave every capability at its default."""
+        assert action._detect_platform_from_results({}, "/f") == {
+            "stat_variant": None,
+            "has_lsattr": False,
+            "has_getfacl": False,
+            "has_nfs4_getfacl": False,
+            "has_getfattr": False,
+            "has_xattr": False,
+            "ls_supports_selinux": False,
+            "ls_supports_acl_macos": False,
+            "ls_supports_flags_bsd": False,
+            "has_md5sum": False,
+            "has_md5_bsd": False,
+            "has_sha1sum": False,
+            "has_sha256sum": False,
+            "has_sha512sum": False,
+            "has_shasum": False,
+            "has_sha1_bsd": False,
+            "has_sha256_bsd": False,
+            "has_sha512_bsd": False,
+        }
+
+    def test_gnu_toolchain_detected(self, action) -> None:
+        """Test GNU command results select the GNU capability set."""
+        results = {
+            "/f_inode": {"rc": 0, "stdout": "12345\n"},
+            "/f_inode_bsd": {"rc": 1, "stdout": ""},
+            "/f_flags": {"rc": 0, "stdout": "-------------e- /f\n"},
+            "/f_acl": {"rc": 0, "stdout": "user::rw-\n"},
+            "/f_xattr": {"rc": 0, "stdout": ""},
+            "/f_selinux_ls": {
+                "rc": 0,
+                "stdout": "unconfined_u:object_r:etc_t:s0 /f\n",
+            },
+            "/f_md5": {"rc": 0, "stdout": "d41d8cd9 /f\n"},
+            "/f_sha256": {"rc": 0, "stdout": "e3b0c442 /f\n"},
+        }
+
+        platform = action._detect_platform_from_results(results, "/f")
+
+        assert platform["stat_variant"] == "gnu"
+        assert platform["has_lsattr"] is True
+        assert platform["has_getfacl"] is True
+        assert platform["has_getfattr"] is True
+        assert platform["ls_supports_selinux"] is True
+        assert platform["has_md5sum"] is True
+        assert platform["has_sha256sum"] is True
+        assert platform["has_shasum"] is False
+
+    def test_bsd_toolchain_detected(self, action) -> None:
+        """Test BSD command results select the BSD capability set."""
+        results = {
+            "/f_inode": {"rc": 1, "stdout": ""},
+            "/f_inode_bsd": {"rc": 0, "stdout": "99\n"},
+            "/f_flags_macos": {
+                "rc": 0,
+                "stdout": "drwxr-xr-x 5 u g - 160 Aug 16 10:00 /f\n",
+            },
+            "/f_acl_macos": {"rc": 0, "stdout": ""},
+            "/f_xattr_macos": {"rc": 0, "stdout": ""},
+            "/f_md5_bsd": {"rc": 0, "stdout": "d41d8cd9\n"},
+            "/f_sha256_shasum": {"rc": 0, "stdout": "e3b0c442 /f\n"},
+        }
+
+        platform = action._detect_platform_from_results(results, "/f")
+
+        assert platform["stat_variant"] == "bsd"
+        assert platform["ls_supports_flags_bsd"] is True
+        assert platform["ls_supports_acl_macos"] is True
+        assert platform["has_xattr"] is True
+        assert platform["has_md5_bsd"] is True
+        assert platform["has_shasum"] is True
+
+    def test_gnu_stat_rc_zero_with_junk_stdout_falls_back(
+        self, action
+    ) -> None:
+        """Test a non-numeric GNU inode result falls back to BSD."""
+        results = {
+            "/f_inode": {"rc": 0, "stdout": "stat: illegal option -- c\n"},
+            "/f_inode_bsd": {"rc": 0, "stdout": "8675309\n"},
+        }
+
+        platform = action._detect_platform_from_results(results, "/f")
+
+        assert platform["stat_variant"] == "bsd"
+
+    def test_selinux_question_mark_is_not_support(self, action) -> None:
+        """Test ls -Z printing '?' does not count as SELinux support."""
+        results = {"/f_selinux_ls": {"rc": 0, "stdout": "? /f\n"}}
+
+        platform = action._detect_platform_from_results(results, "/f")
+
+        assert platform["ls_supports_selinux"] is False
+
+    @pytest.mark.parametrize(
+        "tag,capability",
+        [
+            ("/f_flags", "has_lsattr"),
+            ("/f_acl", "has_getfacl"),
+            ("/f_acl_nfs4", "has_nfs4_getfacl"),
+            ("/f_md5", "has_md5sum"),
+            ("/f_sha1", "has_sha1sum"),
+            ("/f_sha256", "has_sha256sum"),
+            ("/f_sha512", "has_sha512sum"),
+            ("/f_sha1_bsd", "has_sha1_bsd"),
+            ("/f_sha256_bsd", "has_sha256_bsd"),
+            ("/f_sha512_bsd", "has_sha512_bsd"),
+            ("/f_md5_bsd", "has_md5_bsd"),
+        ],
+    )
+    def test_rc_zero_with_empty_stdout_is_not_support(
+        self, action, tag, capability
+    ) -> None:
+        """Test these probes require stdout as well as a zero rc."""
+        results = {tag: {"rc": 0, "stdout": ""}}
+
+        platform = action._detect_platform_from_results(results, "/f")
+
+        assert platform[capability] is False
+
+    @pytest.mark.parametrize(
+        "tag,capability",
+        [
+            ("/f_flags_macos", "ls_supports_flags_bsd"),
+            ("/f_acl_macos", "ls_supports_acl_macos"),
+            ("/f_xattr", "has_getfattr"),
+            ("/f_xattr_macos", "has_xattr"),
+        ],
+    )
+    def test_rc_zero_alone_is_support(self, action, tag, capability) -> None:
+        """Test these probes accept a zero rc with no stdout at all."""
+        results = {tag: {"rc": 0, "stdout": ""}}
+
+        platform = action._detect_platform_from_results(results, "/f")
+
+        assert platform[capability] is True
+
+    def test_shasum_detected_from_any_digest_length(self, action) -> None:
+        """Test any successful shasum probe sets has_shasum."""
+        results = {"/f_sha512_shasum": {"rc": 0, "stdout": "cf83e1 /f\n"}}
+
+        platform = action._detect_platform_from_results(results, "/f")
+
+        assert platform["has_shasum"] is True

@@ -1,0 +1,39 @@
+---
+major_changes:
+  - >-
+    write - New module generalizing every file mutation with raw
+    fallback. The argument present in the task selects the operation:
+    content writes literal text, src copies from the controller or,
+    with remote_src, the target, template renders Jinja2 on the
+    controller, line edits with deduplication, block manages a marked
+    block, and a bare state handles directory, touch, link, and
+    absent (https://github.com/o0-o/ansible-collection-posix/pull/XXX).
+
+breaking_changes:
+  - >-
+    template - Removed; use o0_o.posix.write with the template
+    argument
+    (https://github.com/o0-o/ansible-collection-posix/pull/XXX).
+  - >-
+    lineinfile_dedupe - Removed; use o0_o.posix.write with the line
+    argument. The line editing and deduplication behavior carries
+    over unchanged
+    (https://github.com/o0-o/ansible-collection-posix/pull/XXX).
+
+minor_changes:
+  - >-
+    read - New raw option controls raw fallback explicitly, matching
+    command and run
+    (https://github.com/o0-o/ansible-collection-posix/pull/XXX).
+
+bugfixes:
+  - >-
+    write machinery - Content comparison read a helper that no longer
+    existed, so writes over an existing destination crashed; it now
+    reads through the read action
+    (https://github.com/o0-o/ansible-collection-posix/pull/XXX).
+  - >-
+    write machinery - Line deduplication after an insert at the top
+    of the file removed the wrong lines; index bookkeeping now treats
+    position zero as a valid anchor
+    (https://github.com/o0-o/ansible-collection-posix/pull/XXX).

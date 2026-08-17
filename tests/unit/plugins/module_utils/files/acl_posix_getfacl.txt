@@ -1,0 +1,15 @@
+# file: /srv/data
+# owner: root
+# group: staff
+# flags: -s-
+user::rwx
+user:john:r-x
+group::r-x
+group:devs:rwx
+mask::rwx
+other::r-x
+default:user::rwx
+default:user:john:r-x
+default:group::r-x
+default:mask::rwx
+default:other::r-x

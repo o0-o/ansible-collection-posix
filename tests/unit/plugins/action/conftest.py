@@ -12,8 +12,9 @@
 from __future__ import annotations
 
 import os
+import shutil
 import tempfile
-from typing import Any, Optional
+from typing import Any, Optional, Union
 from unittest.mock import MagicMock
 
 import pytest
@@ -33,7 +34,39 @@ except ImportError:
     WritePosixActionBase = None  # type: ignore
 
 
-class TestPosixActionBase(PosixActionBase, ActionBase):
+class _RealCommandMixin:
+    """Override _command at class level to run commands for real.
+
+    Overriding the seam on the class instead of assigning it on the
+    instance keeps the stub honest: the signature must keep matching
+    production's, and if production ever renames ``_command`` this
+    override goes dead and the renamed method runs against the mocked
+    Ansible plumbing instead of quietly passing.
+    """
+
+    def _command(
+        self,
+        cmd: Union[str, list[str]],
+        stdin: Optional[str] = None,
+        chdir: Optional[str] = None,
+        task_vars: Optional[dict[str, Any]] = None,
+        check_mode: Optional[bool] = None,
+        strip: bool = True,
+        raw: Optional[Union[bool, str]] = None,
+    ) -> dict[str, Any]:
+        """Run cmd through real_cmd instead of the command action."""
+        return real_cmd(
+            cmd,
+            stdin=stdin,
+            chdir=chdir,
+            task_vars=task_vars,
+            check_mode=check_mode,
+            strip=strip,
+            raw=raw,
+        )
+
+
+class TestPosixActionBase(_RealCommandMixin, PosixActionBase, ActionBase):
     """Test class that combines PosixActionBase mixin with
     ActionBase.
     """
@@ -47,7 +80,9 @@ class TestPosixActionBase(PosixActionBase, ActionBase):
         return {"changed": False}
 
 
-class TestReadPosixActionBase(ReadPosixActionBase, ActionBase):
+class TestReadPosixActionBase(
+    _RealCommandMixin, ReadPosixActionBase, ActionBase
+):
     """Test class that combines ReadPosixActionBase mixin with
     ActionBase.
     """
@@ -61,7 +96,9 @@ class TestReadPosixActionBase(ReadPosixActionBase, ActionBase):
         return {"changed": False}
 
 
-class TestWritePosixActionBase(WritePosixActionBase, ActionBase):
+class TestWritePosixActionBase(
+    _RealCommandMixin, WritePosixActionBase, ActionBase
+):
     """Test class that combines WritePosixActionBase mixin with
     ActionBase.
     """
@@ -75,28 +112,18 @@ class TestWritePosixActionBase(WritePosixActionBase, ActionBase):
         return {"changed": False}
 
 
-@pytest.fixture
-def base():
-    """Create a TestPosixActionBase instance for unit testing.
+def _make_base(cls: type) -> tuple[Any, str]:
+    """Build a base test instance with mocked Ansible dependencies.
 
-    Provides a TestPosixActionBase instance with mocked Ansible
-    dependencies
-    but real command execution capabilities for integration-style
-    testing. Creates an isolated temporary directory for file
-    operations.
+    Command execution is real: the class supplies a ``_command``
+    override delegating to real_cmd. An isolated temporary directory
+    stands in for the connection shell's tmpdir; the caller owns its
+    removal.
 
-    :returns: Configured TestPosixActionBase instance with mocked
-              dependencies
-
-    .. note::
-       This fixture uses real command execution via real_cmd for
-       testing actual POSIX command behavior.
+    :param type cls: Test subclass to instantiate
+    :returns tuple: The configured instance and its temporary directory
     """
-    # MagicMock action to override command execution
-    action = MagicMock()
-
-    # Create TestPosixActionBase instance with mocked dependencies
-    base = TestPosixActionBase(
+    instance = cls(
         task=MagicMock(),
         connection=MagicMock(),
         play_context=MagicMock(),
@@ -105,27 +132,43 @@ def base():
         shared_loader_obj=MagicMock(),
     )
 
-    # Set action reference for internal use
-    base._action = action
-
     # Add display mock
-    base._display = MagicMock()
+    instance._display = MagicMock()
 
     # Initialize inventory_hostname (normally set by action plugin)
-    base.inventory_hostname = "localhost"
+    instance.inventory_hostname = "localhost"
 
     # Patch connection shell helpers
     temp_dir = tempfile.mkdtemp(prefix="ansible_test_")
-    base._connection._shell = MagicMock()
-    base._connection._shell.tmpdir = temp_dir
-    base._connection._shell.join_path = os.path.join
-    base._connection._shell.quote = lambda s: f"'{s}'"
+    instance._connection._shell = MagicMock()
+    instance._connection._shell.tmpdir = temp_dir
+    instance._connection._shell.join_path = os.path.join
+    instance._connection._shell.quote = lambda s: f"'{s}'"
 
-    # Replace _command and _low_level_execute_command with real_cmd
-    base._command = real_cmd
-    base._action._low_level_execute_command = real_cmd
+    return instance, temp_dir
 
-    return base
+
+@pytest.fixture
+def base():
+    """Create a TestPosixActionBase instance for unit testing.
+
+    Provides a TestPosixActionBase instance with mocked Ansible
+    dependencies but real command execution capabilities for
+    integration-style testing. Creates an isolated temporary directory
+    for file operations and removes it on teardown.
+
+    :returns: Configured TestPosixActionBase instance with mocked
+              dependencies
+
+    .. note::
+       This fixture uses real command execution via real_cmd for
+       testing actual POSIX command behavior.
+    """
+    instance, temp_dir = _make_base(TestPosixActionBase)
+    try:
+        yield instance
+    finally:
+        shutil.rmtree(temp_dir, ignore_errors=True)
 
 
 @pytest.fixture
@@ -135,7 +178,7 @@ def read_base():
     Provides a TestReadPosixActionBase instance with mocked Ansible
     dependencies but real command execution capabilities for
     integration-style testing. Creates an isolated temporary directory
-    for file operations.
+    for file operations and removes it on teardown.
 
     :returns: Configured TestReadPosixActionBase instance with mocked
               dependencies
@@ -145,40 +188,11 @@ def read_base():
        testing actual POSIX command behavior. Use this for testing
        methods from ReadPosixActionBase like _cat, _read, _stat.
     """
-    # MagicMock action to override command execution
-    action = MagicMock()
-
-    # Create TestReadPosixActionBase instance with mocked dependencies
-    read_base = TestReadPosixActionBase(
-        task=MagicMock(),
-        connection=MagicMock(),
-        play_context=MagicMock(),
-        loader=MagicMock(),
-        templar=MagicMock(),
-        shared_loader_obj=MagicMock(),
-    )
-
-    # Set action reference for internal use
-    read_base._action = action
-
-    # Add display mock
-    read_base._display = MagicMock()
-
-    # Initialize inventory_hostname (normally set by action plugin)
-    read_base.inventory_hostname = "localhost"
-
-    # Patch connection shell helpers
-    temp_dir = tempfile.mkdtemp(prefix="ansible_test_")
-    read_base._connection._shell = MagicMock()
-    read_base._connection._shell.tmpdir = temp_dir
-    read_base._connection._shell.join_path = os.path.join
-    read_base._connection._shell.quote = lambda s: f"'{s}'"
-
-    # Replace _command and _low_level_execute_command with real_cmd
-    read_base._command = real_cmd
-    read_base._action._low_level_execute_command = real_cmd
-
-    return read_base
+    instance, temp_dir = _make_base(TestReadPosixActionBase)
+    try:
+        yield instance
+    finally:
+        shutil.rmtree(temp_dir, ignore_errors=True)
 
 
 @pytest.fixture
@@ -188,7 +202,7 @@ def write_base():
     Provides a TestWritePosixActionBase instance with mocked Ansible
     dependencies but real command execution capabilities for
     integration-style testing. Creates an isolated temporary directory
-    for file operations.
+    for file operations and removes it on teardown.
 
     :returns: Configured TestWritePosixActionBase instance with mocked
               dependencies
@@ -199,37 +213,8 @@ def write_base():
        methods from WritePosixActionBase like _write_file, _mkdir,
        _pseudo_stat.
     """
-    # MagicMock action to override command execution
-    action = MagicMock()
-
-    # Create TestWritePosixActionBase instance with mocked dependencies
-    write_base = TestWritePosixActionBase(
-        task=MagicMock(),
-        connection=MagicMock(),
-        play_context=MagicMock(),
-        loader=MagicMock(),
-        templar=MagicMock(),
-        shared_loader_obj=MagicMock(),
-    )
-
-    # Set action reference for internal use
-    write_base._action = action
-
-    # Add display mock
-    write_base._display = MagicMock()
-
-    # Initialize inventory_hostname (normally set by action plugin)
-    write_base.inventory_hostname = "localhost"
-
-    # Patch connection shell helpers
-    temp_dir = tempfile.mkdtemp(prefix="ansible_test_")
-    write_base._connection._shell = MagicMock()
-    write_base._connection._shell.tmpdir = temp_dir
-    write_base._connection._shell.join_path = os.path.join
-    write_base._connection._shell.quote = lambda s: f"'{s}'"
-
-    # Replace _command and _low_level_execute_command with real_cmd
-    write_base._command = real_cmd
-    write_base._action._low_level_execute_command = real_cmd
-
-    return write_base
+    instance, temp_dir = _make_base(TestWritePosixActionBase)
+    try:
+        yield instance
+    finally:
+        shutil.rmtree(temp_dir, ignore_errors=True)

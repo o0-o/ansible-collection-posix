@@ -13,7 +13,7 @@
 Shared helpers for action plugin compatibility and fallback execution.
 
 This module provides utilities to detect interpreter presence and to
-manually invoke other action plugins (e.g. command, slurp64) using
+manually invoke other action plugins (e.g. command, read) using
 FQCNs.
 Used by custom action plugins to gracefully degrade to raw execution
 when Python is not available on the remote host.

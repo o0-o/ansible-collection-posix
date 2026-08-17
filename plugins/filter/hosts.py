@@ -50,13 +50,16 @@ author:
 EXAMPLES = r"""
 # Parse hosts file content
 - name: Read and parse hosts file
-  o0_o.posix.slurp64:
-    src: /etc/hosts
+  o0_o.posix.read:
+    path: /etc/hosts
+    content: true
   register: hosts_content
 
 - name: Parse hosts into structured data
   ansible.builtin.set_fact:
-    hosts_entries: "{{ hosts_content.content | o0_o.posix.hosts }}"
+    hosts_entries: >-
+      {{ hosts_content['paths']['/etc/hosts']['content']
+         | o0_o.posix.hosts }}
 
 - name: Display localhost entry
   vars:

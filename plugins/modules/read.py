@@ -11,7 +11,6 @@
 
 from __future__ import annotations
 
-
 DOCUMENTATION = r"""
 ---
 module: read
@@ -24,7 +23,10 @@ description:
     determined.
   - When the path does not exist the module returns C(null) instead of
     raising an error.
-  - Recursive inspection can expand symlink and hard link metadata.
+  - Each class of information is requested with its own option, so a task
+    reads as the set of facts it needs.
+  - Recursive inspection can expand parent directories, directory
+    children, and symlink targets.
 options:
   paths:
     description:
@@ -35,34 +37,82 @@ options:
     elements: str
     required: true
     aliases: [path]
-  include:
+  attributes:
     description:
-      - List of fields to include in the result.
-      - C(all) includes everything (metadata + extended + content + children).
-      - C(metadata) includes basic metadata and extended filesystem
-        attributes such as type, mode, owner, group, size, writable,
-        hardlinks, inode, timestamps (modified, created, changed), ACL,
-        filesystem flags, and SELinux context (but NOT xattrs).
-      - C(extended) includes all metadata plus extended attributes (xattrs).
-      - C(content) includes file content with encoding detection.
-      - C(children) includes directory child paths.
-    type: list
-    elements: str
-    default: ['metadata']
-    choices:
-      - all
-      - metadata
-      - extended
-      - content
-      - children
+      - Include basic metadata and extended filesystem attributes such as
+        type, mode, owner, group, size, readable, writable, hardlinks,
+        inode, timestamps (modified, created, changed), ACL, filesystem
+        flags, and SELinux context.
+      - Does not include extended attributes (xattrs); use I(extended)
+        for those.
+      - Defaults to C(false) when I(content) or I(lines) is requested and
+        this option is not set explicitly.
+    type: bool
+    default: true
+  extended:
+    description:
+      - Include extended attributes (xattrs).
+      - Implies I(attributes=true).
+    type: bool
+    default: false
+  content:
+    description:
+      - Include file content with encoding detection.
+      - Binary content is returned base64 encoded.
+    type: bool
+    default: false
+  lines:
+    description:
+      - Include file content split into a list of lines.
+      - Only returned for content that decodes to text; binary content
+        is returned as C(content) with a C(base64) or C(hex) encoding
+        instead.
+    type: bool
+    default: false
+  encoding:
+    description:
+      - Force a specific encoding instead of auto-detection.
+      - Supports standard encodings (C(utf-8), C(iso-8859-1),
+        C(shift-jis), and so on), C(base64) for binary data, and C(hex)
+        for a hexadecimal representation.
+      - Fails when the content cannot be decoded with the given encoding.
+      - Implies I(content=true).
+    type: str
+  mime:
+    description:
+      - Detect the MIME type using the C(file) command.
+      - Fails when the C(file) command is unavailable.
+    type: bool
+    default: false
+  md5:
+    description:
+      - Calculate the MD5 checksum of the file content.
+    type: bool
+    default: false
+  sha1:
+    description:
+      - Calculate the SHA-1 checksum of the file content.
+    type: bool
+    default: false
+  sha256:
+    description:
+      - Calculate the SHA-256 checksum of the file content.
+    type: bool
+    default: false
+  sha512:
+    description:
+      - Calculate the SHA-512 checksum of the file content.
+    type: bool
+    default: false
   parents:
     description:
-      - Control how many parent directories are included for each requested
-        path.
-      - When C(false) or C(0) (default), parent directories are not added.
+      - Control how many parent directories are included for each
+        requested path.
+      - When C(false) or C(0) (default), parent directories are not
+        added.
       - When C(true), all parents up to the root are included.
-      - When a positive integer, that many parents are included, starting at
-        the immediate parent.
+      - When a positive integer, that many parents are included, starting
+        at the immediate parent.
     type: raw
     default: false
   follow:
@@ -70,29 +120,54 @@ options:
       - How to handle symbolic links.
       - Can be a boolean or the string C(recursive).
       - When C(true) (default), resolves to the ultimate target (like
-        C(readlink -f)).
-      - When C(recursive), adds link targets to the paths list recursively
-        until a non-symlink is found.
+        C(readlink -f)) and reports the target's metadata under the
+        requested path, adding a C(realpath) key.
+      - When C(recursive), adds link targets to the paths list
+        recursively until a non-symlink is found.
       - When C(false), lists the link without following or recursing.
     type: raw
     default: true
+  list:
+    description:
+      - Add a C(children) field to directory entries containing the list
+        of child paths.
+      - Independent of I(children), which controls recursive reading.
+    type: bool
+    default: false
   children:
     description:
       - Recursively read child entries within directories.
       - Can be a boolean or a positive integer.
-      - When C(true), enables unlimited recursion into all subdirectories.
+      - When C(true), enables unlimited recursion into all
+        subdirectories.
       - When a positive integer, sets maximum directory depth to descend.
       - When C(false) or C(0) (default), child recursion is disabled.
-      - Has no effect on non-directory entries.
+      - Implies I(list=true). Has no effect on non-directory entries.
     type: raw
     default: false
+  raw:
+    description:
+      - Control raw execution mode behavior.
+      - 'C(true): Force raw fallback mode, bypassing native Python.'
+      - 'C(false): Force native Python execution (fail if unavailable).'
+      - 'C("auto"): Automatically detect and use the best method.'
+      - Useful for debugging, testing, or bootstrap scenarios.
+    type: raw
+    default: "auto"
+    version_added: "2.0.0"
 author:
   - oØ.o (@o0-o)
 notes:
   - This module is implemented as an action plugin and supports raw fallback.
+  - Requesting I(content) or I(lines) turns I(attributes) off unless it is
+    set explicitly, so content reads stay cheap.
+  - Child entries are only expanded for the paths named in I(paths), not
+    for directories added by I(parents).
 seealso:
   - module: ansible.builtin.stat
     description: Retrieve file or file system status
+  - module: o0_o.posix.write
+    description: Write files on POSIX hosts
 """
 
 EXAMPLES = r"""
@@ -101,41 +176,68 @@ EXAMPLES = r"""
     path: /etc/motd
   register: motd_read
 
-- name: Include file content with metadata
+- name: Read file content
   o0_o.posix.read:
     path: /etc/issue
-    include: ['content', 'metadata']
+    content: true
   register: issue_read
+
+- name: Read file content as lines, with metadata
+  o0_o.posix.read:
+    path: /etc/hosts
+    lines: true
+    attributes: true
+  register: hosts_read
+
+- name: Read a binary file as base64
+  o0_o.posix.read:
+    path: /bin/sh
+    content: true
+    encoding: base64
+  register: sh_read
 
 - name: Include extended attributes (xattrs)
   o0_o.posix.read:
     path: /etc/ssh/sshd_config
-    include: ['extended']
+    extended: true
   register: sshd_config_read
+
+- name: Checksum and identify a file
+  o0_o.posix.read:
+    path: /etc/localtime
+    mime: true
+    sha256: true
+  register: localtime_read
 
 - name: Expand metadata for parent directories
   o0_o.posix.read:
-    path: /etc/localtime
+    path: /etc/ssh/sshd_config
     parents: true
-  register: localtime_read
+  register: sshd_parents_read
 
-- name: Recursively read directory contents
+- name: List the entries of a directory
   o0_o.posix.read:
     path: /etc/ssh
-    children: true
+    list: true
   register: ssh_dir_read
 
-- name: Follow symlinks to ultimate target
+- name: Recursively read directory contents two levels deep
   o0_o.posix.read:
-    path: /etc/resolv.conf
-    follow: true
-  register: resolv_read
+    path: /var/log
+    children: 2
+  register: log_tree_read
 
-- name: Read symlink without following
+- name: Read a symlink without following it
   o0_o.posix.read:
     path: /etc/localtime
     follow: false
   register: localtime_link_read
+
+- name: Walk a symlink chain
+  o0_o.posix.read:
+    path: /etc/resolv.conf
+    follow: recursive
+  register: resolv_read
 
 - name: Inspect multiple files at once
   o0_o.posix.read:
@@ -144,21 +246,16 @@ EXAMPLES = r"""
       - /etc/issue
       - /etc/hostname
   register: multi_read
-
-- name: Include everything (all metadata, content, children)
-  o0_o.posix.read:
-    path: /var/log
-    include: ['all']
-    children: 2
-  register: full_read
 """
 
 RETURN = r"""
 paths:
   description:
     - Mapping of inspected paths to collected information.
-    - When I(follow=recursive), additional entries are included for all symlink
-      targets in the resolution chain.
+    - When I(parents) is enabled, additional entries are included for the
+      parent directories.
+    - When I(follow=recursive), additional entries are included for all
+      symlink targets in the resolution chain.
     - When I(children) is enabled, additional entries are included for all
       discovered child paths.
   returned: always
@@ -184,18 +281,21 @@ paths:
           description: Owning group name when available
           type: str
           sample: wheel
+        size:
+          description:
+            - Size of the file in bytes, with a human readable rendering.
+            - Only reported for regular files.
+          type: dict
+          returned: when the path is a regular file
+          sample: {bytes: 1024, pretty: '1 KiB'}
+        readable:
+          description: Whether the path is readable for the remote user
+          type: bool
+          sample: true
         writable:
           description: Whether the path is writable for the remote user
           type: bool
           sample: true
-        name:
-          description: Basename of the inspected path
-          type: str
-          sample: sample
-        parent:
-          description: Directory containing the inspected path
-          type: str
-          sample: /etc
         hardlinks:
           description:
             - For regular files, the count of OTHER hard links pointing to
@@ -218,23 +318,48 @@ paths:
           type: str
           sample: /path/to/target
           returned: when type is link
+        realpath:
+          description:
+            - The ultimate target a symbolic link resolved to.
+            - The rest of the entry describes that target, not the link.
+          type: str
+          sample: /usr/share/zoneinfo/UTC
+          returned: when I(follow=true) resolved a symlink
+        modified:
+          description: Modification time, in seconds and rendered
+          type: dict
+          returned: when timestamps are retrievable
+          sample: {seconds: 1735689600, pretty: '2025-01-01 00:00:00 UTC'}
+        changed:
+          description: Inode change time, in seconds and rendered
+          type: dict
+          returned: when timestamps are retrievable
+          sample: {seconds: 1735689600, pretty: '2025-01-01 00:00:00 UTC'}
+        created:
+          description: Birth time, in seconds and rendered
+          type: dict
+          returned: when the filesystem records a birth time
+          sample: {seconds: 1735689600, pretty: '2025-01-01 00:00:00 UTC'}
         acl:
           description:
             - ACL details obtained via getfacl or derived from extended
               attributes when available.
-            - Contains keys such as C(text), C(access), and C(default)
-              depending on the information collected.
+            - Contains keys such as C(text), C(access), C(default), and
+              C(entries) depending on the information collected.
             - A C(type) field indicates the ACL provider (for example
               C(posix), C(macos), C(nfs4)).
           type: dict
           returned: when ACL data is retrievable
           sample: {type: posix, text: '# file: sample'}
         xattrs:
-          description: Extended attribute names gathered for the path
-          type: list
-          elements: str
-          returned: when extended attributes are retrievable
-          sample: ["user.comment"]
+          description:
+            - Extended attributes gathered for the path, nested by the
+              dotted components of each attribute name.
+            - Values that do not decode as text are returned base64
+              encoded.
+          type: dict
+          returned: when I(extended=true) and xattrs are retrievable
+          sample: {user: {comment: hello}}
         flags:
           description: Filesystem flags (e.g. immutable) when detectable
           type: list
@@ -246,26 +371,65 @@ paths:
           type: str
           returned: on SELinux-enabled systems
           sample: system_u:object_r:etc_t:s0
+        mime:
+          description: MIME type and subtype reported by the file command
+          type: dict
+          returned: when I(mime=true)
+          sample: {type: text, subtype: plain}
+        md5:
+          description: MD5 checksum of the file content
+          type: str
+          returned: when I(md5=true) and the path is a regular file
+        sha1:
+          description: SHA-1 checksum of the file content
+          type: str
+          returned: when I(sha1=true) and the path is a regular file
+        sha256:
+          description: SHA-256 checksum of the file content
+          type: str
+          returned: when I(sha256=true) and the path is a regular file
+        sha512:
+          description: SHA-512 checksum of the file content
+          type: str
+          returned: when I(sha512=true) and the path is a regular file
         encoding:
-          description: Encoding used to decode the returned content
+          description:
+            - Encoding used to decode the returned content.
+            - C(base64) or C(hex) for content that is not text.
           type: str
           returned: when content is included
           sample: utf-8
         content:
-          description:
-            - Decoded file content using the reported encoding.
-            - Only present when I(include) contains C(content) or C(all).
+          description: Decoded file content using the reported encoding
           type: str
-          returned: when content is requested and readable
-        children:
-          description:
-            - List of child paths for directories.
-            - Only present when I(include) contains C(children) or C(all),
-              or when I(children) parameter is enabled.
+          returned: when I(content=true), I(lines=true), or I(encoding) is set
+        lines:
+          description: File content split into lines, without terminators
           type: list
           elements: str
-          returned: when path is a directory and children are requested
+          returned: when I(lines=true) and the content decodes to text
+        children:
+          description: List of child paths for directories
+          type: list
+          elements: str
+          returned: when the path is a directory and I(list) or I(children)
+            is enabled
           sample: ['/etc/ssh/ssh_config', '/etc/ssh/sshd_config']
+changed:
+  description: Always false as this is a read-only module
+  returned: always
+  type: bool
+  sample: false
+commands:
+  description: Number of commands run on the target
+  returned: always
+  type: int
+  sample: 12
+batches:
+  description: Number of batches the commands were executed in
+  returned: always
+  type: int
+  sample: 2
 """
 from ansible.module_utils.basic import AnsibleModule
 
@@ -280,21 +444,21 @@ def main() -> None:
             "elements": "str",
             "aliases": ["path"],
         },
-        "include": {
-            "type": "list",
-            "elements": "str",
-            "default": ["metadata"],
-            "choices": [
-                "all",
-                "metadata",
-                "extended",
-                "content",
-                "children",
-            ],
-        },
+        "attributes": {"type": "bool", "default": True},
+        "extended": {"type": "bool", "default": False},
+        "content": {"type": "bool", "default": False},
+        "lines": {"type": "bool", "default": False},
+        "encoding": {"type": "str", "default": None},
+        "mime": {"type": "bool", "default": False},
+        "md5": {"type": "bool", "default": False},
+        "sha1": {"type": "bool", "default": False},
+        "sha256": {"type": "bool", "default": False},
+        "sha512": {"type": "bool", "default": False},
         "parents": {"type": "raw", "default": False},
         "follow": {"type": "raw", "default": True},
+        "list": {"type": "bool", "default": False},
         "children": {"type": "raw", "default": False},
+        "raw": {"type": "raw", "default": "auto"},
     }
 
     module = AnsibleModule(

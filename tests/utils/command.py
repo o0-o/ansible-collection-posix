@@ -15,8 +15,10 @@ import subprocess
 
 def real_cmd(cmd, stdin=None, task_vars=None, check_mode=None, **kwargs):
     """
-    Simulate the fallback _cmd logic using real subprocess execution.
-    Supports both list and string commands, and optional stdin input.
+    Simulate the fallback _command logic using real subprocess
+    execution. Supports both list and string commands, and optional
+    stdin input. Under check mode nothing is executed and a no-op
+    success result is returned, so check-mode assertions are real.
     """
     if isinstance(cmd, list):
         shell = False
@@ -26,6 +28,17 @@ def real_cmd(cmd, stdin=None, task_vars=None, check_mode=None, **kwargs):
         raise TypeError(
             f"Expected cmd to be str or list, got {type(cmd).__name__}"
         )
+
+    if check_mode:
+        return {
+            "rc": 0,
+            "stdout": "",
+            "stderr": "",
+            "stdout_lines": [],
+            "stderr_lines": [],
+            "cmd": cmd,
+            "check_mode": True,
+        }
 
     try:
         result = subprocess.run(

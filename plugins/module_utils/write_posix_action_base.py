@@ -392,9 +392,25 @@ class WritePosixActionBase(ReadPosixActionBase):
             self._display.vvv(f"File does not exist: {dest}")
             return True, None, []
 
-        old_slurp = self._slurp(src=dest, task_vars=task_vars)
-        old_content = old_slurp["content"]
-        old_lines = old_slurp["content_lines"]
+        # Read the current contents through the read action; reading is
+        # safe in check mode, so check_mode is pinned off
+        read_result = self._read(
+            paths=dest,
+            content=True,
+            lines=True,
+            task_vars=task_vars,
+            check_mode=False,
+        )
+        if read_result.get("failed"):
+            raise RuntimeError(
+                f"Could not read contents of '{dest}': "
+                f"{read_result.get('msg', '')}"
+            )
+        path_data = read_result.get("paths", {}).get(dest, {})
+        old_content = path_data.get("content", "")
+        old_lines = path_data.get("lines")
+        if old_lines is None:
+            old_lines = old_content.splitlines()
         self._display.vvv(f"Old lines: {old_lines}")
 
         if lines != old_lines:

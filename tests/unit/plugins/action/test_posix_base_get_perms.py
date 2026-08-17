@@ -63,33 +63,47 @@ import pytest
         ),
     ],
 )
-def test_get_perms_valid(write_base, cmd_output, selinux, expected) -> None:
+def test_get_perms_valid(
+    monkeypatch, write_base, cmd_output, selinux, expected
+) -> None:
     """Test _get_perms parses POSIX and SELinux output correctly."""
-    write_base._command = lambda *args, **kwargs: cmd_output
+    monkeypatch.setattr(
+        write_base, "_command", lambda *args, **kwargs: cmd_output
+    )
     result = write_base._get_perms("/fake/file", selinux=selinux)
     assert result == expected
 
 
-def test_get_perms_fails_on_error(write_base) -> None:
+def test_get_perms_fails_on_error(monkeypatch, write_base) -> None:
     """
     Test _get_perms raises RuntimeError when ls command fails.
     """
-    write_base._command = lambda *args, **kwargs: {
-        "rc": 1,
-        "stderr": "ls: cannot access",
-    }
+    monkeypatch.setattr(
+        write_base,
+        "_command",
+        lambda *args, **kwargs: {
+            "rc": 1,
+            "stderr": "ls: cannot access",
+        },
+    )
 
     with pytest.raises(RuntimeError, match="Could not stat"):
         write_base._get_perms("/fake/file", selinux=False)
 
 
-def test_get_perms_raises_on_malformed_selinux_output(write_base) -> None:
+def test_get_perms_raises_on_malformed_selinux_output(
+    monkeypatch, write_base
+) -> None:
     """Test _get_perms raises on malformed SELinux output."""
-    write_base._command = lambda *args, **kwargs: {
-        "rc": 0,
-        "stdout": "badselinux -rw-r--r-- user group",
-        "stdout_lines": ["badselinux -rw-r--r-- user group"],
-    }
+    monkeypatch.setattr(
+        write_base,
+        "_command",
+        lambda *args, **kwargs: {
+            "rc": 0,
+            "stdout": "badselinux -rw-r--r-- user group",
+            "stdout_lines": ["badselinux -rw-r--r-- user group"],
+        },
+    )
 
     with pytest.raises(RuntimeError, match="Unexpected SELinux output"):
         write_base._get_perms("/fake/file", selinux=True)

@@ -24,21 +24,27 @@ import pytest
     ],
 )
 def test_create_backup_behavior(
-    write_base, file_exists, cp_success, expect_error
+    monkeypatch, write_base, file_exists, cp_success, expect_error
 ) -> None:
     """
     Test _create_backup handles existence, success, and error cases.
     """
     dest_path = "/tmp/testfile.txt"
 
-    write_base._command = MagicMock(
-        side_effect=[
-            {"rc": 0} if file_exists else {"rc": 1},
-            {"rc": 0} if cp_success else {"rc": 1, "stderr": "cp failed"},
-        ]
+    monkeypatch.setattr(
+        write_base,
+        "_command",
+        MagicMock(
+            side_effect=[
+                {"rc": 0} if file_exists else {"rc": 1},
+                {"rc": 0} if cp_success else {"rc": 1, "stderr": "cp failed"},
+            ]
+        ),
     )
-    write_base._generate_ansible_backup_path = MagicMock(
-        return_value="/tmp/testfile.txt.fakebackup"
+    monkeypatch.setattr(
+        write_base,
+        "_generate_ansible_backup_path",
+        MagicMock(return_value="/tmp/testfile.txt.fakebackup"),
     )
 
     if expect_error:

@@ -12,3 +12,39 @@
 # Generally, the required Ansible version will follow whichever version pip
 # installs on the oldest supported version of Python (currently Python 3.9)
 requires_ansible: '>=2.15'
+
+# Retired modules point their consumers at the pillar that generalizes
+# them: write funnels every file mutation, read every observation.
+plugin_routing:
+  modules:
+    template:
+      tombstone:
+        removal_version: 2.0.0
+        warning_text: >-
+          Use o0_o.posix.write with the template argument.
+    lineinfile_dedupe:
+      tombstone:
+        removal_version: 2.0.0
+        warning_text: >-
+          Use o0_o.posix.write with the line argument.
+    slurp64:
+      tombstone:
+        removal_version: 2.0.0
+        warning_text: >-
+          Use o0_o.posix.read with content=true.
+  action:
+    template:
+      tombstone:
+        removal_version: 2.0.0
+        warning_text: >-
+          Use o0_o.posix.write with the template argument.
+    lineinfile_dedupe:
+      tombstone:
+        removal_version: 2.0.0
+        warning_text: >-
+          Use o0_o.posix.write with the line argument.
+    slurp64:
+      tombstone:
+        removal_version: 2.0.0
+        warning_text: >-
+          Use o0_o.posix.read with content=true.

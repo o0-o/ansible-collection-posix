@@ -11,7 +11,7 @@
 
 namespace: o0_o
 name: posix
-version: 1.4.0
+version: 2.0.0
 readme: README.md
 authors:
   - oØ.o (@o0-o)

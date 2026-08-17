@@ -38,6 +38,14 @@ from ansible_collections.o0_o.posix.plugins.module_utils.fstab_utils import (
     generate_fstab,
     generate_fstab_entry,
 )
+from ansible_collections.o0_o.posix.plugins.module_utils.edit_utils import (
+    compile_line_patterns,
+    ensure_block,
+    ensure_line,
+    remove_block,
+    remove_lines,
+    render_markers,
+)
 from ansible_collections.o0_o.posix.plugins.module_utils.jc_utils import (
     jc_parse,
 )
@@ -147,7 +155,13 @@ __all__ = [
     "hosts",
     "parse_hosts_entry",
     "generate_hosts_entry",
+    "compile_line_patterns",
+    "ensure_block",
+    "ensure_line",
     "jc_parse",
+    "remove_block",
+    "remove_lines",
+    "render_markers",
     "id_info",
     "group_info",
     "normalize_group_members",

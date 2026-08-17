@@ -105,9 +105,7 @@ def test_users_action_by_id(
     monkeypatch.setattr(plugin, "_command", mock_cmd)
     # Home and shell metadata come from the read action plugin, which
     # is exercised by its own tests.
-    monkeypatch.setattr(
-        plugin, "_read", lambda **kwargs: {"paths": {}}, raising=False
-    )
+    monkeypatch.setattr(plugin, "_read", lambda **kwargs: {"paths": {}})
     monkeypatch.setattr(
         "ansible_collections.o0_o.posix.plugins.action.users.passwd_info",
         lambda content, key="id": (
@@ -151,9 +149,7 @@ def test_users_action_by_name(
     monkeypatch.setattr(plugin, "_command", mock_cmd)
     # Home and shell metadata come from the read action plugin, which
     # is exercised by its own tests.
-    monkeypatch.setattr(
-        plugin, "_read", lambda **kwargs: {"paths": {}}, raising=False
-    )
+    monkeypatch.setattr(plugin, "_read", lambda **kwargs: {"paths": {}})
     monkeypatch.setattr(
         "ansible_collections.o0_o.posix.plugins.action.users.passwd_info",
         lambda content, key="id": (
