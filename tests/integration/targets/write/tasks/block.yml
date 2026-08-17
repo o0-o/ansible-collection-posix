@@ -1,0 +1,414 @@
+# vim: ts=2:sw=2:sts=2:et:ft=yaml.ansible
+# -*- mode: yaml; yaml-indent-offset: 2; indent-tabs-mode: nil; -*-
+---
+# GNU General Public License v3.0+
+# SPDX-License-Identifier: GPL-3.0-or-later
+# (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
+#
+# Copyright (c) 2025 oØ.o (@o0-o)
+#
+# This file is part of the o0_o.posix Ansible Collection.
+
+- name: Seed the file the block family edits
+  o0_o.posix.write:
+    dest: "{{ block_dest }}"
+    content: "{{ block_seed }}"
+    mode: '0644'
+    raw: "{{ raw }}"
+  check_mode: false
+  register: block_reset_reg
+
+- name: Add a managed block to a file that has none
+  o0_o.posix.write:
+    dest: "{{ block_dest }}"
+    block: 'managed = true'
+    raw: "{{ raw }}"
+  register: block_add_reg
+
+- name: Read the file back after the block was added
+  o0_o.posix.read:
+    path: "{{ block_dest }}"
+    content: true
+    lines: true
+  register: block_add_read_reg
+
+- name: Assert the added block is reported as a change
+  ansible.builtin.assert:
+    that:
+      - block_reset_reg['raw'] == raw
+      - block_add_reg is changed
+      - block_add_reg['raw'] == raw
+      - block_add_reg['msg'] == 'block added'
+
+- name: Assert the block was appended between its markers
+  ansible.builtin.assert:
+    that:
+      - >-
+        block_now['lines'][-3:]
+        == [block_begin, 'managed = true', block_end]
+      - >-
+        block_now['lines'][:4] == block_seed.splitlines()
+  vars:
+    block_now: "{{ block_add_read_reg['paths'][block_dest] }}"
+  when: not ansible_check_mode
+
+- name: Assert check mode left the file exactly as it found it
+  ansible.builtin.assert:
+    that:
+      - block_now['lines'] == block_seed.splitlines()
+  vars:
+    block_now: "{{ block_add_read_reg['paths'][block_dest] }}"
+  when: ansible_check_mode
+
+- name: Settle the added block outside check mode
+  o0_o.posix.write:
+    dest: "{{ block_dest }}"
+    block: 'managed = true'
+    raw: "{{ raw }}"
+  check_mode: false
+  register: block_settle_reg
+
+- name: Add the identical block a second time
+  o0_o.posix.write:
+    dest: "{{ block_dest }}"
+    block: 'managed = true'
+    raw: "{{ raw }}"
+  check_mode: false
+  register: block_idempotent_reg
+
+- name: Assert an identical block reports no change
+  ansible.builtin.assert:
+    that:
+      - block_settle_reg['raw'] == raw
+      - block_idempotent_reg is not changed
+      - block_idempotent_reg['raw'] == raw
+
+- name: Rewrite the body of the managed block
+  o0_o.posix.write:
+    dest: "{{ block_dest }}"
+    block: 'managed = false'
+    raw: "{{ raw }}"
+  check_mode: false
+  register: block_replace_reg
+
+- name: Read the file back after the block was rewritten
+  o0_o.posix.read:
+    path: "{{ block_dest }}"
+    content: true
+    lines: true
+  register: block_replace_read_reg
+
+- name: Assert the block body was replaced in place
+  ansible.builtin.assert:
+    that:
+      - block_replace_reg is changed
+      - block_replace_reg['raw'] == raw
+      - block_replace_reg['msg'] == 'block replaced'
+      - "'managed = false' in block_now['lines']"
+      - "'managed = true' not in block_now['lines']"
+      - >-
+        block_now['lines'] | select('equalto', block_begin)
+        | list | length == 1
+  vars:
+    block_now: "{{ block_replace_read_reg['paths'][block_dest] }}"
+
+- name: Reset the file before the beginning of file test
+  o0_o.posix.write:
+    dest: "{{ block_dest }}"
+    content: "{{ block_seed }}"
+    mode: '0644'
+    raw: "{{ raw }}"
+  check_mode: false
+  register: block_reset_reg
+
+- name: Add a managed block at the beginning of the file
+  o0_o.posix.write:
+    dest: "{{ block_dest }}"
+    block: 'top = 1'
+    insertbefore: BOF
+    raw: "{{ raw }}"
+  check_mode: false
+  register: block_bof_reg
+
+- name: Read the file back after the beginning of file edit
+  o0_o.posix.read:
+    path: "{{ block_dest }}"
+    content: true
+    lines: true
+  register: block_bof_read_reg
+
+- name: Assert the block opens the file
+  ansible.builtin.assert:
+    that:
+      - block_reset_reg['raw'] == raw
+      - block_bof_reg is changed
+      - block_bof_reg['raw'] == raw
+      - >-
+        block_now['lines'][:3] == [block_begin, 'top = 1', block_end]
+  vars:
+    block_now: "{{ block_bof_read_reg['paths'][block_dest] }}"
+
+- name: Reset the file before the insertafter anchor test
+  o0_o.posix.write:
+    dest: "{{ block_dest }}"
+    content: "{{ block_seed }}"
+    mode: '0644'
+    raw: "{{ raw }}"
+  check_mode: false
+  register: block_reset_reg
+
+- name: Add a managed block after an anchor
+  o0_o.posix.write:
+    dest: "{{ block_dest }}"
+    block: 'middle = 1'
+    insertafter: '^# Anchor Middle$'
+    raw: "{{ raw }}"
+  check_mode: false
+  register: block_after_reg
+
+- name: Read the file back after the insertafter edit
+  o0_o.posix.read:
+    path: "{{ block_dest }}"
+    content: true
+    lines: true
+  register: block_after_read_reg
+
+- name: Assert the block opens directly below its anchor
+  ansible.builtin.assert:
+    that:
+      - block_reset_reg['raw'] == raw
+      - block_after_reg is changed
+      - block_after_reg['raw'] == raw
+      - >-
+        block_now['lines'].index(block_begin)
+        == block_now['lines'].index('# Anchor Middle') + 1
+  vars:
+    block_now: "{{ block_after_read_reg['paths'][block_dest] }}"
+
+- name: Write a file that already holds two managed blocks
+  o0_o.posix.write:
+    dest: "{{ block_dest }}"
+    content: "{{ block_dupes }}"
+    mode: '0644'
+    raw: "{{ raw }}"
+  check_mode: false
+  register: block_reset_reg
+
+- name: Reconcile a file whose managed block drifted into two
+  o0_o.posix.write:
+    dest: "{{ block_dest }}"
+    block: 'canonical = 1'
+    raw: "{{ raw }}"
+  check_mode: false
+  register: block_dedupe_reg
+
+- name: Read the file back after the reconciliation
+  o0_o.posix.read:
+    path: "{{ block_dest }}"
+    content: true
+    lines: true
+  register: block_dedupe_read_reg
+
+- name: Assert the duplicate marker pairs collapsed into one
+  ansible.builtin.assert:
+    that:
+      - block_reset_reg['raw'] == raw
+      - block_dedupe_reg is changed
+      - block_dedupe_reg['raw'] == raw
+      - "'duplicate blocks deduped' in block_dedupe_reg['msg']"
+      - >-
+        block_now['lines'] | select('equalto', block_begin)
+        | list | length == 1
+      - "'canonical = 1' in block_now['lines']"
+      - "'first = 1' not in block_now['lines']"
+      - "'second = 2' not in block_now['lines']"
+      - "'alpha = 1' in block_now['lines']"
+      - "'beta = 2' in block_now['lines']"
+  vars:
+    block_now: "{{ block_dedupe_read_reg['paths'][block_dest] }}"
+
+- name: Reset the file before the custom marker test
+  o0_o.posix.write:
+    dest: "{{ block_dest }}"
+    content: "{{ block_seed }}"
+    mode: '0644'
+    raw: "{{ raw }}"
+  check_mode: false
+  register: block_reset_reg
+
+- name: Add a managed block behind a marker of its own
+  o0_o.posix.write:
+    dest: "{{ block_dest }}"
+    block: 'custom = 1'
+    marker: '// {mark} MANAGED'
+    raw: "{{ raw }}"
+  check_mode: false
+  register: block_marker_reg
+
+- name: Read the file back after the custom marker edit
+  o0_o.posix.read:
+    path: "{{ block_dest }}"
+    content: true
+    lines: true
+  register: block_marker_read_reg
+
+- name: Assert the custom marker framed the block
+  ansible.builtin.assert:
+    that:
+      - block_reset_reg['raw'] == raw
+      - block_marker_reg is changed
+      - block_marker_reg['raw'] == raw
+      - >-
+        block_now['lines'][-3:]
+        == ['// BEGIN MANAGED', 'custom = 1', '// END MANAGED']
+      - block_begin not in block_now['lines']
+  vars:
+    block_now: "{{ block_marker_read_reg['paths'][block_dest] }}"
+
+- name: Reset the file before the block removal test
+  o0_o.posix.write:
+    dest: "{{ block_dest }}"
+    content: "{{ block_seed }}"
+    mode: '0644'
+    raw: "{{ raw }}"
+  check_mode: false
+  register: block_reset_reg
+
+- name: Add the managed block the removal test takes away
+  o0_o.posix.write:
+    dest: "{{ block_dest }}"
+    block: 'doomed = 1'
+    raw: "{{ raw }}"
+  check_mode: false
+  register: block_doomed_reg
+
+- name: Remove the managed block
+  o0_o.posix.write:
+    dest: "{{ block_dest }}"
+    block: 'doomed = 1'
+    state: absent
+    raw: "{{ raw }}"
+  register: block_remove_reg
+
+- name: Read the file back after the removal
+  o0_o.posix.read:
+    path: "{{ block_dest }}"
+    content: true
+    lines: true
+  register: block_remove_read_reg
+
+- name: Assert the removal is reported as a change
+  ansible.builtin.assert:
+    that:
+      - block_reset_reg['raw'] == raw
+      - block_doomed_reg['raw'] == raw
+      - block_remove_reg is changed
+      - block_remove_reg['raw'] == raw
+      - block_remove_reg['msg'] == '1 block removed'
+
+- name: Assert the block and its markers are gone
+  ansible.builtin.assert:
+    that:
+      - block_now['lines'] == block_seed.splitlines()
+  vars:
+    block_now: "{{ block_remove_read_reg['paths'][block_dest] }}"
+  when: not ansible_check_mode
+
+- name: Assert check mode left the managed block in place
+  ansible.builtin.assert:
+    that:
+      - block_begin in block_now['lines']
+      - "'doomed = 1' in block_now['lines']"
+  vars:
+    block_now: "{{ block_remove_read_reg['paths'][block_dest] }}"
+  when: ansible_check_mode
+
+- name: Reset the file before the empty block test
+  o0_o.posix.write:
+    dest: "{{ block_dest }}"
+    content: "{{ block_seed }}"
+    mode: '0644'
+    raw: "{{ raw }}"
+  check_mode: false
+  register: block_reset_reg
+
+- name: Add the managed block the empty block test takes away
+  o0_o.posix.write:
+    dest: "{{ block_dest }}"
+    block: 'vanishing = 1'
+    raw: "{{ raw }}"
+  check_mode: false
+  register: block_vanishing_reg
+
+- name: Empty the managed block
+  o0_o.posix.write:
+    dest: "{{ block_dest }}"
+    block: ''
+    raw: "{{ raw }}"
+  check_mode: false
+  register: block_empty_reg
+
+- name: Read the file back after the block was emptied
+  o0_o.posix.read:
+    path: "{{ block_dest }}"
+    content: true
+    lines: true
+  register: block_empty_read_reg
+
+- name: Assert an empty block removes the managed region
+  ansible.builtin.assert:
+    that:
+      - block_reset_reg['raw'] == raw
+      - block_vanishing_reg['raw'] == raw
+      - block_empty_reg is changed
+      - block_empty_reg['raw'] == raw
+      - block_empty_reg['msg'] == '1 block removed'
+      - block_now['lines'] == block_seed.splitlines()
+  vars:
+    block_now: "{{ block_empty_read_reg['paths'][block_dest] }}"
+
+- name: Clear the file the block create test writes
+  ansible.builtin.file:
+    path: "{{ block_created_dest }}"
+    state: absent
+  check_mode: false
+
+- name: Add a managed block to a file that does not exist yet
+  o0_o.posix.write:
+    dest: "{{ block_created_dest }}"
+    block: 'created = 1'
+    create: true
+    mode: '0644'
+    raw: "{{ raw }}"
+  register: block_create_reg
+
+- name: Read the created file back
+  o0_o.posix.read:
+    path: "{{ block_created_dest }}"
+    attributes: true
+    content: true
+    lines: true
+  register: block_create_read_reg
+
+- name: Assert the create edit is reported as a change
+  ansible.builtin.assert:
+    that:
+      - block_create_reg is changed
+      - block_create_reg['raw'] == raw
+
+- name: Assert the created file holds only the managed block
+  ansible.builtin.assert:
+    that:
+      - >-
+        block_now['lines']
+        == [block_begin, 'created = 1', block_end]
+      - block_now['mode'] == '0644'
+  vars:
+    block_now: "{{ block_create_read_reg['paths'][block_created_dest] }}"
+  when: not ansible_check_mode
+
+- name: Assert check mode never created the file
+  ansible.builtin.assert:
+    that:
+      - block_create_read_reg['paths'][block_created_dest] is none
+  when: ansible_check_mode

@@ -1,0 +1,491 @@
+# vim: ts=2:sw=2:sts=2:et:ft=yaml.ansible
+# -*- mode: yaml; yaml-indent-offset: 2; indent-tabs-mode: nil; -*-
+---
+# GNU General Public License v3.0+
+# SPDX-License-Identifier: GPL-3.0-or-later
+# (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
+#
+# Copyright (c) 2025 oØ.o (@o0-o)
+#
+# This file is part of the o0_o.posix Ansible Collection.
+
+- name: Seed the file the line family edits
+  o0_o.posix.write:
+    dest: "{{ line_dest }}"
+    content: "{{ line_seed }}"
+    mode: '0644'
+    raw: "{{ raw }}"
+  check_mode: false
+  register: line_reset_reg
+
+- name: Append a line the file does not hold yet
+  o0_o.posix.write:
+    dest: "{{ line_dest }}"
+    line: 'timeout=30'
+    raw: "{{ raw }}"
+  register: line_append_reg
+
+- name: Read the file back after the append
+  o0_o.posix.read:
+    path: "{{ line_dest }}"
+    content: true
+    lines: true
+  register: line_append_read_reg
+
+- name: Assert the append is reported as a change
+  ansible.builtin.assert:
+    that:
+      - line_reset_reg['raw'] == raw
+      - line_append_reg is changed
+      - line_append_reg['raw'] == raw
+      - "'line added' in line_append_reg['msg']"
+
+- name: Assert the appended line landed at the end of the file
+  ansible.builtin.assert:
+    that:
+      - line_now['lines'][-1] == 'timeout=30'
+      - line_now['lines'] == line_seed.splitlines() + ['timeout=30']
+  vars:
+    line_now: "{{ line_append_read_reg['paths'][line_dest] }}"
+  when: not ansible_check_mode
+
+- name: Assert check mode left the file exactly as it found it
+  ansible.builtin.assert:
+    that:
+      - line_now['lines'] == line_seed.splitlines()
+  vars:
+    line_now: "{{ line_append_read_reg['paths'][line_dest] }}"
+  when: ansible_check_mode
+
+- name: Reset the file before the regular expression replacement
+  o0_o.posix.write:
+    dest: "{{ line_dest }}"
+    content: "{{ line_seed }}"
+    mode: '0644'
+    raw: "{{ raw }}"
+  check_mode: false
+  register: line_reset_reg
+
+- name: Replace the line a regular expression matches
+  o0_o.posix.write:
+    dest: "{{ line_dest }}"
+    regexp: '^log_level='
+    line: 'log_level=debug'
+    raw: "{{ raw }}"
+  register: line_replace_reg
+
+- name: Read the file back after the replacement
+  o0_o.posix.read:
+    path: "{{ line_dest }}"
+    content: true
+    lines: true
+  register: line_replace_read_reg
+
+- name: Assert the replacement is reported as a change
+  ansible.builtin.assert:
+    that:
+      - line_reset_reg['raw'] == raw
+      - line_replace_reg is changed
+      - line_replace_reg['raw'] == raw
+      - "'line replaced' in line_replace_reg['msg']"
+
+- name: Assert the replacement stood in for the matched line
+  ansible.builtin.assert:
+    that:
+      - "'log_level=debug' in line_now['lines']"
+      - "'log_level=info' not in line_now['lines']"
+      - line_now['lines'] | length == line_seed.splitlines() | length
+  vars:
+    line_now: "{{ line_replace_read_reg['paths'][line_dest] }}"
+  when: not ansible_check_mode
+
+- name: Assert check mode left the matched line alone
+  ansible.builtin.assert:
+    that:
+      - "'log_level=info' in line_now['lines']"
+      - "'log_level=debug' not in line_now['lines']"
+  vars:
+    line_now: "{{ line_replace_read_reg['paths'][line_dest] }}"
+  when: ansible_check_mode
+
+- name: Settle the replacement outside check mode
+  o0_o.posix.write:
+    dest: "{{ line_dest }}"
+    regexp: '^log_level='
+    line: 'log_level=debug'
+    raw: "{{ raw }}"
+  check_mode: false
+  register: line_settle_reg
+
+- name: Replace the same line a second time
+  o0_o.posix.write:
+    dest: "{{ line_dest }}"
+    regexp: '^log_level='
+    line: 'log_level=debug'
+    raw: "{{ raw }}"
+  check_mode: false
+  register: line_replace_idempotent_reg
+
+- name: Assert a repeated replacement reports no change
+  ansible.builtin.assert:
+    that:
+      - line_settle_reg['raw'] == raw
+      - line_replace_idempotent_reg is not changed
+      - line_replace_idempotent_reg['raw'] == raw
+
+- name: Reset the file before the insertafter anchor test
+  o0_o.posix.write:
+    dest: "{{ line_dest }}"
+    content: "{{ line_seed }}"
+    mode: '0644'
+    raw: "{{ raw }}"
+  check_mode: false
+  register: line_reset_reg
+
+- name: Insert a line after an anchor
+  o0_o.posix.write:
+    dest: "{{ line_dest }}"
+    line: 'inserted=after'
+    insertafter: '^# Anchor Start$'
+    raw: "{{ raw }}"
+  check_mode: false
+  register: line_after_reg
+
+- name: Read the file back after the insertafter edit
+  o0_o.posix.read:
+    path: "{{ line_dest }}"
+    content: true
+    lines: true
+  register: line_after_read_reg
+
+- name: Assert the line sits directly below its anchor
+  ansible.builtin.assert:
+    that:
+      - line_reset_reg['raw'] == raw
+      - line_after_reg is changed
+      - line_after_reg['raw'] == raw
+      - >-
+        line_now['lines'].index('inserted=after')
+        == line_now['lines'].index('# Anchor Start') + 1
+  vars:
+    line_now: "{{ line_after_read_reg['paths'][line_dest] }}"
+
+- name: Reset the file before the insertbefore anchor test
+  o0_o.posix.write:
+    dest: "{{ line_dest }}"
+    content: "{{ line_seed }}"
+    mode: '0644'
+    raw: "{{ raw }}"
+  check_mode: false
+  register: line_reset_reg
+
+- name: Insert a line before an anchor
+  o0_o.posix.write:
+    dest: "{{ line_dest }}"
+    line: 'inserted=before'
+    insertbefore: '^# Anchor Middle$'
+    raw: "{{ raw }}"
+  check_mode: false
+  register: line_before_reg
+
+- name: Read the file back after the insertbefore edit
+  o0_o.posix.read:
+    path: "{{ line_dest }}"
+    content: true
+    lines: true
+  register: line_before_read_reg
+
+- name: Assert the line sits directly above its anchor
+  ansible.builtin.assert:
+    that:
+      - line_reset_reg['raw'] == raw
+      - line_before_reg is changed
+      - line_before_reg['raw'] == raw
+      - >-
+        line_now['lines'].index('inserted=before') + 1
+        == line_now['lines'].index('# Anchor Middle')
+  vars:
+    line_now: "{{ line_before_read_reg['paths'][line_dest] }}"
+
+- name: Reset the file before the firstmatch test
+  o0_o.posix.write:
+    dest: "{{ line_dest }}"
+    content: "{{ line_seed }}"
+    mode: '0644'
+    raw: "{{ raw }}"
+  check_mode: false
+  register: line_reset_reg
+
+- name: Insert after the first of two matching anchors
+  o0_o.posix.write:
+    dest: "{{ line_dest }}"
+    line: 'first=match'
+    insertafter: '^path='
+    firstmatch: true
+    raw: "{{ raw }}"
+  check_mode: false
+  register: line_firstmatch_reg
+
+- name: Read the file back after the firstmatch edit
+  o0_o.posix.read:
+    path: "{{ line_dest }}"
+    content: true
+    lines: true
+  register: line_firstmatch_read_reg
+
+- name: Assert firstmatch anchored on the earliest match
+  ansible.builtin.assert:
+    that:
+      - line_reset_reg['raw'] == raw
+      - line_firstmatch_reg is changed
+      - line_firstmatch_reg['raw'] == raw
+      - >-
+        line_now['lines'].index('first=match')
+        == line_now['lines'].index('path=/usr/local/bin') + 1
+  vars:
+    line_now: "{{ line_firstmatch_read_reg['paths'][line_dest] }}"
+
+- name: Reset the file before the last match test
+  o0_o.posix.write:
+    dest: "{{ line_dest }}"
+    content: "{{ line_seed }}"
+    mode: '0644'
+    raw: "{{ raw }}"
+  check_mode: false
+  register: line_reset_reg
+
+- name: Insert after the last of two matching anchors
+  o0_o.posix.write:
+    dest: "{{ line_dest }}"
+    line: 'last=match'
+    insertafter: '^path='
+    raw: "{{ raw }}"
+  check_mode: false
+  register: line_lastmatch_reg
+
+- name: Read the file back after the last match edit
+  o0_o.posix.read:
+    path: "{{ line_dest }}"
+    content: true
+    lines: true
+  register: line_lastmatch_read_reg
+
+- name: Assert the default anchored on the final match
+  ansible.builtin.assert:
+    that:
+      - line_reset_reg['raw'] == raw
+      - line_lastmatch_reg is changed
+      - line_lastmatch_reg['raw'] == raw
+      - >-
+        line_now['lines'].index('last=match') + 1
+        == line_now['lines'].index('setting_two = false')
+  vars:
+    line_now: "{{ line_lastmatch_read_reg['paths'][line_dest] }}"
+
+- name: Reset the file before the deduplication test
+  o0_o.posix.write:
+    dest: "{{ line_dest }}"
+    content: "{{ line_seed }}"
+    mode: '0644'
+    raw: "{{ raw }}"
+  check_mode: false
+  register: line_reset_reg
+
+- name: Ensure a line the file holds twice is present
+  o0_o.posix.write:
+    dest: "{{ line_dest }}"
+    line: 'path=/usr/local/bin'
+    raw: "{{ raw }}"
+  check_mode: false
+  register: line_dedupe_reg
+
+- name: Read the file back after the deduplication
+  o0_o.posix.read:
+    path: "{{ line_dest }}"
+    content: true
+    lines: true
+  register: line_dedupe_read_reg
+
+- name: Assert the duplicates collapsed into one instance
+  ansible.builtin.assert:
+    that:
+      - line_reset_reg['raw'] == raw
+      - line_dedupe_reg is changed
+      - line_dedupe_reg['raw'] == raw
+      - "'1 line deduped' in line_dedupe_reg['msg']"
+      - >-
+        line_now['lines'] | select('equalto', 'path=/usr/local/bin')
+        | list | length == 1
+  vars:
+    line_now: "{{ line_dedupe_read_reg['paths'][line_dest] }}"
+
+- name: Reset the file before the dedupe=false test
+  o0_o.posix.write:
+    dest: "{{ line_dest }}"
+    content: "{{ line_seed }}"
+    mode: '0644'
+    raw: "{{ raw }}"
+  check_mode: false
+  register: line_reset_reg
+
+- name: Ensure the same line is present without deduplication
+  o0_o.posix.write:
+    dest: "{{ line_dest }}"
+    line: 'path=/usr/local/bin'
+    dedupe: false
+    raw: "{{ raw }}"
+  check_mode: false
+  register: line_nodedupe_reg
+
+- name: Read the file back after the dedupe=false edit
+  o0_o.posix.read:
+    path: "{{ line_dest }}"
+    content: true
+    lines: true
+  register: line_nodedupe_read_reg
+
+- name: Assert the duplicates survived
+  ansible.builtin.assert:
+    that:
+      - line_reset_reg['raw'] == raw
+      - line_nodedupe_reg is not changed
+      - line_nodedupe_reg['raw'] == raw
+      - >-
+        line_now['lines'] | select('equalto', 'path=/usr/local/bin')
+        | list | length == 2
+  vars:
+    line_now: "{{ line_nodedupe_read_reg['paths'][line_dest] }}"
+
+- name: Reset the file before the backreference test
+  o0_o.posix.write:
+    dest: "{{ line_dest }}"
+    content: "{{ line_seed }}"
+    mode: '0644'
+    raw: "{{ raw }}"
+  check_mode: false
+  register: line_reset_reg
+
+- name: Replace a line, carrying a capture group into the result
+  o0_o.posix.write:
+    dest: "{{ line_dest }}"
+    regexp: '^(setting_one) = .*$'
+    line: '\1 = false'
+    backrefs: true
+    raw: "{{ raw }}"
+  check_mode: false
+  register: line_backrefs_reg
+
+- name: Read the file back after the backreference edit
+  o0_o.posix.read:
+    path: "{{ line_dest }}"
+    content: true
+    lines: true
+  register: line_backrefs_read_reg
+
+- name: Assert the capture group expanded into the new line
+  ansible.builtin.assert:
+    that:
+      - line_reset_reg['raw'] == raw
+      - line_backrefs_reg is changed
+      - line_backrefs_reg['raw'] == raw
+      - "'setting_one = false' in line_now['lines']"
+      - "'setting_one = true' not in line_now['lines']"
+  vars:
+    line_now: "{{ line_backrefs_read_reg['paths'][line_dest] }}"
+
+- name: Reset the file before the removal test
+  o0_o.posix.write:
+    dest: "{{ line_dest }}"
+    content: "{{ line_seed }}"
+    mode: '0644'
+    raw: "{{ raw }}"
+  check_mode: false
+  register: line_reset_reg
+
+- name: Remove every instance of a repeated line
+  o0_o.posix.write:
+    dest: "{{ line_dest }}"
+    line: 'path=/usr/local/bin'
+    state: absent
+    raw: "{{ raw }}"
+  register: line_remove_reg
+
+- name: Read the file back after the removal
+  o0_o.posix.read:
+    path: "{{ line_dest }}"
+    content: true
+    lines: true
+  register: line_remove_read_reg
+
+- name: Assert the removal counted both instances
+  ansible.builtin.assert:
+    that:
+      - line_reset_reg['raw'] == raw
+      - line_remove_reg is changed
+      - line_remove_reg['raw'] == raw
+      - line_remove_reg['found'] == 2
+      - "'2 line(s) removed' in line_remove_reg['msg']"
+
+- name: Assert the removed lines are gone from the file
+  ansible.builtin.assert:
+    that:
+      - >-
+        line_now['lines'] | select('equalto', 'path=/usr/local/bin')
+        | list | length == 0
+  vars:
+    line_now: "{{ line_remove_read_reg['paths'][line_dest] }}"
+  when: not ansible_check_mode
+
+- name: Assert check mode removed nothing from the file
+  ansible.builtin.assert:
+    that:
+      - >-
+        line_now['lines'] | select('equalto', 'path=/usr/local/bin')
+        | list | length == 2
+  vars:
+    line_now: "{{ line_remove_read_reg['paths'][line_dest] }}"
+  when: ansible_check_mode
+
+- name: Clear the file the create test writes
+  ansible.builtin.file:
+    path: "{{ line_created_dest }}"
+    state: absent
+  check_mode: false
+
+- name: Edit a line into a file that does not exist yet
+  o0_o.posix.write:
+    dest: "{{ line_created_dest }}"
+    line: 'first=1'
+    create: true
+    mode: '0644'
+    raw: "{{ raw }}"
+  register: line_create_reg
+
+- name: Read the created file back
+  o0_o.posix.read:
+    path: "{{ line_created_dest }}"
+    attributes: true
+    content: true
+    lines: true
+  register: line_create_read_reg
+
+- name: Assert the create edit is reported as a change
+  ansible.builtin.assert:
+    that:
+      - line_create_reg is changed
+      - line_create_reg['raw'] == raw
+
+- name: Assert the created file holds only the edited line
+  ansible.builtin.assert:
+    that:
+      - line_now['lines'] == ['first=1']
+      - line_now['mode'] == '0644'
+  vars:
+    line_now: "{{ line_create_read_reg['paths'][line_created_dest] }}"
+  when: not ansible_check_mode
+
+- name: Assert check mode never created the file
+  ansible.builtin.assert:
+    that:
+      - line_create_read_reg['paths'][line_created_dest] is none
+  when: ansible_check_mode

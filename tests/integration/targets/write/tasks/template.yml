@@ -1,0 +1,108 @@
+# vim: ts=2:sw=2:sts=2:et:ft=yaml.ansible
+# -*- mode: yaml; yaml-indent-offset: 2; indent-tabs-mode: nil; -*-
+---
+# GNU General Public License v3.0+
+# SPDX-License-Identifier: GPL-3.0-or-later
+# (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
+#
+# Copyright (c) 2025 oØ.o (@o0-o)
+#
+# This file is part of the o0_o.posix Ansible Collection.
+
+- name: Start the template family from an empty tree
+  ansible.builtin.file:
+    path: "{{ tmpl_dir }}"
+    state: absent
+  check_mode: false
+
+- name: Render a template that lives beside this target
+  o0_o.posix.write:
+    dest: "{{ tmpl_dest }}"
+    template: write_fixture.j2
+    mode: '0644'
+    raw: "{{ raw }}"
+  register: tmpl_render_reg
+
+- name: Read the rendered file back
+  o0_o.posix.read:
+    path: "{{ tmpl_dest }}"
+    attributes: true
+    content: true
+    lines: true
+  register: tmpl_render_read_reg
+
+- name: Assert the render is reported as a change
+  ansible.builtin.assert:
+    that:
+      - tmpl_render_reg is changed
+      - tmpl_render_reg['raw'] == raw
+
+- name: Assert the play variable and the template metadata rendered
+  ansible.builtin.assert:
+    that:
+      - tmpl_now['mode'] == '0644'
+      - tmpl_now['lines'][0] == '# rendered by o0_o.posix.write'
+      - tmpl_now['lines'][1] == 'greeting=' ~ tmpl_greeting
+      - tmpl_now['lines'][2] == 'destination=' ~ tmpl_dest
+  vars:
+    tmpl_now: "{{ tmpl_render_read_reg['paths'][tmpl_dest] }}"
+  when: not ansible_check_mode
+
+- name: Assert check mode never created the rendered file
+  ansible.builtin.assert:
+    that:
+      - tmpl_render_read_reg['paths'][tmpl_dest] is none
+  when: ansible_check_mode
+
+- name: Settle the rendered file outside check mode
+  o0_o.posix.write:
+    dest: "{{ tmpl_dest }}"
+    template: write_fixture.j2
+    mode: '0644'
+    raw: "{{ raw }}"
+  check_mode: false
+  register: tmpl_settle_reg
+
+- name: Render the same template a second time
+  o0_o.posix.write:
+    dest: "{{ tmpl_dest }}"
+    template: write_fixture.j2
+    mode: '0644'
+    raw: "{{ raw }}"
+  check_mode: false
+  register: tmpl_idempotent_reg
+
+- name: Assert an identical render reports no change
+  ansible.builtin.assert:
+    that:
+      - tmpl_settle_reg['raw'] == raw
+      - tmpl_idempotent_reg is not changed
+      - tmpl_idempotent_reg['raw'] == raw
+
+- name: Render a template through custom variable delimiters
+  o0_o.posix.write:
+    dest: "{{ tmpl_custom_dest }}"
+    template: write_custom.j2
+    variable_start_string: '[['
+    variable_end_string: ']]'
+    mode: '0644'
+    raw: "{{ raw }}"
+  check_mode: false
+  register: tmpl_custom_reg
+
+- name: Read the custom delimiter render back
+  o0_o.posix.read:
+    path: "{{ tmpl_custom_dest }}"
+    content: true
+    lines: true
+  register: tmpl_custom_read_reg
+
+- name: Assert only the custom delimiters were expanded
+  ansible.builtin.assert:
+    that:
+      - tmpl_custom_reg is changed
+      - tmpl_custom_reg['raw'] == raw
+      - tmpl_now['lines'][0] == 'greeting=' ~ tmpl_greeting
+      - tmpl_now['lines'][1] == tmpl_inert_line
+  vars:
+    tmpl_now: "{{ tmpl_custom_read_reg['paths'][tmpl_custom_dest] }}"

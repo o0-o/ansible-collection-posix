@@ -1,0 +1,316 @@
+# vim: ts=2:sw=2:sts=2:et:ft=yaml.ansible
+# -*- mode: yaml; yaml-indent-offset: 2; indent-tabs-mode: nil; -*-
+---
+# GNU General Public License v3.0+
+# SPDX-License-Identifier: GPL-3.0-or-later
+# (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
+#
+# Copyright (c) 2025 oØ.o (@o0-o)
+#
+# This file is part of the o0_o.posix Ansible Collection.
+
+# Every case here fails before anything is written, so the whole file
+# behaves the same under check mode as it does outside it. Each block
+# ends in a sentinel task, so a module that stops refusing is caught by
+# the rescue instead of passing quietly.
+
+- name: Start the failure family from an empty tree
+  ansible.builtin.file:
+    path: "{{ fail_dir }}"
+    state: absent
+  check_mode: false
+
+- name: Seed the file the failure cases edit
+  o0_o.posix.write:
+    dest: "{{ fail_dest }}"
+    content: "{{ fail_seed }}"
+    mode: '0644'
+    raw: "{{ raw }}"
+  check_mode: false
+  register: fail_seed_reg
+
+- name: Create a directory a write cannot overwrite
+  o0_o.posix.write:
+    dest: "{{ fail_directory }}"
+    state: directory
+    mode: '0755'
+    raw: "{{ raw }}"
+  check_mode: false
+  register: fail_directory_reg
+
+- name: Assert the failure fixtures were laid down
+  ansible.builtin.assert:
+    that:
+      - fail_seed_reg['raw'] == raw
+      - fail_directory_reg['raw'] == raw
+
+- name: 'Fail: Two families in one task'
+  block:
+
+    - name: Name both content and src
+      o0_o.posix.write:
+        dest: "{{ fail_dest }}"
+        content: 'literal'
+        src: greeting.txt
+        raw: "{{ raw }}"
+
+    - name: Sentinel for the two family task
+      ansible.builtin.fail:
+        msg: 'the write module accepted two families'
+
+  rescue:
+
+    - name: Assert the two families were refused
+      ansible.builtin.assert:
+        that:
+          - "'mutually exclusive' in ansible_failed_result['msg']"
+
+- name: 'Fail: No family and no bare state'
+  block:
+
+    - name: Name a destination and nothing else
+      o0_o.posix.write:
+        dest: "{{ fail_dest }}"
+        raw: "{{ raw }}"
+
+    - name: Sentinel for the bare present task
+      ansible.builtin.fail:
+        msg: 'the write module accepted a task with no family'
+
+  rescue:
+
+    - name: Assert the familyless task was refused
+      ansible.builtin.assert:
+        that:
+          - >-
+            'one of content, src, template, line, or block is required'
+            in ansible_failed_result['msg']
+
+- name: 'Fail: A content family task that is not present'
+  block:
+
+    - name: Ask for content and absence at once
+      o0_o.posix.write:
+        dest: "{{ fail_dest }}"
+        content: 'literal'
+        state: absent
+        raw: "{{ raw }}"
+
+    - name: Sentinel for the absent content task
+      ansible.builtin.fail:
+        msg: 'the write module accepted content with state=absent'
+
+  rescue:
+
+    - name: Assert content outside state=present was refused
+      ansible.builtin.assert:
+        that:
+          - >-
+            'content requires state=present'
+            in ansible_failed_result['msg']
+
+- name: 'Fail: Backreferences without a regular expression'
+  block:
+
+    - name: Ask for backreferences with nothing to reference
+      o0_o.posix.write:
+        dest: "{{ fail_dest }}"
+        line: 'alpha = 2'
+        backrefs: true
+        raw: "{{ raw }}"
+
+    - name: Sentinel for the backreference task
+      ansible.builtin.fail:
+        msg: 'the write module accepted backrefs without a regexp'
+
+  rescue:
+
+    - name: Assert backreferences without a pattern were refused
+      ansible.builtin.assert:
+        that:
+          - >-
+            'regexp is required with backrefs=true'
+            in ansible_failed_result['msg']
+
+- name: 'Fail: A link with nowhere to point'
+  block:
+
+    - name: Ask for a link without a target
+      o0_o.posix.write:
+        dest: "{{ fail_dir }}/dangling"
+        state: link
+        raw: "{{ raw }}"
+
+    - name: Sentinel for the targetless link task
+      ansible.builtin.fail:
+        msg: 'the write module accepted a link without a target'
+
+  rescue:
+
+    - name: Assert the targetless link was refused
+      ansible.builtin.assert:
+        that:
+          - "'link' in ansible_failed_result['msg']"
+          - "'target' in ansible_failed_result['msg']"
+
+- name: 'Fail: A line edit on a file that does not exist'
+  block:
+
+    - name: Edit a line into a missing file without create
+      o0_o.posix.write:
+        dest: "{{ fail_missing }}"
+        line: 'alpha = 1'
+        raw: "{{ raw }}"
+
+    - name: Sentinel for the missing destination task
+      ansible.builtin.fail:
+        msg: 'the write module edited a file that does not exist'
+
+  rescue:
+
+    - name: Assert the missing destination was refused
+      ansible.builtin.assert:
+        that:
+          - "'does not exist' in ansible_failed_result['msg']"
+
+- name: 'Fail: A regular expression that does not compile'
+  block:
+
+    - name: Match on a broken pattern
+      o0_o.posix.write:
+        dest: "{{ fail_dest }}"
+        regexp: '([unclosed'
+        line: 'alpha = 2'
+        raw: "{{ raw }}"
+
+    - name: Sentinel for the broken pattern task
+      ansible.builtin.fail:
+        msg: 'the write module accepted a pattern that cannot compile'
+
+  rescue:
+
+    - name: Assert the broken pattern was refused
+      ansible.builtin.assert:
+        that:
+          - >-
+            'Invalid regexp pattern'
+            in ansible_failed_result['msg']
+
+- name: 'Fail: A managed block that was never closed'
+  block:
+
+    - name: Edit a block into a file holding a lone begin marker
+      o0_o.posix.write:
+        dest: "{{ fail_dest }}"
+        block: 'managed = true'
+        raw: "{{ raw }}"
+
+    - name: Sentinel for the unclosed marker task
+      ansible.builtin.fail:
+        msg: 'the write module accepted an unclosed managed block'
+
+  rescue:
+
+    - name: Assert the unclosed marker was refused
+      ansible.builtin.assert:
+        that:
+          - >-
+            'Begin marker without end marker'
+            in ansible_failed_result['msg']
+
+- name: 'Fail: Preserving a mode that lives on the wrong host'
+  block:
+
+    - name: Ask a remote source to preserve its mode
+      o0_o.posix.write:
+        dest: "{{ fail_dir }}/preserved.txt"
+        src: "{{ fail_dest }}"
+        remote_src: true
+        mode: preserve
+        raw: "{{ raw }}"
+
+    - name: Sentinel for the remote preserve task
+      ansible.builtin.fail:
+        msg: 'the write module accepted preserve with remote_src'
+
+  rescue:
+
+    - name: Assert preserve with a remote source was refused
+      ansible.builtin.assert:
+        that:
+          - >-
+            'mode=preserve is not supported with remote_src'
+            in ansible_failed_result['msg']
+
+- name: 'Fail: A write over a directory'
+  block:
+
+    - name: Write content where a directory stands
+      o0_o.posix.write:
+        dest: "{{ fail_directory }}"
+        content: 'literal'
+        raw: "{{ raw }}"
+
+    - name: Sentinel for the write over a directory task
+      ansible.builtin.fail:
+        msg: 'the write module wrote content over a directory'
+
+  rescue:
+
+    - name: Assert the write over a directory was refused
+      ansible.builtin.assert:
+        that:
+          - >-
+            'Cannot write over directory'
+            in ansible_failed_result['msg']
+
+- name: 'Fail: A template nobody can find'
+  block:
+
+    - name: Render a template that is not there
+      o0_o.posix.write:
+        dest: "{{ fail_dir }}/rendered.txt"
+        template: no_such_template.j2
+        raw: "{{ raw }}"
+
+    - name: Sentinel for the missing template task
+      ansible.builtin.fail:
+        msg: 'the write module rendered a template that is not there'
+
+  rescue:
+
+    - name: Assert the missing template was refused
+      ansible.builtin.assert:
+        that:
+          - "'no_such_template.j2' in ansible_failed_result['msg']"
+
+- name: 'Fail: A validation command that rejects the content'
+  block:
+
+    - name: Write behind a validation command that cannot pass
+      o0_o.posix.write:
+        dest: "{{ fail_validate_dest }}"
+        content: "alpha = 1\n"
+        validate: "/bin/sh -c 'grep -q never_present %s'"
+        raw: "{{ raw }}"
+
+    - name: Sentinel for the failing validation task
+      ansible.builtin.fail:
+        msg: 'the write module accepted content validation rejected'
+
+  rescue:
+
+    - name: Assert the failed validation was reported
+      ansible.builtin.assert:
+        that:
+          - "'Validation failed' in ansible_failed_result['msg']"
+
+- name: Read the destination the failed validation guarded
+  o0_o.posix.read:
+    path: "{{ fail_validate_dest }}"
+  register: fail_validate_read_reg
+
+- name: Assert the rejected content never reached the destination
+  ansible.builtin.assert:
+    that:
+      - fail_validate_read_reg['paths'][fail_validate_dest] is none

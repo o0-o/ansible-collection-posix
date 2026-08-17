@@ -28,6 +28,15 @@ minor_changes:
 
 bugfixes:
   - >-
+    read - Fixed a result-contract mismatch with the shared command
+    runner that broke every read since the wrapper refactor; reads
+    also now execute under check mode instead of returning nothing
+    (https://github.com/o0-o/ansible-collection-posix/pull/XXX).
+  - >-
+    write machinery - Backups now use the portable cp -p instead of a
+    GNU-only option that failed on BSD and macOS
+    (https://github.com/o0-o/ansible-collection-posix/pull/XXX).
+  - >-
     write machinery - Content comparison read a helper that no longer
     existed, so writes over an existing destination crashed; it now
     reads through the read action

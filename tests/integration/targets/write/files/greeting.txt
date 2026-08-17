@@ -1,0 +1,3 @@
+# o0_o.posix.write copy fixture
+greeting=hello
+trailing=1

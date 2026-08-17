@@ -1,0 +1,189 @@
+# vim: ts=2:sw=2:sts=2:et:ft=yaml.ansible
+# -*- mode: yaml; yaml-indent-offset: 2; indent-tabs-mode: nil; -*-
+---
+# GNU General Public License v3.0+
+# SPDX-License-Identifier: GPL-3.0-or-later
+# (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
+#
+# Copyright (c) 2025 oØ.o (@o0-o)
+#
+# This file is part of the o0_o.posix Ansible Collection.
+
+- name: Start the copy family from an empty tree
+  ansible.builtin.file:
+    path: "{{ copy_dir }}"
+    state: absent
+  check_mode: false
+
+- name: Copy a file that lives beside this target on the controller
+  o0_o.posix.write:
+    dest: "{{ copy_dest }}"
+    src: greeting.txt
+    mode: '0640'
+    raw: "{{ raw }}"
+  check_mode: false
+  register: copy_controller_reg
+
+- name: Read the copied file back
+  o0_o.posix.read:
+    path: "{{ copy_dest }}"
+    attributes: true
+    content: true
+    lines: true
+  register: copy_controller_read_reg
+
+- name: Assert the controller side file arrived intact
+  ansible.builtin.assert:
+    that:
+      - copy_controller_reg is changed
+      - copy_controller_reg['raw'] == raw
+      - copy_now['mode'] == '0640'
+      - copy_now['lines'] == copy_expected
+  vars:
+    copy_now: "{{ copy_controller_read_reg['paths'][copy_dest] }}"
+
+- name: Copy the same file over itself
+  o0_o.posix.write:
+    dest: "{{ copy_dest }}"
+    src: greeting.txt
+    mode: '0640'
+    raw: "{{ raw }}"
+  register: copy_idempotent_reg
+
+- name: Assert an identical copy reports no change
+  ansible.builtin.assert:
+    that:
+      - copy_idempotent_reg is not changed
+      - copy_idempotent_reg['raw'] == raw
+
+# Git records only the executable bit, so the umask decides the group
+# and other digits; the owner digit is the one preserve must carry.
+- name: Copy an executable fixture, preserving its mode
+  o0_o.posix.write:
+    dest: "{{ copy_preserve_dest }}"
+    src: preserve_mode.sh
+    mode: preserve
+    raw: "{{ raw }}"
+  check_mode: false
+  register: copy_preserve_reg
+
+- name: Read the preserved copy back
+  o0_o.posix.read:
+    path: "{{ copy_preserve_dest }}"
+    attributes: true
+    content: true
+    lines: true
+  register: copy_preserve_read_reg
+
+- name: Assert the source mode travelled with the file
+  ansible.builtin.assert:
+    that:
+      - copy_preserve_reg is changed
+      - copy_preserve_reg['raw'] == raw
+      - copy_now['mode'][1] == '7'
+      - copy_now['lines'][0] == '#!/bin/sh'
+  vars:
+    copy_now: "{{ copy_preserve_read_reg['paths'][copy_preserve_dest] }}"
+
+- name: Create a source file on the target host
+  o0_o.posix.write:
+    dest: "{{ copy_remote_source }}"
+    content: "{{ copy_remote_body }}"
+    mode: '0644'
+    raw: "{{ raw }}"
+  check_mode: false
+  register: copy_source_reg
+
+- name: Copy a file that already lives on the target host
+  o0_o.posix.write:
+    dest: "{{ copy_remote_dest }}"
+    src: "{{ copy_remote_source }}"
+    remote_src: true
+    mode: '0644'
+    raw: "{{ raw }}"
+  register: copy_remote_reg
+
+- name: Read the remote source copy back
+  o0_o.posix.read:
+    path: "{{ copy_remote_dest }}"
+    content: true
+    lines: true
+  register: copy_remote_read_reg
+
+- name: Assert the remote source copy is reported as a change
+  ansible.builtin.assert:
+    that:
+      - copy_source_reg['raw'] == raw
+      - copy_remote_reg is changed
+      - copy_remote_reg['raw'] == raw
+
+- name: Assert the remote source content landed on disk
+  ansible.builtin.assert:
+    that:
+      - copy_now['lines'] == copy_remote_body.splitlines()
+  vars:
+    copy_now: "{{ copy_remote_read_reg['paths'][copy_remote_dest] }}"
+  when: not ansible_check_mode
+
+- name: Assert check mode never created the remote source copy
+  ansible.builtin.assert:
+    that:
+      - copy_remote_read_reg['paths'][copy_remote_dest] is none
+  when: ansible_check_mode
+
+- name: Settle the remote source copy outside check mode
+  o0_o.posix.write:
+    dest: "{{ copy_remote_dest }}"
+    src: "{{ copy_remote_source }}"
+    remote_src: true
+    mode: '0644'
+    raw: "{{ raw }}"
+  check_mode: false
+  register: copy_settle_reg
+
+- name: Copy the same remote source over itself
+  o0_o.posix.write:
+    dest: "{{ copy_remote_dest }}"
+    src: "{{ copy_remote_source }}"
+    remote_src: true
+    mode: '0644'
+    raw: "{{ raw }}"
+  check_mode: false
+  register: copy_remote_idempotent_reg
+
+- name: Assert an identical remote source copy reports no change
+  ansible.builtin.assert:
+    that:
+      - copy_settle_reg['raw'] == raw
+      - copy_remote_idempotent_reg is not changed
+      - copy_remote_idempotent_reg['raw'] == raw
+
+- name: Create a binary file on the target host
+  ansible.builtin.command:
+    argv:
+      - dd
+      - if=/dev/zero
+      - "of={{ copy_binary_source }}"
+      - bs=1
+      - count=3
+  changed_when: true
+  check_mode: false
+
+- name: 'Fail: Copy a binary source'
+  block:
+
+    - name: Copy a file that holds bytes no encoding can carry
+      o0_o.posix.write:
+        dest: "{{ copy_binary_dest }}"
+        src: "{{ copy_binary_source }}"
+        remote_src: true
+        raw: "{{ raw }}"
+
+  rescue:
+
+    - name: Assert the binary source was refused
+      ansible.builtin.assert:
+        that:
+          - >-
+            'binary sources are not supported'
+            in ansible_failed_result['msg']

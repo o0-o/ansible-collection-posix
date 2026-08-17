@@ -1,0 +1,175 @@
+# vim: ts=2:sw=2:sts=2:et:ft=yaml.ansible
+# -*- mode: yaml; yaml-indent-offset: 2; indent-tabs-mode: nil; -*-
+---
+# GNU General Public License v3.0+
+# SPDX-License-Identifier: GPL-3.0-or-later
+# (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
+#
+# Copyright (c) 2025 oØ.o (@o0-o)
+#
+# This file is part of the o0_o.posix Ansible Collection.
+
+- name: Create temporary directory for write integration tests
+  ansible.builtin.tempfile:
+    state: directory
+    suffix: write
+  register: write_tmpdir_reg
+
+- name: Name the tree every family writes under
+  ansible.builtin.set_fact:
+    write_test_dir: "{{ write_tmpdir_reg['path'] }}"
+
+- name: Check mode and raw permutation loop
+  vars:
+    loop_list: "{{ [true, false] | ansible.builtin.product([true, false]) }}"
+  block:
+
+    - name: Run literal content family tests
+      ansible.builtin.include_tasks: content.yml
+      loop: "{{ loop_list }}"
+      loop_control:
+        loop_var: matrix_row
+      vars:
+        ansible_check_mode: "{{ matrix_row[0] }}"
+        raw: "{{ matrix_row[1] }}"
+        content_dir: "{{ write_test_dir }}/content"
+        content_dest: "{{ content_dir }}/app.conf"
+        content_validate_dest: "{{ content_dir }}/validated.conf"
+        content_seed: |
+          # managed by o0_o.posix.write
+          setting_one = true
+          setting_two = false
+        content_update: |
+          # managed by o0_o.posix.write
+          setting_one = false
+          setting_two = false
+
+    - name: Run copy family tests
+      ansible.builtin.include_tasks: copy.yml
+      loop: "{{ loop_list }}"
+      loop_control:
+        loop_var: matrix_row
+      vars:
+        ansible_check_mode: "{{ matrix_row[0] }}"
+        raw: "{{ matrix_row[1] }}"
+        copy_dir: "{{ write_test_dir }}/copy"
+        copy_dest: "{{ copy_dir }}/greeting.txt"
+        copy_preserve_dest: "{{ copy_dir }}/preserve_mode.sh"
+        copy_remote_source: "{{ copy_dir }}/remote_source.txt"
+        copy_remote_dest: "{{ copy_dir }}/remote_copy.txt"
+        copy_binary_source: "{{ copy_dir }}/binary.bin"
+        copy_binary_dest: "{{ copy_dir }}/binary_copy.bin"
+        copy_expected:
+          - '# o0_o.posix.write copy fixture'
+          - 'greeting=hello'
+          - 'trailing=1'
+        copy_remote_body: |
+          # created on the target host
+          remote = true
+
+    - name: Run template family tests
+      ansible.builtin.include_tasks: template.yml
+      loop: "{{ loop_list }}"
+      loop_control:
+        loop_var: matrix_row
+      vars:
+        ansible_check_mode: "{{ matrix_row[0] }}"
+        raw: "{{ matrix_row[1] }}"
+        tmpl_dir: "{{ write_test_dir }}/template"
+        tmpl_dest: "{{ tmpl_dir }}/rendered.txt"
+        tmpl_custom_dest: "{{ tmpl_dir }}/custom.txt"
+        tmpl_greeting: 'Hello world'
+        tmpl_inert_line: '{% raw %}inert={{ tmpl_greeting }}{% endraw %}'
+
+    - name: Run line edit family tests
+      ansible.builtin.include_tasks: line.yml
+      loop: "{{ loop_list }}"
+      loop_control:
+        loop_var: matrix_row
+      vars:
+        ansible_check_mode: "{{ matrix_row[0] }}"
+        raw: "{{ matrix_row[1] }}"
+        line_dir: "{{ write_test_dir }}/line"
+        line_dest: "{{ line_dir }}/app.conf"
+        line_created_dest: "{{ line_dir }}/created.conf"
+        line_seed: |
+          # write line family fixture
+          # Anchor Start
+          setting_one = true
+          path=/usr/local/bin
+          log_level=info
+          # Anchor Middle
+          path=/usr/local/bin
+          setting_two = false
+
+    - name: Run block edit family tests
+      ansible.builtin.include_tasks: block.yml
+      loop: "{{ loop_list }}"
+      loop_control:
+        loop_var: matrix_row
+      vars:
+        ansible_check_mode: "{{ matrix_row[0] }}"
+        raw: "{{ matrix_row[1] }}"
+        block_dir: "{{ write_test_dir }}/block"
+        block_dest: "{{ block_dir }}/app.conf"
+        block_created_dest: "{{ block_dir }}/created.conf"
+        block_begin: '# BEGIN ANSIBLE MANAGED BLOCK'
+        block_end: '# END ANSIBLE MANAGED BLOCK'
+        block_seed: |
+          # write block family fixture
+          alpha = 1
+          # Anchor Middle
+          beta = 2
+        block_dupes: |
+          # write block family fixture
+          # BEGIN ANSIBLE MANAGED BLOCK
+          first = 1
+          # END ANSIBLE MANAGED BLOCK
+          alpha = 1
+          # BEGIN ANSIBLE MANAGED BLOCK
+          second = 2
+          # END ANSIBLE MANAGED BLOCK
+          beta = 2
+
+    - name: Run bare file state tests
+      ansible.builtin.include_tasks: state.yml
+      loop: "{{ loop_list }}"
+      loop_control:
+        loop_var: matrix_row
+      vars:
+        ansible_check_mode: "{{ matrix_row[0] }}"
+        raw: "{{ matrix_row[1] }}"
+        state_dir: "{{ write_test_dir }}/state"
+        state_tree: "{{ state_dir }}/tree/leaf"
+        state_touched: "{{ state_dir }}/touched.txt"
+        state_link: "{{ state_dir }}/link"
+        state_target: "{{ state_dir }}/target_one.txt"
+        state_target_alt: "{{ state_dir }}/target_two.txt"
+        state_doomed_file: "{{ state_dir }}/doomed.txt"
+        state_doomed_dir: "{{ state_dir }}/doomed_dir"
+        state_missing: "{{ state_dir }}/never_existed"
+
+    - name: Run failure tests
+      ansible.builtin.include_tasks: failures.yml
+      loop: "{{ loop_list }}"
+      loop_control:
+        loop_var: matrix_row
+      vars:
+        ansible_check_mode: "{{ matrix_row[0] }}"
+        raw: "{{ matrix_row[1] }}"
+        fail_dir: "{{ write_test_dir }}/failures"
+        fail_dest: "{{ fail_dir }}/app.conf"
+        fail_missing: "{{ fail_dir }}/missing.conf"
+        fail_validate_dest: "{{ fail_dir }}/validated.conf"
+        fail_directory: "{{ fail_dir }}/a_directory"
+        fail_seed: |
+          # write failure fixture
+          alpha = 1
+          # BEGIN ANSIBLE MANAGED BLOCK
+
+  always:
+
+    - name: Remove the temporary directory tree
+      ansible.builtin.file:
+        path: "{{ write_test_dir }}"
+        state: absent

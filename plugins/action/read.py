@@ -369,8 +369,9 @@ class ActionModule(ReadPosixActionBase, ActionBase):
                 f"{len(detection_commands)} commands for {first_path}"
             )
 
-            detection_result = self._run(
-                commands=detection_commands,
+            detection_result = self._run_action(
+                "o0_o.posix.run",
+                {"commands": detection_commands},
                 task_vars=task_vars,
                 check_mode=False,
             )
@@ -414,8 +415,9 @@ class ActionModule(ReadPosixActionBase, ActionBase):
                     f"commands for {len(remaining_paths)} remaining paths"
                 )
 
-                commands_result = self._run(
-                    commands=commands,
+                commands_result = self._run_action(
+                    "o0_o.posix.run",
+                    {"commands": commands},
                     task_vars=task_vars,
                     check_mode=False,
                 )
@@ -526,8 +528,9 @@ class ActionModule(ReadPosixActionBase, ActionBase):
                             need_dir_contents=True,
                             platform=platform,
                         )
-                        child_result = self._run(
-                            commands=child_commands,
+                        child_result = self._run_action(
+                            "o0_o.posix.run",
+                            {"commands": child_commands},
                             task_vars=task_vars,
                             check_mode=False,
                         )
@@ -591,8 +594,9 @@ class ActionModule(ReadPosixActionBase, ActionBase):
                     target_commands = self._get_read_commands(
                         new_targets, options, platform=platform
                     )
-                    target_result = self._run(
-                        commands=target_commands,
+                    target_result = self._run_action(
+                        "o0_o.posix.run",
+                        {"commands": target_commands},
                         task_vars=task_vars,
                         check_mode=False,
                     )
@@ -625,8 +629,9 @@ class ActionModule(ReadPosixActionBase, ActionBase):
                             link_path,
                         ]
 
-                    readlink_result = self._run(
-                        commands=readlink_commands,
+                    readlink_result = self._run_action(
+                        "o0_o.posix.run",
+                        {"commands": readlink_commands},
                         task_vars=task_vars,
                         check_mode=False,
                     )
@@ -655,8 +660,9 @@ class ActionModule(ReadPosixActionBase, ActionBase):
                         target_commands = self._get_read_commands(
                             unique_targets, options, platform=platform
                         )
-                        target_result = self._run(
-                            commands=target_commands,
+                        target_result = self._run_action(
+                            "o0_o.posix.run",
+                            {"commands": target_commands},
                             task_vars=task_vars,
                             check_mode=False,
                         )

@@ -1,0 +1,199 @@
+# vim: ts=2:sw=2:sts=2:et:ft=yaml.ansible
+# -*- mode: yaml; yaml-indent-offset: 2; indent-tabs-mode: nil; -*-
+---
+# GNU General Public License v3.0+
+# SPDX-License-Identifier: GPL-3.0-or-later
+# (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
+#
+# Copyright (c) 2025 oØ.o (@o0-o)
+#
+# This file is part of the o0_o.posix Ansible Collection.
+
+- name: Start the content family from an empty tree
+  ansible.builtin.file:
+    path: "{{ content_dir }}"
+    state: absent
+  check_mode: false
+
+- name: Write literal content below a directory that does not exist yet
+  o0_o.posix.write:
+    dest: "{{ content_dest }}"
+    content: "{{ content_seed }}"
+    mode: '0644'
+    raw: "{{ raw }}"
+  check_mode: false
+  register: content_seed_reg
+
+- name: Read the written file back
+  o0_o.posix.read:
+    path: "{{ content_dest }}"
+    attributes: true
+    content: true
+    lines: true
+  register: content_seed_read_reg
+
+- name: Assert the write created its parent directory and the file
+  ansible.builtin.assert:
+    that:
+      - content_seed_reg is changed
+      - content_seed_reg['raw'] == raw
+      - content_now['type'] == 'regular'
+      - content_now['mode'] == '0644'
+      - content_now['lines'] == content_seed.splitlines()
+  vars:
+    content_now: "{{ content_seed_read_reg['paths'][content_dest] }}"
+
+- name: Write the identical content a second time
+  o0_o.posix.write:
+    dest: "{{ content_dest }}"
+    content: "{{ content_seed }}"
+    mode: '0644'
+    raw: "{{ raw }}"
+  check_mode: false
+  register: content_idempotent_reg
+
+- name: Assert an identical write reports no change
+  ansible.builtin.assert:
+    that:
+      - content_idempotent_reg is not changed
+      - content_idempotent_reg['raw'] == raw
+      - content_idempotent_reg['msg'] == 'File not changed'
+
+- name: Replace the content of the existing file
+  o0_o.posix.write:
+    dest: "{{ content_dest }}"
+    content: "{{ content_update }}"
+    mode: '0644'
+    raw: "{{ raw }}"
+  register: content_update_reg
+
+- name: Assert the replacement is reported as a change
+  ansible.builtin.assert:
+    that:
+      - content_update_reg is changed
+      - content_update_reg['raw'] == raw
+
+- name: Read the file back after the replacement
+  o0_o.posix.read:
+    path: "{{ content_dest }}"
+    content: true
+    lines: true
+  register: content_update_read_reg
+
+- name: Assert the replacement content landed on disk
+  ansible.builtin.assert:
+    that:
+      - content_now['lines'] == content_update.splitlines()
+  vars:
+    content_now: "{{ content_update_read_reg['paths'][content_dest] }}"
+  when: not ansible_check_mode
+
+- name: Assert check mode left the file exactly as it found it
+  ansible.builtin.assert:
+    that:
+      - content_now['lines'] == content_seed.splitlines()
+  vars:
+    content_now: "{{ content_update_read_reg['paths'][content_dest] }}"
+  when: ansible_check_mode
+
+- name: Restore the seeded content before the backup test
+  o0_o.posix.write:
+    dest: "{{ content_dest }}"
+    content: "{{ content_seed }}"
+    mode: '0644'
+    raw: "{{ raw }}"
+  check_mode: false
+  register: content_restore_reg
+
+- name: Replace the content again, keeping a backup of what was there
+  o0_o.posix.write:
+    dest: "{{ content_dest }}"
+    content: "{{ content_update }}"
+    mode: '0644'
+    backup: true
+    raw: "{{ raw }}"
+  check_mode: false
+  register: content_backup_reg
+
+- name: Read the backup file back
+  o0_o.posix.read:
+    path: "{{ content_backup_reg['backup_file'] }}"
+    content: true
+    lines: true
+  register: content_backup_read_reg
+
+- name: Assert the backup holds the content the write replaced
+  ansible.builtin.assert:
+    that:
+      - content_restore_reg['raw'] == raw
+      - content_backup_reg is changed
+      - content_backup_reg['raw'] == raw
+      - "'backup_file' in content_backup_reg"
+      - content_backup is not none
+      - content_backup['lines'] == content_seed.splitlines()
+  vars:
+    content_backup_path: "{{ content_backup_reg['backup_file'] }}"
+    content_backup: >-
+      {{ content_backup_read_reg['paths'][content_backup_path] }}
+
+- name: Write a file behind a validation command that passes
+  o0_o.posix.write:
+    dest: "{{ content_validate_dest }}"
+    content: "{{ content_seed }}"
+    validate: "/bin/sh -c 'grep -q setting_one %s'"
+    mode: '0644'
+    raw: "{{ raw }}"
+  register: content_validate_reg
+
+- name: Read the validated file back
+  o0_o.posix.read:
+    path: "{{ content_validate_dest }}"
+    content: true
+    lines: true
+  register: content_validate_read_reg
+
+- name: Assert the validated write is reported as a change
+  ansible.builtin.assert:
+    that:
+      - content_validate_reg is changed
+      - content_validate_reg['raw'] == raw
+
+- name: Assert the validated content landed on disk
+  ansible.builtin.assert:
+    that:
+      - content_now['lines'] == content_seed.splitlines()
+  vars:
+    content_now: >-
+      {{ content_validate_read_reg['paths'][content_validate_dest] }}
+  when: not ansible_check_mode
+
+- name: Assert check mode never created the validated file
+  ansible.builtin.assert:
+    that:
+      - content_validate_read_reg['paths'][content_validate_dest] is none
+  when: ansible_check_mode
+
+- name: Decline to overwrite an existing file with force disabled
+  o0_o.posix.write:
+    dest: "{{ content_dest }}"
+    content: "{{ content_seed }}"
+    force: false
+    raw: "{{ raw }}"
+  register: content_force_reg
+
+- name: Read the file the forceless write declined to touch
+  o0_o.posix.read:
+    path: "{{ content_dest }}"
+    content: true
+    lines: true
+  register: content_force_read_reg
+
+- name: Assert force=false skipped the write and left the file alone
+  ansible.builtin.assert:
+    that:
+      - content_force_reg is not changed
+      - content_force_reg['raw'] == raw
+      - "'force is disabled' in content_force_reg['msg']"
+      - content_now['lines'] == content_update.splitlines()
+  vars:
+    content_now: "{{ content_force_read_reg['paths'][content_dest] }}"

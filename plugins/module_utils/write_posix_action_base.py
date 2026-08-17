@@ -207,7 +207,7 @@ class WritePosixActionBase(ReadPosixActionBase):
         backup_path = self._generate_ansible_backup_path(dest)
         self._display.vvv(f"Creating backup at {backup_path}")
         result = self._command(
-            ["cp", "--preserve=all", dest, backup_path], task_vars=task_vars
+            ["cp", "-p", dest, backup_path], task_vars=task_vars
         )
 
         if result["rc"] != 0:

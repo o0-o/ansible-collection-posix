@@ -1,0 +1,341 @@
+# vim: ts=2:sw=2:sts=2:et:ft=yaml.ansible
+# -*- mode: yaml; yaml-indent-offset: 2; indent-tabs-mode: nil; -*-
+---
+# GNU General Public License v3.0+
+# SPDX-License-Identifier: GPL-3.0-or-later
+# (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
+#
+# Copyright (c) 2025 oØ.o (@o0-o)
+#
+# This file is part of the o0_o.posix Ansible Collection.
+
+- name: Start the bare state family from an empty tree
+  ansible.builtin.file:
+    path: "{{ state_dir }}"
+    state: absent
+  check_mode: false
+
+- name: Create a directory and the parents it needs
+  o0_o.posix.write:
+    dest: "{{ state_tree }}"
+    state: directory
+    mode: '0755'
+    raw: "{{ raw }}"
+  register: state_mkdir_reg
+
+- name: Read the created directory back
+  o0_o.posix.read:
+    path: "{{ state_tree }}"
+  register: state_mkdir_read_reg
+
+- name: Assert the directory creation is reported as a change
+  ansible.builtin.assert:
+    that:
+      - state_mkdir_reg is changed
+      - state_mkdir_reg['raw'] == raw
+
+- name: Assert the directory carries the requested mode
+  ansible.builtin.assert:
+    that:
+      - state_now['type'] == 'directory'
+      - state_now['mode'] == '0755'
+  vars:
+    state_now: "{{ state_mkdir_read_reg['paths'][state_tree] }}"
+  when: not ansible_check_mode
+
+- name: Assert check mode never created the directory
+  ansible.builtin.assert:
+    that:
+      - state_mkdir_read_reg['paths'][state_tree] is none
+  when: ansible_check_mode
+
+- name: Settle the directory outside check mode
+  o0_o.posix.write:
+    dest: "{{ state_tree }}"
+    state: directory
+    mode: '0755'
+    raw: "{{ raw }}"
+  check_mode: false
+  register: state_mkdir_settle_reg
+
+- name: Ask for the same directory a second time
+  o0_o.posix.write:
+    dest: "{{ state_tree }}"
+    state: directory
+    mode: '0755'
+    raw: "{{ raw }}"
+  check_mode: false
+  register: state_mkdir_idempotent_reg
+
+- name: Assert an existing directory reports no change
+  ansible.builtin.assert:
+    that:
+      - state_mkdir_settle_reg['raw'] == raw
+      - state_mkdir_idempotent_reg is not changed
+      - state_mkdir_idempotent_reg['raw'] == raw
+      - state_mkdir_idempotent_reg['msg'] == 'directory present'
+
+- name: Touch a file into existence
+  o0_o.posix.write:
+    dest: "{{ state_touched }}"
+    state: touch
+    mode: '0640'
+    raw: "{{ raw }}"
+  register: state_touch_reg
+
+- name: Read the touched file back
+  o0_o.posix.read:
+    path: "{{ state_touched }}"
+  register: state_touch_read_reg
+
+- name: Assert the touch is reported as a change
+  ansible.builtin.assert:
+    that:
+      - state_touch_reg is changed
+      - state_touch_reg['raw'] == raw
+
+- name: Assert the touched file carries the requested mode
+  ansible.builtin.assert:
+    that:
+      - state_now['type'] == 'regular'
+      - state_now['mode'] == '0640'
+  vars:
+    state_now: "{{ state_touch_read_reg['paths'][state_touched] }}"
+  when: not ansible_check_mode
+
+- name: Assert check mode never created the touched file
+  ansible.builtin.assert:
+    that:
+      - state_touch_read_reg['paths'][state_touched] is none
+  when: ansible_check_mode
+
+- name: Settle the touched file outside check mode
+  o0_o.posix.write:
+    dest: "{{ state_touched }}"
+    state: touch
+    mode: '0640'
+    raw: "{{ raw }}"
+  check_mode: false
+  register: state_touch_settle_reg
+
+- name: Touch the same file a second time
+  o0_o.posix.write:
+    dest: "{{ state_touched }}"
+    state: touch
+    mode: '0640'
+    raw: "{{ raw }}"
+  check_mode: false
+  register: state_touch_idempotent_reg
+
+- name: Assert an existing file reports no change
+  ansible.builtin.assert:
+    that:
+      - state_touch_settle_reg['raw'] == raw
+      - state_touch_idempotent_reg is not changed
+      - state_touch_idempotent_reg['raw'] == raw
+      - state_touch_idempotent_reg['msg'] == 'file present'
+
+- name: Create the file the link points at
+  o0_o.posix.write:
+    dest: "{{ state_target }}"
+    content: "target one\n"
+    mode: '0644'
+    raw: "{{ raw }}"
+  check_mode: false
+  register: state_target_reg
+
+- name: Link a path to that file
+  o0_o.posix.write:
+    dest: "{{ state_link }}"
+    state: link
+    target: "{{ state_target }}"
+    raw: "{{ raw }}"
+  register: state_link_reg
+
+- name: Read the link without following it
+  o0_o.posix.read:
+    path: "{{ state_link }}"
+    follow: false
+  register: state_link_read_reg
+
+- name: Assert the link creation is reported as a change
+  ansible.builtin.assert:
+    that:
+      - state_target_reg['raw'] == raw
+      - state_link_reg is changed
+      - state_link_reg['raw'] == raw
+
+- name: Assert the link points at its target
+  ansible.builtin.assert:
+    that:
+      - state_now['type'] == 'link'
+      - state_now['target'] == state_target
+  vars:
+    state_now: "{{ state_link_read_reg['paths'][state_link] }}"
+  when: not ansible_check_mode
+
+- name: Assert check mode never created the link
+  ansible.builtin.assert:
+    that:
+      - state_link_read_reg['paths'][state_link] is none
+  when: ansible_check_mode
+
+- name: Settle the link outside check mode
+  o0_o.posix.write:
+    dest: "{{ state_link }}"
+    state: link
+    target: "{{ state_target }}"
+    raw: "{{ raw }}"
+  check_mode: false
+  register: state_link_settle_reg
+
+- name: Ask for the same link a second time
+  o0_o.posix.write:
+    dest: "{{ state_link }}"
+    state: link
+    target: "{{ state_target }}"
+    raw: "{{ raw }}"
+  check_mode: false
+  register: state_link_idempotent_reg
+
+- name: Assert a link already on target reports no change
+  ansible.builtin.assert:
+    that:
+      - state_link_settle_reg['raw'] == raw
+      - state_link_idempotent_reg is not changed
+      - state_link_idempotent_reg['raw'] == raw
+      - >-
+        state_link_idempotent_reg['msg']
+        == 'link already points at target'
+
+- name: Create a second file for the link to point at
+  o0_o.posix.write:
+    dest: "{{ state_target_alt }}"
+    content: "target two\n"
+    mode: '0644'
+    raw: "{{ raw }}"
+  check_mode: false
+  register: state_target_alt_reg
+
+- name: Point the existing link somewhere else
+  o0_o.posix.write:
+    dest: "{{ state_link }}"
+    state: link
+    target: "{{ state_target_alt }}"
+    raw: "{{ raw }}"
+  check_mode: false
+  register: state_relink_reg
+
+- name: Read the repointed link without following it
+  o0_o.posix.read:
+    path: "{{ state_link }}"
+    follow: false
+  register: state_relink_read_reg
+
+- name: Assert the link now points at the second file
+  ansible.builtin.assert:
+    that:
+      - state_target_alt_reg['raw'] == raw
+      - state_relink_reg is changed
+      - state_relink_reg['raw'] == raw
+      - state_now['type'] == 'link'
+      - state_now['target'] == state_target_alt
+  vars:
+    state_now: "{{ state_relink_read_reg['paths'][state_link] }}"
+
+- name: Create the file the removal test takes away
+  o0_o.posix.write:
+    dest: "{{ state_doomed_file }}"
+    content: "delete me\n"
+    mode: '0644'
+    raw: "{{ raw }}"
+  check_mode: false
+  register: state_doomed_file_reg
+
+- name: Remove the file
+  o0_o.posix.write:
+    dest: "{{ state_doomed_file }}"
+    state: absent
+    raw: "{{ raw }}"
+  register: state_rm_file_reg
+
+- name: Read the removed path back
+  o0_o.posix.read:
+    path: "{{ state_doomed_file }}"
+  register: state_rm_file_read_reg
+
+- name: Assert the removal is reported as a change
+  ansible.builtin.assert:
+    that:
+      - state_doomed_file_reg['raw'] == raw
+      - state_rm_file_reg is changed
+      - state_rm_file_reg['raw'] == raw
+
+- name: Assert the file is gone
+  ansible.builtin.assert:
+    that:
+      - state_rm_file_read_reg['paths'][state_doomed_file] is none
+      - state_rm_file_reg['msg'] == 'path removed'
+  when: not ansible_check_mode
+
+- name: Assert check mode removed nothing
+  ansible.builtin.assert:
+    that:
+      - state_rm_file_read_reg['paths'][state_doomed_file] is not none
+      - >-
+        'Check mode' in state_rm_file_reg['msg']
+  when: ansible_check_mode
+
+- name: Create the directory the removal test takes away
+  o0_o.posix.write:
+    dest: "{{ state_doomed_dir }}"
+    state: directory
+    mode: '0755'
+    raw: "{{ raw }}"
+  check_mode: false
+  register: state_doomed_dir_reg
+
+- name: Put a file inside the doomed directory
+  o0_o.posix.write:
+    dest: "{{ state_doomed_dir }}/inside.txt"
+    content: "delete me too\n"
+    mode: '0644'
+    raw: "{{ raw }}"
+  check_mode: false
+  register: state_inside_reg
+
+- name: Remove the directory and everything under it
+  o0_o.posix.write:
+    dest: "{{ state_doomed_dir }}"
+    state: absent
+    raw: "{{ raw }}"
+  check_mode: false
+  register: state_rm_dir_reg
+
+- name: Read the removed directory back
+  o0_o.posix.read:
+    path: "{{ state_doomed_dir }}"
+  register: state_rm_dir_read_reg
+
+- name: Assert the directory tree is gone
+  ansible.builtin.assert:
+    that:
+      - state_doomed_dir_reg['raw'] == raw
+      - state_inside_reg['raw'] == raw
+      - state_rm_dir_reg is changed
+      - state_rm_dir_reg['raw'] == raw
+      - state_rm_dir_read_reg['paths'][state_doomed_dir] is none
+
+- name: Remove a path that was never there
+  o0_o.posix.write:
+    dest: "{{ state_missing }}"
+    state: absent
+    raw: "{{ raw }}"
+  register: state_rm_missing_reg
+
+- name: Assert removing a missing path reports no change
+  ansible.builtin.assert:
+    that:
+      - state_rm_missing_reg is not changed
+      - state_rm_missing_reg['raw'] == raw
+      - state_rm_missing_reg['msg'] == 'path already absent'
