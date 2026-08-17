@@ -36,9 +36,10 @@ class ActionModule(PosixActionBase, ActionBase):
         task_vars: Optional[dict[str, Any]] = None,
     ) -> dict[str, Any]:
         task_vars = task_vars or {}
-        tmp = None
+        self._def_inventory_hostname(task_vars)
 
-        result = super().run(task_vars=task_vars)
+        result = super().run(tmp, task_vars=task_vars)
+        del tmp  # unused
 
         # Validate args
         argument_spec = {

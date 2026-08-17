@@ -20,7 +20,6 @@ from ansible.module_utils.common.text.converters import to_native
 
 from ansible_collections.o0_o.posix.plugins.module_utils import passwd_info
 
-
 DOCUMENTATION = r"""
 ---
 name: passwd

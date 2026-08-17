@@ -58,9 +58,10 @@ class ActionModule(PosixActionBase, ActionBase):
             information keyed by mount path
         """
         task_vars = task_vars or {}
-        tmp = None  # unused in modern Ansible
+        self._def_inventory_hostname(task_vars)
 
-        result = super().run(task_vars=task_vars)
+        result = super().run(tmp, task_vars=task_vars)
+        del tmp  # unused
 
         # Validate module arguments
         argument_spec = {

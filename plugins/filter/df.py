@@ -17,7 +17,6 @@ from ansible.errors import AnsibleFilterError
 from ansible.module_utils.common.text.converters import to_native
 from ansible_collections.o0_o.posix.plugins.module_utils import df
 
-
 DOCUMENTATION = r"""
 ---
 name: df

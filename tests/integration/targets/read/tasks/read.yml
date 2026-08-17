@@ -8,10 +8,13 @@
 #
 # This file is part of the o0_o.posix Ansible Collection.
 
+# Requesting content or lines turns attributes off unless attributes is
+# passed explicitly, so every task that asserts both passes attributes.
 - name: Read regular file with content
   o0_o.posix.read:
     path: "{{ read_regular_path }}"
-    include: ['content', 'metadata']
+    content: true
+    attributes: true
   register: read_regular_content_reg
 
 - name: Assert regular file metadata with content
@@ -28,6 +31,15 @@
       - >-
         read_regular_content_reg['paths'][read_regular_path]['group']
         is defined
+      - >-
+        read_regular_content_reg['paths'][read_regular_path]['size']['bytes']
+        is number
+      - >-
+        read_regular_content_reg['paths'][read_regular_path]['size']['pretty']
+        is defined
+      - >-
+        read_regular_content_reg['paths'][read_regular_path]['readable']
+        is boolean
       - >-
         read_regular_content_reg['paths'][read_regular_path]['writable']
         is boolean
@@ -52,25 +64,101 @@
       - read_regular_meta_reg is not changed
       - read_regular_meta_reg['paths'][read_regular_path]['type'] == 'regular'
       - "'content' not in read_regular_meta_reg['paths'][read_regular_path]"
+      - "'lines' not in read_regular_meta_reg['paths'][read_regular_path]"
       - "'encoding' not in read_regular_meta_reg['paths'][read_regular_path]"
       - read_regular_meta_reg['paths'][read_regular_path]['hardlinks'] == 1
       - >-
         read_regular_meta_reg['paths'][read_regular_path]['writable']
         is boolean
 
+- name: Read regular file as lines
+  o0_o.posix.read:
+    path: "{{ read_regular_path }}"
+    lines: true
+  register: read_regular_lines_reg
+
+- name: Assert line array matches file content
+  ansible.builtin.assert:
+    that:
+      - read_regular_lines_reg is not changed
+      - >-
+        read_regular_lines_reg['paths'][read_regular_path]['lines']
+        == ['The quick brown fox', 'jumps over the lazy dog']
+      - >-
+        read_regular_lines_reg['paths'][read_regular_path]['encoding']
+        is defined
+      # lines without an explicit attributes turns attributes off
+      - "'type' not in read_regular_lines_reg['paths'][read_regular_path]"
+
+- name: Read regular file with forced base64 encoding
+  o0_o.posix.read:
+    path: "{{ read_regular_path }}"
+    encoding: base64
+  register: read_regular_base64_reg
+
+- name: Assert forced encoding is honored and implies content
+  ansible.builtin.assert:
+    that:
+      - read_regular_base64_reg is not changed
+      - >-
+        read_regular_base64_reg['paths'][read_regular_path]['encoding']
+        == 'base64'
+      - >-
+        'quick brown fox' in
+        (read_regular_base64_reg['paths'][read_regular_path]['content']
+        | b64decode)
+
+- name: Read regular file with mime type and checksums
+  o0_o.posix.read:
+    path: "{{ read_regular_path }}"
+    mime: true
+    md5: true
+    sha1: true
+    sha256: true
+    sha512: true
+  register: read_regular_digest_reg
+
+- name: Assert mime type and checksums of known content
+  ansible.builtin.assert:
+    that:
+      - read_regular_digest_reg is not changed
+      - >-
+        read_regular_digest_reg['paths'][read_regular_path]['mime']['type']
+        == 'text'
+      - >-
+        read_regular_digest_reg['paths'][read_regular_path]['mime']['subtype']
+        is defined
+      - >-
+        read_regular_digest_reg['paths'][read_regular_path]['md5']
+        == '58badea9b79664d51d8ad4048fb0819c'
+      - >-
+        read_regular_digest_reg['paths'][read_regular_path]['sha1']
+        == '1fe52e794254813ecf88a33f330be00702ecbeaf'
+      - >-
+        read_regular_digest_reg['paths'][read_regular_path]['sha256'] ==
+        '3e2f56c7f38c0633ef8fb640340ea3194e29efd39c7d1e2059a67d3a5de4c62d'
+      # 128 hex digits does not fit the line budget, so match the shape
+      - >-
+        read_regular_digest_reg['paths'][read_regular_path]['sha512']
+        is match('^[0-9a-f]{128}$')
+
 - name: Read binary file with content enabled
   o0_o.posix.read:
     path: "{{ read_binary_path }}"
-    include: ['content', 'metadata']
+    content: true
+    attributes: true
   register: read_binary_reg
 
-- name: Assert binary file avoids content
+- name: Assert binary content is returned base64 encoded
   ansible.builtin.assert:
     that:
       - read_binary_reg is not changed
       - read_binary_reg['paths'][read_binary_path]['type'] == 'regular'
-      - "'content' not in read_binary_reg['paths'][read_binary_path]"
-      - "'encoding' not in read_binary_reg['paths'][read_binary_path]"
+      - read_binary_reg['paths'][read_binary_path]['encoding'] == 'base64'
+      # three NUL bytes survive the round trip as base64
+      - read_binary_reg['paths'][read_binary_path]['content'] == 'AAAA'
+      - read_binary_reg['paths'][read_binary_path]['size']['bytes'] == 3
+      - "'lines' not in read_binary_reg['paths'][read_binary_path]"
       - "'hardlinks' not in read_binary_reg['paths'][read_binary_path]"
       - >-
         read_binary_reg['paths'][read_binary_path]['writable'] is boolean
@@ -89,9 +177,27 @@
       - >-
         read_symlink_reg['paths'][read_symlink_path]['target']
         == read_regular_path
+      - "'realpath' not in read_symlink_reg['paths'][read_symlink_path]"
       - "'hardlinks' not in read_symlink_reg['paths'][read_symlink_path]"
       - >-
         read_symlink_reg['paths'][read_symlink_path]['writable'] is boolean
+
+- name: Read symbolic link with follow enabled
+  o0_o.posix.read:
+    path: "{{ read_symlink_path }}"
+    follow: true
+  register: read_symlink_follow_reg
+
+- name: Assert followed link describes its ultimate target
+  ansible.builtin.assert:
+    that:
+      - read_symlink_follow_reg is not changed
+      - >-
+        read_symlink_follow_reg['paths'][read_symlink_path]['type']
+        == 'regular'
+      - >-
+        read_symlink_follow_reg['paths'][read_symlink_path]['realpath']
+        | basename == 'regular.txt'
 
 - name: Read directory metadata
   o0_o.posix.read:
@@ -103,7 +209,9 @@
     that:
       - read_directory_reg is not changed
       - read_directory_reg['paths'][read_directory_path]['type'] == 'directory'
+      - read_directory_reg['paths'][read_directory_path]['mode'] == '0750'
       - "'content' not in read_directory_reg['paths'][read_directory_path]"
+      - "'size' not in read_directory_reg['paths'][read_directory_path]"
       - >-
         read_directory_reg['paths'][read_directory_path]['writable']
         is boolean
@@ -126,7 +234,8 @@
   o0_o.posix.read:
     path: "{{ read_symlink_path }}"
     follow: recursive
-    include: ['content', 'metadata']
+    content: true
+    attributes: true
   register: read_symlink_recursive_reg
 
 # Skipping filesystem scan tests (find_hardlinks/find_symlinks)
@@ -150,9 +259,6 @@
       - >-
         read_symlink_recursive_reg['paths'][read_regular_path]['writable']
         is boolean
-
-# Skipping filesystem scan test (find_hardlinks)
-# as it would scan the entire filesystem and take too long
 
 - name: Read missing path returns none
   o0_o.posix.read:
@@ -178,6 +284,8 @@
     that:
       - read_multiple_reg['paths'][read_regular_path]['type'] == 'regular'
       - read_multiple_reg['paths'][read_symlink_path]['type'] == 'link'
+      - read_multiple_reg['commands'] is number
+      - read_multiple_reg['batches'] is number
 
 # Test hardlinks
 - name: Read hardlink file
@@ -196,11 +304,11 @@
 
 # Test extended metadata fields (platform-specific)
 
-# Test extended metadata (includes ACL, xattrs where available)
+# Test extended metadata (includes xattrs where available)
 - name: Read file with extended metadata
   o0_o.posix.read:
     path: "{{ read_regular_path }}"
-    include: ['extended']
+    extended: true
   register: read_extended_reg
   when: ansible_system in ['Linux', 'Darwin']
 
@@ -208,15 +316,24 @@
   ansible.builtin.assert:
     that:
       - read_extended_reg is not changed
-      # Extended metadata available (ACL/xattrs may or may not be present)
-      - read_extended_reg['paths'][read_regular_path] is defined
+      # extended implies attributes
+      - read_extended_reg['paths'][read_regular_path]['type'] == 'regular'
+      # xattrs are only reported when the path actually carries some
+      - >-
+        'xattrs' not in read_extended_reg['paths'][read_regular_path]
+        or read_extended_reg['paths'][read_regular_path]['xattrs']
+        is mapping
   when: ansible_system in ['Linux', 'Darwin']
 
-# Test all metadata (combines metadata + extended + content + children)
-- name: Read file with all metadata
+# Test the full request (attributes + extended + content + mime)
+- name: Read file with every metadata option
   o0_o.posix.read:
     path: "{{ read_regular_path }}"
-    include: ['all']
+    attributes: true
+    extended: true
+    content: true
+    lines: true
+    mime: true
   register: read_all_reg
   when: ansible_system in ['Linux', 'Darwin']
 
@@ -224,9 +341,11 @@
   ansible.builtin.assert:
     that:
       - read_all_reg is not changed
-      - read_all_reg['paths'][read_regular_path] is defined
-      # Content should be included with 'all'
+      - read_all_reg['paths'][read_regular_path]['type'] == 'regular'
       - read_all_reg['paths'][read_regular_path]['content'] is defined
+      - read_all_reg['paths'][read_regular_path]['lines'] | length == 2
+      - read_all_reg['paths'][read_regular_path]['encoding'] is defined
+      - read_all_reg['paths'][read_regular_path]['mime']['type'] == 'text'
   when: ansible_system in ['Linux', 'Darwin']
 
 # Test SELinux context (only on SELinux-enabled Linux systems)
@@ -239,10 +358,10 @@
   failed_when: false
   when: ansible_system == 'Linux'
 
-- name: Read file with SELinux metadata
+- name: Read file with attributes on an SELinux system
   o0_o.posix.read:
     path: "{{ read_regular_path }}"
-    include: ['metadata', 'selinux']
+    attributes: true
   register: read_selinux_reg
   when:
     - ansible_system == 'Linux'
@@ -254,29 +373,32 @@
   ansible.builtin.assert:
     that:
       - read_selinux_reg is not changed
+      # The context is reported only when the system provides one
       - >-
-        'selinux' in read_selinux_reg['paths'][read_regular_path] or
         'selinux' not in read_selinux_reg['paths'][read_regular_path]
+        or read_selinux_reg['paths'][read_regular_path]['selinux']
+        is string
   when:
     - ansible_system == 'Linux'
     - selinux_status_reg is defined
     - selinux_status_reg['rc'] == 0
     - selinux_status_reg['stdout'] | default('') != 'Disabled'
 
-# Test that xattrs are NOT present when only metadata is requested
-# (metadata includes flags, ACL, SELinux but NOT xattrs)
-- name: Read file with metadata only (no xattrs)
+# Test that xattrs are NOT present without extended
+# (attributes covers flags, ACL and SELinux but NOT xattrs)
+- name: Read file with attributes only (no xattrs)
   o0_o.posix.read:
     path: "{{ read_regular_path }}"
-    include: ['metadata']
-  register: read_metadata_only_reg
+    attributes: true
+  register: read_attributes_only_reg
 
-- name: Assert xattrs not present when only metadata requested
+- name: Assert xattrs not present without extended
   ansible.builtin.assert:
     that:
-      - read_metadata_only_reg is not changed
-      - read_metadata_only_reg['paths'][read_regular_path] is defined
-      # xattrs should not be present with just 'metadata'
+      - read_attributes_only_reg is not changed
       - >-
-        'xattrs' not in read_metadata_only_reg['paths'][read_regular_path]
-        or read_metadata_only_reg['paths'][read_regular_path]['xattrs'] == {}
+        read_attributes_only_reg['paths'][read_regular_path]['type']
+        == 'regular'
+      - >-
+        'xattrs' not in
+        read_attributes_only_reg['paths'][read_regular_path]

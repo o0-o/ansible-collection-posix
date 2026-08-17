@@ -37,7 +37,6 @@ from ansible_collections.o0_o.posix.plugins.module_utils.command_utils import (
     process_command_lookups,
 )
 
-
 # Standards metadata - used to initialize compliance dict with descriptions
 SUS = {
     "name": "Single UNIX Specification",

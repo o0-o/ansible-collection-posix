@@ -18,7 +18,6 @@ from ansible_collections.o0_o.posix.plugins.module_utils.user_utils import (
     lookup_user,
 )
 
-
 # Sample data matching the structure from o0_o.posix.users module
 USERS_BY_ID = {
     "0": {

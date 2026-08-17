@@ -8,7 +8,7 @@
 #
 # This file is part of the o0_o.posix Ansible Collection.
 
-# Advanced read module tests for children, parents, and include options
+# Advanced read module tests for children, parents, list and timestamps
 
 - name: Create nested directory structure for advanced tests
   ansible.builtin.file:
@@ -170,35 +170,54 @@
         read_parents_depth2_reg['paths'][read_dir_path +
         '/nested/level1'] is not defined
 
-# Test include: ['children'] option
-- name: Read directory with include children option
+# The list parameter adds the children field without recursing
+- name: Read directory with list enabled
   o0_o.posix.read:
-    path: "{{ read_directory_path }}"
-    include: ['children', 'metadata']
-  register: read_include_children_reg
+    path: "{{ read_dir_path }}/nested"
+    list: true
+  register: read_list_reg
 
-- name: Assert include children option adds children field
+- name: Assert list adds the children field but does not recurse
   ansible.builtin.assert:
     that:
-      - read_include_children_reg is not changed
+      - read_list_reg is not changed
       - >-
-        read_include_children_reg['paths'][read_directory_path]['type']
+        read_list_reg['paths'][read_dir_path + '/nested']['type']
         == 'directory'
       - >-
-        'children' in
-        read_include_children_reg['paths'][read_directory_path]
-      - >-
-        read_include_children_reg['paths'][read_directory_path]['children']
+        read_list_reg['paths'][read_dir_path + '/nested']['children']
         is sequence
+      - >-
+        read_list_reg['paths'][read_dir_path + '/nested']['children']
+        | length == 2
+      - read_list_reg['paths'] | length == 1
 
-# Test include: ['all'] option
-- name: Read regular file with include all
+- name: Read empty directory with list enabled
+  o0_o.posix.read:
+    path: "{{ read_directory_path }}"
+    list: true
+  register: read_list_empty_reg
+
+- name: Assert empty directory lists no children
+  ansible.builtin.assert:
+    that:
+      - read_list_empty_reg is not changed
+      - >-
+        read_list_empty_reg['paths'][read_directory_path]['type']
+        == 'directory'
+      - read_list_empty_reg['paths'][read_directory_path]['children'] == []
+
+# Test every metadata option against a regular file
+- name: Read regular file with every metadata option
   o0_o.posix.read:
     path: "{{ read_regular_path }}"
-    include: ['all']
+    attributes: true
+    extended: true
+    content: true
+    mime: true
   register: read_include_all_reg
 
-- name: Assert include all provides comprehensive metadata
+- name: Assert all options provide comprehensive metadata
   ansible.builtin.assert:
     that:
       - read_include_all_reg is not changed
@@ -213,8 +232,8 @@
         read_include_all_reg['paths'][read_regular_path]['group']
         is defined
       - >-
-        read_include_all_reg['paths'][read_regular_path]['size']
-        is defined
+        read_include_all_reg['paths'][read_regular_path]['size']['bytes']
+        is number
       - >-
         read_include_all_reg['paths'][read_regular_path]['writable']
         is boolean
@@ -224,37 +243,43 @@
       - >-
         read_include_all_reg['paths'][read_regular_path]['encoding']
         is defined
+      - >-
+        read_include_all_reg['paths'][read_regular_path]['mime']['subtype']
+        is defined
 
-# Test metadata includes timestamp fields (modified, created, changed)
-- name: Read file to verify timestamp fields in metadata
+# Test attributes include timestamp fields (modified, changed, created)
+- name: Read file to verify timestamp fields in attributes
   o0_o.posix.read:
     path: "{{ read_regular_path }}"
-    include: ['metadata']
   register: read_timestamps_reg
 
-- name: Assert timestamp fields are present in metadata
+- name: Assert timestamp fields are present in attributes
   ansible.builtin.assert:
     that:
       - read_timestamps_reg is not changed
       - >-
-        read_timestamps_reg['paths'][read_regular_path]['modified']
+        read_timestamps_reg['paths'][read_regular_path]['modified']['seconds']
+        is number
+      - >-
+        read_timestamps_reg['paths'][read_regular_path]['modified']['pretty']
         is defined
       - >-
+        read_timestamps_reg['paths'][read_regular_path]['changed']['seconds']
+        is number
+      # created is only reported when the filesystem records a birth time
+      - >-
+        'created' not in read_timestamps_reg['paths'][read_regular_path]
+        or 'seconds' in
         read_timestamps_reg['paths'][read_regular_path]['created']
-        is defined
-      - >-
-        read_timestamps_reg['paths'][read_regular_path]['changed']
-        is defined
 
-# Test interaction between children parameter and include: ['children']
-- name: Read with both children param and children include
+# The children parameter implies list, so read entries carry children
+- name: Read with children parameter to check implied list
   o0_o.posix.read:
     path: "{{ read_dir_path }}/nested"
     children: 1
-    include: ['children', 'metadata']
   register: read_children_both_reg
 
-- name: Assert children param and include work together
+- name: Assert children parameter implies the children field
   ansible.builtin.assert:
     that:
       - read_children_both_reg is not changed
@@ -271,24 +296,23 @@
         'children' in read_children_both_reg['paths'][read_dir_path +
         '/nested/level1']
 
-# Test children parameter doesn't include children field without include option
-- name: Read with children param without children in include
+# The children field stays out of the result unless it is asked for
+- name: Read directory without list or children
   o0_o.posix.read:
     path: "{{ read_dir_path }}/nested"
-    children: 1
-    include: ['metadata']
-  register: read_children_no_include_reg
+  register: read_no_list_reg
 
-- name: Assert children field not present without include
+- name: Assert children field not present without list
   ansible.builtin.assert:
     that:
-      - read_children_no_include_reg is not changed
+      - read_no_list_reg is not changed
       - >-
-        read_children_no_include_reg['paths'][read_dir_path + '/nested']
-        is defined
+        read_no_list_reg['paths'][read_dir_path + '/nested']['type']
+        == 'directory'
       - >-
         'children' not in
-        read_children_no_include_reg['paths'][read_dir_path + '/nested']
+        read_no_list_reg['paths'][read_dir_path + '/nested']
+      - read_no_list_reg['paths'] | length == 1
 
 # Test parents with children combined
 - name: Read with both parents and children
