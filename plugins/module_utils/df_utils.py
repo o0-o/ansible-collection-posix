@@ -13,6 +13,8 @@
 
 from __future__ import annotations
 
+import base64
+
 from typing import Any, Union
 
 from ansible_collections.o0_o.posix.plugins.module_utils.filter_utils import (
@@ -139,6 +141,19 @@ def parse_df(content: str) -> list[dict[str, Any]]:
     # Parse with jc_parse
     parsed = jc_parse("df", content)
 
+    # jc slices df columns by header position, and busybox's df -P
+    # rows can overflow their columns, nulling fields jc could not
+    # place. POSIX guarantees df -P one line per filesystem with the
+    # mount point last, so a whitespace re-split of the source line
+    # recovers what the sliced read lost.
+    lines = [ln for ln in content.splitlines() if ln.strip()][1:]
+    if len(lines) == len(parsed):
+        for entry, line in zip(parsed, lines):
+            if entry.get("mounted_on") is None:
+                fields = line.split()
+                if len(fields) >= 6:
+                    entry["mounted_on"] = " ".join(fields[5:])
+
     # Normalize each entry
     normalized = []
     for entry in parsed:
@@ -165,17 +180,17 @@ def df(config: Union[str, dict[str, Any]]) -> list[dict[str, Any]]:
     :raises ValueError: If parsing fails
     :raises ImportError: If jc is not available
     """
-    # Parse with jc_parse (handles both string and dict inputs)
-    parsed = jc_parse("df", config)
+    if isinstance(config, dict):
+        if "stdout" in config:
+            content = config["stdout"]
+        elif "content" in config:
+            content = config["content"]
+            # A slurp result declares its base64 encoding
+            if config.get("encoding") == "base64":
+                content = base64.b64decode(content).decode("utf-8")
+        else:
+            raise ValueError("Dict input must have 'stdout' or 'content' key")
+    else:
+        content = config
 
-    # Normalize each entry
-    normalized = []
-    for entry in parsed:
-        try:
-            norm_entry = parse_df_entry(entry)
-            normalized.append(norm_entry)
-        except ValueError:
-            # Skip invalid entries
-            continue
-
-    return normalized
+    return parse_df(str(content))

@@ -963,9 +963,21 @@ class ReadPosixActionBase(PosixActionBase):
                         stat_output = stat_result.get("stdout", "").strip()
                         times = stat_output.split()
                         if len(times) >= 3:
-                            mtime = int(times[0]) if times[0] != "0" else None
-                            ctime = int(times[1]) if times[1] != "0" else None
-                            btime = int(times[2]) if times[2] != "0" else None
+                            # busybox stat echoes format specifiers it
+                            # does not know (%W comes back as W), so a
+                            # non-numeric field means the filesystem or
+                            # tool cannot answer and the timestamp is
+                            # omitted
+                            def _epoch_or_none(value: str) -> Optional[int]:
+                                try:
+                                    parsed_epoch = int(value)
+                                except ValueError:
+                                    return None
+                                return parsed_epoch or None
+
+                            mtime = _epoch_or_none(times[0])
+                            ctime = _epoch_or_none(times[1])
+                            btime = _epoch_or_none(times[2])
 
                             if mtime:
                                 attributes["modified"] = (

@@ -99,7 +99,8 @@ def test_df_accepts_dict_inputs() -> None:
         payload = {"stdout": "Filesystem 1024-blocks"}
         result = df_utils.df(payload)
 
-    mock_parse.assert_called_once_with("df", payload)
+    # df() extracts stdout from dict input before parsing
+    mock_parse.assert_called_once_with("df", payload["stdout"])
     assert result[0]["mount"] == "/"
 
 

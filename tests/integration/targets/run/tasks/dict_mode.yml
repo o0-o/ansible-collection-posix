@@ -14,7 +14,7 @@
     commands:
       kernel: uname -s
       machine: uname -m
-      hostname: hostname
+      hostname: uname -n
   register: dict_mode_reg
 
 - name: Assert dict mode returns mapping
@@ -40,7 +40,9 @@
       - dict_mode_reg['commands']['hostname']['rc'] == 0
       - dict_mode_reg['commands']['kernel']['command'] == 'uname -s'
       - dict_mode_reg['commands']['machine']['command'] == 'uname -m'
-      - dict_mode_reg['commands']['hostname']['command'] == 'hostname'
+      - >-
+        dict_mode_reg['commands']['hostname']['command']
+        == 'uname -n'
   when: not ansible_check_mode
 
 - name: Assert dict mode has stdout in each result

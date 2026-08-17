@@ -46,12 +46,12 @@ def test_mount_filter_delegates_to_parse_mount(
 
     expected = [{"mount": "/proc"}]
     with patch(
-        "ansible_collections.o0_o.posix.plugins.filter.mount._parse_mount",
-        return_value=(expected, []),
+        "ansible_collections.o0_o.posix.plugins.filter.mount.mount",
+        return_value=expected,
     ) as mock_parse:
         result = filter_module.filters()["mount"]("mount output")
 
-    mock_parse.assert_called_once_with("mount output", "")
+    mock_parse.assert_called_once_with("mount output")
     assert result is expected
 
 
@@ -61,8 +61,8 @@ def test_mount_filter_raises_on_parse_error(
     """Test that parse errors become AnsibleFilterError."""
 
     with patch(
-        "ansible_collections.o0_o.posix.plugins.filter.mount._parse_mount",
-        return_value=(None, [ValueError("bad output")]),
+        "ansible_collections.o0_o.posix.plugins.filter.mount.mount",
+        side_effect=ValueError("bad output"),
     ):
         with pytest.raises(AnsibleFilterError, match="mount failed"):
             filter_module.filters()["mount"]("broken")
@@ -71,13 +71,14 @@ def test_mount_filter_raises_on_parse_error(
 def test_mount_filter_normalizes_dict_input(
     filter_module: FilterModule,
 ) -> None:
-    """Test that dict input extracts stdout before parsing."""
+    """Test that dict input passes through to the shared parser."""
 
     expected = [{"mount": "/"}]
     with patch(
-        "ansible_collections.o0_o.posix.plugins.filter.mount._parse_mount",
-        return_value=(expected, []),
+        "ansible_collections.o0_o.posix.plugins.filter.mount.mount",
+        return_value=expected,
     ) as mock_parse:
         filter_module.filters()["mount"]({"stdout": "mount output"})
 
-    mock_parse.assert_called_once_with("mount output", "")
+    # Dict extraction lives in mount(), so the dict passes through
+    mock_parse.assert_called_once_with({"stdout": "mount output"})

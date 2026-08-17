@@ -32,7 +32,7 @@
               - ansible_failed_result is failed
               # fail_fast uses shell's set -e which exits immediately,
               # causing output parsing to fail
-              - "'Batch execution error' in ansible_failed_result['msg']"
+              - "'Batch execution failed' in ansible_failed_result['msg']"
 
     - name: 'Fail: Test command failure without fail_fast'
       block:

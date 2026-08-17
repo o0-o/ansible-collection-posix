@@ -261,6 +261,15 @@ def process_all_compliance_command_results(
                 "getconf": {getconf_var: getconf_val},
             }
             errors.extend(support_result.pop("errors", []))
+        else:
+            # busybox getconf exits nonzero for variables it does
+            # not know, so an unanswerable probe is the platform
+            # answering no; the null canary records that it was asked
+            getconf_var = support_result["command"][1]
+            compliance["xsi"]["supported"] = False
+            compliance["xsi"]["canaries"] = {
+                "getconf": {getconf_var: None},
+            }
 
         for standard in ["xsh", "xcu", "xsi"]:
             cmd_type = f"{standard}_version"

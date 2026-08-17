@@ -17,6 +17,8 @@ COMMAND_SPEC ``(output, e_prefix) -> (parsed, errors)`` contract.
 
 from __future__ import annotations
 
+import base64
+
 from typing import Any, Optional, Union
 
 from ansible_collections.o0_o.core.plugins.module_utils import (
@@ -273,7 +275,16 @@ def mount(config: Union[str, dict[str, Any]]) -> list[dict[str, Any]]:
     :raises ImportError: If jc is not available
     """
     if isinstance(config, dict):
-        config = config.get("stdout") or ""
+        if "stdout" in config:
+            config = config.get("stdout") or ""
+        elif "content" in config:
+            content = config["content"]
+            # A slurp result declares its base64 encoding
+            if config.get("encoding") == "base64":
+                content = base64.b64decode(content).decode("utf-8")
+            config = content
+        else:
+            config = ""
 
     parsed, errors = _parse_mount(str(config), "")
     if parsed is not None:

@@ -162,6 +162,13 @@ def restructure_process(proc: dict[str, Any]) -> dict[str, Any]:
         except (ValueError, TypeError):
             restructured["group"] = proc["gid"]
 
+    # POSIX ps offers user and group names where uid and gid are
+    # unavailable (busybox); names are honest owners too
+    if "owner" not in restructured and proc.get("user"):
+        restructured["owner"] = proc["user"]
+    if "group" not in restructured and proc.get("group"):
+        restructured["group"] = proc["group"]
+
     # Time fields
     time_dict = {}
 
@@ -183,10 +190,17 @@ def restructure_process(proc: dict[str, Any]) -> dict[str, Any]:
         # Use local timezone so offset and pretty fields reflect localhost
         # Truncate microseconds since elapsed is second-precision
         now = datetime.now().astimezone().replace(microsecond=0)
-        started_dt = now - timedelta(seconds=elapsed_data["seconds"])
+        try:
+            started_dt = now - timedelta(seconds=elapsed_data["seconds"])
+        except OverflowError:
+            # A kernel thread's etime can exceed the datetime range;
+            # the start time is unknowable, not zero
+            started_dt = None
         # Format as ISO8601 and parse back to get consistent structure
-        started_str = started_dt.isoformat()
-        started_parsed = parse_datetime(started_str)
+        started_parsed = None
+        if started_dt is not None:
+            started_str = started_dt.isoformat()
+            started_parsed = parse_datetime(started_str)
         if started_parsed:
             time_dict["started"] = started_parsed
 

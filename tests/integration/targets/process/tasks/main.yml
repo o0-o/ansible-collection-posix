@@ -27,26 +27,30 @@
 - name: Verify process structure
   ansible.builtin.assert:
     that:
-      - item['pid'] is defined
-      - item['pid'] is number
-      - item['executable'] is defined
-    fail_msg: "Each process should have pid and executable fields"
+      - item['id'] is defined
+      - item['id'] is number
+      - item['title'] is defined
+    fail_msg: "Each process should have id and title fields"
   loop: "{{ all_processes_reg['processes'] | default([]) }}"
   loop_control:
-    label: "PID {{ item['pid'] }}"
+    label: "PID {{ item['id'] }}"
 
-- name: Get current shell process by PID
+- name: Pick a live process from the full listing
+  ansible.builtin.set_fact:
+    sample_pid: "{{ all_processes_reg['processes'][0]['id'] }}"
+
+- name: Get that process by PID
   o0_o.posix.process:
-    pid: "{{ ansible_pid }}"
+    pid: "{{ sample_pid }}"
   register: shell_process_reg
 
-- name: Assert shell process found
+- name: Assert the sampled process is found by PID
   ansible.builtin.assert:
     that:
       - shell_process_reg is not failed
       - shell_process_reg['processes'] | length > 0
-      - shell_process_reg['processes'][0]['pid'] == ansible_pid
-    fail_msg: "Should find current shell process by PID"
+      - shell_process_reg['processes'][0]['id'] == sample_pid | int
+    fail_msg: "Should find the sampled process by PID"
 
 - name: Get init process (PID 1)
   o0_o.posix.process:
@@ -58,7 +62,7 @@
     that:
       - init_process_reg is not failed
       - init_process_reg['processes'] | length > 0
-      - init_process_reg['processes'][0]['pid'] == 1
+      - init_process_reg['processes'][0]['id'] == 1
     fail_msg: "Should find init process (PID 1)"
 
 - name: Filter by executable basename
@@ -89,7 +93,7 @@
        | selectattr('time', 'defined')
        | list }}
   loop_control:
-    label: "PID {{ item['pid'] }}"
+    label: "PID {{ item['id'] }}"
   when: >-
     all_processes_reg['processes']
     | selectattr('time', 'defined')

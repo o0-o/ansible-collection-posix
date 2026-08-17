@@ -42,8 +42,11 @@
             mount_result_reg['mounts']['/']['source'] is mapping or
             mount_result_reg['mounts']['/']['source'] is none
           # Type field (filesystem type like ext4, xfs, apfs, etc.)
-          - mount_result_reg['mounts']['/']['type'] is defined
-          - mount_result_reg['mounts']['/']['type'] is string
+          # Absent when the entry came from df alone, which does not
+          # report a type
+          - >-
+            mount_result_reg['mounts']['/']['type'] is not defined or
+            mount_result_reg['mounts']['/']['type'] is string
           # Options field (merged dict from mount) - may not be present
           - >-
             mount_result_reg['mounts']['/']['options'] is not defined or
@@ -54,7 +57,7 @@
       ansible.builtin.debug:
         msg: |
           Source: {{ mount_result_reg['mounts']['/'].get('source', 'N/A') }}
-          Type: {{ mount_result_reg['mounts']['/']['type'] }}
+          Type: {{ mount_result_reg['mounts']['/'].get('type', 'N/A') }}
           {% if mount_result_reg['mounts']['/']['capacity'] is defined %}
           Total: {{ mount_result_reg['mounts']['/']
                     ['capacity']['total']['pretty'] }}

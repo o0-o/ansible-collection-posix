@@ -122,6 +122,31 @@ class ActionModule(PosixActionBase, ActionBase):
             self._display.vvv(f"ps command returned rc={ps_result['rc']}")
 
             if ps_result["rc"] != 0:
+                # Minimal ps implementations such as busybox reject
+                # the BSD options and the non-POSIX columns; retry
+                # with the strictly POSIX set, trading uid, gid, and
+                # the cpu and memory percentages for user and group
+                # names
+                self._display.vvv(
+                    "ps rejected the rich column set, retrying with "
+                    "the POSIX set"
+                )
+                posix_fields = [
+                    "pid",
+                    "ppid",
+                    "user",
+                    "group",
+                    "etime",
+                    "time",
+                    "stat",
+                    "rss",
+                    "vsz",
+                    "args",
+                ]
+                ps_cmd = ["ps", "-A", "-o", ",".join(posix_fields)]
+                ps_result = self._command(ps_cmd, task_vars=task_vars)
+
+            if ps_result["rc"] != 0:
                 stderr = ps_result.get("stderr", "")
                 result.update(
                     {

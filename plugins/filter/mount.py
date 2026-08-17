@@ -15,8 +15,8 @@ from typing import Any, Union
 
 from ansible.errors import AnsibleFilterError
 from ansible.module_utils.common.text.converters import to_native
-from ansible_collections.o0_o.posix.plugins.module_utils.mount_utils import (
-    _parse_mount,
+from ansible_collections.o0_o.posix.plugins.module_utils import (
+    mount,
 )
 
 DOCUMENTATION = r"""
@@ -120,11 +120,7 @@ class FilterModule:
         :returns: List of mount entries with standardized structure
         :raises AnsibleFilterError: If parsing fails
         """
-        if isinstance(config, dict):
-            config = config.get("stdout") or ""
-
-        parsed, errors = _parse_mount(str(config), "")
-        if parsed is not None:
-            return parsed
-        msg = to_native(errors[0]) if errors else "unknown error"
-        raise AnsibleFilterError(f"mount failed: {msg}")
+        try:
+            return mount(config)
+        except (ValueError, ImportError) as e:
+            raise AnsibleFilterError(f"mount failed: {to_native(e)}") from e

@@ -1,0 +1,33 @@
+---
+bugfixes:
+  - >-
+    process - Minimal ps implementations such as busybox rejected the
+    BSD options and non-POSIX columns; the plugin now retries with
+    the strictly POSIX column set, reporting owner and group by name
+    where numeric ids are unavailable
+    (https://github.com/o0-o/ansible-collection-posix/pull/XXX).
+  - >-
+    process - A kernel thread's elapsed time could overflow the start
+    time computation and fail the whole run; an incomputable start
+    time is now omitted
+    (https://github.com/o0-o/ansible-collection-posix/pull/XXX).
+  - >-
+    compliance - busybox getconf exits nonzero for variables it does
+    not know, which left the XSI entry without a supported field; an
+    unanswerable probe now reads as unsupported with a null canary
+    (https://github.com/o0-o/ansible-collection-posix/pull/XXX).
+  - >-
+    df filter - jc slices df columns by header position and busybox
+    rows can overflow them, losing the mount point; a POSIX
+    whitespace re-split now recovers it, and dict handling moved into
+    the shared parser
+    (https://github.com/o0-o/ansible-collection-posix/pull/XXX).
+  - >-
+    fstab and mount filters - slurp results were parsed without
+    decoding their declared base64 encoding and yielded empty results
+    (https://github.com/o0-o/ansible-collection-posix/pull/XXX).
+  - >-
+    read - busybox stat echoes format specifiers it does not know, so
+    birth time parsing crashed; a non-numeric timestamp field is now
+    omitted
+    (https://github.com/o0-o/ansible-collection-posix/pull/XXX).

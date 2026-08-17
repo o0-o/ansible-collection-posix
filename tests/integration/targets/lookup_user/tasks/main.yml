@@ -14,6 +14,16 @@
 
     - name: Gather user and group information
       o0_o.posix.users:
+      register: users_info_reg
+
+    # The user lookup reads a users variable; the module returns the
+    # data rather than setting a fact. The group lookup's groups
+    # variable cannot be provided the same way because Ansible
+    # reserves that name for inventory groups, so the group branch
+    # below exercises its documented not-found path instead.
+    - name: Expose users for the lookup
+      ansible.builtin.set_fact:
+        users: "{{ users_info_reg['users'] }}"
 
     - name: Look up root user by UID (0)
       ansible.builtin.set_fact:
