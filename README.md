@@ -6,6 +6,20 @@
 
 POSIX-focused Ansible plugins with raw fallback support for minimal systems.
 
+## Design
+
+Two pillars generalize file operations, both with raw fallback for hosts
+without Python: `o0_o.posix.read` subsumes stat- and slurp-style
+observation, and `o0_o.posix.write` (in progress) will subsume template
+rendering, line editing, copy, and file state — the modules they
+generalize retire into them. The distinguishing arguments present in a
+task select which part of the spec it is held to, so playbooks read as
+plain verbs. Facts take the opposite shape: a top-level
+`o0_o.posix.facts` aggregates the shared POSIX facts, and each fact
+group also ships its own module, with filters and lookups where they
+make sense. Mutation funnels through one well-tested module; observation
+stays granular and composable.
+
 ## Documentation
 
 Full documentation (modules, filters, usage, and examples) is published via
