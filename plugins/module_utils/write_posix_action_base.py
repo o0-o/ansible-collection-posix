@@ -619,10 +619,6 @@ class WritePosixActionBase(ReadPosixActionBase):
         if validate_cmd:
             self._validate_file(tmpfile, validate_cmd, task_vars=task_vars)
 
-        # Back up the destination file, if requested
-        if backup:
-            backup_path = self._create_backup(dest, task_vars=task_vars)
-
         # Compare old and new
         changed, old_content, old_lines = self._compare_content_and_perms(
             dest, lines, perms, selinux, task_vars=task_vars
@@ -656,6 +652,14 @@ class WritePosixActionBase(ReadPosixActionBase):
 
         else:
             if result["changed"]:
+                # Back up the destination file, if requested; check
+                # mode must not leave a backup on disk, so this stays
+                # inside the real-write branch
+                if backup:
+                    backup_path = self._create_backup(
+                        dest, task_vars=task_vars
+                    )
+
                 # Move the temp file to the final destination
                 mv_result = cmd(["mv", tmpfile, dest], task_vars=task_vars)
                 self._display.vvv(f"mv result: {mv_result}")

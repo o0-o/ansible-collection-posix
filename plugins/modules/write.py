@@ -416,7 +416,9 @@ backup_file:
     - Named for the destination, a digest of its path, and a UTC
       timestamp.
   type: str
-  returned: when backup is true and the destination already existed
+  returned: >-
+    when backup is true, the destination changed, and check mode is
+    off
   sample: /etc/motd.d41d8cd98f00b204e9800998ecf8427e.20250101120000
 diff:
   description:

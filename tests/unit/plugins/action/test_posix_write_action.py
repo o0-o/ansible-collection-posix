@@ -515,9 +515,14 @@ def test_link_creates_the_symlink(plugin) -> None:
         "target": "/etc/foo",
     }
 
+    plugin.command_results = [{"rc": 1, "stdout": "", "stderr": ""}]
+
     result = plugin.run(task_vars={})
 
-    assert plugin.commands == [["ln", "-sfn", "/etc/foo", "/etc/link"]]
+    assert plugin.commands == [
+        ["test", "-L", "/etc/link"],
+        ["ln", "-sfn", "/etc/foo", "/etc/link"],
+    ]
     assert result["changed"] is True
     assert result["msg"] == "link created"
 
@@ -531,7 +536,10 @@ def test_link_leaves_a_correct_symlink_alone(plugin) -> None:
         "is_symlink": True,
         "raw": False,
     }
-    plugin.command_results = [{"rc": 0, "stdout": "/etc/foo\n", "stderr": ""}]
+    plugin.command_results = [
+        {"rc": 0, "stdout": "", "stderr": ""},
+        {"rc": 0, "stdout": "/etc/foo\n", "stderr": ""},
+    ]
     plugin._task.args = {
         "dest": "/etc/link",
         "state": "link",
@@ -540,7 +548,10 @@ def test_link_leaves_a_correct_symlink_alone(plugin) -> None:
 
     result = plugin.run(task_vars={})
 
-    assert plugin.commands == [["readlink", "/etc/link"]]
+    assert plugin.commands == [
+        ["test", "-L", "/etc/link"],
+        ["readlink", "/etc/link"],
+    ]
     assert result["changed"] is False
     assert result["msg"] == "link already points at target"
 
@@ -597,7 +608,7 @@ def test_directory_creates_a_missing_directory(plugin) -> None:
 def test_check_mode_reports_without_mutating(
     plugin, args, stats, expected_msg
 ) -> None:
-    """Test check mode reports the change and issues no commands."""
+    """Test check mode reports the change without mutating commands."""
 
     plugin._task.check_mode = True
     plugin.stats.update(stats)
@@ -605,9 +616,11 @@ def test_check_mode_reports_without_mutating(
 
     result = plugin.run(task_vars={})
 
+    # Read-only probes (test, readlink) are legitimate in check mode
+    mutating = [c for c in plugin.commands if c[0] not in ("test", "readlink")]
     assert result["changed"] is True
     assert result["msg"] == expected_msg
-    assert plugin.commands == []
+    assert mutating == []
     assert plugin.mkdirs == []
 
 

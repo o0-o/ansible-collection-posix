@@ -787,7 +787,16 @@ class ActionModule(WritePosixActionBase, ActionBase):
 
         if state == "link":
             target = args["target"]
-            if dest_stat["exists"] and dest_stat.get("is_symlink"):
+            # test -e follows symlinks, so a dangling link reports
+            # exists=False in dest_stat; probe the link itself so a
+            # link already pointing at the requested (possibly absent)
+            # target stays idempotent
+            symlink_test = self._command(
+                ["test", "-L", dest],
+                task_vars=task_vars,
+                check_mode=False,
+            )
+            if symlink_test["rc"] == 0:
                 readlink_result = self._command(
                     ["readlink", dest],
                     task_vars=task_vars,
