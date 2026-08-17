@@ -121,8 +121,8 @@ def base():
     base._connection._shell.join_path = os.path.join
     base._connection._shell.quote = lambda s: f"'{s}'"
 
-    # Replace _cmd and _low_level_execute_command with real_cmd
-    base._cmd = real_cmd
+    # Replace _command and _low_level_execute_command with real_cmd
+    base._command = real_cmd
     base._action._low_level_execute_command = real_cmd
 
     return base
@@ -174,8 +174,8 @@ def read_base():
     read_base._connection._shell.join_path = os.path.join
     read_base._connection._shell.quote = lambda s: f"'{s}'"
 
-    # Replace _cmd and _low_level_execute_command with real_cmd
-    read_base._cmd = real_cmd
+    # Replace _command and _low_level_execute_command with real_cmd
+    read_base._command = real_cmd
     read_base._action._low_level_execute_command = real_cmd
 
     return read_base
@@ -228,8 +228,8 @@ def write_base():
     write_base._connection._shell.join_path = os.path.join
     write_base._connection._shell.quote = lambda s: f"'{s}'"
 
-    # Replace _cmd and _low_level_execute_command with real_cmd
-    write_base._cmd = real_cmd
+    # Replace _command and _low_level_execute_command with real_cmd
+    write_base._command = real_cmd
     write_base._action._low_level_execute_command = real_cmd
 
     return write_base

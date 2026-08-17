@@ -44,7 +44,7 @@ def plugin(base) -> Generator[ActionModule, None, None]:
 def test_process_all_processes(monkeypatch, plugin) -> None:
     """Test getting all processes when no filters specified."""
 
-    def mock_cmd(command, task_vars=None):
+    def mock_cmd(cmd, task_vars=None, **kwargs):
         return {"rc": 0, "stdout": "", "stderr": ""}
 
     def mock_jc_parse(parser, data, quiet=True, raw=False):
@@ -53,7 +53,7 @@ def test_process_all_processes(monkeypatch, plugin) -> None:
             {"pid": 100, "command": "/usr/sbin/sshd -D"},
         ]
 
-    monkeypatch.setattr(plugin, "_cmd", mock_cmd)
+    monkeypatch.setattr(plugin, "_command", mock_cmd)
     monkeypatch.setattr(
         "ansible_collections.o0_o.posix.plugins.action.process.jc_parse",
         mock_jc_parse,
@@ -71,7 +71,7 @@ def test_process_all_processes(monkeypatch, plugin) -> None:
 def test_process_filter_by_pid(monkeypatch, plugin) -> None:
     """Test filtering processes by PID."""
 
-    def mock_cmd(command, task_vars=None):
+    def mock_cmd(cmd, task_vars=None, **kwargs):
         return {"rc": 0, "stdout": "", "stderr": ""}
 
     def mock_jc_parse(parser, data, quiet=True, raw=False):
@@ -81,7 +81,7 @@ def test_process_filter_by_pid(monkeypatch, plugin) -> None:
             {"pid": 200, "command": "/usr/sbin/httpd"},
         ]
 
-    monkeypatch.setattr(plugin, "_cmd", mock_cmd)
+    monkeypatch.setattr(plugin, "_command", mock_cmd)
     monkeypatch.setattr(
         "ansible_collections.o0_o.posix.plugins.action.process.jc_parse",
         mock_jc_parse,
@@ -97,7 +97,7 @@ def test_process_filter_by_pid(monkeypatch, plugin) -> None:
 def test_process_filter_by_executable(monkeypatch, plugin) -> None:
     """Test filtering processes by executable name."""
 
-    def mock_cmd(command, task_vars=None):
+    def mock_cmd(cmd, task_vars=None, **kwargs):
         return {"rc": 0, "stdout": "", "stderr": ""}
 
     def mock_jc_parse(parser, data, quiet=True, raw=False):
@@ -107,7 +107,7 @@ def test_process_filter_by_executable(monkeypatch, plugin) -> None:
             {"pid": 200, "command": "/usr/sbin/httpd"},
         ]
 
-    monkeypatch.setattr(plugin, "_cmd", mock_cmd)
+    monkeypatch.setattr(plugin, "_command", mock_cmd)
     monkeypatch.setattr(
         "ansible_collections.o0_o.posix.plugins.action.process.jc_parse",
         mock_jc_parse,
@@ -124,7 +124,7 @@ def test_process_filter_by_executable(monkeypatch, plugin) -> None:
 def test_process_filter_basename_match(monkeypatch, plugin) -> None:
     """Test filtering matches basename when full path provided."""
 
-    def mock_cmd(command, task_vars=None):
+    def mock_cmd(cmd, task_vars=None, **kwargs):
         return {"rc": 0, "stdout": "", "stderr": ""}
 
     def mock_jc_parse(parser, data, quiet=True, raw=False):
@@ -136,7 +136,7 @@ def test_process_filter_basename_match(monkeypatch, plugin) -> None:
             },
         ]
 
-    monkeypatch.setattr(plugin, "_cmd", mock_cmd)
+    monkeypatch.setattr(plugin, "_command", mock_cmd)
     monkeypatch.setattr(
         "ansible_collections.o0_o.posix.plugins.action.process.jc_parse",
         mock_jc_parse,
@@ -153,7 +153,7 @@ def test_process_filter_basename_match(monkeypatch, plugin) -> None:
 def test_process_combined_filters(monkeypatch, plugin) -> None:
     """Test combining PID and executable filters."""
 
-    def mock_cmd(command, task_vars=None):
+    def mock_cmd(cmd, task_vars=None, **kwargs):
         return {"rc": 0, "stdout": "", "stderr": ""}
 
     def mock_jc_parse(parser, data, quiet=True, raw=False):
@@ -163,7 +163,7 @@ def test_process_combined_filters(monkeypatch, plugin) -> None:
             {"pid": 300, "command": "/usr/sbin/sshd -p 2222"},
         ]
 
-    monkeypatch.setattr(plugin, "_cmd", mock_cmd)
+    monkeypatch.setattr(plugin, "_command", mock_cmd)
     monkeypatch.setattr(
         "ansible_collections.o0_o.posix.plugins.action.process.jc_parse",
         mock_jc_parse,
@@ -190,10 +190,10 @@ def test_process_check_mode(monkeypatch, plugin) -> None:
 def test_process_ps_command_failure(monkeypatch, plugin) -> None:
     """Test handling of ps command failure."""
 
-    def mock_cmd(command, task_vars=None):
+    def mock_cmd(cmd, task_vars=None, **kwargs):
         return {"rc": 1, "stdout": "", "stderr": "ps: command not found"}
 
-    monkeypatch.setattr(plugin, "_cmd", mock_cmd)
+    monkeypatch.setattr(plugin, "_command", mock_cmd)
 
     plugin._task.args = {}
     result = plugin.run(task_vars={})
@@ -206,13 +206,13 @@ def test_process_ps_command_failure(monkeypatch, plugin) -> None:
 def test_process_jc_parse_failure(monkeypatch, plugin) -> None:
     """Test handling of jc parsing failure."""
 
-    def mock_cmd(command, task_vars=None):
+    def mock_cmd(cmd, task_vars=None, **kwargs):
         return {"rc": 0, "stdout": "invalid output", "stderr": ""}
 
     def mock_jc_parse(parser, data, quiet=True, raw=False):
         raise ValueError("Parse error")
 
-    monkeypatch.setattr(plugin, "_cmd", mock_cmd)
+    monkeypatch.setattr(plugin, "_command", mock_cmd)
     monkeypatch.setattr(
         "ansible_collections.o0_o.posix.plugins.action.process.jc_parse",
         mock_jc_parse,
@@ -229,14 +229,12 @@ def test_process_jc_parse_failure(monkeypatch, plugin) -> None:
 def test_process_connection_failure_propagates(monkeypatch, plugin) -> None:
     """Test that connection failures are properly propagated."""
 
-    def mock_super_run(tmp, task_vars):
+    def mock_cmd(cmd, task_vars=None, **kwargs):
         raise AnsibleConnectionFailure("connection lost")
 
-    base_path = "ansible_collections.o0_o.posix.plugins.module_utils"
-    monkeypatch.setattr(
-        f"{base_path}.posix_action_base.PosixActionBase.run",
-        mock_super_run,
-    )
+    monkeypatch.setattr(plugin, "_command", mock_cmd)
+
+    plugin._task.args = {}
 
     with pytest.raises(AnsibleConnectionFailure):
         plugin.run(tmp=None, task_vars={})
@@ -245,7 +243,7 @@ def test_process_connection_failure_propagates(monkeypatch, plugin) -> None:
 def test_process_singular_aliases(monkeypatch, plugin) -> None:
     """Test that singular aliases (pid, executable) work."""
 
-    def mock_cmd(command, task_vars=None):
+    def mock_cmd(cmd, task_vars=None, **kwargs):
         return {"rc": 0, "stdout": "", "stderr": ""}
 
     def mock_jc_parse(parser, data, quiet=True, raw=False):
@@ -254,7 +252,7 @@ def test_process_singular_aliases(monkeypatch, plugin) -> None:
             {"pid": 200, "command": "/usr/sbin/httpd"},
         ]
 
-    monkeypatch.setattr(plugin, "_cmd", mock_cmd)
+    monkeypatch.setattr(plugin, "_command", mock_cmd)
     monkeypatch.setattr(
         "ansible_collections.o0_o.posix.plugins.action.process.jc_parse",
         mock_jc_parse,

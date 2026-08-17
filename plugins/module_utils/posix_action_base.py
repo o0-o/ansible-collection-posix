@@ -22,10 +22,14 @@ when Python is not available on the remote host.
 from __future__ import annotations
 
 import shlex
+from datetime import timezone
 from typing import Any, Optional, Union
 
 from ansible_collections.o0_o.core.plugins.module_utils import (
     CoreActionBase,
+)
+from ansible_collections.o0_o.posix.plugins.module_utils.timezone_utils import (  # noqa: E501
+    parse_timezone_offset,
 )
 
 
@@ -63,9 +67,9 @@ class PosixActionBase(CoreActionBase):
         cmd: Union[str, list[str]],
         stdin: Optional[str] = None,
         chdir: Optional[str] = None,
-        strip: bool = True,
         task_vars: Optional[dict[str, Any]] = None,
         check_mode: Optional[bool] = None,
+        strip: bool = True,
         raw: Optional[Union[bool, str]] = None,
     ) -> dict[str, Any]:
         """
@@ -73,6 +77,8 @@ class PosixActionBase(CoreActionBase):
 
         Overrides CoreActionBase._command() to use o0_o.posix.command
         which supports raw fallback execution on systems without Python.
+        The parent's parameters keep their names and order; strip and
+        raw are this override's additions.
 
         :param Union[str, list[str]] cmd: Command to execute. Can be a
             shell string or a list of arguments
@@ -80,11 +86,11 @@ class PosixActionBase(CoreActionBase):
             the command
         :param Optional[str] chdir: Change to this directory before
             executing
-        :param bool strip: Strip trailing whitespace from output
         :param Optional[dict] task_vars: Dictionary of task variables
             from the calling task
         :param Optional[bool] check_mode: Optional override for Ansible
             check mode
+        :param bool strip: Strip trailing whitespace from output
         :param Optional[Union[bool, str]] raw: Force raw execution
             (True/False) or auto-detect ("auto")
         :returns dict: The result dictionary from the command plugin
@@ -226,3 +232,36 @@ class PosixActionBase(CoreActionBase):
         self._display.vvv(f"which failed, {cmd} command not found.")
 
         return None
+
+    def _get_target_timezone(
+        self, task_vars: Optional[dict[str, Any]] = None
+    ) -> timezone:
+        """Get the target system's timezone as a timezone object.
+
+        Uses ``date +%z`` to read the UTC offset (e.g. '-0400').
+        Falls back to UTC when detection or parsing fails, so callers
+        always receive a usable timezone.
+
+        :param Optional[dict] task_vars: Dictionary of task variables
+            from the calling task
+        :returns timezone: The target's local timezone
+        """
+        offset_result = self._command(
+            ["date", "+%z"], task_vars=task_vars, check_mode=False
+        )
+        if offset_result.get("rc") != 0:
+            self._display.vvv("Failed to get timezone offset, assuming UTC")
+            return timezone.utc
+
+        offset_str = (offset_result.get("stdout") or "").strip()
+        if not offset_str:
+            return timezone.utc
+
+        try:
+            return parse_timezone_offset(offset_str)
+        except ValueError as e:
+            self._display.vvv(
+                f"Failed to parse timezone offset '{offset_str}': {e}, "
+                "assuming UTC"
+            )
+            return timezone.utc

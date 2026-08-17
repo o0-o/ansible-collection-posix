@@ -44,7 +44,7 @@ def test_uname_filter_delegates_to_parse_uname(
 
     expected = {"kernel": {"name": "linux"}}
     with patch(
-        "ansible_collections.o0_o.posix.plugins.filter" ".uname._parse_uname",
+        "ansible_collections.o0_o.posix.plugins.filter.uname._parse_uname",
         return_value=(expected, []),
     ) as mock_parse:
         result = filter_module.filters()["uname"]("uname -a")
@@ -59,7 +59,7 @@ def test_uname_filter_raises_on_parse_error(
     """Test that parse errors become AnsibleFilterError."""
 
     with patch(
-        "ansible_collections.o0_o.posix.plugins.filter" ".uname._parse_uname",
+        "ansible_collections.o0_o.posix.plugins.filter.uname._parse_uname",
         return_value=(None, [ValueError("bad output")]),
     ):
         with pytest.raises(AnsibleFilterError, match="uname failed"):
@@ -73,7 +73,7 @@ def test_uname_filter_normalizes_list_input(
 
     expected = {"kernel": {"name": "linux"}}
     with patch(
-        "ansible_collections.o0_o.posix.plugins.filter" ".uname._parse_uname",
+        "ansible_collections.o0_o.posix.plugins.filter.uname._parse_uname",
         return_value=(expected, []),
     ) as mock_parse:
         filter_module.filters()["uname"](["line1", "line2"])
@@ -88,7 +88,7 @@ def test_uname_filter_normalizes_dict_input(
 
     expected = {"kernel": {"name": "linux"}}
     with patch(
-        "ansible_collections.o0_o.posix.plugins.filter" ".uname._parse_uname",
+        "ansible_collections.o0_o.posix.plugins.filter.uname._parse_uname",
         return_value=(expected, []),
     ) as mock_parse:
         filter_module.filters()["uname"]({"stdout": "uname output"})

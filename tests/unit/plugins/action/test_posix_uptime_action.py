@@ -13,7 +13,7 @@
 
 from __future__ import annotations
 
-from datetime import timezone
+from datetime import datetime, timezone
 from typing import Generator
 
 import pytest
@@ -25,6 +25,7 @@ from ansible_collections.o0_o.posix.plugins.action.uptime import ActionModule
 
 @pytest.fixture
 def plugin(base) -> Generator[ActionModule, None, None]:
+    """Create an ActionModule instance for uptime tests."""
     base._task.async_val = False
     base._task.action = "uptime"
     base._task.args = {}
@@ -43,17 +44,28 @@ def plugin(base) -> Generator[ActionModule, None, None]:
 
 
 def test_uptime_success(monkeypatch: pytest.MonkeyPatch, plugin) -> None:
+    """Test run returns parsed uptime, load, and session data."""
     cmd_output = {"rc": 0, "stdout": "ignored"}
+    started = datetime(2025, 1, 1, tzinfo=timezone.utc)
     parsed = {
         "uptime": {
-            "elapsed": {"seconds": 123},
-            "started": {"iso8601": "2025-01-01T00:00:00Z"},
+            "elapsed": {
+                "seconds": 123,
+                "pretty": "2 minutes, 3 seconds",
+                "iso8601": "PT2M3S",
+            },
+            "started": {
+                "seconds": int(started.timestamp()),
+                "pretty": "Wednesday, January 1, 2025, 12:00:00 a.m. UTC",
+            },
         },
-        "load": {"1": 0.5, "5": 0.4, "15": 0.3},
+        "load": {"1m": 0.5, "5m": 0.4, "15m": 0.3},
         "login_sessions": 2,
     }
 
-    monkeypatch.setattr(plugin, "_cmd", lambda *_args, **_kwargs: cmd_output)
+    monkeypatch.setattr(
+        plugin, "_command", lambda *_args, **_kwargs: cmd_output
+    )
     monkeypatch.setattr(
         plugin, "_get_target_timezone", lambda _tv: timezone.utc
     )
@@ -73,24 +85,28 @@ def test_uptime_success(monkeypatch: pytest.MonkeyPatch, plugin) -> None:
 def test_uptime_command_failure(
     monkeypatch: pytest.MonkeyPatch, plugin
 ) -> None:
+    """Test a failing uptime command raises AnsibleActionFail."""
+
     def cmd_mock(args, **_kwargs):
         if args == ["date", "+%z"]:
             return {"rc": 0, "stdout": "+0000"}
         return {"rc": 1, "stderr": "boom"}
 
-    monkeypatch.setattr(plugin, "_cmd", cmd_mock)
+    monkeypatch.setattr(plugin, "_command", cmd_mock)
 
     with pytest.raises(AnsibleActionFail, match="uptime command failed"):
         plugin.run(task_vars={})
 
 
 def test_uptime_parse_failure(monkeypatch: pytest.MonkeyPatch, plugin) -> None:
+    """Test a parser error raises AnsibleActionFail."""
+
     def cmd_mock(args, **_kwargs):
         if args == ["date", "+%z"]:
             return {"rc": 0, "stdout": "+0000"}
         return {"rc": 0, "stdout": "bad"}
 
-    monkeypatch.setattr(plugin, "_cmd", cmd_mock)
+    monkeypatch.setattr(plugin, "_command", cmd_mock)
 
     def raise_error(data: object, now=None) -> dict[str, object]:
         raise ValueError("parse")

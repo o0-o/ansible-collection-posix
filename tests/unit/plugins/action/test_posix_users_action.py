@@ -18,7 +18,6 @@ import pytest
 
 from ansible_collections.o0_o.posix.plugins.action.users import ActionModule
 
-
 PASSWD_ID = {
     "0": {
         "name": "root",
@@ -94,7 +93,7 @@ def plugin(base) -> Generator[ActionModule, None, None]:
 def test_users_action_by_id(
     monkeypatch: pytest.MonkeyPatch, plugin: ActionModule
 ) -> None:
-    """Users keyed by id include primary and supplementary groups."""
+    """Test users keyed by id carry primary and extra groups."""
 
     def mock_cmd(cmd, task_vars=None, **kwargs):
         if cmd == ["cat", "/etc/passwd"]:
@@ -103,7 +102,12 @@ def test_users_action_by_id(
             return {"rc": 0, "stdout": "GROUP"}
         return {"rc": 1}
 
-    monkeypatch.setattr(plugin, "_cmd", mock_cmd)
+    monkeypatch.setattr(plugin, "_command", mock_cmd)
+    # Home and shell metadata come from the read action plugin, which
+    # is exercised by its own tests.
+    monkeypatch.setattr(
+        plugin, "_read", lambda **kwargs: {"paths": {}}, raising=False
+    )
     monkeypatch.setattr(
         "ansible_collections.o0_o.posix.plugins.action.users.passwd_info",
         lambda content, key="id": (
@@ -133,7 +137,7 @@ def test_users_action_by_id(
 def test_users_action_by_name(
     monkeypatch: pytest.MonkeyPatch, plugin: ActionModule
 ) -> None:
-    """Users keyed by name expose textual groups."""
+    """Test users keyed by name expose textual groups."""
 
     plugin._task.args = {"key": "name"}
 
@@ -144,7 +148,12 @@ def test_users_action_by_name(
             return {"rc": 0, "stdout": "GROUP"}
         return {"rc": 1}
 
-    monkeypatch.setattr(plugin, "_cmd", mock_cmd)
+    monkeypatch.setattr(plugin, "_command", mock_cmd)
+    # Home and shell metadata come from the read action plugin, which
+    # is exercised by its own tests.
+    monkeypatch.setattr(
+        plugin, "_read", lambda **kwargs: {"paths": {}}, raising=False
+    )
     monkeypatch.setattr(
         "ansible_collections.o0_o.posix.plugins.action.users.passwd_info",
         lambda content, key="id": (

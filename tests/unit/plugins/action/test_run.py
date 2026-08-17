@@ -466,7 +466,7 @@ def test_parse_batch_output_preserves_metadata(plugin) -> None:
     """Test _parse_batch_output preserves request metadata in result."""
     plugin.strip = True
     output = (
-        "0\n1735689600\n1735689601\n4 /tmp/0.stdout\nfoo\n" "0 /tmp/0.stderr\n"
+        "0\n1735689600\n1735689601\n4 /tmp/0.stdout\nfoo\n0 /tmp/0.stderr\n"
     )
     command_requests = [
         {

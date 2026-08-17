@@ -204,5 +204,6 @@ def test_mount_handles_dict_input() -> None:
         payload = {"stdout": "dev on /dev type tmpfs (rw)"}
         result = mount_utils.mount(payload)
 
-    mock_parse.assert_called_once_with("mount", payload)
+    # mount() extracts stdout from dict input before parsing
+    mock_parse.assert_called_once_with("mount", payload["stdout"])
     assert result[0]["mount"] == "/dev"

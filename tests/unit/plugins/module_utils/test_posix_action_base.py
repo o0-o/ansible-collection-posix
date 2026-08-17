@@ -13,7 +13,7 @@
 
 from __future__ import annotations
 
-from typing import Dict, List
+from typing import Dict, List, Union
 
 import pytest
 
@@ -44,19 +44,24 @@ class _Recorder:
 
 
 class DummyPosixAction(PosixActionBase):
-    """Minimal PosixActionBase subclass with stubbed _cmd behaviour."""
+    """Minimal PosixActionBase subclass with stubbed _command behaviour."""
 
     def __init__(self, responses: List[Dict[str, object]]) -> None:
         self._responses = list(responses)
-        self.calls: List[List[str]] = []
+        self.calls: List[Union[str, List[str]]] = []
         self._display = _Recorder()
 
-    def _cmd(  # type: ignore[override]
+    def _command(  # type: ignore[override]
         self,
-        cmd: List[str],
+        cmd: Union[str, List[str]],
+        stdin=None,
+        chdir=None,
         task_vars=None,
         check_mode=None,
+        strip=True,
+        raw=None,
     ) -> Dict[str, object]:
+        """Record the command and return the next stubbed response."""
         self.calls.append(cmd)
         if not self._responses:
             raise AssertionError("No more stubbed responses available")

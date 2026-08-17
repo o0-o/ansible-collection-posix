@@ -23,9 +23,18 @@ from ansible_collections.o0_o.posix.plugins.module_utils import (
     normalize_group_members,
     passwd_info,
 )
-from ansible_collections.o0_o.ssh.plugins.module_utils import (
-    authorized_keys,
-)
+
+# The o0_o.ssh collection is an optional dependency: without it, user
+# facts still gather, minus authorized_keys parsing.
+try:
+    from ansible_collections.o0_o.ssh.plugins.module_utils import (
+        authorized_keys,
+    )
+
+    HAS_SSH_COLLECTION = True
+except ImportError:
+    authorized_keys = None
+    HAS_SSH_COLLECTION = False
 
 
 class ActionModule(ReadPosixActionBase, ActionBase):
@@ -42,10 +51,19 @@ class ActionModule(ReadPosixActionBase, ActionBase):
         tmp: Optional[str] = None,
         task_vars: Optional[dict[str, Any]] = None,
     ) -> dict[str, Any]:
-        task_vars = task_vars or {}
-        tmp = None
+        """Execute user and group fact gathering.
 
-        result = super().run(task_vars=task_vars)
+        :param Optional[str] tmp: Unused temporary directory path
+        :param Optional[dict[str, Any]] task_vars: Available Ansible
+            variables
+        :returns dict[str, Any]: Result dictionary with users, groups,
+            homes, and shells data
+        """
+        task_vars = task_vars or {}
+        self._def_inventory_hostname(task_vars)
+
+        result = super().run(tmp, task_vars=task_vars)
+        del tmp  # unused
 
         argument_spec = {
             "key": {"type": "str", "choices": ["id", "name"], "default": "id"},
@@ -379,7 +397,7 @@ class ActionModule(ReadPosixActionBase, ActionBase):
 
             # Issue warning if needed
             if auth_keys_warning:
-                host = self._get_inventory_hostname(task_vars)
+                host = self._def_inventory_hostname(task_vars)
                 self._display.warning(f"[{host}] {auth_keys_warning}")
 
     def _check_directory_readable(
@@ -404,7 +422,8 @@ class ActionModule(ReadPosixActionBase, ActionBase):
         """Gather authorized_keys files for a user.
 
         Returns dict keyed by SSH key data with metadata about which
-        file(s) contain the key.
+        file(s) contain the key. Skips gathering with a warning when
+        the optional o0_o.ssh collection is not installed.
 
         :param str ssh_dir: Path to .ssh directory
         :param Optional[str] username: Username for warning messages
@@ -412,6 +431,12 @@ class ActionModule(ReadPosixActionBase, ActionBase):
         :returns tuple[Optional[Dict], Optional[str]]: Authorized keys
             dict (keyed by key data) and optional warning message
         """
+        if not HAS_SSH_COLLECTION:
+            return None, (
+                "o0_o.ssh collection is not installed; skipping "
+                f"authorized_keys gathering for user '{username}'"
+            )
+
         auth_files = {
             "authorized_keys": f"{ssh_dir}/authorized_keys",
             "authorized_keys2": f"{ssh_dir}/authorized_keys2",
@@ -505,8 +530,12 @@ class ActionModule(ReadPosixActionBase, ActionBase):
         :param str ssh_dir: Path to .ssh directory
         :param dict[str, Any] task_vars: Task variables
         :returns Optional[Dict]: Dict mapping key data to metadata, or
-            None if .ssh not readable
+            None if .ssh not readable or the optional o0_o.ssh
+            collection is not installed
         """
+        if not HAS_SSH_COLLECTION:
+            return None
+
         # Find all .pub files
         find_cmd = self._command(
             [
@@ -605,19 +634,11 @@ class ActionModule(ReadPosixActionBase, ActionBase):
         if not home_paths:
             return {}
 
-        # Batch read metadata for all homes (target auto-included)
+        # Batch read metadata for all homes; the read action's default
+        # attributes cover type, ownership, mode, timestamps, ACL, and
+        # SELinux context
         read_result = self._read(
             paths=list(home_paths),
-            include=[
-                "type",
-                "owner",
-                "group",
-                "mode",
-                "modified",
-                "created",
-                "acl",
-                "selinux",
-            ],
             task_vars=task_vars,
         )
 
@@ -641,17 +662,7 @@ class ActionModule(ReadPosixActionBase, ActionBase):
                         # Read target metadata if not already read
                         if target not in homes:
                             target_read = self._read(
-                                path=target,
-                                include=[
-                                    "type",
-                                    "owner",
-                                    "group",
-                                    "mode",
-                                    "modified",
-                                    "created",
-                                    "acl",
-                                    "selinux",
-                                ],
+                                paths=target,
                                 task_vars=task_vars,
                             )
                             if (
@@ -708,18 +719,10 @@ class ActionModule(ReadPosixActionBase, ActionBase):
         if not shell_paths_to_read:
             return shells
 
-        # Batch read metadata for all new shells (target auto-included)
+        # Batch read metadata for all new shells; the read action's
+        # default attributes cover everything gathered here
         read_result = self._read(
             paths=list(shell_paths_to_read),
-            include=[
-                "type",
-                "owner",
-                "group",
-                "mode",
-                "modified",
-                "acl",
-                "selinux",
-            ],
             task_vars=task_vars,
         )
 

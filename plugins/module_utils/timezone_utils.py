@@ -17,12 +17,37 @@ Queries the system-level timezone by unsetting TZ and running
 
 from __future__ import annotations
 
+from datetime import timedelta, timezone
 from typing import Any, Optional
 
 from ansible_collections.o0_o.core.plugins.module_utils import (
     process_all_command_results,
     process_command_spec,
 )
+
+
+def parse_timezone_offset(offset: str) -> timezone:
+    """Parse a UTC offset string like '-0400' or '+0530'.
+
+    The format is what ``date +%z`` prints: a sign followed by four
+    digits, hours then minutes.
+
+    :param str offset: Timezone offset string from ``date +%z``
+    :returns timezone: Timezone object with the specified offset
+    :raises ValueError: If the offset format is invalid
+    """
+    if len(offset) != 5 or offset[0] not in ("+", "-"):
+        raise ValueError(f"Invalid offset format: {offset}")
+
+    try:
+        sign = 1 if offset[0] == "+" else -1
+        hours = int(offset[1:3])
+        minutes = int(offset[3:5])
+    except ValueError:
+        raise ValueError(f"Invalid offset format: {offset}")
+
+    offset_delta = timedelta(hours=sign * hours, minutes=sign * minutes)
+    return timezone(offset_delta)
 
 
 def _parse_timezone(

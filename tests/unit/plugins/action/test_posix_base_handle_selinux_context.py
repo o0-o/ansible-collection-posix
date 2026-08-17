@@ -115,14 +115,14 @@ def test_handle_selinux_context_logic(
     # Mock _which to simulate tool presence
     write_base._which = lambda tool, task_vars=None: which_map.get(tool)
 
-    # Mock _cmd to track and simulate execution
-    def mock_cmd(cmd, task_vars=None):
+    # Mock _command to track and simulate execution
+    def mock_command(cmd, task_vars=None, **kwargs):
         issued_cmds.append(cmd)
         if fail_cmd and fail_cmd in cmd[0]:
             return {"rc": 1, "stderr": f"{cmd[0]} failed"}
         return {"rc": 0, "stderr": ""}
 
-    write_base._cmd = mock_cmd
+    write_base._command = mock_command
 
     if expected_error:
         with pytest.raises(RuntimeError, match=expected_error):

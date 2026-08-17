@@ -1,0 +1,11 @@
+---
+bugfixes:
+  - who - Restored the action plugin after an import of a removed base class left it unloadable; target timezone detection now lives in PosixActionBase with the offset parser in timezone_utils (https://github.com/o0-o/ansible-collection-posix/pull/XXX).
+  - uptime - Restored the action plugin after an import of a removed base class left it unloadable (https://github.com/o0-o/ansible-collection-posix/pull/XXX).
+  - who - Login timestamps lacking a year or a date resolve against the reference time again, rolling back a year or a day when the parse lands in the future (https://github.com/o0-o/ansible-collection-posix/pull/XXX).
+  - users - The o0_o.ssh collection is now optional; SSH key gathering skips with a warning when it is not installed instead of failing to import (https://github.com/o0-o/ansible-collection-posix/pull/XXX).
+  - users - Fixed a warning path that called a removed hostname helper (https://github.com/o0-o/ansible-collection-posix/pull/XXX).
+  - users - Restored home and shell metadata gathering, which crashed calling a read helper that no longer existed; the helper now runs the read action (https://github.com/o0-o/ansible-collection-posix/pull/XXX).
+  - lineinfile_dedupe - Fixed a warning path that called a removed hostname helper (https://github.com/o0-o/ansible-collection-posix/pull/XXX).
+  - uptime - Documented load averages under their real keys (1m, 5m, 15m) (https://github.com/o0-o/ansible-collection-posix/pull/XXX).
+  - command - Removed documentation for the unsupported _force_raw option, which the raw option supersedes (https://github.com/o0-o/ansible-collection-posix/pull/XXX).

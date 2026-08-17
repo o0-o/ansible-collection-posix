@@ -36,6 +36,41 @@ from ansible_collections.o0_o.utils.plugins.module_utils import (
 class ReadPosixActionBase(PosixActionBase):
     """Base class for stat and read plugins with shared methods."""
 
+    def _read(
+        self,
+        paths: Any,
+        task_vars: Optional[dict[str, Any]] = None,
+        check_mode: Optional[bool] = None,
+        **options: Any,
+    ) -> dict[str, Any]:
+        """Run the o0_o.posix.read action for one or more paths.
+
+        Metadata (type, mode, owner, group, timestamps, ACL, SELinux)
+        arrives by default through the read action's attributes
+        option. Extra keyword options pass through to its argument
+        spec (extended, content, follow, children, ...).
+
+        :param paths: Path or list of paths to inspect
+        :param Optional[dict] task_vars: Dictionary of task variables
+            from the calling task
+        :param Optional[bool] check_mode: Override check mode setting
+        :param options: Additional read action arguments
+        :returns dict: The read action's result, with metadata under
+            its paths key
+        """
+        if isinstance(paths, str):
+            paths = [paths]
+
+        args: dict[str, Any] = {"paths": paths}
+        args.update(options)
+
+        return self._run_action(
+            "o0_o.posix.read",
+            args,
+            task_vars=task_vars,
+            check_mode=check_mode,
+        )
+
     def _get_read_commands(
         self,
         paths: list[str],

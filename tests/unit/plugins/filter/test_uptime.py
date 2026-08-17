@@ -23,14 +23,17 @@ from ansible_collections.o0_o.posix.plugins.filter.uptime import FilterModule
 
 @pytest.fixture(name="filter_module")
 def fixture_filter_module() -> FilterModule:
+    """Provide a filter instance per test."""
     return FilterModule()
 
 
 def test_uptime_filter_exposes_helper(filter_module: FilterModule) -> None:
+    """Test that filters() advertises the uptime callable."""
     assert set(filter_module.filters()) == {"uptime"}
 
 
 def test_uptime_filter_success(filter_module: FilterModule) -> None:
+    """Test parsing uptime output into elapsed time and load."""
     output = (
         "15:41:26 up 3 days,  2:03,  2 users,  load average: 0.81, 0.72, 0.69"
     )
@@ -38,11 +41,12 @@ def test_uptime_filter_success(filter_module: FilterModule) -> None:
     result = filter_module.uptime_filter(output)
 
     assert "uptime" in result
-    assert result["load"]["1"] == pytest.approx(0.81)
+    assert result["load"]["1m"] == pytest.approx(0.81)
     assert result["login_sessions"] >= 0
 
 
 def test_uptime_filter_wraps_exceptions(filter_module: FilterModule) -> None:
+    """Test that parser exceptions become AnsibleFilterError."""
     with patch(
         "ansible_collections.o0_o.posix.plugins.filter.uptime.parse_uptime",
         side_effect=ValueError("bad"),

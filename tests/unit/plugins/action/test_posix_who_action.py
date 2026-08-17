@@ -20,10 +20,14 @@ import pytest
 from ansible.errors import AnsibleActionFail
 
 from ansible_collections.o0_o.posix.plugins.action.who import ActionModule
+from ansible_collections.o0_o.posix.plugins.module_utils import (
+    parse_timezone_offset,
+)
 
 
 @pytest.fixture
 def plugin(base) -> Generator[ActionModule, None, None]:
+    """Create an ActionModule instance for who tests."""
     base._task.async_val = False
     base._task.action = "who"
     base._task.args = {}
@@ -44,10 +48,13 @@ def plugin(base) -> Generator[ActionModule, None, None]:
 def test_who_success(
     monkeypatch: pytest.MonkeyPatch, plugin: ActionModule
 ) -> None:
+    """Test run returns the parsed sessions unchanged."""
     cmd_result = {"rc": 0, "stdout": "ignored"}
     parsed = {"sessions": [{"user": "alice"}]}
 
-    monkeypatch.setattr(plugin, "_cmd", lambda *_args, **_kwargs: cmd_result)
+    monkeypatch.setattr(
+        plugin, "_command", lambda *_args, **_kwargs: cmd_result
+    )
     monkeypatch.setattr(
         plugin, "_get_target_timezone", lambda _tv: timezone.utc
     )
@@ -65,12 +72,14 @@ def test_who_success(
 def test_who_command_failure(
     monkeypatch: pytest.MonkeyPatch, plugin: ActionModule
 ) -> None:
-    def cmd_mock(args, **_kwargs):
-        if args == ["date", "+%z"]:
+    """Test a failing who command raises AnsibleActionFail."""
+
+    def cmd_mock(cmd, **_kwargs):
+        if cmd == ["date", "+%z"]:
             return {"rc": 0, "stdout": "+0000"}
         return {"rc": 1, "stderr": "failure"}
 
-    monkeypatch.setattr(plugin, "_cmd", cmd_mock)
+    monkeypatch.setattr(plugin, "_command", cmd_mock)
 
     with pytest.raises(AnsibleActionFail, match="who command failed"):
         plugin.run(task_vars={})
@@ -79,12 +88,14 @@ def test_who_command_failure(
 def test_who_parse_failure(
     monkeypatch: pytest.MonkeyPatch, plugin: ActionModule
 ) -> None:
-    def cmd_mock(args, **_kwargs):
-        if args == ["date", "+%z"]:
+    """Test a parse error raises AnsibleActionFail."""
+
+    def cmd_mock(cmd, **_kwargs):
+        if cmd == ["date", "+%z"]:
             return {"rc": 0, "stdout": "+0000"}
         return {"rc": 0}
 
-    monkeypatch.setattr(plugin, "_cmd", cmd_mock)
+    monkeypatch.setattr(plugin, "_command", cmd_mock)
 
     def raise_error(data: object, now=None) -> dict[str, Any]:
         raise ValueError("parse")
@@ -113,13 +124,12 @@ class TestTimezoneOffset:
     )
     def test_parse_timezone_offset_valid(
         self,
-        plugin: ActionModule,
         offset_str: str,
         expected_hours: int,
         expected_minutes: int,
     ) -> None:
         """Test parsing valid timezone offset strings."""
-        tz = plugin._parse_timezone_offset(offset_str)
+        tz = parse_timezone_offset(offset_str)
         expected = timezone(
             timedelta(hours=expected_hours, minutes=expected_minutes)
         )
@@ -136,12 +146,10 @@ class TestTimezoneOffset:
             "+ab00",  # Non-numeric
         ],
     )
-    def test_parse_timezone_offset_invalid(
-        self, plugin: ActionModule, invalid_offset: str
-    ) -> None:
+    def test_parse_timezone_offset_invalid(self, invalid_offset: str) -> None:
         """Test that invalid offset strings raise ValueError."""
         with pytest.raises(ValueError, match="Invalid offset format"):
-            plugin._parse_timezone_offset(invalid_offset)
+            parse_timezone_offset(invalid_offset)
 
     def test_get_target_timezone_success(
         self, monkeypatch: pytest.MonkeyPatch, plugin: ActionModule
@@ -149,7 +157,7 @@ class TestTimezoneOffset:
         """Test successful timezone detection."""
         monkeypatch.setattr(
             plugin,
-            "_cmd",
+            "_command",
             lambda *_args, **_kwargs: {"rc": 0, "stdout": "-0500"},
         )
 
@@ -162,7 +170,7 @@ class TestTimezoneOffset:
     ) -> None:
         """Test fallback to UTC when date command fails."""
         monkeypatch.setattr(
-            plugin, "_cmd", lambda *_args, **_kwargs: {"rc": 1}
+            plugin, "_command", lambda *_args, **_kwargs: {"rc": 1}
         )
 
         tz = plugin._get_target_timezone({})
@@ -173,7 +181,9 @@ class TestTimezoneOffset:
     ) -> None:
         """Test fallback to UTC when date returns empty output."""
         monkeypatch.setattr(
-            plugin, "_cmd", lambda *_args, **_kwargs: {"rc": 0, "stdout": ""}
+            plugin,
+            "_command",
+            lambda *_args, **_kwargs: {"rc": 0, "stdout": ""},
         )
 
         tz = plugin._get_target_timezone({})
@@ -185,7 +195,7 @@ class TestTimezoneOffset:
         """Test fallback to UTC when offset format is invalid."""
         monkeypatch.setattr(
             plugin,
-            "_cmd",
+            "_command",
             lambda *_args, **_kwargs: {"rc": 0, "stdout": "invalid"},
         )
 

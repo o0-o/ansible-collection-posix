@@ -11,7 +11,6 @@
 
 from __future__ import annotations
 
-
 DOCUMENTATION = r"""
 ---
 module: uptime
@@ -54,13 +53,13 @@ load:
   returned: always
   type: dict
   contains:
-    '1':
+    '1m':
       description: One minute load average.
       type: float
-    '5':
+    '5m':
       description: Five minute load average.
       type: float
-    '15':
+    '15m':
       description: Fifteen minute load average.
       type: float
 """

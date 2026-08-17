@@ -49,7 +49,8 @@ def test_parse_who_dict(monkeypatch: pytest.MonkeyPatch) -> None:
     assert session["tty"] == "pts/0"
     assert session["host"] == "10.0.0.1"
     assert session["pid"] == 1234
-    assert session["login_at"]["iso8601"] == "2025-01-15T10:00:00Z"
+    expected_login = datetime(2025, 1, 15, 10, 0, tzinfo=timezone.utc)
+    assert session["login_at"]["seconds"] == int(expected_login.timestamp())
     assert session["elapsed"]["seconds"] == 3600
 
 
@@ -111,9 +112,9 @@ def test_parse_who_openbsd_partial_time(
     session = result["sessions"][0]
     assert session["user"] == "root"
     assert session["tty"] == "ttyC0"
-    assert session["login_at"]["iso8601"] == "2025-10-16T11:03:00Z"
 
     expected_login = datetime(2025, 10, 16, 11, 3, tzinfo=timezone.utc)
+    assert session["login_at"]["seconds"] == int(expected_login.timestamp())
     assert session["elapsed"]["seconds"] == int(
         (reference - expected_login).total_seconds()
     )
@@ -141,4 +142,5 @@ def test_parse_who_openbsd_year_rollover(
 
     session = result["sessions"][0]
     assert session["tty"] == "ttyp0"
-    assert session["login_at"]["iso8601"] == "2025-12-31T23:50:00Z"
+    expected_login = datetime(2025, 12, 31, 23, 50, tzinfo=timezone.utc)
+    assert session["login_at"]["seconds"] == int(expected_login.timestamp())

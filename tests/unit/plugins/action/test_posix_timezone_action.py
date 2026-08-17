@@ -38,130 +38,90 @@ def plugin(base) -> Generator[ActionModule, None, None]:
     return plugin
 
 
-def test_timezone_full_detection(monkeypatch, plugin) -> None:
-    """Test full timezone detection with all components."""
+def test_run_returns_timezone_data(monkeypatch, plugin) -> None:
+    """Test run returns the detected abbreviation and offset."""
 
-    def mock_cmd(cmd, task_vars=None, **kwargs):
-        if cmd == ["env"]:
-            return {"rc": 0, "stdout": "TZ=America/New_York\n"}
-        if cmd == ["test", "-e", "/etc/localtime"]:
-            return {"rc": 0}
-        if cmd == ["readlink", "/etc/localtime"]:
-            return {
-                "rc": 0,
-                "stdout": "/var/db/timezone/zoneinfo/America/New_York\n",
-            }
-        if cmd == ["ls", "-l", "/etc/localtime"]:
-            return {"rc": 1}
-        if cmd == ["test", "-f", "/usr/share/zoneinfo/America/New_York"]:
-            return {"rc": 0}
-        if cmd == [
-            "strings",
-            "-n",
-            "1",
-            "/usr/share/zoneinfo/America/New_York",
-        ]:
-            return {
-                "rc": 0,
-                "stdout": "TZif2\nSomething\nEST5EDT,M3.2.0,M11.1.0\n",
-            }
-        if cmd == ["date", "+%Z"]:
-            return {"rc": 0, "stdout": "EDT\n"}
-        if cmd == ["date", "+%z"]:
-            return {"rc": 0, "stdout": "-0400\n"}
-        return {"rc": 1}
+    def mock_run(commands, **kwargs):
+        return []
 
-    monkeypatch.setattr(plugin, "_cmd", mock_cmd)
-    tz = plugin._get_timezone(task_vars={})
-    assert tz["name"] == "America/New_York"
-    assert tz["zone"] == tz["name"]
-    assert tz["posix"] == "EST5EDT,M3.2.0,M11.1.0"
-    standard = tz["standard"]
-    assert standard["abbr"] == "EST"
-    assert standard["offset"] == "-05:00"
-    daylight = tz["daylight"]
-    assert daylight["abbr"] == "EDT"
-    assert daylight["offset"] == "-04:00"
-    start = daylight["start"]
-    assert start["month"] == 3
-    assert start["week"] == 2
-    assert start["weekday"] == 0
-    assert start["time"] == "02:00"
-    end = daylight["end"]
-    assert end["month"] == 11
-    assert end["week"] == 1
-    assert end["weekday"] == 0
-    assert end["time"] == "02:00"
-    config = tz["config"]["/etc/localtime"]
-    assert config["link"] == "/var/db/timezone/zoneinfo/America/New_York"
-    assert tz["abbr"] == "EDT"
-    assert tz["offset"] == "-0400"
+    monkeypatch.setattr(plugin, "_run", mock_run)
+
+    from ansible_collections.o0_o.posix.plugins.action import (
+        timezone as timezone_mod,
+    )
+
+    monkeypatch.setattr(
+        timezone_mod,
+        "process_timezone_command_results",
+        lambda results: (
+            {
+                "o0_os": {
+                    "timezone": {
+                        "abbreviation": "EDT",
+                        "offset": "-0400",
+                    }
+                }
+            },
+            [],
+        ),
+    )
+
+    result = plugin.run(task_vars={})
+
+    assert result["timezone"]["abbreviation"] == "EDT"
+    assert result["timezone"]["offset"] == "-0400"
+    assert result["changed"] is False
 
 
-def test_timezone_tail_fallback(monkeypatch, plugin) -> None:
-    """Test fallback to /etc/timezone and tail command."""
+def test_run_emits_warnings_on_errors(monkeypatch, plugin) -> None:
+    """Test that detection failures emit warnings and empty facts."""
 
-    tail_chunk = "TZif3\nData\nMST7\n"
+    def mock_run(commands, **kwargs):
+        return []
 
-    def mock_cmd(cmd, task_vars=None, **kwargs):
-        if cmd == ["env"]:
-            return {"rc": 1}
-        if cmd == ["test", "-e", "/etc/localtime"]:
-            return {"rc": 0}
-        if cmd == ["readlink", "/etc/localtime"]:
-            return {"rc": 1}
-        if cmd == ["ls", "-l", "/etc/localtime"]:
-            return {
-                "rc": 0,
-                "stdout": (
-                    "/etc/localtime -> "
-                    "/usr/share/zoneinfo/America/Phoenix\n"
-                ),
-            }
-        if cmd == ["test", "-f", "/etc/timezone"]:
-            return {"rc": 0}
-        if cmd == ["cat", "/etc/timezone"]:
-            return {"rc": 0, "stdout": "America/Phoenix\n"}
-        if cmd == ["test", "-f", "/usr/share/zoneinfo/America/Phoenix"]:
-            return {"rc": 0}
-        if cmd == [
-            "strings",
-            "-n",
-            "1",
-            "/usr/share/zoneinfo/America/Phoenix",
-        ]:
-            return {"rc": 1}
-        if cmd == ["tail", "-c", "512", "/usr/share/zoneinfo/America/Phoenix"]:
-            return {"rc": 0, "stdout": tail_chunk}
-        if cmd == ["date", "+%Z"]:
-            return {"rc": 0, "stdout": "MST\n"}
-        if cmd == ["date", "+%z"]:
-            return {"rc": 0, "stdout": "-0700\n"}
-        return {"rc": 1}
+    monkeypatch.setattr(plugin, "_run", mock_run)
 
-    monkeypatch.setattr(plugin, "_cmd", mock_cmd)
-    tz = plugin._get_timezone(task_vars={})
-    assert tz["name"] == "America/Phoenix"
-    assert tz["zone"] == tz["name"]
-    assert tz["posix"] == "MST7"
-    standard = tz["standard"]
-    assert standard["abbr"] == "MST"
-    assert standard["offset"] == "-07:00"
-    config = tz["config"]["/etc/localtime"]
-    assert config["link"] == "/usr/share/zoneinfo/America/Phoenix"
-    assert "daylight" not in tz
-    assert tz["abbr"] == "MST"
-    assert tz["offset"] == "-0700"
+    from ansible_collections.o0_o.posix.plugins.action import (
+        timezone as timezone_mod,
+    )
+
+    monkeypatch.setattr(
+        timezone_mod,
+        "process_timezone_command_results",
+        lambda results: (
+            {},
+            [ValueError("Empty timezone output")],
+        ),
+    )
+
+    result = plugin.run(task_vars={})
+
+    assert result["timezone"] == {}
+    plugin._display.warning.assert_called()
 
 
-def test_timezone_detection_failure(monkeypatch, plugin) -> None:
-    """Test that RuntimeError is raised when detection fails."""
+def test_run_calls_run_with_correct_kwargs(monkeypatch, plugin) -> None:
+    """Test that _run is called with parallel and check_mode."""
+    captured = {}
 
-    def mock_cmd(cmd, task_vars=None, **kwargs):
-        return {"rc": 1}
+    def mock_run(commands, **kwargs):
+        captured.update(kwargs)
+        return []
 
-    monkeypatch.setattr(plugin, "_cmd", mock_cmd)
-    with pytest.raises(
-        RuntimeError, match="Timezone detection methods exhausted"
-    ):
-        plugin._get_timezone(task_vars={})
+    monkeypatch.setattr(plugin, "_run", mock_run)
+
+    from ansible_collections.o0_o.posix.plugins.action import (
+        timezone as timezone_mod,
+    )
+
+    monkeypatch.setattr(
+        timezone_mod,
+        "process_timezone_command_results",
+        lambda results: ({}, []),
+    )
+
+    plugin.run(task_vars={})
+
+    assert captured["parallel"] is True
+    assert captured["fail_fast"] is False
+    assert captured["check_mode"] is False

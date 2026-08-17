@@ -99,7 +99,7 @@ def test_parse_uname_delegates_to_jc() -> None:
 def test_parse_uname_fallback_openbsd() -> None:
     """Test _parse_uname fallback handles OpenBSD when jc fails."""
 
-    obsd = "OpenBSD openbsd.home.johnandlaurel.com" " 7.6 GENERIC.MP#196 arm64"
+    obsd = "OpenBSD openbsd.home.johnandlaurel.com 7.6 GENERIC.MP#196 arm64"
 
     with patch.object(
         uname_utils,

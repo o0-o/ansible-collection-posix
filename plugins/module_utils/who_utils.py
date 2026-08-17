@@ -18,8 +18,10 @@ from typing import Any, Iterable, Optional, Sequence, Union
 
 try:
     from dateutil import parser as dateutil_parser
+    from dateutil.parser import _parser as dateutil_internal_parser
 except ImportError:  # pragma: no cover - handled by parse_datetime import
     dateutil_parser = None
+    dateutil_internal_parser = None
 
 from ansible_collections.o0_o.posix.plugins.module_utils.jc_utils import (
     jc_parse,
@@ -100,42 +102,24 @@ def parse_who(
 def _normalise_login_datetime(value: str, reference: datetime) -> datetime:
     candidate = (value or "").strip()
     if candidate:
-        info = parse_datetime(candidate)
-        resolved = _datetime_from_info(candidate, info, reference)
+        resolved = _parse_login_candidate(candidate, reference)
         if resolved is not None:
             return resolved.replace(microsecond=0)
     return reference.replace(microsecond=0)
 
 
-def _datetime_from_info(
-    candidate: str,
-    info: Optional[dict[str, Any]],
-    reference: datetime,
-) -> Optional[datetime]:
-    tzinfo = reference.tzinfo or timezone.utc
-    if info:
-        iso_value = info.get("iso8601")
-        if iso_value:
-            iso_value = iso_value.replace("Z", "+00:00")
-            try:
-                dt = datetime.fromisoformat(iso_value)
-            except ValueError:
-                dt = None
-            else:
-                if dt.tzinfo is None:
-                    dt = dt.replace(tzinfo=tzinfo)
-                else:
-                    dt = dt.astimezone(tzinfo)
-                return dt
-        return _parse_with_dateutil(candidate, reference, iso_value)
-    return _parse_with_dateutil(candidate, reference, None)
-
-
-def _parse_with_dateutil(
+def _parse_login_candidate(
     candidate: str,
     reference: datetime,
-    iso_hint: Optional[str],
 ) -> Optional[datetime]:
+    """Parse a login timestamp, resolving components who omits.
+
+    who prints login times at whatever precision the platform
+    chooses, so missing components default from the reference time.
+    A default that lands the login in the future is corrected
+    backward: a timestamp lacking a year rolls back a year, and one
+    lacking a date entirely rolls back a day.
+    """
     if dateutil_parser is None:
         return None
 
@@ -154,22 +138,37 @@ def _parse_with_dateutil(
         parsed = parsed.replace(tzinfo=tzinfo)
     parsed = parsed.astimezone(tzinfo)
 
-    tolerance = timedelta(minutes=5)
+    raw = _raw_parse(candidate)
+    if raw is None:
+        return parsed
 
-    if iso_hint:
-        if iso_hint.startswith("--"):
-            for attempt in range(3):
-                if parsed <= reference + tolerance:
-                    break
-                try:
-                    parsed = parsed.replace(year=parsed.year - 1)
-                except ValueError:
-                    parsed = parsed - timedelta(days=366)
-        elif ":" in iso_hint and "T" not in iso_hint and "-" not in iso_hint:
-            if parsed > reference + tolerance:
-                parsed = parsed - timedelta(days=1)
+    tolerance = timedelta(minutes=5)
+    has_date = raw.month is not None or raw.day is not None
+
+    if raw.year is None and has_date:
+        for attempt in range(3):
+            if parsed <= reference + tolerance:
+                break
+            try:
+                parsed = parsed.replace(year=parsed.year - 1)
+            except ValueError:
+                parsed = parsed - timedelta(days=366)
+    elif not has_date and raw.hour is not None:
+        if parsed > reference + tolerance:
+            parsed = parsed - timedelta(days=1)
 
     return parsed
+
+
+def _raw_parse(candidate: str) -> Optional[Any]:
+    """Expose dateutil's raw parse result for precision detection."""
+    if dateutil_internal_parser is None:
+        return None
+    try:
+        raw, _skipped = dateutil_internal_parser.parser()._parse(candidate)
+    except Exception:
+        return None
+    return raw
 
 
 def _compute_elapsed(reference: datetime, start: datetime) -> dict[str, Any]:

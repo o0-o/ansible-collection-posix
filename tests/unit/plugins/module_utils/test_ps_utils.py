@@ -88,7 +88,6 @@ def test_restructure_time_started_from_elapsed() -> None:
     assert "elapsed" in result["time"]
     assert "started" in result["time"]
     assert "seconds" in result["time"]["started"]
-    assert "iso8601" in result["time"]["started"]
     assert "pretty" in result["time"]["started"]
 
     # Verify started is approximately 330 seconds (5:30) ago
@@ -282,7 +281,6 @@ def test_restructure_complete_process() -> None:
     assert "elapsed" in result["time"]
     assert "started" in result["time"]
     assert "seconds" in result["time"]["started"]
-    assert "iso8601" in result["time"]["started"]
     assert "pretty" in result["time"]["started"]
 
     # Processor fields

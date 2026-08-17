@@ -40,32 +40,32 @@ def plugin(base) -> Generator[ActionModule, None, None]:
 
 
 def test_which_finds_command(monkeypatch, plugin) -> None:
-    """Resolve a command path successfully."""
+    """Test resolving a command path successfully."""
 
     monkeypatch.setattr(
-        plugin, "_which", lambda name, task_vars=None: "/bin/date"
+        plugin, "_which", lambda cmd, task_vars=None: "/bin/date"
     )
-    plugin._task.args = {"name": "date"}
+    plugin._task.args = {"command": "date"}
     result = plugin.run(task_vars={})
-    assert result["which"]["found"] is True
-    assert result["which"]["path"] == "/bin/date"
+    assert result["changed"] is False
+    assert result["path"] == "/bin/date"
 
 
 def test_which_not_found(monkeypatch, plugin) -> None:
-    """Return found False when command is missing."""
+    """Test that a missing command resolves to a null path."""
 
-    monkeypatch.setattr(plugin, "_which", lambda name, task_vars=None: None)
-    plugin._task.args = {"name": "no-such-command"}
+    monkeypatch.setattr(plugin, "_which", lambda cmd, task_vars=None: None)
+    plugin._task.args = {"command": "no-such-command"}
     result = plugin.run(task_vars={})
-    assert result["which"]["found"] is False
-    assert result["which"]["path"] is None
+    assert result["changed"] is False
+    assert result["path"] is None
 
 
 def test_which_builtin(monkeypatch, plugin) -> None:
-    """Return found False for shell built-ins like echo."""
+    """Test that a shell built-in resolves to its bare name."""
 
-    monkeypatch.setattr(plugin, "_which", lambda name, task_vars=None: "echo")
-    plugin._task.args = {"name": "echo"}
+    monkeypatch.setattr(plugin, "_which", lambda cmd, task_vars=None: "echo")
+    plugin._task.args = {"command": "echo"}
     result = plugin.run(task_vars={})
-    assert result["which"]["found"] is True
-    assert result["which"]["path"] == "echo"
+    assert result["changed"] is False
+    assert result["path"] == "echo"

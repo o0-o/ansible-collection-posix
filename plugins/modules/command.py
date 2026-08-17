@@ -16,7 +16,6 @@
 from __future__ import absolute_import, division, print_function
 from __future__ import annotations
 
-
 DOCUMENTATION = r"""
 ---
 module: command
@@ -97,7 +96,6 @@ options:
     default: "auto"
 extends_documentation_fragment:
   - action_common_attributes
-  - o0_o.posix.raw_fallback
 attributes:
   check_mode:
     support: full

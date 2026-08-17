@@ -19,10 +19,12 @@ from unittest.mock import patch
 import pytest
 from ansible.errors import AnsibleFilterError
 
+from ansible_collections.o0_o.posix.plugins.filter import (
+    dmidecode as dmidecode_mod,
+)
 from ansible_collections.o0_o.posix.plugins.filter.dmidecode import (
     FilterModule,
 )
-from tests.utils import boom
 
 
 @pytest.fixture
@@ -46,33 +48,32 @@ def test_dmidecode_filter_exposes_helper(filter_module: FilterModule) -> None:
 def test_dmidecode_filter_delegates_to_helper(
     filter_module: FilterModule,
 ) -> None:
-    """Wrapper returns data from module_utils.dmidecode unchanged."""
+    """Wrapper returns data from _parse_dmidecode unchanged."""
     expected = [{"handle": "0x0000", "type": 0}]
-    with patch(
-        "ansible_collections.o0_o.posix.plugins.filter.dmidecode.dmidecode",
-        return_value=expected,
-    ) as mock_dmidecode:
+    with patch.object(
+        dmidecode_mod,
+        "_parse_dmidecode",
+        return_value=(expected, []),
+    ) as mock_parse:
         result = filter_module.filters()["dmidecode"]("dmidecode output")
 
-    mock_dmidecode.assert_called_once_with("dmidecode output")
+    mock_parse.assert_called_once_with("dmidecode output", "")
     assert result is expected
 
 
-@pytest.mark.parametrize(
-    "exception", [ValueError("bad"), ImportError("missing")]
-)
-def test_dmidecode_filter_wraps_exceptions(
+@pytest.mark.parametrize("error", [ValueError("bad"), ImportError("missing")])
+def test_dmidecode_filter_wraps_parse_errors(
     filter_module: FilterModule,
-    exception: Exception,
-    monkeypatch: pytest.MonkeyPatch,
+    error: Exception,
 ) -> None:
-    """ValueError/ImportError from helper become AnsibleFilterError."""
-    monkeypatch.setattr(
-        "ansible_collections.o0_o.posix.plugins.filter.dmidecode.dmidecode",
-        boom(exception),
-    )
-    with pytest.raises(AnsibleFilterError, match="dmidecode failed"):
-        filter_module.filters()["dmidecode"]("broken")
+    """Test that parse errors become AnsibleFilterError."""
+    with patch.object(
+        dmidecode_mod,
+        "_parse_dmidecode",
+        return_value=(None, [error]),
+    ):
+        with pytest.raises(AnsibleFilterError, match="dmidecode failed"):
+            filter_module.filters()["dmidecode"]("broken")
 
 
 def test_dmidecode_parses_real_output(

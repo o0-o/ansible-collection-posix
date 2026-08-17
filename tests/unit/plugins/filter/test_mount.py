@@ -46,7 +46,7 @@ def test_mount_filter_delegates_to_parse_mount(
 
     expected = [{"mount": "/proc"}]
     with patch(
-        "ansible_collections.o0_o.posix.plugins.filter" ".mount._parse_mount",
+        "ansible_collections.o0_o.posix.plugins.filter.mount._parse_mount",
         return_value=(expected, []),
     ) as mock_parse:
         result = filter_module.filters()["mount"]("mount output")
@@ -61,7 +61,7 @@ def test_mount_filter_raises_on_parse_error(
     """Test that parse errors become AnsibleFilterError."""
 
     with patch(
-        "ansible_collections.o0_o.posix.plugins.filter" ".mount._parse_mount",
+        "ansible_collections.o0_o.posix.plugins.filter.mount._parse_mount",
         return_value=(None, [ValueError("bad output")]),
     ):
         with pytest.raises(AnsibleFilterError, match="mount failed"):
@@ -75,7 +75,7 @@ def test_mount_filter_normalizes_dict_input(
 
     expected = [{"mount": "/"}]
     with patch(
-        "ansible_collections.o0_o.posix.plugins.filter" ".mount._parse_mount",
+        "ansible_collections.o0_o.posix.plugins.filter.mount._parse_mount",
         return_value=(expected, []),
     ) as mock_parse:
         filter_module.filters()["mount"]({"stdout": "mount output"})

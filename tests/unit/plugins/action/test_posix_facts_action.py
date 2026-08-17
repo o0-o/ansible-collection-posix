@@ -38,7 +38,7 @@ def plugin(base) -> Generator[ActionModule, None, None]:
         templar=base._templar,
         shared_loader_obj=base._shared_loader_obj,
     )
-    plugin._cmd = base._cmd
+    plugin._command = base._command
     plugin._display = base._display
     plugin.inventory_hostname = "localhost"
     plugin.effective_user = "testuser"

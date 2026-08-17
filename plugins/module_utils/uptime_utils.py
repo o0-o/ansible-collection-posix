@@ -153,13 +153,14 @@ def _parse_started_time(value: str) -> Optional[dict[str, Any]]:
             parsed = parse_datetime(candidate)
         except Exception:
             return None
-        iso_value = parsed.get("iso8601")
-        if not iso_value:
+        if not parsed:
+            return None
+        seconds = parsed.get("seconds")
+        if not isinstance(seconds, int):
+            # Sub-date precision: nothing to rebuild an epoch from
+            parsed.pop("microseconds", None)
             return parsed
-        try:
-            dt = datetime.fromisoformat(iso_value.replace("Z", "+00:00"))
-        except ValueError:
-            return parsed
+        dt = datetime.fromtimestamp(seconds, tz=timezone.utc)
     dt = dt.replace(microsecond=0)
     return parse_datetime(dt.isoformat())
 

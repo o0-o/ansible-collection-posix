@@ -71,7 +71,7 @@ tmpfs on /tmp type tmpfs (rw,nosuid,nodev)""",
             return {"rc": 0, "stdout": ""}
         return {"rc": 1}
 
-    monkeypatch.setattr(plugin, "_cmd", mock_cmd)
+    monkeypatch.setattr(plugin, "_command", mock_cmd)
 
     mounts = plugin._get_mounts_dict(task_vars={})
 
@@ -128,7 +128,7 @@ tmpfs on /tmp type tmpfs (rw,nosuid,nodev)""",
             }
         return {"rc": 1}
 
-    monkeypatch.setattr(plugin, "_cmd", mock_cmd)
+    monkeypatch.setattr(plugin, "_command", mock_cmd)
     plugin._task.args = {"virtual": True}
 
     mounts = plugin._get_mounts_dict(task_vars={})
@@ -168,7 +168,7 @@ def test_get_mounts_with_spaces(monkeypatch, plugin) -> None:
             }
         return {"rc": 1}
 
-    monkeypatch.setattr(plugin, "_cmd", mock_cmd)
+    monkeypatch.setattr(plugin, "_command", mock_cmd)
 
     mounts = plugin._get_mounts_dict(task_vars={})
 
@@ -199,7 +199,7 @@ def test_get_mounts_macos_format(monkeypatch, plugin) -> None:
             }
         return {"rc": 1}
 
-    monkeypatch.setattr(plugin, "_cmd", mock_cmd)
+    monkeypatch.setattr(plugin, "_command", mock_cmd)
 
     mounts = plugin._get_mounts_dict(task_vars={})
 
@@ -228,7 +228,7 @@ def test_get_mounts_mount_fails(monkeypatch, plugin) -> None:
             }
         return {"rc": 1}
 
-    monkeypatch.setattr(plugin, "_cmd", mock_cmd)
+    monkeypatch.setattr(plugin, "_command", mock_cmd)
 
     with pytest.raises(Exception) as exc:
         plugin._get_mounts_dict(task_vars={})
@@ -249,7 +249,7 @@ def test_get_mounts_no_df(monkeypatch, plugin) -> None:
             return {"rc": 1, "stderr": "df: command not found"}
         return {"rc": 1}
 
-    monkeypatch.setattr(plugin, "_cmd", mock_cmd)
+    monkeypatch.setattr(plugin, "_command", mock_cmd)
 
     # df failure should raise an exception since it's required
     with pytest.raises(Exception) as exc:
@@ -285,7 +285,7 @@ tmpfs on /run type tmpfs (rw,nosuid,nodev)""",
             }
         return {"rc": 1}
 
-    monkeypatch.setattr(plugin, "_cmd", mock_cmd)
+    monkeypatch.setattr(plugin, "_command", mock_cmd)
 
     # Default: virtual=False (exclude virtual filesystems)
     mounts = plugin._get_mounts_dict(task_vars={})
@@ -328,7 +328,7 @@ def test_get_mounts_network_fs(monkeypatch, plugin) -> None:
             }
         return {"rc": 1}
 
-    monkeypatch.setattr(plugin, "_cmd", mock_cmd)
+    monkeypatch.setattr(plugin, "_command", mock_cmd)
 
     # Default: network=True (include network filesystems)
     mounts = plugin._get_mounts_dict(task_vars={})
@@ -377,7 +377,7 @@ def test_run_method(monkeypatch, plugin) -> None:
             }
         return {"rc": 1}
 
-    monkeypatch.setattr(plugin, "_cmd", mock_cmd)
+    monkeypatch.setattr(plugin, "_command", mock_cmd)
 
     result = plugin.run(task_vars={})
 

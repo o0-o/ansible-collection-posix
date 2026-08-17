@@ -78,6 +78,7 @@ from ansible_collections.o0_o.posix.plugins.module_utils.shells_utils import (
 
 from ansible_collections.o0_o.posix.plugins.module_utils.timezone_utils import (  # noqa: E501
     get_timezone_command_requests,
+    parse_timezone_offset,
     process_timezone_command_results,
 )
 from ansible_collections.o0_o.posix.plugins.module_utils.uptime_utils import (
@@ -158,6 +159,7 @@ __all__ = [
     "process_mount_command_results",
     "parse_shells",
     "get_timezone_command_requests",
+    "parse_timezone_offset",
     "process_timezone_command_results",
     "parse_uptime",
     "parse_who",

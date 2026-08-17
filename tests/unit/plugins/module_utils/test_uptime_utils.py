@@ -53,7 +53,10 @@ def test_parse_uptime_linux(
     assert result["uptime"]["elapsed"]["seconds"] == seconds
     assert result["load"] == {"1m": 0.81, "5m": 0.72, "15m": 0.69}
     assert result["login_sessions"] == 2
-    assert result["uptime"]["started"]["iso8601"] == "2025-01-12T13:38:26Z"
+    expected_start = datetime(2025, 1, 12, 13, 38, 26, tzinfo=timezone.utc)
+    started = result["uptime"]["started"]
+    assert started["seconds"] == int(expected_start.timestamp())
+    assert "microseconds" not in started
 
 
 def test_parse_uptime_bsd(

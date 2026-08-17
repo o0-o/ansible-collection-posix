@@ -52,7 +52,7 @@ EXAMPLES = r"""
 
 - name: Show load average
   ansible.builtin.debug:
-    msg: "1 minute load {{ uptime_info.load['1'] }}"
+    msg: "1 minute load {{ uptime_info['load']['1m'] }}"
 """
 
 RETURN = r"""

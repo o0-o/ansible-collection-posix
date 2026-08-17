@@ -28,15 +28,11 @@ def test_validate_file_success(monkeypatch, write_base) -> None:
     """Test _validate_file successful validation."""
     called = {}
 
-    def mock_cmd(argv, task_vars=None):
-        called["cmd"] = argv
+    def mock_command(cmd, task_vars=None, **kwargs):
+        called["cmd"] = cmd
         return {"rc": 0}
 
-    def mock_quote(s):
-        return f"'{s}'"
-
-    write_base._cmd = mock_cmd
-    write_base._quote = mock_quote
+    write_base._command = mock_command
 
     write_base._validate_file("/tmp/foo.conf", "validate %s")
 
@@ -46,11 +42,10 @@ def test_validate_file_success(monkeypatch, write_base) -> None:
 def test_validate_file_failure_raises(monkeypatch, write_base) -> None:
     """Test _validate_file raises error on validation failure."""
 
-    def mock_cmd(argv, task_vars=None):
+    def mock_command(cmd, task_vars=None, **kwargs):
         return {"rc": 1, "stderr": "syntax error"}
 
-    write_base._cmd = mock_cmd
-    write_base._quote = lambda s: s  # No quoting for this test
+    write_base._command = mock_command
 
     with pytest.raises(RuntimeError, match="Validation failed:"):
         write_base._validate_file("/etc/foo", "validate %s")

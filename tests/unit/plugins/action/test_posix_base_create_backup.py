@@ -31,7 +31,7 @@ def test_create_backup_behavior(
     """
     dest_path = "/tmp/testfile.txt"
 
-    write_base._cmd = MagicMock(
+    write_base._command = MagicMock(
         side_effect=[
             {"rc": 0} if file_exists else {"rc": 1},
             {"rc": 0} if cp_success else {"rc": 1, "stderr": "cp failed"},
