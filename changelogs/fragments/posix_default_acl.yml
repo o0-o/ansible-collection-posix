@@ -1,0 +1,25 @@
+---
+bugfixes:
+  - >-
+    read - POSIX default ACL entries were mangled, because the parser
+    read the four fields of a default line as the three of an access
+    line. The principal was lost, so every unnamed and named default of
+    a kind collapsed into one entry, and the principal was scanned as
+    the permission string, inventing rights - a
+    default:group:wheel:r-x entry reported write from the w in wheel
+    (https://github.com/o0-o/ansible-collection-posix/pull/XXX).
+  - >-
+    read - Default entries now appear with the cross-platform
+    inheritance vocabulary the macOS and NFS v4 parsers already use,
+    carrying inheritance with file, directory, only and propagate true,
+    and unnamed defaults are typed owner, group_owner, mask and other.
+    Unlike access entries, unnamed defaults are reported, since a
+    default constrains children rather than restating the mode bits
+    (https://github.com/o0-o/ansible-collection-posix/pull/XXX).
+  - >-
+    read - A getfacl line the parser cannot read now fails the module
+    with the offending line quoted, and a mode string that advertises
+    an ACL with no entries parsed fails the same way. A misread entry
+    would misreport the permissions in force, so silence is never an
+    option for security facts
+    (https://github.com/o0-o/ansible-collection-posix/pull/XXX).

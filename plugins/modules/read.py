@@ -344,13 +344,15 @@ paths:
           description:
             - ACL details obtained via getfacl or derived from extended
               attributes when available.
-            - Contains keys such as C(text), C(access), C(default), and
-              C(entries) depending on the information collected.
             - A C(type) field indicates the ACL provider (for example
-              C(posix), C(macos), C(nfs4)).
+              C(posix), C(macos), C(nfs4)) and C(entries) lists the
+              individual ACL entries.
+            - POSIX default entries appear as entries with
+              C(inheritance) and C(only) true, not under a separate
+              key.
           type: dict
           returned: when ACL data is retrievable
-          sample: {type: posix, text: '# file: sample'}
+          sample: {type: posix, entries: [{type: mask, read: true}]}
         xattrs:
           description:
             - Extended attributes gathered for the path, nested by the

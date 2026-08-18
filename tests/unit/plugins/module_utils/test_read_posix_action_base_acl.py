@@ -49,9 +49,9 @@ def action() -> DummyReadAction:
 def sample() -> Callable[[str], str]:
     """Read a sample tool capture from the files directory.
 
-    The samples under files/ are constructed to match the documented
-    output of getfacl, nfs4_getfacl and ls -le. They were written by
-    hand, not captured from a live host.
+    The samples under files/ match the output of getfacl, nfs4_getfacl
+    and ls -le. The getfacl sample is a verbatim capture from a live
+    Fedora 43 host; the others were written by hand.
     """
 
     def _read(name: str) -> str:
@@ -285,7 +285,7 @@ class TestParsePosixAcl:
     """Tests for _parse_posix_acl."""
 
     def test_extended_and_default_entries(self, action, sample) -> None:
-        """Test a full getfacl capture maps to extended entries."""
+        """Test a full getfacl capture maps to access and default entries."""
         acl = action._parse_posix_acl(sample("acl_posix_getfacl.txt"))
 
         assert acl == {
@@ -293,34 +293,143 @@ class TestParsePosixAcl:
             "entries": [
                 {
                     "type": "user",
-                    "name": "john",
+                    "name": "adm",
                     "read": True,
                     "execute": True,
                 },
                 {
-                    "type": "group",
-                    "name": "devs",
+                    "type": "mask",
+                    "read": True,
+                    "execute": True,
+                },
+                {
+                    "type": "owner",
                     "read": True,
                     "write": True,
                     "execute": True,
+                    "inheritance": {
+                        "file": True,
+                        "directory": True,
+                        "only": True,
+                        "propagate": True,
+                    },
+                },
+                {
+                    "type": "user",
+                    "name": "adm",
+                    "read": True,
+                    "write": True,
+                    "execute": True,
+                    "inheritance": {
+                        "file": True,
+                        "directory": True,
+                        "only": True,
+                        "propagate": True,
+                    },
+                },
+                {
+                    "type": "group_owner",
+                    "read": True,
+                    "execute": True,
+                    "inheritance": {
+                        "file": True,
+                        "directory": True,
+                        "only": True,
+                        "propagate": True,
+                    },
+                },
+                {
+                    "type": "group",
+                    "name": "wheel",
+                    "read": True,
+                    "execute": True,
+                    "inheritance": {
+                        "file": True,
+                        "directory": True,
+                        "only": True,
+                        "propagate": True,
+                    },
                 },
                 {
                     "type": "mask",
                     "read": True,
                     "write": True,
                     "execute": True,
+                    "inheritance": {
+                        "file": True,
+                        "directory": True,
+                        "only": True,
+                        "propagate": True,
+                    },
                 },
-                # The default: entries below lose their principal and
-                # their permissions: the parser reads parts[1] as the
-                # name and parts[2] as the perms, which for a
-                # default:user:john:r-x line are 'user' and 'john'.
-                {"type": "default", "name": "user"},
-                {"type": "default", "name": "user"},
-                {"type": "default", "name": "group"},
-                {"type": "default", "name": "mask"},
-                {"type": "default", "name": "other"},
+                {
+                    "type": "other",
+                    "read": True,
+                    "execute": True,
+                    "inheritance": {
+                        "file": True,
+                        "directory": True,
+                        "only": True,
+                        "propagate": True,
+                    },
+                },
             ],
         }
+
+    def test_unnamed_and_named_defaults_are_distinct(self, action) -> None:
+        """Test a default owner is not confused with a named default."""
+        acl = action._parse_posix_acl(
+            "default:user::rwx\ndefault:user:adm:rwx\n"
+        )
+
+        assert acl["entries"] == [
+            {
+                "type": "owner",
+                "read": True,
+                "write": True,
+                "execute": True,
+                "inheritance": {
+                    "file": True,
+                    "directory": True,
+                    "only": True,
+                    "propagate": True,
+                },
+            },
+            {
+                "type": "user",
+                "name": "adm",
+                "read": True,
+                "write": True,
+                "execute": True,
+                "inheritance": {
+                    "file": True,
+                    "directory": True,
+                    "only": True,
+                    "propagate": True,
+                },
+            },
+        ]
+
+    def test_named_default_group_keeps_its_principal(self, action) -> None:
+        """Test a named default group grants only the rights written."""
+        acl = action._parse_posix_acl("default:group:wheel:r-x\n")
+
+        # The principal used to be read as the permission field, so the
+        # w in wheel granted write on a read-execute entry.
+        assert acl["entries"] == [
+            {
+                "type": "group",
+                "name": "wheel",
+                "read": True,
+                "execute": True,
+                "inheritance": {
+                    "file": True,
+                    "directory": True,
+                    "only": True,
+                    "propagate": True,
+                },
+            }
+        ]
 
     def test_basic_permissions_only(self, action) -> None:
         """Test a file with no extended ACL yields no entries."""
@@ -351,6 +460,20 @@ class TestParsePosixAcl:
             }
         ]
 
+    def test_named_group_permission_booleans(self, action) -> None:
+        """Test a named group access entry keeps its principal."""
+        acl = action._parse_posix_acl("group:devs:rwx\n")
+
+        assert acl["entries"] == [
+            {
+                "type": "group",
+                "name": "devs",
+                "read": True,
+                "write": True,
+                "execute": True,
+            }
+        ]
+
     def test_no_permissions_entry_has_no_boolean_keys(self, action) -> None:
         """Test an entry with --- carries no permission keys."""
         acl = action._parse_posix_acl("user:john:---\n")
@@ -372,25 +495,41 @@ class TestParsePosixAcl:
 
     @pytest.mark.parametrize(
         "text",
-        ["", "\n\n", "# file: /etc/hosts\n", "garbage\n", "user:john\n"],
+        ["", "\n\n", "# file: /etc/hosts\n", "# flags: -s-\n"],
     )
-    def test_empty_or_malformed_input(self, action, text) -> None:
-        """Test blank, comment and short lines produce no entries."""
+    def test_blank_and_comment_input(self, action, text) -> None:
+        """Test blank and comment lines produce no entries."""
         assert action._parse_posix_acl(text) == {
             "type": "posix",
             "entries": [],
         }
 
-    def test_effective_comment_is_read_as_permissions(self, action) -> None:
-        """Test a trailing #effective comment stays inside the perms."""
-        acl = action._parse_posix_acl("user:john:rwx\t#effective:r-x\n")
+    @pytest.mark.parametrize(
+        "line",
+        [
+            "banana:adm:rwx",
+            "user:adm:rwq",
+            "default:banana:x:rwx",
+            "no colons here",
+            "user:john",
+        ],
+    )
+    def test_unparseable_entry_raises(self, action, line) -> None:
+        """Test a line that is not a comment and not an entry fails."""
+        with pytest.raises(ValueError, match=re.escape(repr(line))):
+            action._parse_posix_acl(line)
+
+    def test_effective_comment_is_stripped(self, action) -> None:
+        """Test a trailing #effective comment leaves the perms alone."""
+        acl = action._parse_posix_acl("user:adm:rwx\t#effective:r--\n")
 
         # The masked-down effective rights are not applied; the raw
-        # rwx field is what is reported.
+        # rwx field is what is reported, and the mask entry is included
+        # for anyone who needs to derive them.
         assert acl["entries"] == [
             {
                 "type": "user",
-                "name": "john",
+                "name": "adm",
                 "read": True,
                 "write": True,
                 "execute": True,

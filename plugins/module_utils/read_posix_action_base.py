@@ -1038,9 +1038,19 @@ class ReadPosixActionBase(PosixActionBase):
                                     acl_text
                                 )
                             else:
-                                attributes["acl"] = self._parse_posix_acl(
-                                    acl_text
-                                )
+                                posix_acl = self._parse_posix_acl(acl_text)
+                                # ls marks a path carrying an ACL with a
+                                # trailing + on its mode string, so an
+                                # empty parse means entries were lost
+                                mode = entry.get("flags", "")
+                                acl_entries = (posix_acl or {}).get("entries")
+                                if mode.endswith("+") and not acl_entries:
+                                    raise ValueError(
+                                        f"Mode {mode} advertises an ACL "
+                                        f"for {path} but no ACL entries "
+                                        f"were parsed from: {acl_text!r}"
+                                    )
+                                attributes["acl"] = posix_acl
                     else:
                         # All commands failed - system doesn't support ACLs
                         attributes["acl"] = {}
@@ -1505,20 +1515,74 @@ class ReadPosixActionBase(PosixActionBase):
             group::r-x
             mask::r-x
             other::r-x
+            default:user::rwx
+            default:user:john:r-x
 
         Returns simplified structure where each entry has type and optional
-        name fields. Only extended ACL entries (named users/groups, mask)
-        are included - basic entries (owner, group_owner, other) are
-        excluded as they represent standard Unix permissions.
+        name fields. Of the access entries only the extended ones (named
+        users/groups, mask) are included - the unnamed owner,
+        group_owner and other entries are excluded as they represent
+        standard Unix permissions.
+
+        A ``default:`` line is a rule the directory hands to the children
+        created inside it, so every default entry is kept, unnamed ones
+        included, and carries the cross-platform inheritance dict::
+
+            default:user:adm:rwx -> {
+                "type": "user",
+                "name": "adm",
+                "read": True,
+                "write": True,
+                "execute": True,
+                "inheritance": {
+                    "file": True,
+                    "directory": True,
+                    "only": True,
+                    "propagate": True,
+                },
+            }
+
+        A default reaches files and directories alike and each
+        subdirectory hands it down again, while the entry places no
+        restriction on the directory holding it. Unnamed defaults take
+        the schema vocabulary: ``default:user::`` is ``owner``,
+        ``default:group::`` is ``group_owner``, and ``default:mask::``
+        and ``default:other::`` keep their own names. There is no
+        ``default`` key; the inheritance dict is how a default is
+        expressed.
+
+        POSIX ACLs cannot deny, so a right is present only when granted.
+        A trailing ``#effective:`` comment is dropped rather than
+        modelled, since it derives from the mask entry that is itself
+        reported.
+
+        A line that is neither blank nor a comment and does not parse as
+        an entry raises rather than being dropped, since a discarded or
+        misread entry would misreport the permissions in force.
 
         :param str acl_text: Raw getfacl output
         :returns dict[str, Any]: Parsed ACL structure (empty entries if
             only basic permissions)
+        :raises ValueError: If a line is not a comment and does not parse
+                            as an entry
         """
-        extended_entries: list[dict[str, Any]] = []
+        import re
 
-        for line in acl_text.splitlines():
-            line = line.strip()
+        # The only entry types getfacl writes, before any default: prefix
+        entry_types = ("user", "group", "mask", "other")
+        # An unnamed default has no principal, so it is typed by class
+        default_unnamed_types = {
+            "user": "owner",
+            "group": "group_owner",
+            "mask": "mask",
+            "other": "other",
+        }
+        perms_pattern = re.compile(r"[rwx-]+")
+
+        entries: list[dict[str, Any]] = []
+
+        for raw_line in acl_text.splitlines():
+            line = raw_line.strip()
             if not line:
                 continue
 
@@ -1526,56 +1590,69 @@ class ReadPosixActionBase(PosixActionBase):
             if line.startswith("#"):
                 continue
 
+            # getfacl marks an entry the mask cuts down with a trailing
+            # #effective: comment, which the mask entry already implies
+            line = line.split("#", 1)[0].strip()
+
+            # A default: prefix shifts every field one to the right
+            is_default = line.startswith("default:")
+            if is_default:
+                line = line[len("default:"):]
+
             # Parse ACL entry: type:name:perms or type::perms
             parts = line.split(":")
-            if len(parts) >= 3:
-                entry_type = parts[0]
-                name = parts[1] if parts[1] else None
-                perms = parts[2] if len(parts) > 2 else ""
+            if (
+                len(parts) != 3
+                or parts[0] not in entry_types
+                or not perms_pattern.fullmatch(parts[2])
+            ):
+                # Reading a principal as a permission string would
+                # invent rights, so refuse the whole ACL
+                raise ValueError(f"Unparseable POSIX ACL entry: {raw_line!r}")
 
-                entry: dict[str, Any] = {}
-                is_extended = False
+            entry_type, name, perms = parts
+            entry: dict[str, Any] = {}
 
-                # Handle named vs non-named entries
+            if is_default:
+                # A default binds children whether it is named or not,
+                # unlike an unnamed access entry
                 if name:
-                    # Named user or group - EXTENDED ACL entry
                     entry["type"] = entry_type
                     entry["name"] = name
-                    is_extended = True
                 else:
-                    # Non-named entries - check if extended or basic
-                    if entry_type == "user":
-                        # user:: is owner (basic, skip)
-                        continue
-                    elif entry_type == "group":
-                        # group:: is group_owner (basic, skip)
-                        continue
-                    elif entry_type == "other":
-                        # other:: is basic, skip
-                        continue
-                    elif entry_type == "mask":
-                        # mask:: only exists with extended ACLs
-                        entry["type"] = "mask"
-                        is_extended = True
-                    else:
-                        # Other types (e.g., default:user::)
-                        entry["type"] = entry_type
-                        is_extended = True
+                    entry["type"] = default_unnamed_types[entry_type]
+            elif name:
+                # Named user or group - EXTENDED ACL entry
+                entry["type"] = entry_type
+                entry["name"] = name
+            elif entry_type == "mask":
+                # mask:: only exists with extended ACLs
+                entry["type"] = "mask"
+            else:
+                # user::, group:: and other:: restate the mode bits
+                continue
 
-                # Parse permissions to boolean fields (only for extended)
-                if is_extended:
-                    if "r" in perms:
-                        entry["read"] = True
-                    if "w" in perms:
-                        entry["write"] = True
-                    if "x" in perms:
-                        entry["execute"] = True
+            # Parse permissions to boolean fields
+            if "r" in perms:
+                entry["read"] = True
+            if "w" in perms:
+                entry["write"] = True
+            if "x" in perms:
+                entry["execute"] = True
 
-                    extended_entries.append(entry)
+            if is_default:
+                entry["inheritance"] = {
+                    "file": True,
+                    "directory": True,
+                    "only": True,
+                    "propagate": True,
+                }
 
-        # Always return structure with type, even if no extended entries
+            entries.append(entry)
+
+        # Always return structure with type, even if no entries
         # Empty entries means file has only basic Unix permissions
-        return {"type": "posix", "entries": extended_entries}
+        return {"type": "posix", "entries": entries}
 
     def _parse_nfs4_acl(self, acl_text: str) -> dict[str, Any]:
         """Parse NFS v4 ACL output from nfs4_getfacl into simplified dict.
