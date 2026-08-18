@@ -404,10 +404,10 @@ class TestAddContentWithEncoding:
 
         assert attributes == {"encoding": "base64", "content": "aGk="}
 
-    def test_autodetected_fallback_with_lines_raises_after_mutating(
+    def test_autodetected_fallback_with_lines_raises_without_mutating(
         self, action
     ) -> None:
-        """Test the lines rejection leaves base64 content behind."""
+        """Test the lines rejection leaves attributes untouched."""
         attributes = {}
 
         with pytest.raises(ValueError, match="Auto-detected encoding"):
@@ -419,7 +419,8 @@ class TestAddContentWithEncoding:
                 {"content": True, "lines": True},
             )
 
-        assert attributes == {"encoding": "base64", "content": "Y2Fmw6k="}
+        # A caller that catches must never see half-written state
+        assert attributes == {}
 
     def test_unencodable_content_raises_runtime_error(self, action) -> None:
         """Test a lone high surrogate fails before any encoding runs."""

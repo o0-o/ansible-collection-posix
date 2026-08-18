@@ -91,10 +91,19 @@ class ReadPosixActionBase(PosixActionBase):
         :param bool need_dir_contents: If True, add commands to list
             directory contents (for children feature)
         :param Optional[dict[str, Any]] platform: Platform capabilities
-            dict from _detect_platform_from_results(). If None, generates
-            all command variants for detection on first file.
+            dict from _detect_platform_from_results(). None or empty
+            means unknown: all command variants are generated for
+            detection on the first file. A non-empty dict is
+            authoritative and must carry every capability key.
         :returns dict: Command dictionary keyed by path-prefixed tags
         """
+        # An empty dict carries no knowledge, so it means detection
+        # mode just like None; without this the hash branches would
+        # read it as a platform with no hash tools and emit neither a
+        # hash command nor a probe
+        if not platform:
+            platform = None
+
         commands: dict[str, Any] = {}
         include_attributes = options.get("attributes", False) or options.get(
             "extended", False
@@ -651,12 +660,9 @@ class ReadPosixActionBase(PosixActionBase):
                         f"forced encoding '{encoding}': {e}"
                     )
                 else:
-                    # Auto-detected encoding failed - fall back to base64
-                    attributes["content"] = base64.b64encode(
-                        content_bytes
-                    ).decode("ascii")
-                    attributes["encoding"] = "base64"
-                    # Cannot provide lines for binary content
+                    # Cannot provide lines for binary content; refuse
+                    # before touching attributes so a caller that
+                    # catches never sees half-written state
                     if want_lines:
                         raise ValueError(
                             f"Cannot split binary content into lines for "
@@ -664,6 +670,11 @@ class ReadPosixActionBase(PosixActionBase):
                             f"failed to decode, falling back to base64. "
                             f"Remove lines=true or specify a text encoding."
                         )
+                    # Auto-detected encoding failed - fall back to base64
+                    attributes["content"] = base64.b64encode(
+                        content_bytes
+                    ).decode("ascii")
+                    attributes["encoding"] = "base64"
 
     def _process_read_results(
         self,

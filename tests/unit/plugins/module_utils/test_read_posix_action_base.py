@@ -152,6 +152,25 @@ class TestGetReadCommands:
             "/etc/hosts_inode_bsd": ["stat", "-f", "%i", "/etc/hosts"],
         }
 
+    def test_empty_platform_dict_means_detection_mode(self, action) -> None:
+        """Test an empty capabilities dict probes exactly like None."""
+        options = {"attributes": True, "md5": True, "sha256": True}
+
+        assert action._get_read_commands(
+            ["/f"], options, platform={}
+        ) == action._get_read_commands(["/f"], options, platform=None)
+
+    def test_empty_platform_dict_still_probes_hashes(self, action) -> None:
+        """Test a checksum request with no knowledge emits hash probes."""
+        commands = action._get_read_commands(
+            ["/f"], {"md5": True}, platform={}
+        )
+
+        # Without normalization the hash branches read {} as a platform
+        # with no hash tools and the checksum silently vanished
+        assert commands["/f_md5"] == ["md5sum", "/f"]
+        assert commands["/f_md5_bsd"] == ["md5", "-q", "/f"]
+
     def test_gnu_platform_drops_bsd_inode_probe(self, action) -> None:
         """Test a known GNU platform only runs the GNU inode command."""
         commands = action._get_read_commands(
@@ -323,16 +342,6 @@ class TestGetReadCommands:
             "/f_sha1_shasum",
             "/f_sha256_shasum",
         ]
-
-    def test_empty_platform_dict_disables_hash_commands(self, action) -> None:
-        """Test an empty platform dict silently drops hash commands."""
-        commands = action._get_read_commands(
-            ["/f"], {"md5": True}, platform={}
-        )
-
-        # The falsy {} is treated as detection mode for the inode
-        # probes but as a known platform by the hash branches.
-        assert sorted(commands) == ["/f_inode", "/f_inode_bsd", "/f_ls"]
 
     def test_dir_contents_adds_listing_per_path(self, action) -> None:
         """Test need_dir_contents adds a listing command per path."""
