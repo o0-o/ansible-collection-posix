@@ -1020,9 +1020,19 @@ class ReadPosixActionBase(PosixActionBase):
                         acl_text = acl_result.get("stdout", "").strip()
                         if acl_text:
                             if acl_type == "macos":
-                                attributes["acl"] = self._parse_macos_acl(
-                                    acl_text
-                                )
+                                macos_acl = self._parse_macos_acl(acl_text)
+                                # ls marks a path carrying an ACL with a
+                                # trailing + on its mode string, so an
+                                # empty parse means entries were lost
+                                mode = entry.get("flags", "")
+                                acl_entries = (macos_acl or {}).get("entries")
+                                if mode.endswith("+") and not acl_entries:
+                                    raise ValueError(
+                                        f"Mode {mode} advertises an ACL "
+                                        f"for {path} but no ACL entries "
+                                        f"were parsed from: {acl_text!r}"
+                                    )
+                                attributes["acl"] = macos_acl
                             elif acl_type == "nfs4":
                                 attributes["acl"] = self._parse_nfs4_acl(
                                     acl_text
@@ -1315,24 +1325,40 @@ class ReadPosixActionBase(PosixActionBase):
 
         Format: ``0: group:everyone deny write``
 
+        An entry inherited from a parent directory carries an
+        ``inherited`` token between the name and the allow/deny word,
+        as in ``0: group:staff inherited allow read``. Such entries
+        set ``inherited`` to true; the key is absent on direct entries.
+
         Returns simplified structure where each entry has type and name
         fields, with rights represented as boolean fields. Deny sets
         false, allow sets true. Only explicitly mentioned rights are
         included.
 
+        A line that opens like an ACE but does not match the entry
+        format raises rather than being dropped, since a discarded
+        entry would misreport the permissions in force. Lines that do
+        not claim to be entries, such as the ls -l line above them,
+        are still ignored.
+
         :param str acl_text: Raw ls -le output
         :returns Optional[dict[str, Any]]: Parsed ACL or None if no entries
+        :raises ValueError: If a line claims to be an ACE but does not
+                            parse
         """
         import re
 
         entries: list[dict[str, Any]] = []
-        # Pattern: index: qualifier:name permission rights[,rights...]
+        # Pattern: index: qualifier:name [inherited] permission rights
         pattern = re.compile(
             r"^\s*(\d+):\s+"  # index
             r"(\w+):(\S+)\s+"  # qualifier:name
-            r"(\w+)\s+"  # permission (allow/deny)
+            r"(?:(inherited)\s+)?"  # optional inherited marker
+            r"(allow|deny)\s+"  # permission
             r"(.+)$"  # rights
         )
+        # A leading index is ls claiming the line is an ACE
+        ace_line = re.compile(r"^\s*\d+:")
 
         # Mapping of macOS ACL rights to schema fields
         # Note: macOS uses different names for files vs directories:
@@ -1389,7 +1415,9 @@ class ReadPosixActionBase(PosixActionBase):
         for line in acl_text.splitlines():
             match = pattern.match(line)
             if match:
-                index, qualifier, name, permission, rights_str = match.groups()
+                index, qualifier, name, inherited, permission, rights_str = (
+                    match.groups()
+                )
                 # Parse rights (comma or space separated)
                 rights = [
                     r.strip()
@@ -1403,6 +1431,11 @@ class ReadPosixActionBase(PosixActionBase):
                 # Set type and name fields
                 entry["type"] = qualifier
                 entry["name"] = name
+
+                # Entries received from a parent directory are marked
+                # ahead of the allow/deny word
+                if inherited:
+                    entry["inherited"] = True
 
                 # Determine boolean value: allow=true, deny=false
                 value = permission == "allow"
@@ -1432,8 +1465,6 @@ class ReadPosixActionBase(PosixActionBase):
                     elif right in inherit_flags:
                         field_name = inherit_flags[right]
                         inheritance[field_name] = True
-                    elif right == "inherited":
-                        entry["inherited"] = True
 
                 # Add nested dicts only if they have content
                 if attributes:
@@ -1451,6 +1482,11 @@ class ReadPosixActionBase(PosixActionBase):
                     entry["inheritance"] = inheritance
 
                 entries.append(entry)
+
+            elif ace_line.match(line):
+                # Dropping an entry we cannot read would understate the
+                # permissions in force, so refuse the whole ACL
+                raise ValueError(f"Unparseable macOS ACL entry: {line!r}")
 
         # Always return the structure with type, even if no entries
         # Empty entries means file has no ACL (but system supports ACLs)

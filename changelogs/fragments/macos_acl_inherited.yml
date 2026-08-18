@@ -1,0 +1,15 @@
+---
+bugfixes:
+  - >-
+    read - macOS ACL entries inherited from a parent directory were
+    reported as denials with the inherited marker lost, because the
+    parser read the inherited token as the allow/deny word. Inherited
+    entries now keep their real rights and carry inherited true
+    (https://github.com/o0-o/ansible-collection-posix/pull/XXX).
+  - >-
+    read - A macOS ACL entry the parser cannot read now fails the
+    module with the offending line quoted, and a mode string that
+    advertises an ACL with no entries parsed fails the same way. A
+    dropped or misread entry would understate the permissions in
+    force, so silence is never an option for security facts
+    (https://github.com/o0-o/ansible-collection-posix/pull/XXX).

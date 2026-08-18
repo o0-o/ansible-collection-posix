@@ -13,6 +13,8 @@
 
 from __future__ import annotations
 
+import re
+
 from pathlib import Path
 from typing import Callable
 
@@ -109,6 +111,19 @@ class TestParseMacosAcl:
             ],
         }
 
+    def test_direct_allow_entry_has_no_inherited_key(self, action) -> None:
+        """Test a direct allow ACE records its rights as true."""
+        acl = action._parse_macos_acl(" 0: user:ci allow read,write")
+
+        assert acl["entries"] == [
+            {
+                "type": "user",
+                "name": "ci",
+                "read": True,
+                "write": True,
+            }
+        ]
+
     def test_deny_entry_sets_rights_false(self, action) -> None:
         """Test a deny ACE records its rights as false."""
         acl = action._parse_macos_acl(" 0: group:everyone deny write,delete")
@@ -119,6 +134,18 @@ class TestParseMacosAcl:
                 "name": "everyone",
                 "write": False,
                 "delete": False,
+            }
+        ]
+
+    def test_single_right_deny_entry(self, action) -> None:
+        """Test a deny ACE with one right is not marked inherited."""
+        acl = action._parse_macos_acl(" 0: group:everyone deny write")
+
+        assert acl["entries"] == [
+            {
+                "type": "group",
+                "name": "everyone",
+                "write": False,
             }
         ]
 
@@ -150,34 +177,41 @@ class TestParseMacosAcl:
         assert acl["entries"][0]["read"] is True
         assert acl["entries"][0]["write"] is True
 
-    def test_inherited_as_trailing_right(self, action) -> None:
-        """Test a trailing inherited token sets the inherited flag."""
-        acl = action._parse_macos_acl(" 0: user:bob allow read,inherited")
+    def test_inherited_allow_entry_keeps_rights_true(self, action) -> None:
+        """Test an inherited allow ACE reads as an allow."""
+        acl = action._parse_macos_acl(" 0: group:staff inherited allow read")
 
         assert acl["entries"] == [
             {
-                "type": "user",
-                "name": "bob",
+                "type": "group",
+                "name": "staff",
                 "read": True,
                 "inherited": True,
             }
         ]
 
-    def test_inherited_before_permission_word_misparses(self, action) -> None:
-        """Test an inherited allow ACE is read as a deny (known bug)."""
-        acl = action._parse_macos_acl(
-            " 0: user:john inherited allow read,write"
-        )
+    def test_inherited_deny_entry_keeps_rights_false(self, action) -> None:
+        """Test an inherited deny ACE reads as a deny."""
+        acl = action._parse_macos_acl(" 0: user:ci inherited deny read,write")
 
-        # 'inherited' is captured as the permission word, so the allow
-        # keyword lands in the rights list and every right reads false.
         assert acl["entries"] == [
             {
                 "type": "user",
-                "name": "john",
+                "name": "ci",
                 "read": False,
                 "write": False,
+                "inherited": True,
             }
+        ]
+
+    def test_inherited_among_rights_is_not_the_marker(self, action) -> None:
+        """Test inherited only marks an entry ahead of allow/deny."""
+        acl = action._parse_macos_acl(" 0: user:bob allow read,inherited")
+
+        # ls prints the marker before the permission word, so the token
+        # is an unknown right here and is dropped like any other.
+        assert acl["entries"] == [
+            {"type": "user", "name": "bob", "read": True}
         ]
 
     def test_unknown_rights_are_dropped(self, action) -> None:
@@ -199,7 +233,6 @@ class TestParseMacosAcl:
         [
             "",
             "-rw-r--r-- 1 john staff 0 Aug 16 10:01 /tmp/x\n",
-            " 0: garbage-line\n",
             "no acl entries here\n",
         ],
     )
@@ -212,10 +245,10 @@ class TestParseMacosAcl:
             "entries": [],
         }
 
-    def test_malformed_lines_are_skipped(self, action) -> None:
-        """Test only well formed ACE lines contribute entries."""
+    def test_lines_without_an_index_are_skipped(self, action) -> None:
+        """Test lines that do not claim to be ACEs are ignored."""
         text = (
-            " 0: garbage-line\n"
+            "-rw-r--r--+ 1 john staff 0 Aug 16 10:01 /tmp/x\n"
             " x: user:bob allow read\n"
             " 1: user:bob allow read\n"
         )
@@ -225,6 +258,27 @@ class TestParseMacosAcl:
         assert acl["entries"] == [
             {"type": "user", "name": "bob", "read": True}
         ]
+
+    @pytest.mark.parametrize(
+        "line",
+        [
+            "1: group:staff restricted allow read",
+            " 0: user:ci",
+            "3: garbage",
+            " 0: garbage-line",
+        ],
+    )
+    def test_unparseable_entry_raises(self, action, line) -> None:
+        """Test an indexed line that does not parse fails the parse."""
+        with pytest.raises(ValueError, match=re.escape(repr(line))):
+            action._parse_macos_acl(line)
+
+    def test_unparseable_entry_discards_earlier_entries(self, action) -> None:
+        """Test one bad ACE rejects the whole ACL, not just itself."""
+        text = " 0: user:bob allow read\n 1: user:bob restricted allow read\n"
+
+        with pytest.raises(ValueError, match="Unparseable macOS ACL entry"):
+            action._parse_macos_acl(text)
 
 
 class TestParsePosixAcl:
