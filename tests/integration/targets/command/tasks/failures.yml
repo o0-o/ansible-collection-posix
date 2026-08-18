@@ -48,6 +48,24 @@
             that:
               - "'Unable to change directory' in ansible_failed_result['msg']"
 
+- name: 'Fail: The removed expansion option is rejected'
+  block:
+
+    - name: Run command with the retired expand_argument_vars option
+      o0_o.posix.command:
+        cmd: 'echo "My home: ${HOME}"'
+        _uses_shell: true
+        expand_argument_vars: true
+        raw: "{{ raw }}"
+
+  rescue:
+
+    - name: Assert the option is rejected by validation
+      ansible.builtin.assert:
+        that:
+          - "'Unsupported parameters' in ansible_failed_result['msg']"
+          - "'expand_argument_vars' in ansible_failed_result['msg']"
+
 - name: 'Fail: Multiple command variants (cmd + argv)'
   block:
 

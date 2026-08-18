@@ -17,7 +17,6 @@
       o0_o.posix.command:
         cmd: 'echo "My home: ${HOME}"'
         _uses_shell: true
-        expand_argument_vars: true
         raw: true
       register: var_exp_raw_reg
 
@@ -34,7 +33,6 @@
       o0_o.posix.command:
         cmd: 'echo "My home: ${HOME}"'
         _uses_shell: false
-        expand_argument_vars: false
         raw: true
       register: no_var_exp_raw_reg
 

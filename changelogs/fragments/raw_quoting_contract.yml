@@ -1,0 +1,22 @@
+---
+breaking_changes:
+  - >-
+    command - The expand_argument_vars option is removed. Variable
+    expansion belongs to the shell alone: faithful expansion without
+    one needs an interpreter the raw fallback cannot assume, per
+    Ansible's own raw and command module semantics. With a shell the
+    target expands; without one, arguments are always literal, and
+    both hold identically in native and raw execution
+    (https://github.com/o0-o/ansible-collection-posix/pull/XXX).
+
+bugfixes:
+  - >-
+    command - Raw execution now sends every command through one
+    deliberate shell layer, so literal arguments stay literal on
+    every transport instead of depending on the connection plugin's
+    quoting (https://github.com/o0-o/ansible-collection-posix/pull/XXX).
+  - >-
+    command - Raw execution requests a pseudo-terminal only when
+    become needs one, so stderr stays separate from stdout over ssh
+    and output carries no carriage returns
+    (https://github.com/o0-o/ansible-collection-posix/pull/XXX).

@@ -57,11 +57,6 @@ options:
       - This enables variable expansion and complex expressions.
     type: bool
     default: false
-  expand_argument_vars:
-    description:
-      - Whether to expand shell variables inside arguments.
-      - Must match the value of C(_uses_shell) for raw fallback to work.
-    type: bool
   creates:
     description:
       - If the specified path exists, the command will not be run.
@@ -126,8 +121,12 @@ notes:
     invocation, bypassing the builtin command module entirely.
   - The C(executable) parameter is only supported when C(_uses_shell=true), and
     is ignored during raw fallback.
-  - Variable expansion is only supported when C(_uses_shell=true and
-    expand_argument_vars=true); these two options must match in raw mode.
+  - Variable expansion belongs to the shell alone, so it requires
+    C(_uses_shell=true) and happens on the target in both native and
+    raw execution. Unlike M(ansible.builtin.command), there is no
+    expansion without a shell, because faithful expansion without one
+    needs an interpreter the raw fallback cannot assume; without a
+    shell, arguments are always literal.
   - In raw fallback mode, certain behaviors such as complex shell expressions
     or non-standard quoting may differ from Python-based execution.
   - The raw fallback does not support parameter substitution or environment
@@ -143,7 +142,6 @@ EXAMPLES = r"""
   o0_o.posix.command:
     cmd: echo "Hello $USER"
     _uses_shell: true
-    expand_argument_vars: true
 
 - name: Skip command if file already exists
   o0_o.posix.command:
@@ -216,7 +214,6 @@ def main():
             "argv": {"type": "list", "elements": "str"},
             "chdir": {"type": "path"},
             "executable": {},
-            "expand_argument_vars": {"type": "bool"},
             "creates": {"type": "path"},
             "removes": {"type": "path"},
             "stdin": {"required": False},

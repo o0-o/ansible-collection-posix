@@ -76,13 +76,6 @@ class ActionModule(PosixActionBase, ActionBase):
         :raises AnsibleActionFail: When command execution fails or
             arguments are invalid
         """
-        if self.expand_vars is not None and self.expand_vars != self.shell:
-            raise AnsibleActionFail(
-                "Raw fallback requires expand_argument_vars and _uses_shell "
-                "to be the same. Shell-based execution expands variables "
-                "remotely. If expand_argument_vars is true but _uses_shell is "
-                "false, the fallback cannot expand variables."
-            )
 
         # Warn if executable is set without shell=True
         if not self.shell and self.executable:
@@ -148,15 +141,22 @@ class ActionModule(PosixActionBase, ActionBase):
         if not self._task.check_mode:
             self.result["start"] = datetime.datetime.now()
 
-            # Determine the final command to execute
-            if self.shell:
-                self.command = format_command(["/bin/sh", "-c", self.command])
+            # One deliberate quoting layer for every transport: a
+            # shell command rides as the payload and expands on the
+            # target, while a quoted argv rides the same layer and
+            # nothing downstream can expand it
+            self.command = format_command(["/bin/sh", "-c", self.command])
             # Execute the command
+            # sudoable makes the ssh transport allocate a
+            # pseudo-terminal, which merges stderr into stdout and
+            # salts the output with carriage returns; ask for it only
+            # when become actually needs the prompt machinery
             exec_result = self._low_level_execute_command(
                 self.command,
                 in_data=self.stdin,
                 executable=self.executable,
                 chdir=self.chdir,
+                sudoable=bool(self._play_context.become),
             )
             self.result["end"] = datetime.datetime.now()
             self.result.update(exec_result)
@@ -179,13 +179,17 @@ class ActionModule(PosixActionBase, ActionBase):
         # module stdout/err and stdout/err lines lists.
         if self.result.get("stdout"):
             self.result["stdout"] = to_text(self.result["stdout"])
+            # A pseudo-terminal hop turns newlines into
+            # carriage-return pairs; normalize so raw output matches
+            # native byte for byte
+            self.result["stdout"] = self.result["stdout"].replace("\r\n", "\n")
             if self.strip:
                 self.result["stdout"] = self.result["stdout"].rstrip("\n")
             self.result["module_stdout"] = self.result["stdout"]
             self.result["stdout_lines"] = self.result["stdout"].splitlines()
 
         if self.result.get("stderr"):
-            stderr_text = to_text(self.result["stderr"])
+            stderr_text = to_text(self.result["stderr"]).replace("\r\n", "\n")
             # Remove SSH "Shared connection to ... closed." message
             self.result["stderr"] = re.sub(
                 r"^Shared connection to .* closed\.\n?",
@@ -222,7 +226,6 @@ class ActionModule(PosixActionBase, ActionBase):
             "argv": {"type": "list", "elements": "str"},
             "chdir": {"type": "path"},
             "executable": {"type": "str"},
-            "expand_argument_vars": {"type": "bool"},
             "creates": {"type": "path"},
             "removes": {"type": "path"},
             "stdin": {"required": False},
@@ -267,17 +270,6 @@ class ActionModule(PosixActionBase, ActionBase):
                 self.stdin = self.stdin + "\n"
         if isinstance(self.stdin, str):
             self.stdin = self.stdin.encode("utf-8")
-
-        # Expand vars
-        self.expand_vars = new_module_args["expand_argument_vars"]
-        if self.expand_vars is None:
-            # Avoid errors when using builtin command module
-            new_module_args.pop("expand_argument_vars")
-        elif parse_version(ansible_version) < parse_version("2.16"):
-            raise AnsibleActionFail(
-                "expand_argument_vars is not supported on Ansible "
-                "versions before 2.16"
-            )
 
         return new_module_args
 
@@ -327,6 +319,15 @@ class ActionModule(PosixActionBase, ActionBase):
         # Handle raw mode: True (force raw), False (no raw), "auto" (fallback)
         if self.raw is not True:
             builtin_module_args = sanitize_args(new_module_args)
+
+            # Expansion belongs to the shell alone: faithful expansion
+            # without one needs an interpreter the raw fallback cannot
+            # assume, so the builtin's python-side expansion is pinned
+            # off and both transports agree. The option exists from
+            # ansible-core 2.16; earlier controllers expand and are a
+            # documented divergence.
+            if parse_version(ansible_version) >= parse_version("2.16"):
+                builtin_module_args["expand_argument_vars"] = False
 
             builtin_module_result = self._execute_module(
                 module_name="ansible.builtin.command",
