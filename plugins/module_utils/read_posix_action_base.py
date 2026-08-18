@@ -521,7 +521,7 @@ class ReadPosixActionBase(PosixActionBase):
 
         return platform
 
-    def _parse_encoding_from_desc(self, desc: str) -> Optional[str]:
+    def _parse_encoding_from_desc(self, desc: str) -> str:
         """
         Parse encoding from file -b descriptive output.
 
@@ -529,8 +529,13 @@ class ReadPosixActionBase(PosixActionBase):
         file -b returns descriptive text like "ASCII text",
         "ISO-8859 text", "Non-ISO extended-ASCII text", etc.
 
+        Never fails to classify: any description without "text" in it
+        is "binary", which downstream handling turns into a base64
+        fallback, and any text description not otherwise recognized
+        maps to utf-8.
+
         :param str desc: Output from file -b command
-        :returns Optional[str]: Detected encoding or None if binary/unknown
+        :returns str: Detected encoding, or "binary" for non-text
         """
         desc_lower = desc.lower()
 
@@ -551,12 +556,9 @@ class ReadPosixActionBase(PosixActionBase):
         elif "non-iso" in desc_lower and "extended-ascii" in desc_lower:
             # OpenBSD reports UTF-8 as "Non-ISO extended-ASCII text"
             return "utf-8"
-        elif "text" in desc_lower:
+        else:
             # Default to UTF-8 for any text file we can't identify
             return "utf-8"
-
-        # Unknown or binary
-        return None
 
     def _add_content_with_encoding(
         self,
