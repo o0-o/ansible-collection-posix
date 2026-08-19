@@ -383,6 +383,18 @@ class ReadPosixActionBase(PosixActionBase):
         rather than OS type, since GNU utilities can be installed on
         BSD systems and vice versa.
 
+        Two success criteria are deliberate, not drift. A capability
+        consumed as command output — the stat variant, lsattr, getfacl,
+        nfs4_getfacl, every hash tool — requires rc 0 and the output
+        itself: some BSD builds exit 0 for invalid options, and a hash
+        tool that prints no digest must never be reported as one. A
+        capability that only asks whether an option or tool is accepted
+        — ls -O and -e, getfattr, xattr — requires rc 0 alone, because
+        its success is legitimately silent: getfattr and xattr print
+        nothing for a file that simply has no extended attributes, so
+        demanding output would misreport the tool as absent on most
+        systems.
+
         :param dict results: Command results from first file
         :param str path: The path that was used for detection
         :returns dict[str, Any]: Platform capabilities dictionary

@@ -396,6 +396,26 @@ class TestDetectPlatformFromResults:
             "has_sha512_bsd": False,
         }
 
+    def test_silent_success_splits_by_capability_class(self, action) -> None:
+        """Test rc 0 with empty stdout is read per capability class."""
+        results = {
+            "/f_xattr": {"rc": 0, "stdout": ""},
+            "/f_acl_macos": {"rc": 0, "stdout": ""},
+            "/f_md5": {"rc": 0, "stdout": ""},
+            "/f_acl": {"rc": 0, "stdout": ""},
+        }
+
+        platform = action._detect_platform_from_results(results, "/f")
+
+        # Acceptance probes succeed silently: getfattr prints nothing
+        # for a file that has no extended attributes
+        assert platform["has_getfattr"] is True
+        assert platform["ls_supports_acl_macos"] is True
+        # A capability consumed as output must produce it: a hash tool
+        # with no digest and a getfacl with no entries are not present
+        assert platform["has_md5sum"] is False
+        assert platform["has_getfacl"] is False
+
     def test_gnu_toolchain_detected(self, action) -> None:
         """Test GNU command results select the GNU capability set."""
         results = {
