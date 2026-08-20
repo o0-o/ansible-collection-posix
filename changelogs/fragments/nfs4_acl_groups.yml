@@ -1,0 +1,18 @@
+---
+bugfixes:
+  - >-
+    read - NFS v4 ACL entries for group principals were reported as
+    user entries because the parser ignored the g flag that marks
+    them. Named principals now type as groups when the flag is
+    present (https://github.com/o0-o/ansible-collection-posix/pull/XXX).
+  - >-
+    read - NFS v4 audit and alarm entries were forced into allow/deny
+    booleans, rendering a watch rule as a denial. They carry no
+    permission facts, so they are now skipped with a warning naming
+    the entry (https://github.com/o0-o/ansible-collection-posix/pull/XXX).
+  - >-
+    read - An NFS v4 ACL entry the parser cannot read now fails the
+    module with the offending line quoted, including unknown entry
+    types, flags and permission letters, instead of being silently
+    dropped or misread
+    (https://github.com/o0-o/ansible-collection-posix/pull/XXX).

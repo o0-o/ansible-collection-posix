@@ -17,6 +17,7 @@ import re
 
 from pathlib import Path
 from typing import Callable
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -37,6 +38,7 @@ class DummyReadAction(ReadPosixActionBase):
 
     def __init__(self) -> None:
         self.inventory_hostname = "testhost"
+        self._display = MagicMock()
 
 
 @pytest.fixture
@@ -649,20 +651,36 @@ class TestParseNfs4Acl:
 
         assert acl["entries"] == [dict({"type": "owner"}, **expected)]
 
-    def test_unknown_permission_letters_are_dropped(self, action) -> None:
-        """Test letters outside the permission map are ignored."""
-        acl = action._parse_nfs4_acl("A::OWNER@:rZ")
-
-        assert acl["entries"] == [{"type": "owner", "read": True}]
-
-    def test_group_flag_does_not_change_principal_type(self, action) -> None:
-        """Test the g flag leaves a named principal typed as a user."""
+    def test_group_flag_types_principal_as_group(self, action) -> None:
+        """Test the g flag types a named principal as a group."""
         acl = action._parse_nfs4_acl("A:g:devs@example.com:r")
 
-        # NFS v4 marks group principals with the g flag, but the
-        # parser types every named principal as a user.
-        assert acl["entries"][0]["type"] == "user"
-        assert acl["entries"][0]["name"] == "devs@example.com"
+        assert acl["entries"] == [
+            {"type": "group", "name": "devs@example.com", "read": True}
+        ]
+
+    def test_group_flag_composes_with_inheritance(self, action) -> None:
+        """Test g rides alongside inheritance flags without conflict."""
+        acl = action._parse_nfs4_acl("A:fdg:devs@example.com:r")
+
+        assert acl["entries"] == [
+            {
+                "type": "group",
+                "name": "devs@example.com",
+                "read": True,
+                "inheritance": {
+                    "file": True,
+                    "directory": True,
+                    "propagate": True,
+                },
+            }
+        ]
+
+    def test_group_flag_on_group_owner_is_consumed(self, action) -> None:
+        """Test the redundant g on GROUP@ changes nothing."""
+        acl = action._parse_nfs4_acl("A:g:GROUP@:r")
+
+        assert acl["entries"] == [{"type": "group_owner", "read": True}]
 
     def test_bare_principal_is_typed_as_user(self, action) -> None:
         """Test a principal with no domain still parses as a user."""
@@ -672,19 +690,78 @@ class TestParseNfs4Acl:
             {"type": "user", "name": "nobody", "read": True}
         ]
 
+    @pytest.mark.parametrize("ace_type", ["U", "L"])
+    def test_audit_and_alarm_entries_skip_with_warning(
+        self, action, ace_type
+    ) -> None:
+        """Test watch entries are skipped and warned, not modeled."""
+        text = (
+            "A::OWNER@:r\n"
+            f"{ace_type}::alice@example.com:w\n"
+            "D::EVERYONE@:w\n"
+        )
+
+        acl = action._parse_nfs4_acl(text)
+
+        # The surrounding allow and deny entries survive; the watch
+        # entry carries no permission facts so skipping it cannot
+        # misreport access
+        assert acl["entries"] == [
+            {"type": "owner", "read": True},
+            {"type": "everyone", "write": False},
+        ]
+        action._display.warning.assert_called_once()
+        assert (
+            f"{ace_type}::alice@example.com:w"
+            in action._display.warning.call_args[0][0]
+        )
+
     @pytest.mark.parametrize(
         "text",
         [
             "",
             "# comment only\n",
-            "A::OWNER@\n",
-            "not an ace\n",
-            "A::OWNER@:r:extra\n",
         ],
     )
-    def test_empty_or_malformed_input(self, action, text) -> None:
-        """Test lines without exactly four fields are skipped."""
+    def test_empty_or_comment_input(self, action, text) -> None:
+        """Test empty and comment-only input yields no entries."""
         assert action._parse_nfs4_acl(text) == {
             "type": "nfs4",
             "entries": [],
         }
+
+    @pytest.mark.parametrize(
+        "line",
+        [
+            "A::OWNER@",
+            "not an ace",
+            "A::OWNER@:r:extra",
+            "Z::OWNER@:r",
+            "A:::r",
+        ],
+    )
+    def test_malformed_entry_raises(self, action, line) -> None:
+        """Test a line that is not a well formed A or D ACE raises."""
+        with pytest.raises(
+            ValueError, match=re.escape(f"NFS4 ACL entry: {line!r}")
+        ):
+            action._parse_nfs4_acl(line)
+
+    def test_unknown_permission_letter_raises(self, action) -> None:
+        """Test a letter outside the permission map raises."""
+        with pytest.raises(
+            ValueError, match="Unknown NFS4 ACL permission 'Z'"
+        ):
+            action._parse_nfs4_acl("A::OWNER@:rZ")
+
+    def test_unknown_flag_letter_raises(self, action) -> None:
+        """Test a letter outside the flag map raises."""
+        with pytest.raises(ValueError, match="Unknown NFS4 ACL flag 'z'"):
+            action._parse_nfs4_acl("A:z:OWNER@:r")
+
+    def test_bad_entry_discards_earlier_entries(self, action) -> None:
+        """Test one bad ACE rejects the whole ACL, not just itself."""
+        text = "A::OWNER@:r\nZ::OWNER@:r\n"
+
+        with pytest.raises(ValueError, match="Unparseable NFS4 ACL entry"):
+            action._parse_nfs4_acl(text)

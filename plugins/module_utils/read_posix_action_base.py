@@ -1687,15 +1687,27 @@ class ReadPosixActionBase(PosixActionBase):
         TYPE:FLAGS:PRINCIPAL:PERMISSIONS
         - TYPE: A (allow), D (deny), U (audit), L (alarm)
         - FLAGS: f (file_inherit), d (directory_inherit), i (inherit_only),
-                 n (no_propagate), I (inherited)
-        - PRINCIPAL: OWNER@, GROUP@, EVERYONE@, or user@domain
+                 n (no_propagate), I (inherited), g (group principal)
+        - PRINCIPAL: OWNER@, GROUP@, EVERYONE@, or principal[@domain]
         - PERMISSIONS: r,w,a,x,d,D,t,T,n,N,c,C,o,y (various rights)
 
         Returns simplified structure where each entry has type and optional
-        name fields, with rights represented as boolean fields.
+        name fields, with rights represented as boolean fields. A named
+        principal is typed group when the g flag is present and user
+        otherwise.
+
+        Audit (U) and alarm (L) entries watch access rather than grant
+        or deny it, so they carry no permission facts; they are skipped
+        with a warning rather than forced into allow/deny booleans.
+        Everything else unexpected fails the parse: a non-comment line
+        without exactly four fields, an unrecognized entry type, flag
+        or permission letter, or an empty principal raises rather than
+        being dropped, since a discarded or misread entry would
+        misreport the permissions in force.
 
         :param str acl_text: Raw nfs4_getfacl output
         :returns dict[str, Any]: Parsed ACL structure
+        :raises ValueError: If an entry does not parse
         """
         entries: list[dict[str, Any]] = []
 
@@ -1734,27 +1746,38 @@ class ReadPosixActionBase(PosixActionBase):
             # Parse NFS v4 ACE: TYPE:FLAGS:PRINCIPAL:PERMISSIONS
             parts = line.split(":")
             if len(parts) != 4:
-                continue
+                raise ValueError(f"Unparseable NFS4 ACL entry: {line!r}")
 
             ace_type, flags_str, principal, perms_str = parts
 
+            # Audit and alarm entries watch access rather than grant
+            # or deny it, so they carry no permission facts; skipping
+            # them cannot misreport access, unlike anything else
+            # unexpected, which raises below
+            if ace_type in ("U", "L"):
+                self._display.warning(
+                    f"[{self.inventory_hostname}] Skipping NFS4 "
+                    f"audit/alarm ACL entry: {line!r}"
+                )
+                continue
+
+            if ace_type not in ("A", "D") or not principal:
+                raise ValueError(f"Unparseable NFS4 ACL entry: {line!r}")
+
             entry: dict[str, Any] = {}
 
-            # Parse principal (user/group identification)
+            # Parse principal; the g flag marks a group, and a named
+            # principal without it is a user per the NFS v4 spec
             if principal == "OWNER@":
                 entry["type"] = "owner"
             elif principal == "GROUP@":
                 entry["type"] = "group_owner"
             elif principal == "EVERYONE@":
                 entry["type"] = "everyone"
-            elif "@" in principal:
-                # Named principal: user@domain or group@domain
-                # NFS v4 doesn't distinguish user vs group in principal
-                # format, but typically lowercase indicates user
-                entry["type"] = "user"
+            elif "g" in flags_str:
+                entry["type"] = "group"
                 entry["name"] = principal
             else:
-                # Fallback for non-standard principals
                 entry["type"] = "user"
                 entry["name"] = principal
 
@@ -1767,31 +1790,41 @@ class ReadPosixActionBase(PosixActionBase):
             security: dict[str, bool] = {}
             inheritance: dict[str, Any] = {}
 
-            # Parse permissions
+            # Parse permissions; an unmapped letter could carry a
+            # right we would otherwise silently understate
             for perm in perms_str:
-                if perm in perm_map:
-                    mapped = perm_map[perm]
-                    if isinstance(mapped, tuple):
-                        # Nested permission
-                        parent_key, field_name = mapped
-                        if parent_key == "attributes":
-                            attributes[field_name] = value
-                        elif parent_key == "extended":
-                            extended[field_name] = value
-                        elif parent_key == "security":
-                            security[field_name] = value
-                    else:
-                        # Top-level permission
-                        entry[mapped] = value
+                if perm not in perm_map:
+                    raise ValueError(
+                        f"Unknown NFS4 ACL permission {perm!r}: {line!r}"
+                    )
+                mapped = perm_map[perm]
+                if isinstance(mapped, tuple):
+                    # Nested permission
+                    parent_key, field_name = mapped
+                    if parent_key == "attributes":
+                        attributes[field_name] = value
+                    elif parent_key == "extended":
+                        extended[field_name] = value
+                    elif parent_key == "security":
+                        security[field_name] = value
+                else:
+                    # Top-level permission
+                    entry[mapped] = value
 
-            # Parse inheritance flags
+            # Parse inheritance flags; g was consumed for principal
+            # typing above, anything else unknown is format drift
             for flag in flags_str:
-                if flag in inherit_flags_map:
-                    field_name = inherit_flags_map[flag]
-                    if field_name == "inherited":
-                        entry["inherited"] = True
-                    else:
-                        inheritance[field_name] = True
+                if flag == "g":
+                    continue
+                if flag not in inherit_flags_map:
+                    raise ValueError(
+                        f"Unknown NFS4 ACL flag {flag!r}: {line!r}"
+                    )
+                field_name = inherit_flags_map[flag]
+                if field_name == "inherited":
+                    entry["inherited"] = True
+                else:
+                    inheritance[field_name] = True
 
             # Add nested dicts only if they have content
             if attributes:
