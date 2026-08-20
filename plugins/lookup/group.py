@@ -17,12 +17,12 @@ name: group
 short_description: Look up group information by GID or group name
 version_added: "1.4.0"
 description:
-  - Look up group information from the C(groups) fact by GID (int) or
-    group name (str).
-  - The C(groups) fact is typically set by the C(o0_o.posix.users)
-    module.
-  - When given an integer, looks up by GID. When given a string, looks
-    up by group name.
+  - Look up group information from the C(o0_groups) fact by GID (int)
+    or group name (str).
+  - The C(o0_groups) fact is set by the C(o0_o.posix.facts) module and
+    returned by the C(o0_o.posix.users) module.
+  - An integer is the fact's own key. A string is matched against the
+    C(name) field of each entry.
   - Returns C(None) if the group is not found.
 options:
   _terms:
@@ -32,11 +32,11 @@ options:
     type: list
     elements: raw
 notes:
-  - This lookup requires the C(groups) fact to be available in the
+  - This lookup requires the C(o0_groups) fact to be available in the
     variable namespace.
-  - The C(groups) fact format matches the output from
-    C(o0_o.posix.users) module.
-  - If the C(groups) fact is not available, the lookup will fail.
+  - The fact is named C(o0_groups) rather than C(groups) because
+    Ansible reserves C(groups) for the inventory group map.
+  - If the C(o0_groups) fact is not available, the lookup will fail.
 seealso:
   - module: o0_o.posix.users
     description: Gather POSIX user and group information
@@ -46,8 +46,9 @@ seealso:
 """
 
 EXAMPLES = r"""
-- name: Gather user and group information
-  o0_o.posix.users:
+- name: Gather user and group information as facts
+  o0_o.posix.facts:
+    gather_subset: ['users']
 
 - name: Look up group by GID
   ansible.builtin.debug:
@@ -116,7 +117,7 @@ _raw:
   type: raw
   sample:
     name: staff
-    id: 20
+    gid: 20
     members:
       - 0
       - 1000
@@ -145,18 +146,19 @@ class LookupModule(LookupBase, VarsLookupBase):
         has_default = "default" in kwargs
         default = kwargs.pop("default", None)
 
-        # Get the groups fact using the inherited method
+        # Get the o0_groups fact using the inherited method
         try:
-            groups = self.lookup_var("groups", default={}, **kwargs)
+            groups = self.lookup_var("o0_groups", default={}, **kwargs)
         except AnsibleLookupError as e:
             raise AnsibleLookupError(
-                f"Failed to access 'groups' fact. "
-                f"Ensure o0_o.posix.users module has been run. Error: {e}"
+                f"Failed to access 'o0_groups' fact. Ensure "
+                f"o0_o.posix.facts or o0_o.posix.users has been run. "
+                f"Error: {e}"
             ) from e
 
         if not isinstance(groups, dict):
             raise AnsibleLookupError(
-                f"'groups' fact is not a dictionary, "
+                f"'o0_groups' fact is not a dictionary, "
                 f"got {type(groups).__name__}"
             )
 

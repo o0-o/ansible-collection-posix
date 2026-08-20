@@ -11,68 +11,31 @@
 
 from __future__ import annotations
 
-from copy import deepcopy
 from typing import Generator
 
 import pytest
 
+from ansible.errors import AnsibleActionFail
 from ansible_collections.o0_o.posix.plugins.action.users import ActionModule
 
-PASSWD_ID = {
-    "0": {
-        "name": "root",
-        "gecos": "root",
-        "home": "/root",
-        "shell": "/bin/sh",
-        "gid": 0,  # Will be removed and replaced with "group"
-    },
-    "1000": {
-        "name": "o0-o",
-        "gecos": "o0-o",
-        "home": "/home/o0-o",
-        "shell": "/bin/zsh",
-        "gid": 20,  # Will be removed and replaced with "group"
-    },
-}
+PASSWD = "\n".join(
+    [
+        "root:*:0:0:System Administrator:/var/root:/bin/sh",
+        "o0-o:*:1000:20:o0-o:/home/o0-o:/bin/zsh",
+    ]
+)
 
-PASSWD_NAME = {
-    "root": {
-        "id": 0,
-        "gecos": "root",
-        "home": "/root",
-        "shell": "/bin/sh",
-        "gid": 0,  # Will be removed and replaced with "group"
-    },
-    "o0-o": {
-        "id": 1000,
-        "gecos": "o0-o",
-        "home": "/home/o0-o",
-        "shell": "/bin/zsh",
-        "gid": 20,  # Will be removed and replaced with "group"
-    },
-}
-
-GROUP_ID = {
-    "0": {"name": "root", "members": []},
-    "20": {"name": "staff", "members": []},
-    "101": {"name": "access_bpf", "members": []},
-}
-
-GROUP_NAME = {
-    "root": {"id": 0, "members": []},
-    "staff": {"id": 20, "members": []},
-    "access_bpf": {"id": 101, "members": []},
-}
-
-GROUP_ENTRIES = [
-    {"group_name": "root", "gid": 0, "members": ""},
-    {"group_name": "staff", "gid": 20, "members": "", "users": ""},
-    {"group_name": "access_bpf", "gid": 101, "members": "o0-o"},
-]
+GROUP = "\n".join(
+    [
+        "wheel:*:0:root",
+        "staff:*:20:",
+        "access_bpf:*:101:o0-o",
+    ]
+)
 
 
 @pytest.fixture
-def plugin(base) -> Generator[ActionModule, None, None]:
+def plugin(monkeypatch, base) -> Generator[ActionModule, None, None]:
     base._task.async_val = False
     base._task.action = "users"
     base._task.args = {}
@@ -87,91 +50,121 @@ def plugin(base) -> Generator[ActionModule, None, None]:
     )
     plugin._display = base._display
     plugin.inventory_hostname = "localhost"
+
+    def mock_cmd(cmd, task_vars=None, **kwargs):
+        if cmd == ["cat", "/etc/passwd"]:
+            return {"rc": 0, "stdout": PASSWD}
+        if cmd == ["cat", "/etc/group"]:
+            return {"rc": 0, "stdout": GROUP}
+        return {"rc": 1}
+
+    monkeypatch.setattr(plugin, "_command", mock_cmd)
+    # Home and shell metadata come from the read action plugin, which
+    # is exercised by its own tests.
+    monkeypatch.setattr(plugin, "_read", lambda **kwargs: {"paths": {}})
     yield plugin
 
 
-def test_users_action_by_id(
-    monkeypatch: pytest.MonkeyPatch, plugin: ActionModule
-) -> None:
-    """Test users keyed by id carry primary and extra groups."""
-
-    def mock_cmd(cmd, task_vars=None, **kwargs):
-        if cmd == ["cat", "/etc/passwd"]:
-            return {"rc": 0, "stdout": "PASSWD"}
-        if cmd == ["cat", "/etc/group"]:
-            return {"rc": 0, "stdout": "GROUP"}
-        return {"rc": 1}
-
-    monkeypatch.setattr(plugin, "_command", mock_cmd)
-    # Home and shell metadata come from the read action plugin, which
-    # is exercised by its own tests.
-    monkeypatch.setattr(plugin, "_read", lambda **kwargs: {"paths": {}})
-    monkeypatch.setattr(
-        "ansible_collections.o0_o.posix.plugins.action.users.passwd_info",
-        lambda content, key="id": (
-            deepcopy(PASSWD_ID) if key == "id" else deepcopy(PASSWD_NAME)
-        ),
-    )
-    monkeypatch.setattr(
-        "ansible_collections.o0_o.posix.plugins.action.users.group_info",
-        lambda content, key="id": (
-            deepcopy(GROUP_ID) if key == "id" else deepcopy(GROUP_NAME)
-        ),
-    )
-    monkeypatch.setattr(
-        "ansible_collections.o0_o.posix.plugins.action.users.jc_parse",
-        lambda parser, data: deepcopy(GROUP_ENTRIES),
-    )
-
+def test_users_action_returns_canonical_fact_names(plugin) -> None:
+    """Test the returns are named for the facts they define."""
     result = plugin.run(task_vars={})
 
-    assert result["users"]["1000"]["group"] == 20
-    assert sorted(result["users"]["1000"]["groups"]) == [20, 101]
-    assert result["groups"]["0"]["members"] == [0]
-    assert result["groups"]["20"]["name"] == "staff"
-    assert result["groups"]["20"]["members"] == [1000]
+    assert set(result) >= {
+        "o0_users",
+        "o0_groups",
+        "o0_homes",
+        "o0_shell_files",
+    }
+    assert "users" not in result
+    assert "groups" not in result
+    assert "homes" not in result
+    assert "shells" not in result
 
 
-def test_users_action_by_name(
-    monkeypatch: pytest.MonkeyPatch, plugin: ActionModule
-) -> None:
-    """Test users keyed by name expose textual groups."""
+def test_users_action_composes_canonical_users(plugin) -> None:
+    """Test users are keyed by UID and carry the canonical fields."""
+    result = plugin.run(task_vars={})
 
+    assert set(result["o0_users"]["1000"]) == {
+        "name",
+        "uid",
+        "gid",
+        "gecos",
+        "home",
+        "shell",
+        "groups",
+    }
+    assert result["o0_users"]["1000"]["name"] == "o0-o"
+    assert result["o0_users"]["1000"]["uid"] == 1000
+    assert result["o0_users"]["1000"]["gid"] == 20
+    assert sorted(result["o0_users"]["1000"]["groups"]) == [20, 101]
+
+
+def test_users_action_composes_canonical_groups(plugin) -> None:
+    """Test groups are keyed by GID and count members as UIDs."""
+    result = plugin.run(task_vars={})
+
+    assert set(result["o0_groups"]["20"]) == {"name", "gid", "members"}
+    assert result["o0_groups"]["20"]["name"] == "staff"
+    assert result["o0_groups"]["20"]["gid"] == 20
+    assert result["o0_groups"]["20"]["members"] == [1000]
+    assert result["o0_groups"]["0"]["members"] == [0]
+    assert result["o0_groups"]["101"]["members"] == [1000]
+
+
+def test_users_action_rejects_key_option(plugin) -> None:
+    """Test the retired key option is no longer accepted."""
     plugin._task.args = {"key": "name"}
 
-    def mock_cmd(cmd, task_vars=None, **kwargs):
-        if cmd == ["cat", "/etc/passwd"]:
-            return {"rc": 0, "stdout": "PASSWD"}
-        if cmd == ["cat", "/etc/group"]:
-            return {"rc": 0, "stdout": "GROUP"}
-        return {"rc": 1}
+    with pytest.raises(AnsibleActionFail):
+        plugin.run(task_vars={})
 
-    monkeypatch.setattr(plugin, "_command", mock_cmd)
-    # Home and shell metadata come from the read action plugin, which
-    # is exercised by its own tests.
-    monkeypatch.setattr(plugin, "_read", lambda **kwargs: {"paths": {}})
+
+def test_users_action_homes_resident_uids(monkeypatch, plugin) -> None:
+    """Test home residents are recorded as UIDs."""
     monkeypatch.setattr(
-        "ansible_collections.o0_o.posix.plugins.action.users.passwd_info",
-        lambda content, key="id": (
-            deepcopy(PASSWD_ID) if key == "id" else deepcopy(PASSWD_NAME)
-        ),
-    )
-    monkeypatch.setattr(
-        "ansible_collections.o0_o.posix.plugins.action.users.group_info",
-        lambda content, key="id": (
-            deepcopy(GROUP_ID) if key == "id" else deepcopy(GROUP_NAME)
-        ),
-    )
-    monkeypatch.setattr(
-        "ansible_collections.o0_o.posix.plugins.action.users.jc_parse",
-        lambda parser, data: deepcopy(GROUP_ENTRIES),
+        plugin,
+        "_read",
+        lambda **kwargs: {
+            "paths": {
+                path: {"type": "directory"}
+                for path in (
+                    kwargs["paths"]
+                    if isinstance(kwargs["paths"], list)
+                    else [kwargs["paths"]]
+                )
+            }
+        },
     )
 
     result = plugin.run(task_vars={})
 
-    user_entry = result["users"]["o0-o"]
-    assert user_entry["group"] == "staff"
-    assert sorted(user_entry["groups"]) == ["access_bpf", "staff"]
-    assert result["groups"]["root"]["members"] == [0]
-    assert result["groups"]["staff"]["id"] == 20
-    assert result["groups"]["staff"]["members"] == [1000]
+    assert result["o0_homes"]["/home/o0-o"]["residents"] == [1000]
+    assert result["o0_homes"]["/var/root"]["residents"] == [0]
+
+
+def test_users_action_shell_files_extend_prior_gather(
+    monkeypatch, plugin
+) -> None:
+    """Test previously gathered shell file metadata is preserved."""
+    monkeypatch.setattr(
+        plugin,
+        "_read",
+        lambda **kwargs: {
+            "paths": {
+                path: {"type": "file"}
+                for path in (
+                    kwargs["paths"]
+                    if isinstance(kwargs["paths"], list)
+                    else [kwargs["paths"]]
+                )
+            }
+        },
+    )
+
+    result = plugin.run(
+        task_vars={"o0_shell_files": {"/bin/ksh": {"type": "file"}}}
+    )
+
+    assert "/bin/ksh" in result["o0_shell_files"]
+    assert result["o0_shell_files"]["/bin/zsh"]["tags"] == ["posix", "shell"]

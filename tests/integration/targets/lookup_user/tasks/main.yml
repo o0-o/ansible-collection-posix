@@ -16,14 +16,13 @@
       o0_o.posix.users:
       register: users_info_reg
 
-    # The user lookup reads a users variable; the module returns the
-    # data rather than setting a fact. The group lookup's groups
-    # variable cannot be provided the same way because Ansible
-    # reserves that name for inventory groups, so the group branch
-    # below exercises its documented not-found path instead.
-    - name: Expose users for the lookup
+    # The lookups read the o0_users and o0_groups facts; the module
+    # returns the data rather than setting facts, so the play sets
+    # them.
+    - name: Expose the canonical facts for the lookups
       ansible.builtin.set_fact:
-        users: "{{ users_info_reg['users'] }}"
+        o0_users: "{{ users_info_reg['o0_users'] }}"
+        o0_groups: "{{ users_info_reg['o0_groups'] }}"
 
     - name: Look up root user by UID (0)
       ansible.builtin.set_fact:
@@ -35,62 +34,73 @@
           - root_by_uid is defined
           - root_by_uid is not none
           - root_by_uid['name'] == 'root'
+          - root_by_uid['uid'] is integer
+          - root_by_uid['uid'] == 0
+          - root_by_uid['gid'] is integer
           - root_by_uid['home'] is defined
+          - root_by_uid['groups'] is sequence
+          - root_by_uid['gid'] in root_by_uid['groups']
 
     - name: Look up root user by name
       ansible.builtin.set_fact:
         root_by_name: '{{ lookup("o0_o.posix.user", "root") }}'
 
-    - name: Verify root user lookup by name
+    - name: Verify root user lookup by name finds the same user
       ansible.builtin.assert:
         that:
           - root_by_name is defined
           - root_by_name is not none
-          - root_by_name['name'] is defined or root_by_name['id'] == 0
+          - root_by_name['uid'] == 0
+          - root_by_name == root_by_uid
 
     - name: Look up root user's primary group by GID
       ansible.builtin.set_fact:
         root_group_by_gid: >-
-          {{ lookup("o0_o.posix.group", root_by_uid["group"]) }}
+          {{ lookup("o0_o.posix.group", root_by_uid["gid"]) }}
 
     - name: Verify root group lookup by GID
       ansible.builtin.assert:
         that:
           - root_group_by_gid is defined
           - root_group_by_gid is not none
-          - >-
-            root_group_by_gid['name'] is defined or
-            root_group_by_gid['id'] is defined
-          - root_group_by_gid['members'] is defined
-      when: root_group_by_gid is not none
+          - root_group_by_gid['gid'] is integer
+          - root_group_by_gid['gid'] == root_by_uid['gid']
+          - root_group_by_gid['name'] is string
+          - root_group_by_gid['members'] is sequence
+          - 0 in root_group_by_gid['members']
 
-    - name: Skip group tests if root group not found
-      ansible.builtin.debug:
-        msg: >-
-          Skipping group lookup tests - root user's group not found in
-          groups fact
-      when: root_group_by_gid is none
+    # The group lookup used to read Ansible's reserved groups
+    # variable, so an inventory group sharing a system group's name
+    # returned that group's host list. Create the collision and prove
+    # the o0_groups fact answers instead.
+    - name: Create an inventory group named after root's primary group
+      ansible.builtin.add_host:
+        name: lookup-user-collision-host
+        groups: "{{ root_group_by_gid['name'] }}"
+      changed_when: false
 
     - name: Look up root user's primary group by name
       ansible.builtin.set_fact:
         root_group_by_name: >-
           {{ lookup("o0_o.posix.group", root_group_by_gid["name"]) }}
-      when:
-        - root_group_by_gid is not none
-        - root_group_by_gid['name'] is defined
 
-    - name: Verify root group lookup by name
+    - name: Verify the inventory collision exists
+      ansible.builtin.assert:
+        that:
+          - groups[root_group_by_gid['name']] is defined
+          - >-
+            'lookup-user-collision-host' in
+            groups[root_group_by_gid['name']]
+
+    - name: Verify root group lookup by name returns group facts
       ansible.builtin.assert:
         that:
           - root_group_by_name is defined
           - root_group_by_name is not none
-          - >-
-            root_group_by_name['id'] is defined or
-            root_group_by_name['name'] is defined
-          - root_group_by_name['members'] is defined
-      when:
-        - root_group_by_gid is not none
-        - root_group_by_gid['name'] is defined
+          - root_group_by_name is mapping
+          - root_group_by_name == root_group_by_gid
+          - root_group_by_name['gid'] == root_by_uid['gid']
+          - 0 in root_group_by_name['members']
 
     - name: Test multiple user lookups at once
       ansible.builtin.set_fact:

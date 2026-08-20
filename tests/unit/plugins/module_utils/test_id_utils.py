@@ -17,7 +17,11 @@ from typing import Any
 
 import pytest
 
-from ansible_collections.o0_o.posix.plugins.module_utils import id_info
+from ansible_collections.o0_o.posix.plugins.module_utils import (
+    get_effective_uid_command_requests,
+    id_info,
+    process_effective_uid_results,
+)
 
 SAMPLE_ID: dict[str, Any] = {
     "uid": {"id": 1000, "name": "o0-o"},
@@ -84,3 +88,35 @@ def test_id_info_handles_empty() -> None:
 
     result = id_info({}, key="id")
     assert result == {"users": {}, "groups": {}}
+
+
+def test_effective_uid_request_runs_id_u() -> None:
+    """The effective uid is gathered with id -u."""
+
+    requests = get_effective_uid_command_requests()
+
+    assert len(requests) == 1
+    assert requests[0]["type"] == "effective_uid"
+    assert tuple(requests[0]["command"]) == ("id", "-u")
+
+
+def _completed_uid(rc: int, stdout: str) -> dict[str, Any]:
+    """Build a completed effective_uid command result."""
+
+    requests = get_effective_uid_command_requests()
+    return {**requests[0], "rc": rc, "stdout": stdout, "stderr": ""}
+
+
+def test_process_effective_uid_results() -> None:
+    """Numeric output parses to an integer uid."""
+
+    assert process_effective_uid_results([_completed_uid(0, "1000\n")]) == 1000
+    assert process_effective_uid_results([_completed_uid(0, "0")]) == 0
+
+
+def test_process_effective_uid_results_no_answer() -> None:
+    """A failed or unparsable id -u yields no uid."""
+
+    assert process_effective_uid_results([]) is None
+    assert process_effective_uid_results([_completed_uid(1, "")]) is None
+    assert process_effective_uid_results([_completed_uid(0, "root")]) is None

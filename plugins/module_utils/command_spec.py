@@ -30,6 +30,9 @@ from ansible_collections.o0_o.posix.plugins.module_utils.compliance_parsers impo
 from ansible_collections.o0_o.posix.plugins.module_utils.dmidecode_utils import (  # noqa: E501
     _parse_dmidecode,
 )
+from ansible_collections.o0_o.posix.plugins.module_utils.id_utils import (
+    _parse_effective_uid,
+)
 from ansible_collections.o0_o.posix.plugins.module_utils.locale_utils import (
     _parse_locale,
 )
@@ -48,6 +51,16 @@ ENV_COMMAND_SPEC = {
     "posix": {
         "env_var": {
             "command": "set -eu; printf '%s' \"${{{env}}}\"",
+        },
+    },
+}
+
+# Effective user id spec — the key the canonical user facts nest under
+ID_COMMAND_SPEC = {
+    "posix": {
+        "effective_uid": {
+            "command": ("id", "-u"),
+            "parser": _parse_effective_uid,
         },
     },
 }

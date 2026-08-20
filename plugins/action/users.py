@@ -18,10 +18,7 @@ from ansible.plugins.action import ActionBase
 
 from ansible_collections.o0_o.posix.plugins.module_utils import (
     ReadPosixActionBase,
-    group_info,
-    jc_parse,
-    normalize_group_members,
-    passwd_info,
+    compose_users_groups,
 )
 
 # The o0_o.ssh collection is an optional dependency: without it, user
@@ -56,8 +53,8 @@ class ActionModule(ReadPosixActionBase, ActionBase):
         :param Optional[str] tmp: Unused temporary directory path
         :param Optional[dict[str, Any]] task_vars: Available Ansible
             variables
-        :returns dict[str, Any]: Result dictionary with users, groups,
-            homes, and shells data
+        :returns dict[str, Any]: Result dictionary with o0_users,
+            o0_groups, o0_homes, and o0_shell_files data
         """
         task_vars = task_vars or {}
         self._def_inventory_hostname(task_vars)
@@ -66,7 +63,6 @@ class ActionModule(ReadPosixActionBase, ActionBase):
         del tmp  # unused
 
         argument_spec = {
-            "key": {"type": "str", "choices": ["id", "name"], "default": "id"},
             "passwd_path": {
                 "type": "str",
                 "default": "/etc/passwd",
@@ -80,17 +76,12 @@ class ActionModule(ReadPosixActionBase, ActionBase):
         )
         self._task.args.update(module_args)
 
-        key = module_args["key"]
         passwd_path = module_args["passwd_path"]
         group_path = module_args["group_path"]
 
-        passwd_content = self._read_text_file(passwd_path, task_vars)
-        group_content = self._read_text_file(group_path, task_vars)
-
-        users, groups = self._compose_user_group_maps(
-            passwd_content=passwd_content,
-            group_content=group_content,
-            key=key,
+        users, groups = compose_users_groups(
+            self._read_text_file(passwd_path, task_vars),
+            self._read_text_file(group_path, task_vars),
         )
 
         # Validate shells against /etc/shells if available
@@ -103,15 +94,15 @@ class ActionModule(ReadPosixActionBase, ActionBase):
         homes = self._gather_home_metadata(users, task_vars)
 
         # Gather shell binary metadata from user shells
-        shells = self._gather_shell_binaries(users, task_vars)
+        shell_files = self._gather_shell_binaries(users, task_vars)
 
         result.update(
             {
                 "changed": False,
-                "users": users,
-                "groups": groups,
-                "homes": homes,
-                "shells": shells,
+                "o0_users": users,
+                "o0_groups": groups,
+                "o0_homes": homes,
+                "o0_shell_files": shell_files,
             }
         )
         return result
@@ -124,200 +115,6 @@ class ActionModule(ReadPosixActionBase, ActionBase):
             error_msg = cmd_result.get("stderr") or cmd_result.get("stdout")
             raise AnsibleActionFail(f"Failed to read {path}: {error_msg}")
         return cmd_result.get("stdout", "")
-
-    def _compose_user_group_maps(
-        self,
-        passwd_content: str,
-        group_content: str,
-        key: str,
-    ) -> tuple[dict[str, Any], dict[str, Any]]:
-        users_by_id = passwd_info(passwd_content, key="id")
-        users_by_name = passwd_info(passwd_content, key="name")
-
-        groups_by_id = group_info(group_content, key="id")
-        groups_by_name = group_info(group_content, key="name")
-
-        # Build name-to-UID mapping for converting members to UIDs
-        name_to_uid: dict[str, int] = {}
-        for username, data in users_by_name.items():
-            uid = data.get("id")
-            if isinstance(uid, int):
-                name_to_uid[username] = uid
-
-        self._initialize_user_groups(
-            users_by_id=users_by_id,
-            users_by_name=users_by_name,
-            groups_by_id=groups_by_id,
-            groups_by_name=groups_by_name,
-            name_to_uid=name_to_uid,
-        )
-        self._augment_membership(
-            users_by_id=users_by_id,
-            users_by_name=users_by_name,
-            group_content=group_content,
-            groups_by_id=groups_by_id,
-            groups_by_name=groups_by_name,
-            name_to_uid=name_to_uid,
-        )
-
-        if key == "id":
-            return users_by_id, groups_by_id
-        return users_by_name, groups_by_name
-
-    def _initialize_user_groups(
-        self,
-        users_by_id: dict[str, dict[str, Any]],
-        users_by_name: dict[str, dict[str, Any]],
-        groups_by_id: dict[str, dict[str, Any]],
-        groups_by_name: dict[str, dict[str, Any]],
-        name_to_uid: dict[str, int],
-    ) -> None:
-        self._normalize_group_member_lists(groups_by_id, groups_by_name)
-
-        for uid_str, entry in users_by_id.items():
-            groups: list[int] = []
-            primary_gid = entry.get("gid")
-            if primary_gid is not None:
-                groups.append(primary_gid)
-                entry["group"] = primary_gid
-                username = entry.get("name")
-                uid = _to_int(uid_str)
-                if isinstance(username, str) and username and uid is not None:
-                    gid_str = str(primary_gid)
-                    label = (
-                        groups_by_id.get(gid_str, {}).get("name") or gid_str
-                    )
-                    self._add_group_member(
-                        groups_by_id,
-                        groups_by_name,
-                        primary_gid,
-                        label,
-                        uid,
-                    )
-            else:
-                entry["group"] = None
-            entry["groups"] = groups
-
-        for name, entry in users_by_name.items():
-            groups: list[str] = []
-            primary_gid = entry.get("gid")
-            uid = name_to_uid.get(name)
-            if primary_gid is not None:
-                gid_str = str(primary_gid)
-                group_label = groups_by_id.get(gid_str, {}).get("name")
-                if not group_label:
-                    group_label = gid_str
-                entry["group"] = group_label
-                groups.append(group_label)
-                if uid is not None:
-                    self._add_group_member(
-                        groups_by_id,
-                        groups_by_name,
-                        primary_gid,
-                        group_label,
-                        uid,
-                    )
-            else:
-                entry["group"] = None
-            entry["groups"] = groups
-
-        # Remove gid field now that we've replaced it with group
-        for entry in users_by_id.values():
-            entry.pop("gid", None)
-        for entry in users_by_name.values():
-            entry.pop("gid", None)
-
-    def _augment_membership(
-        self,
-        users_by_id: dict[str, dict[str, Any]],
-        users_by_name: dict[str, dict[str, Any]],
-        group_content: str,
-        groups_by_id: dict[str, dict[str, Any]],
-        groups_by_name: dict[str, dict[str, Any]],
-        name_to_uid: dict[str, int],
-    ) -> None:
-        group_entries = jc_parse("group", group_content) or []
-
-        for group_entry in group_entries:
-            gid = _to_int(group_entry.get("gid"))
-            group_name = (
-                group_entry.get("name")
-                or group_entry.get("group_name")
-                or group_entry.get("group")
-            )
-            members = group_entry.get("members")
-            if members is None:
-                members = group_entry.get("users")
-            member_names = normalize_group_members(members)
-
-            label_name = group_name or (str(gid) if gid is not None else None)
-
-            for member in member_names:
-                uid = name_to_uid.get(member)
-                if uid is None:
-                    continue
-                uid_str = str(uid)
-                user_id_entry = users_by_id.get(uid_str)
-                if user_id_entry is not None and gid is not None:
-                    if gid not in user_id_entry["groups"]:
-                        user_id_entry["groups"].append(gid)
-
-                user_name_entry = users_by_name.get(member)
-                if user_name_entry is not None and label_name:
-                    if label_name not in user_name_entry["groups"]:
-                        user_name_entry["groups"].append(label_name)
-
-                self._add_group_member(
-                    groups_by_id,
-                    groups_by_name,
-                    gid,
-                    label_name,
-                    uid,
-                )
-
-    def _normalize_group_member_lists(
-        self,
-        groups_by_id: dict[str, dict[str, Any]],
-        groups_by_name: dict[str, dict[str, Any]],
-    ) -> None:
-        # Clear members lists - we'll repopulate with UIDs only
-        for entry in groups_by_id.values():
-            entry["members"] = []
-
-        for entry in groups_by_name.values():
-            entry["members"] = []
-
-    def _add_group_member(
-        self,
-        groups_by_id: dict[str, dict[str, Any]],
-        groups_by_name: dict[str, dict[str, Any]],
-        gid: Optional[int],
-        label: Optional[str],
-        member_uid: int,
-    ) -> None:
-        if member_uid is None:
-            return
-
-        if gid is not None:
-            gid_str = str(gid)
-            group_entry = groups_by_id.setdefault(gid_str, {})
-            members = group_entry.get("members")
-            if not isinstance(members, list):
-                members = []
-                group_entry["members"] = members
-            if member_uid not in members:
-                members.append(member_uid)
-
-        if label:
-            group_entry = groups_by_name.setdefault(label, {})
-            if gid is not None and "id" not in group_entry:
-                group_entry["id"] = gid
-            members = group_entry.get("members")
-            if not isinstance(members, list):
-                members = []
-                group_entry["members"] = members
-            if member_uid not in members:
-                members.append(member_uid)
 
     def _validate_user_shells(
         self, users: dict[str, dict[str, Any]], task_vars: dict[str, Any]
@@ -624,7 +421,7 @@ class ActionModule(ReadPosixActionBase, ActionBase):
 
         for user_data in users.values():
             home = user_data.get("home")
-            uid = user_data.get("id")
+            uid = user_data.get("uid")
             if home and isinstance(home, str) and isinstance(uid, int):
                 home_paths.add(home)
                 if home not in home_to_residents:
@@ -695,16 +492,16 @@ class ActionModule(ReadPosixActionBase, ActionBase):
     ) -> dict[str, dict[str, Any]]:
         """Gather metadata for shell binaries used by users.
 
-        Creates shells dict keyed by shell path with file metadata.
-        Only adds shells that don't already exist in shells from
-        previous facts gathering.
+        Creates the o0_shell_files dict keyed by shell path with file
+        metadata. Only adds shells that don't already exist in
+        o0_shell_files from previous facts gathering.
 
         :param dict[str, dict[str, Any]] users: User mapping
         :param dict[str, Any] task_vars: Task variables
         :returns dict[str, dict[str, Any]]: Shell paths with metadata
         """
-        # Start with existing shells if available
-        existing_shells = task_vars.get("shells", {})
+        # Start with existing shell files if available
+        existing_shells = task_vars.get("o0_shell_files", {})
         shells = dict(existing_shells)  # Copy to preserve existing
 
         # Collect unique shell paths that don't already exist
@@ -734,12 +531,3 @@ class ActionModule(ReadPosixActionBase, ActionBase):
                     shells[shell_path] = shell_data
 
         return shells
-
-
-def _to_int(value: Any) -> Optional[int]:
-    if value in (None, ""):
-        return None
-    try:
-        return int(value)
-    except (TypeError, ValueError):
-        return None

@@ -54,7 +54,9 @@ from ansible_collections.o0_o.posix.plugins.module_utils.dev_utils import (
     device_value,
 )
 from ansible_collections.o0_o.posix.plugins.module_utils.id_utils import (
+    get_effective_uid_command_requests,
     id_info,
+    process_effective_uid_results,
 )
 from ansible_collections.o0_o.posix.plugins.module_utils.group_utils import (
     group_info,
@@ -111,6 +113,7 @@ from ansible_collections.o0_o.posix.plugins.module_utils.uname_utils import (
     process_uname_command_results,
 )
 from ansible_collections.o0_o.posix.plugins.module_utils.user_utils import (
+    compose_users_groups,
     lookup_group,
     lookup_user,
 )
@@ -160,7 +163,10 @@ __all__ = [
     "remove_block",
     "remove_lines",
     "render_markers",
+    "get_effective_uid_command_requests",
     "id_info",
+    "process_effective_uid_results",
+    "compose_users_groups",
     "group_info",
     "normalize_group_members",
     "passwd_info",

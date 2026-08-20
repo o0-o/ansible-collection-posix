@@ -23,6 +23,15 @@ from ansible_collections.o0_o.posix.plugins.action.facts import (
 )
 
 
+def _mock_effective_uid(monkeypatch, uid) -> None:
+    """Answer the batched ``id -u`` with a fixed uid."""
+    monkeypatch.setattr(
+        "ansible_collections.o0_o.posix.plugins.action.facts."
+        "process_effective_uid_results",
+        lambda results: uid,
+    )
+
+
 @pytest.fixture
 def plugin(monkeypatch, base) -> Generator[ActionModule, None, None]:
     """Create an ActionModule instance with patched dependencies."""
@@ -155,10 +164,11 @@ class TestBatchedExecution:
         assert "timezone" in plugin.BATCHED_SUBSETS
         assert "timezone" not in plugin.USER_SCOPED_SUBSETS
 
-    def test_run_environment_keys_by_user(self, monkeypatch, plugin) -> None:
-        """Test environment results keyed under effective user
+    def test_run_environment_keys_by_uid(self, monkeypatch, plugin) -> None:
+        """Test environment results keyed under the effective uid
         with locale derived from LANG."""
         plugin._task.args = {"gather_subset": ["!all", "environment"]}
+        _mock_effective_uid(monkeypatch, 1000)
 
         def mock_run(commands, **kwargs):
             return []
@@ -182,15 +192,36 @@ class TestBatchedExecution:
 
         result = plugin.run(tmp=None, task_vars={})
 
-        user_facts = result["ansible_facts"]["o0_users"]["testuser"]
+        user_facts = result["ansible_facts"]["o0_users"]["1000"]
+        assert user_facts["uid"] == 1000
         assert user_facts["environment"]["HOME"] == ("/home/testuser")
         assert user_facts["environment"]["LANG"] == ("en_US.UTF-8")
         assert user_facts["locale"] == "en_US.UTF-8"
+
+    def test_environment_dropped_without_uid(
+        self, monkeypatch, plugin
+    ) -> None:
+        """Test environment facts are dropped when id -u did not
+        answer, since the canonical key is the uid."""
+        plugin._task.args = {"gather_subset": ["!all", "environment"]}
+        _mock_effective_uid(monkeypatch, None)
+
+        monkeypatch.setattr(plugin, "_run", lambda commands, **kwargs: [])
+        monkeypatch.setitem(
+            plugin.BATCHED_SUBSETS["environment"],
+            "processor",
+            lambda results: ({"LANG": "C"}, []),
+        )
+
+        result = plugin.run(tmp=None, task_vars={})
+
+        assert result["ansible_facts"] == {}
 
     def test_locale_defaults_to_ascii(self, monkeypatch, plugin) -> None:
         """Test locale falls back to ASCII when LANG/LC_ALL
         unset."""
         plugin._task.args = {"gather_subset": ["!all", "environment"]}
+        _mock_effective_uid(monkeypatch, 1000)
 
         def mock_run(commands, **kwargs):
             return []
@@ -208,12 +239,13 @@ class TestBatchedExecution:
 
         result = plugin.run(tmp=None, task_vars={})
 
-        user_facts = result["ansible_facts"]["o0_users"]["testuser"]
+        user_facts = result["ansible_facts"]["o0_users"]["1000"]
         assert user_facts["locale"] == "ASCII"
 
     def test_locale_c_becomes_ascii(self, monkeypatch, plugin) -> None:
         """Test C locale is translated to ASCII."""
         plugin._task.args = {"gather_subset": ["!all", "environment"]}
+        _mock_effective_uid(monkeypatch, 0)
 
         def mock_run(commands, **kwargs):
             return []
@@ -231,8 +263,63 @@ class TestBatchedExecution:
 
         result = plugin.run(tmp=None, task_vars={})
 
-        user_facts = result["ansible_facts"]["o0_users"]["testuser"]
+        user_facts = result["ansible_facts"]["o0_users"]["0"]
         assert user_facts["locale"] == "ASCII"
+
+
+class TestGatherUsers:
+    """Tests for the o0_users and o0_groups aggregation."""
+
+    def test_canonical_shape(self, monkeypatch, plugin) -> None:
+        """Test the aggregator emits the same shape the users module
+        composes."""
+        slurped = {
+            "/etc/passwd": (
+                "root:*:0:0:System Administrator:/var/root:/bin/sh\n"
+                "o0-o:*:1000:20:o0-o:/home/o0-o:/bin/zsh"
+            ),
+            "/etc/group": "wheel:*:0:root\nstaff:*:20:\naccess_bpf:*:101:o0-o",
+            "/etc/shells": "/bin/sh\n/bin/zsh",
+        }
+
+        def mock_execute(module_name, module_args, task_vars=None):
+            return {"stdout": slurped[module_args["src"]]}
+
+        monkeypatch.setattr(plugin, "_execute_module", mock_execute)
+
+        facts = plugin._gather_users(task_vars={})
+
+        assert facts["o0_users"]["1000"] == {
+            "name": "o0-o",
+            "uid": 1000,
+            "gid": 20,
+            "gecos": "o0-o",
+            "home": "/home/o0-o",
+            "shell": "/bin/zsh",
+            "groups": [20, 101],
+        }
+        assert facts["o0_groups"]["101"] == {
+            "name": "access_bpf",
+            "gid": 101,
+            "members": [1000],
+        }
+        assert facts["o0_shells"] == ["/bin/sh", "/bin/zsh"]
+
+    def test_needs_both_files(self, monkeypatch, plugin) -> None:
+        """Test a failed /etc/group read leaves the cross-referenced
+        facts unpublished."""
+
+        def mock_execute(module_name, module_args, task_vars=None):
+            if module_args["src"] == "/etc/group":
+                return {"failed": True}
+            return {"stdout": "root:*:0:0:root:/root:/bin/sh"}
+
+        monkeypatch.setattr(plugin, "_execute_module", mock_execute)
+
+        facts = plugin._gather_users(task_vars={})
+
+        assert "o0_users" not in facts
+        assert "o0_groups" not in facts
 
 
 class TestRun:

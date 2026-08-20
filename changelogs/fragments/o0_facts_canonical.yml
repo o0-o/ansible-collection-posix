@@ -1,0 +1,40 @@
+---
+breaking_changes:
+  - >-
+    users - The returned fact names take the collection's o0 prefix:
+    users becomes o0_users, groups becomes o0_groups, homes becomes
+    o0_homes, and shells becomes o0_shell_files. Ansible reserves
+    groups for the
+    inventory group map, so a bare groups fact could never be read
+    back; the namespace keeps every name the collection publishes out
+    of reach of a reserved one. The o0_shells fact, which lists the
+    paths named in /etc/shells, is untouched and keeps its meaning
+    (https://github.com/o0-o/ansible-collection-posix/pull/XXX).
+  - >-
+    users - The key option is removed. The module published two
+    incompatible shapes under one name, and the facts module published
+    a third; there is now one canonical shape and no option to bend
+    it. Playbooks passing key must drop it
+    (https://github.com/o0-o/ansible-collection-posix/pull/XXX).
+  - >-
+    users, facts - o0_users and o0_groups are keyed by the stringified
+    numeric ID and cross-reference each other in integers throughout.
+    A user carries name, uid, gid, gecos, home, shell, and groups, the
+    GIDs of every group it belongs to; the group field that held the
+    primary group is replaced by gid, which is no longer dropped. A
+    group carries name, gid, and members, the UIDs of everyone in it,
+    counting those who hold it as their primary group. The facts
+    module composed users keyed by username with name-based group
+    membership, and nested the environment and locale facts under the
+    effective username; that nesting now keys on the effective UID,
+    read from id -u
+    (https://github.com/o0-o/ansible-collection-posix/pull/XXX).
+bugfixes:
+  - >-
+    group lookup - The lookup read a variable named groups, which
+    Ansible reserves for the inventory group map, so it never saw a
+    gathered fact. Worse, an inventory group whose name matched a
+    system group satisfied the lookup's type check and returned that
+    group's host list dressed as group facts. The lookup reads
+    o0_groups now, and the user lookup reads o0_users
+    (https://github.com/o0-o/ansible-collection-posix/pull/XXX).

@@ -13,13 +13,70 @@
 
 from __future__ import annotations
 
-from typing import Any, Union
+from typing import Any, Optional, Union
+
+from ansible_collections.o0_o.core.plugins.module_utils import (
+    process_all_command_results,
+    process_command_spec,
+)
 
 from ansible_collections.o0_o.posix.plugins.module_utils.jc_utils import (
     jc_parse,
 )
 
 VALID_KEYS = {"id", "name"}
+
+
+def _parse_effective_uid(
+    output: str,
+    e_prefix: str,
+) -> tuple[Optional[int], Optional[list[Exception]]]:
+    """Canonical COMMAND_SPEC parser for ``id -u``.
+
+    :param str output: Raw stdout (e.g. ``1000``)
+    :param str e_prefix: Error prefix for context
+    :returns tuple[Optional[int], Optional[list[Exception]]]: The
+        effective UID and list of errors
+    """
+    text = (output or "").strip()
+    uid = _to_int(text)
+    if uid is None:
+        return None, [ValueError(f"{e_prefix}uid is not numeric: {text!r}")]
+    return uid, None
+
+
+def get_effective_uid_command_requests() -> list[dict[str, Any]]:
+    """Build the command request for the effective user's UID.
+
+    :returns list[dict[str, Any]]: Command requests for run plugin
+    """
+    from ansible_collections.o0_o.posix.plugins.module_utils.command_spec import (  # noqa: E501
+        ID_COMMAND_SPEC,
+    )
+
+    return process_command_spec(ID_COMMAND_SPEC, cmd_type="effective_uid")
+
+
+def process_effective_uid_results(
+    cmds_completed: list[dict[str, Any]],
+) -> Optional[int]:
+    """Extract the effective UID from command results.
+
+    :param list[dict[str, Any]] cmds_completed: Command results from
+        run plugin
+    :returns Optional[int]: The effective UID, or None when ``id -u``
+        did not answer
+    """
+    processed = process_all_command_results(cmds_completed)
+
+    result = processed.get("effective_uid")
+    if isinstance(result, list):
+        result = result[0] if result else None
+    if not isinstance(result, dict):
+        return None
+
+    parsed = result.get("parsed")
+    return parsed if isinstance(parsed, int) else None
 
 
 def id_info(
@@ -161,4 +218,8 @@ def _unique_str_list(values: list[str | None]) -> list[str]:
     return result
 
 
-__all__ = ["id_info"]
+__all__ = [
+    "get_effective_uid_command_requests",
+    "id_info",
+    "process_effective_uid_results",
+]

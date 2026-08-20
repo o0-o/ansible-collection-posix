@@ -18,17 +18,18 @@ from ansible.plugins.action import ActionBase
 
 from ansible_collections.o0_o.posix.plugins.module_utils import (
     PosixActionBase,
+    compose_users_groups,
     fstab,
     get_compliance_command_requests,
     get_dmidecode_command_requests,
+    get_effective_uid_command_requests,
     get_env_command_requests,
     get_mount_command_requests,
     get_timezone_command_requests,
-    group_info,
     parse_shells,
-    passwd_info,
     process_all_compliance_command_results,
     process_dmidecode_command_results,
+    process_effective_uid_results,
     process_env_command_results,
     process_mount_command_results,
     process_timezone_command_results,
@@ -110,9 +111,14 @@ POSIX_ENV_VARS = [
 def _get_environment_requests() -> list[dict[str, Any]]:
     """Build command requests for POSIX environment collection.
 
+    The effective UID travels with the environment because it is the
+    key the results nest under.
+
     :returns list[dict[str, Any]]: Command requests for run plugin
     """
-    return get_env_command_requests(POSIX_ENV_VARS)
+    return get_env_command_requests(
+        POSIX_ENV_VARS
+    ) + get_effective_uid_command_requests()
 
 
 def _process_environment_results(
@@ -121,7 +127,7 @@ def _process_environment_results(
     """Process environment results into o0_users namespace.
 
     Returns raw env data — the caller is responsible for keying
-    it under the effective username.
+    it under the effective UID.
 
     :param list[dict[str, Any]] cmds_completed: Command results
     :returns tuple[dict[str, Any], list[Exception]]: Tuple of
@@ -199,7 +205,7 @@ class ActionModule(PosixActionBase, ActionBase):
         },
     }
 
-    # Subsets whose results go under o0_users[effective_user]
+    # Subsets whose results go under o0_users[effective_uid]
     USER_SCOPED_SUBSETS = {"environment"}
 
     # Subsets that use individual gather methods (legacy path)
@@ -263,6 +269,10 @@ class ActionModule(PosixActionBase, ActionBase):
     ) -> dict[str, Any]:
         """Gather user and group information.
 
+        The o0_users and o0_groups facts come from the same
+        composition the users module publishes, so both producers
+        emit one shape.
+
         :param Optional[dict[str, Any]] task_vars: Task variables
         :returns dict[str, Any]: User/group facts
         """
@@ -286,11 +296,12 @@ class ActionModule(PosixActionBase, ActionBase):
 
         facts = {}
 
-        if not passwd_slurp.get("failed"):
-            facts["o0_users"] = passwd_info(passwd_slurp, key="name")
-
-        if not group_slurp.get("failed"):
-            facts["o0_groups"] = group_info(group_slurp)
+        # The canonical shape cross-references both files, so it needs
+        # both reads to have landed.
+        if not passwd_slurp.get("failed") and not group_slurp.get("failed"):
+            users, groups = compose_users_groups(passwd_slurp, group_slurp)
+            facts["o0_users"] = users
+            facts["o0_groups"] = groups
 
         if not shells_slurp.get("failed"):
             facts["o0_shells"] = parse_shells(shells_slurp)
@@ -337,7 +348,7 @@ class ActionModule(PosixActionBase, ActionBase):
         parallel ``_run()`` call.  Legacy subsets run individually.
 
         The ``environment`` subset collects POSIX env vars and
-        places them under ``o0_users[effective_user]['environment']``.
+        places them under ``o0_users[<effective uid>]['environment']``.
 
         :param Optional[str] tmp: Unused temporary directory path
         :param Optional[dict[str, Any]] task_vars: Available Ansible
@@ -407,14 +418,23 @@ class ActionModule(PosixActionBase, ActionBase):
                             f"[{self.inventory_hostname}] " f"{err}"
                         )
 
-                    # User-scoped subsets go under
-                    # o0_users[effective_user]
+                    # User-scoped subsets nest under o0_users, which
+                    # keys on the UID
                     if subset in self.USER_SCOPED_SUBSETS:
-                        user = self.effective_user
-                        user_facts = {"o0_users": {user: {subset: facts}}}
+                        uid = process_effective_uid_results(run_results)
+                        if uid is None:
+                            self._display.warning(
+                                f"[{self.inventory_hostname}] Could"
+                                f" not determine the effective uid;"
+                                f" dropping {subset} facts"
+                            )
+                            continue
+
+                        entry = {"uid": uid, subset: facts}
 
                         # Validate LOGNAME/USER
                         if subset == "environment":
+                            user = self.effective_user
                             for var in ("LOGNAME", "USER"):
                                 val = facts.get(var)
                                 if val is not None and val != user:
@@ -431,9 +451,11 @@ class ActionModule(PosixActionBase, ActionBase):
                             locale = lc_all or lang or "ASCII"
                             if locale in ("C", "POSIX"):
                                 locale = "ASCII"
-                            user_facts["o0_users"][user]["locale"] = locale
+                            entry["locale"] = locale
 
-                        self._merge_facts(all_facts, user_facts)
+                        self._merge_facts(
+                            all_facts, {"o0_users": {str(uid): entry}}
+                        )
                     else:
                         self._merge_facts(all_facts, facts)
 

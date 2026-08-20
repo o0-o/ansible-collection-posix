@@ -17,12 +17,12 @@ name: user
 short_description: Look up user information by UID or username
 version_added: "1.4.0"
 description:
-  - Look up user information from the C(users) fact by UID (int) or
+  - Look up user information from the C(o0_users) fact by UID (int) or
     username (str).
-  - The C(users) fact is typically set by the C(o0_o.posix.users)
-    module.
-  - When given an integer, looks up by UID. When given a string, looks
-    up by username.
+  - The C(o0_users) fact is set by the C(o0_o.posix.facts) module and
+    returned by the C(o0_o.posix.users) module.
+  - An integer is the fact's own key. A string is matched against the
+    C(name) field of each entry.
   - Returns C(None) if the user is not found.
 options:
   _terms:
@@ -32,11 +32,9 @@ options:
     type: list
     elements: raw
 notes:
-  - This lookup requires the C(users) fact to be available in the
+  - This lookup requires the C(o0_users) fact to be available in the
     variable namespace.
-  - The C(users) fact format matches the output from
-    C(o0_o.posix.users) module.
-  - If the C(users) fact is not available, the lookup will fail.
+  - If the C(o0_users) fact is not available, the lookup will fail.
 seealso:
   - module: o0_o.posix.users
     description: Gather POSIX user and group information
@@ -46,8 +44,9 @@ seealso:
 """
 
 EXAMPLES = r"""
-- name: Gather user information
-  o0_o.posix.users:
+- name: Gather user information as facts
+  o0_o.posix.facts:
+    gather_subset: ['users']
 
 - name: Look up user by UID
   ansible.builtin.debug:
@@ -113,10 +112,11 @@ _raw:
   type: raw
   sample:
     name: o0-o
+    uid: 1000
+    gid: 20
     gecos: 'User Account'
     home: /home/o0-o
     shell: /bin/bash
-    group: 20
     groups:
       - 20
       - 101
@@ -145,18 +145,20 @@ class LookupModule(LookupBase, VarsLookupBase):
         has_default = "default" in kwargs
         default = kwargs.pop("default", None)
 
-        # Get the users fact using the inherited method
+        # Get the o0_users fact using the inherited method
         try:
-            users = self.lookup_var("users", default={}, **kwargs)
+            users = self.lookup_var("o0_users", default={}, **kwargs)
         except AnsibleLookupError as e:
             raise AnsibleLookupError(
-                f"Failed to access 'users' fact. "
-                f"Ensure o0_o.posix.users module has been run. Error: {e}"
+                f"Failed to access 'o0_users' fact. Ensure "
+                f"o0_o.posix.facts or o0_o.posix.users has been run. "
+                f"Error: {e}"
             ) from e
 
         if not isinstance(users, dict):
             raise AnsibleLookupError(
-                f"'users' fact is not a dictionary, got {type(users).__name__}"
+                f"'o0_users' fact is not a dictionary, got "
+                f"{type(users).__name__}"
             )
 
         ret = []

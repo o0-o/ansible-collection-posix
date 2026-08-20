@@ -21,17 +21,10 @@ description:
     C(/etc/group) on POSIX hosts.
   - Gathers SSH keys from user home directories including authorized
     keys and public key files.
-  - Returns dictionaries keyed by either numeric ids or names that
-    mirror the structure of the o0_o.posix.id filter output.
+  - Returns the canonical C(o0_users) and C(o0_groups) mappings, keyed
+    by stringified UID and GID and cross-referenced by numeric ID.
+    The C(o0_o.posix.facts) module publishes the same shape.
 options:
-  key:
-    description:
-      - Select how the resulting dictionaries are keyed.
-      - When C(id) the mapping keys are stringified numeric identifiers.
-      - When C(name) the mapping keys are user or group names.
-    type: str
-    choices: [id, name]
-    default: id
   passwd_path:
     description:
       - Path to the C(/etc/passwd) file.
@@ -47,6 +40,9 @@ author:
 notes:
   - This module is implemented as an action plugin and supports raw
     fallback.
+  - Group membership is reported in numeric IDs on both sides - a
+    user's C(groups) lists GIDs and a group's C(members) lists UIDs -
+    and every user counts as a member of their primary group.
   - SSH keys are only gathered if the user's C(.ssh) directory is
     readable.
   - Both C(authorized_keys) and C(authorized_keys2) files are checked
@@ -65,42 +61,46 @@ seealso:
 """
 
 EXAMPLES = r"""
-- name: Gather users keyed by uid
+- name: Gather user and group information
   o0_o.posix.users:
   register: system_users
 
-- name: Gather users keyed by name
-  o0_o.posix.users:
-    key: name
-  register: system_users_by_name
+- name: Expose the canonical facts for the user and group lookups
+  ansible.builtin.set_fact:
+    o0_users: "{{ system_users['o0_users'] }}"
+    o0_groups: "{{ system_users['o0_groups'] }}"
 
 - name: Display SSH keys for a specific user
   ansible.builtin.debug:
-    msg: "{{ system_users['users']['1000']['keys'] }}"
-  when: "'keys' in system_users['users']['1000']"
+    msg: "{{ system_users['o0_users']['1000']['keys'] }}"
+  when: "'keys' in system_users['o0_users']['1000']"
 
 - name: Check authorized keys for all users
   ansible.builtin.debug:
     msg: >-
       User {{ item.value.name }} has
       {{ item.value.keys.authorized | length }} authorized keys
-  loop: "{{ system_users['users'] | dict2items }}"
+  loop: "{{ system_users['o0_users'] | dict2items }}"
   when: item.value.keys is defined and item.value.keys.authorized is defined
 
 - name: Find keys that exist in authorized_keys2
   ansible.builtin.debug:
     msg: "Key {{ item.key[:20] }}... is in authorized_keys2"
   loop: >-
-    {{ system_users['users']['1000']['keys']['authorized'] | dict2items }}
+    {{ system_users['o0_users']['1000']['keys']['authorized'] | dict2items }}
   when:
-    - system_users['users']['1000']['keys'] is defined
+    - system_users['o0_users']['1000']['keys'] is defined
     - item.value.authorized_keys2 is defined
     - item.value.authorized_keys2
+
+- name: List the members of a group by GID
+  ansible.builtin.debug:
+    msg: "{{ system_users['o0_groups']['20']['members'] }}"
 """
 
 RETURN = r"""
-users:
-  description: Mapping of users keyed according to the I(key) option
+o0_users:
+  description: Mapping of users keyed by stringified UID
   returned: always
   type: dict
   contains:
@@ -108,6 +108,14 @@ users:
       description: Username
       type: str
       sample: o0-o
+    uid:
+      description: Numeric user ID
+      type: int
+      sample: 1000
+    gid:
+      description: Numeric ID of the user's primary group
+      type: int
+      sample: 20
     gecos:
       description: User comment/info field
       type: str
@@ -120,15 +128,18 @@ users:
       description: Login shell
       type: str
       sample: /bin/bash
-    group:
-      description: Primary group (ID or name based on I(key))
-      type: raw
-      sample: 20
     groups:
-      description: List of all groups (IDs or names based on I(key))
+      description: >-
+        GIDs of every group the user belongs to, primary group
+        included
       type: list
-      elements: raw
+      elements: int
       sample: [20, 101]
+    known:
+      description: Whether the user's shell is listed in C(/etc/shells)
+      returned: when the C(/etc/shells) configuration is available
+      type: bool
+      sample: true
     keys:
       description: SSH key information for the user
       returned: when user's .ssh directory is readable
@@ -162,18 +173,50 @@ users:
               type: ssh-ed25519
               comment: personal-key
               file: id_ed25519.pub
-groups:
+o0_groups:
   description: >-
-    Mapping of groups keyed according to the I(key) option. Each entry
-    includes the group name when available and the group members as UIDs.
+    Mapping of groups keyed by stringified GID. Each entry includes the
+    group name when available, the GID, and the UIDs of every member.
   returned: always
   type: dict
   sample:
     "20":
       name: staff
+      gid: 20
       members:
         - 0
         - 1000
+o0_homes:
+  description: >-
+    Mapping of home directory paths to their file metadata, each with
+    a C(residents) list of the UIDs that call the path home.
+  returned: always
+  type: dict
+  sample:
+    /home/o0-o:
+      type: directory
+      uid: 1000
+      gid: 20
+      tags:
+        - posix
+        - home
+      residents:
+        - 1000
+o0_shell_files:
+  description: >-
+    Mapping of login shell paths to their file metadata. Distinct from
+    the C(o0_shells) fact, which lists the paths named in
+    C(/etc/shells).
+  returned: always
+  type: dict
+  sample:
+    /bin/sh:
+      type: file
+      uid: 0
+      gid: 0
+      tags:
+        - posix
+        - shell
 """
 from ansible.module_utils.basic import AnsibleModule
 
@@ -182,7 +225,6 @@ def main() -> None:
     """Fail if this module is run directly without the action plugin."""
 
     argument_spec = {
-        "key": {"type": "str", "choices": ["id", "name"], "default": "id"},
         "passwd_path": {
             "type": "str",
             "default": "/etc/passwd",
