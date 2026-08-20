@@ -1,0 +1,389 @@
+# vim: ts=2:sw=2:sts=2:et:ft=yaml.ansible
+# -*- mode: yaml; yaml-indent-offset: 2; indent-tabs-mode: nil; -*-
+---
+# GNU General Public License v3.0+
+# SPDX-License-Identifier: GPL-3.0-or-later
+# (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
+#
+# Copyright (c) 2025 oØ.o (@o0-o)
+#
+# This file is part of the o0_o.posix Ansible Collection.
+
+# Ownership and SELinux context are the two permission arguments a
+# plain user cannot exercise. Each half asks the host whether it can be
+# tested before it tests anything: the local development run is
+# unprivileged and carries no policy, so both halves skip there, while
+# the distribution lanes run as root and the SELinux distributions
+# reach the labelling cases.
+#
+# Every case here writes for real. The permission machinery reads the
+# current owner, group, and mode off the destination before it decides
+# whether to change them, and it cannot take that reading in check
+# mode, so there is no prediction to assert against.
+
+- name: Clear the tree the permission cases write under
+  ansible.builtin.file:
+    path: "{{ perms_dir }}"
+    state: absent
+  check_mode: false
+
+- name: Create the tree the permission cases write under
+  ansible.builtin.file:
+    path: "{{ perms_dir }}"
+    state: directory
+    mode: '0755'
+  check_mode: false
+
+- name: Ask which account the play is running as
+  ansible.builtin.command:
+    argv:
+      - id
+      - -u
+  changed_when: false
+  check_mode: false
+  register: perms_whoami_reg
+
+- name: Ask the numeric user ID the ownership cases hand files to
+  ansible.builtin.command:
+    argv:
+      - id
+      - -u
+      - "{{ perms_account }}"
+  changed_when: false
+  failed_when: false
+  check_mode: false
+  register: perms_uid_reg
+
+- name: Ask the numeric group ID that account belongs to
+  ansible.builtin.command:
+    argv:
+      - id
+      - -g
+      - "{{ perms_account }}"
+  changed_when: false
+  failed_when: false
+  check_mode: false
+  register: perms_gid_reg
+
+- name: Ask the name of that group
+  ansible.builtin.command:
+    argv:
+      - id
+      - -gn
+      - "{{ perms_account }}"
+  changed_when: false
+  failed_when: false
+  check_mode: false
+  register: perms_group_reg
+
+# Both probes answer on every platform: a host with no getenforce is
+# reported as Disabled, and a host with no chcon as absent.
+- name: Ask whether this host enforces SELinux
+  ansible.builtin.command:
+    argv:
+      - sh
+      - -c
+      - 'getenforce 2>/dev/null || echo Disabled'
+  changed_when: false
+  check_mode: false
+  register: perms_selinux_reg
+
+- name: Ask whether the tool that sets a context is installed
+  ansible.builtin.command:
+    argv:
+      - sh
+      - -c
+      - 'command -v chcon >/dev/null 2>&1 && echo present || echo absent'
+  changed_when: false
+  check_mode: false
+  register: perms_chcon_reg
+
+- name: Name the capabilities the permission cases need
+  ansible.builtin.set_fact:
+    perms_can_chown: >-
+      {{ (perms_whoami_reg['stdout'] == '0'
+          and perms_uid_reg['rc'] == 0
+          and perms_gid_reg['rc'] == 0
+          and perms_group_reg['rc'] == 0) | bool }}
+    perms_has_selinux: >-
+      {{ (perms_whoami_reg['stdout'] == '0'
+          and perms_selinux_reg['stdout'] != 'Disabled'
+          and perms_chcon_reg['stdout'] == 'present') | bool }}
+    perms_lacks_selinux_tools: >-
+      {{ (perms_chcon_reg['stdout'] == 'absent') | bool }}
+  check_mode: false
+
+- name: Write a file the requested account owns
+  o0_o.posix.write:
+    dest: "{{ perms_content_dest }}"
+    content: "owned by {{ perms_account }}\n"
+    owner: "{{ perms_account }}"
+    group: "{{ perms_group_reg['stdout'] }}"
+    mode: '0640'
+    raw: "{{ raw }}"
+  check_mode: false
+  register: perms_content_reg
+  when: perms_can_chown
+
+- name: Read the owned file back
+  o0_o.posix.read:
+    path: "{{ perms_content_dest }}"
+    attributes: true
+  register: perms_content_read_reg
+  when: perms_can_chown
+
+- name: Assert the ownership and mode landed on the file
+  ansible.builtin.assert:
+    that:
+      - perms_content_reg is changed
+      - perms_content_reg['raw'] == raw
+      - perms_now['uid'] == perms_uid_reg['stdout'] | int
+      - perms_now['gid'] == perms_gid_reg['stdout'] | int
+      - perms_now['mode'] == '0640'
+  vars:
+    perms_now: >-
+      {{ perms_content_read_reg['paths'][perms_content_dest] }}
+  when: perms_can_chown
+
+- name: Write the identical owned file a second time
+  o0_o.posix.write:
+    dest: "{{ perms_content_dest }}"
+    content: "owned by {{ perms_account }}\n"
+    owner: "{{ perms_account }}"
+    group: "{{ perms_group_reg['stdout'] }}"
+    mode: '0640'
+    raw: "{{ raw }}"
+  check_mode: false
+  register: perms_content_idempotent_reg
+  when: perms_can_chown
+
+- name: Assert ownership already in place reports no change
+  ansible.builtin.assert:
+    that:
+      - perms_content_idempotent_reg is not changed
+      - perms_content_idempotent_reg['raw'] == raw
+  when: perms_can_chown
+
+- name: Touch a file into existence under the requested account
+  o0_o.posix.write:
+    dest: "{{ perms_touched_dest }}"
+    state: touch
+    owner: "{{ perms_account }}"
+    group: "{{ perms_group_reg['stdout'] }}"
+    mode: '0600'
+    raw: "{{ raw }}"
+  check_mode: false
+  register: perms_touch_reg
+  when: perms_can_chown
+
+- name: Read the touched file back
+  o0_o.posix.read:
+    path: "{{ perms_touched_dest }}"
+    attributes: true
+  register: perms_touch_read_reg
+  when: perms_can_chown
+
+- name: Assert the bare state carried the ownership it was given
+  ansible.builtin.assert:
+    that:
+      - perms_touch_reg is changed
+      - perms_touch_reg['raw'] == raw
+      - perms_now['type'] == 'regular'
+      - perms_now['uid'] == perms_uid_reg['stdout'] | int
+      - perms_now['gid'] == perms_gid_reg['stdout'] | int
+      - perms_now['mode'] == '0600'
+  vars:
+    perms_now: >-
+      {{ perms_touch_read_reg['paths'][perms_touched_dest] }}
+  when: perms_can_chown
+
+- name: Touch the same file with the same ownership again
+  o0_o.posix.write:
+    dest: "{{ perms_touched_dest }}"
+    state: touch
+    owner: "{{ perms_account }}"
+    group: "{{ perms_group_reg['stdout'] }}"
+    mode: '0600'
+    raw: "{{ raw }}"
+  check_mode: false
+  register: perms_touch_idempotent_reg
+  when: perms_can_chown
+
+- name: Assert a file already owned as asked reports no change
+  ansible.builtin.assert:
+    that:
+      - perms_touch_idempotent_reg is not changed
+      - perms_touch_idempotent_reg['raw'] == raw
+      - perms_touch_idempotent_reg['msg'] == 'file present'
+  when: perms_can_chown
+
+# Nothing about the file changes here except who owns it, so this is
+# the case that proves ownership is applied to a path that already
+# exists rather than only to one being created.
+- name: Hand the existing file back to the account running the play
+  o0_o.posix.write:
+    dest: "{{ perms_touched_dest }}"
+    state: touch
+    owner: root
+    mode: '0600'
+    raw: "{{ raw }}"
+  check_mode: false
+  register: perms_rechown_reg
+  when: perms_can_chown
+
+- name: Read the file back after it changed hands
+  o0_o.posix.read:
+    path: "{{ perms_touched_dest }}"
+    attributes: true
+  register: perms_rechown_read_reg
+  when: perms_can_chown
+
+- name: Assert the ownership change alone is reported as a change
+  ansible.builtin.assert:
+    that:
+      - perms_rechown_reg is changed
+      - perms_rechown_reg['raw'] == raw
+      - perms_now['uid'] == 0
+      - perms_now['mode'] == '0600'
+  vars:
+    perms_now: >-
+      {{ perms_rechown_read_reg['paths'][perms_touched_dest] }}
+  when: perms_can_chown
+
+- name: Create a directory the requested account owns
+  o0_o.posix.write:
+    dest: "{{ perms_tree_dest }}"
+    state: directory
+    owner: "{{ perms_account }}"
+    group: "{{ perms_group_reg['stdout'] }}"
+    mode: '0750'
+    raw: "{{ raw }}"
+  check_mode: false
+  register: perms_tree_reg
+  when: perms_can_chown
+
+- name: Read the owned directory back
+  o0_o.posix.read:
+    path: "{{ perms_tree_dest }}"
+    attributes: true
+  register: perms_tree_read_reg
+  when: perms_can_chown
+
+- name: Assert the directory carries the ownership it was given
+  ansible.builtin.assert:
+    that:
+      - perms_tree_reg is changed
+      - perms_tree_reg['raw'] == raw
+      - perms_now['type'] == 'directory'
+      - perms_now['uid'] == perms_uid_reg['stdout'] | int
+      - perms_now['gid'] == perms_gid_reg['stdout'] | int
+      - perms_now['mode'] == '0750'
+  vars:
+    perms_now: "{{ perms_tree_read_reg['paths'][perms_tree_dest] }}"
+  when: perms_can_chown
+
+# An enforcing policy and a chcon on the path are not enough on their
+# own: the filesystem under the temporary tree has to accept a label
+# too. Asking it directly keeps the assertions below on hosts that can
+# actually answer them.
+- name: Create the file the relabel probe tries to label
+  ansible.builtin.file:
+    path: "{{ perms_selinux_probe }}"
+    state: touch
+    mode: '0644'
+  check_mode: false
+  when: perms_has_selinux
+
+- name: Ask whether this filesystem accepts a context change
+  ansible.builtin.command:
+    argv:
+      - chcon
+      - -t
+      - "{{ perms_setype }}"
+      - "{{ perms_selinux_probe }}"
+  changed_when: false
+  failed_when: false
+  check_mode: false
+  register: perms_relabel_reg
+  when: perms_has_selinux
+
+- name: Name whether a context can be applied on this host
+  ansible.builtin.set_fact:
+    perms_can_relabel: >-
+      {{ (perms_has_selinux
+          and perms_relabel_reg['rc'] | default(1) == 0) | bool }}
+  check_mode: false
+
+- name: Write a file carrying an SELinux type
+  o0_o.posix.write:
+    dest: "{{ perms_selinux_dest }}"
+    content: "labelled\n"
+    setype: "{{ perms_setype }}"
+    mode: '0644'
+    raw: "{{ raw }}"
+  check_mode: false
+  register: perms_selinux_write_reg
+  when: perms_can_relabel
+
+- name: Read the labelled file back
+  o0_o.posix.read:
+    path: "{{ perms_selinux_dest }}"
+    attributes: true
+  register: perms_selinux_read_reg
+  when: perms_can_relabel
+
+- name: Assert the requested type reached the file's context
+  ansible.builtin.assert:
+    that:
+      - perms_selinux_write_reg is changed
+      - perms_selinux_write_reg['raw'] == raw
+      - perms_now['selinux'] is string
+      - (':' ~ perms_setype ~ ':') in perms_now['selinux']
+  vars:
+    perms_now: >-
+      {{ perms_selinux_read_reg['paths'][perms_selinux_dest] }}
+  when: perms_can_relabel
+
+- name: Write the identical labelled file a second time
+  o0_o.posix.write:
+    dest: "{{ perms_selinux_dest }}"
+    content: "labelled\n"
+    setype: "{{ perms_setype }}"
+    mode: '0644'
+    raw: "{{ raw }}"
+  check_mode: false
+  register: perms_selinux_idempotent_reg
+  when: perms_can_relabel
+
+- name: Assert a context already in place reports no change
+  ansible.builtin.assert:
+    that:
+      - perms_selinux_idempotent_reg is not changed
+      - perms_selinux_idempotent_reg['raw'] == raw
+  when: perms_can_relabel
+
+- name: 'Fail: A context on a host with no tool to set it'
+  when: perms_lacks_selinux_tools
+  block:
+
+    - name: Ask for a type this host cannot apply
+      o0_o.posix.write:
+        dest: "{{ perms_dir }}/unlabelled.conf"
+        content: "no context here\n"
+        setype: "{{ perms_setype }}"
+        raw: "{{ raw }}"
+      check_mode: false
+
+    - name: Sentinel for the missing SELinux tool task
+      ansible.builtin.fail:
+        msg: 'the write module applied a context it cannot set'
+
+  rescue:
+
+    - name: Assert the unsupported context request was refused
+      ansible.builtin.assert:
+        that:
+          - "'chcon' in ansible_failed_result['msg']"
+          - >-
+            'missing on the remote host'
+            in ansible_failed_result['msg']

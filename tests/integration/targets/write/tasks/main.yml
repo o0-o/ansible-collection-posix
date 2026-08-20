@@ -78,8 +78,17 @@
         tmpl_dir: "{{ write_test_dir }}/template"
         tmpl_dest: "{{ tmpl_dir }}/rendered.txt"
         tmpl_custom_dest: "{{ tmpl_dir }}/custom.txt"
+        tmpl_delims_dest: "{{ tmpl_dir }}/delims.txt"
+        tmpl_defaults_dest: "{{ tmpl_dir }}/defaults.txt"
         tmpl_greeting: 'Hello world'
         tmpl_inert_line: '{% raw %}inert={{ tmpl_greeting }}{% endraw %}'
+        # The delimiter fixture carries both notations at once. Under
+        # the custom delimiters the angle forms render and the brace
+        # forms stay literal; under the defaults the roles swap.
+        tmpl_angle_block: 'block=<% if true %>on<% endif %>;'
+        tmpl_angle_comment: 'comment=<# never lands #>none;'
+        tmpl_brace_block: >-
+          {% raw %}inert={% if true %}never{% endif %};{% endraw %}
 
     - name: Run line edit family tests
       ansible.builtin.include_tasks: line.yml
@@ -92,6 +101,18 @@
         line_dir: "{{ write_test_dir }}/line"
         line_dest: "{{ line_dir }}/app.conf"
         line_created_dest: "{{ line_dir }}/created.conf"
+        line_search_dest: "{{ line_dir }}/search.conf"
+        line_missing_dest: "{{ line_dir }}/never_existed.conf"
+        # pattern=a.c is a regular expression that matches its own
+        # neighbour, so a literal match and a pattern match land on
+        # different lines of this seed.
+        line_search_seed: |
+          # write line family search fixture
+          pattern=a.c
+          pattern=abc
+          dupe=1
+          dupe=1
+          tail=end
         line_seed: |
           # write line family fixture
           # Anchor Start
@@ -113,6 +134,7 @@
         block_dir: "{{ write_test_dir }}/block"
         block_dest: "{{ block_dir }}/app.conf"
         block_created_dest: "{{ block_dir }}/created.conf"
+        block_missing_dest: "{{ block_dir }}/never_existed.conf"
         block_begin: '# BEGIN ANSIBLE MANAGED BLOCK'
         block_end: '# END ANSIBLE MANAGED BLOCK'
         block_seed: |
@@ -148,6 +170,26 @@
         state_doomed_file: "{{ state_dir }}/doomed.txt"
         state_doomed_dir: "{{ state_dir }}/doomed_dir"
         state_missing: "{{ state_dir }}/never_existed"
+
+    - name: Run ownership and SELinux tests
+      ansible.builtin.include_tasks: perms.yml
+      loop: "{{ loop_list }}"
+      loop_control:
+        loop_var: matrix_row
+      vars:
+        ansible_check_mode: "{{ matrix_row[0] }}"
+        raw: "{{ matrix_row[1] }}"
+        perms_dir: "{{ write_test_dir }}/perms"
+        perms_content_dest: "{{ perms_dir }}/owned.conf"
+        perms_touched_dest: "{{ perms_dir }}/touched.conf"
+        perms_tree_dest: "{{ perms_dir }}/owned_tree"
+        perms_selinux_dest: "{{ perms_dir }}/labelled.conf"
+        perms_selinux_probe: "{{ perms_dir }}/relabel_probe"
+        # daemon is the most portable non-root account across the
+        # distributions this collection targets; its primary group is
+        # read back rather than assumed, because the name differs.
+        perms_account: daemon
+        perms_setype: etc_t
 
     - name: Run failure tests
       ansible.builtin.include_tasks: failures.yml

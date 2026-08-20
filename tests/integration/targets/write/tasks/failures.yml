@@ -132,6 +132,50 @@
             'regexp is required with backrefs=true'
             in ansible_failed_result['msg']
 
+- name: 'Fail: A pattern and a literal search string at once'
+  block:
+
+    - name: Match on a pattern and a literal at the same time
+      o0_o.posix.write:
+        dest: "{{ fail_dest }}"
+        line: 'alpha = 2'
+        regexp: '^alpha'
+        search_string: 'alpha'
+        raw: "{{ raw }}"
+
+    - name: Sentinel for the two matcher task
+      ansible.builtin.fail:
+        msg: 'the write module accepted a regexp and a search string'
+
+  rescue:
+
+    - name: Assert the two matchers were refused
+      ansible.builtin.assert:
+        that:
+          - "'mutually exclusive' in ansible_failed_result['msg']"
+
+- name: 'Fail: Backreferences against a literal search string'
+  block:
+
+    - name: Expand backreferences out of a literal match
+      o0_o.posix.write:
+        dest: "{{ fail_dest }}"
+        line: 'alpha = 2'
+        search_string: 'alpha'
+        backrefs: true
+        raw: "{{ raw }}"
+
+    - name: Sentinel for the literal backreference task
+      ansible.builtin.fail:
+        msg: 'the write module accepted backrefs with a search string'
+
+  rescue:
+
+    - name: Assert backreferences against a literal were refused
+      ansible.builtin.assert:
+        that:
+          - "'mutually exclusive' in ansible_failed_result['msg']"
+
 - name: 'Fail: A link with nowhere to point'
   block:
 

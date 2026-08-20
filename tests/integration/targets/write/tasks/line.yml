@@ -489,3 +489,259 @@
     that:
       - line_create_read_reg['paths'][line_created_dest] is none
   when: ansible_check_mode
+
+# The search string matches literally where the regular expression
+# matches by pattern. Every case below runs outside check mode, so the
+# match semantics are read off the file rather than off a prediction.
+
+- name: Seed the file the search string cases edit
+  o0_o.posix.write:
+    dest: "{{ line_search_dest }}"
+    content: "{{ line_search_seed }}"
+    mode: '0644'
+    raw: "{{ raw }}"
+  check_mode: false
+  register: line_search_reset_reg
+
+- name: Replace the line a literal search string matches
+  o0_o.posix.write:
+    dest: "{{ line_search_dest }}"
+    search_string: 'pattern=a.c'
+    line: 'pattern=replaced'
+    raw: "{{ raw }}"
+  check_mode: false
+  register: line_search_reg
+
+- name: Read the file back after the literal replacement
+  o0_o.posix.read:
+    path: "{{ line_search_dest }}"
+    content: true
+    lines: true
+  register: line_search_read_reg
+
+- name: Assert the search string matched its own line and no other
+  ansible.builtin.assert:
+    that:
+      - line_search_reset_reg['raw'] == raw
+      - line_search_reg is changed
+      - line_search_reg['raw'] == raw
+      - line_search_reg['msg'] == 'line replaced'
+      - "'pattern=replaced' in line_now['lines']"
+      - "'pattern=a.c' not in line_now['lines']"
+      - "'pattern=abc' in line_now['lines']"
+      - >-
+        line_now['lines'] | length
+        == line_search_seed.splitlines() | length
+  vars:
+    line_now: "{{ line_search_read_reg['paths'][line_search_dest] }}"
+
+- name: Reset the file before the same text is read as a pattern
+  o0_o.posix.write:
+    dest: "{{ line_search_dest }}"
+    content: "{{ line_search_seed }}"
+    mode: '0644'
+    raw: "{{ raw }}"
+  check_mode: false
+  register: line_search_reset_reg
+
+- name: Replace the lines that same text matches as a pattern
+  o0_o.posix.write:
+    dest: "{{ line_search_dest }}"
+    regexp: 'pattern=a.c'
+    line: 'pattern=replaced'
+    raw: "{{ raw }}"
+  check_mode: false
+  register: line_search_regexp_reg
+
+- name: Read the file back after the pattern replacement
+  o0_o.posix.read:
+    path: "{{ line_search_dest }}"
+    content: true
+    lines: true
+  register: line_search_regexp_read_reg
+
+- name: Assert the pattern reached the neighbour the literal spared
+  ansible.builtin.assert:
+    that:
+      - line_search_reset_reg['raw'] == raw
+      - line_search_regexp_reg is changed
+      - line_search_regexp_reg['raw'] == raw
+      - "'1 line deduped' in line_search_regexp_reg['msg']"
+      - "'pattern=replaced' in line_now['lines']"
+      - "'pattern=abc' not in line_now['lines']"
+      - >-
+        line_now['lines'] | length
+        == line_search_seed.splitlines() | length - 1
+  vars:
+    line_now: >-
+      {{ line_search_regexp_read_reg['paths'][line_search_dest] }}
+
+- name: Reset the file before the search string deduplication
+  o0_o.posix.write:
+    dest: "{{ line_search_dest }}"
+    content: "{{ line_search_seed }}"
+    mode: '0644'
+    raw: "{{ raw }}"
+  check_mode: false
+  register: line_search_reset_reg
+
+- name: Ensure a line is present, matching duplicates by search string
+  o0_o.posix.write:
+    dest: "{{ line_search_dest }}"
+    search_string: 'dupe='
+    line: 'dupe=2'
+    raw: "{{ raw }}"
+  check_mode: false
+  register: line_search_dedupe_reg
+
+- name: Read the file back after the search string deduplication
+  o0_o.posix.read:
+    path: "{{ line_search_dest }}"
+    content: true
+    lines: true
+  register: line_search_dedupe_read_reg
+
+- name: Assert the search string deduplicated what it matched
+  ansible.builtin.assert:
+    that:
+      - line_search_reset_reg['raw'] == raw
+      - line_search_dedupe_reg is changed
+      - line_search_dedupe_reg['raw'] == raw
+      - "'1 line deduped' in line_search_dedupe_reg['msg']"
+      - >-
+        line_now['lines'] | select('equalto', 'dupe=2')
+        | list | length == 1
+      - "'dupe=1' not in line_now['lines']"
+  vars:
+    line_now: >-
+      {{ line_search_dedupe_read_reg['paths'][line_search_dest] }}
+
+- name: Reset the file before the search string dedupe=false test
+  o0_o.posix.write:
+    dest: "{{ line_search_dest }}"
+    content: "{{ line_search_seed }}"
+    mode: '0644'
+    raw: "{{ raw }}"
+  check_mode: false
+  register: line_search_reset_reg
+
+- name: Match by search string without deduplicating the rest
+  o0_o.posix.write:
+    dest: "{{ line_search_dest }}"
+    search_string: 'dupe='
+    line: 'dupe=2'
+    dedupe: false
+    raw: "{{ raw }}"
+  check_mode: false
+  register: line_search_nodedupe_reg
+
+- name: Read the file back after the dedupe=false edit
+  o0_o.posix.read:
+    path: "{{ line_search_dest }}"
+    content: true
+    lines: true
+  register: line_search_nodedupe_read_reg
+
+- name: Assert only the last match was replaced and the first survived
+  ansible.builtin.assert:
+    that:
+      - line_search_reset_reg['raw'] == raw
+      - line_search_nodedupe_reg is changed
+      - line_search_nodedupe_reg['raw'] == raw
+      - line_search_nodedupe_reg['msg'] == 'line replaced'
+      - "'dupe=1' in line_now['lines']"
+      - "'dupe=2' in line_now['lines']"
+      - >-
+        line_now['lines'] | length
+        == line_search_seed.splitlines() | length
+  vars:
+    line_now: >-
+      {{ line_search_nodedupe_read_reg['paths'][line_search_dest] }}
+
+- name: Reset the file before the search string removal
+  o0_o.posix.write:
+    dest: "{{ line_search_dest }}"
+    content: "{{ line_search_seed }}"
+    mode: '0644'
+    raw: "{{ raw }}"
+  check_mode: false
+  register: line_search_reset_reg
+
+# line selects the family and is matched exactly alongside the search
+# string, so it names a line the file does not hold. What the removal
+# takes away is then attributable to the search string alone.
+- name: Remove every line a search string matches
+  o0_o.posix.write:
+    dest: "{{ line_search_dest }}"
+    line: 'no line reads like this'
+    search_string: 'dupe='
+    state: absent
+    raw: "{{ raw }}"
+  check_mode: false
+  register: line_search_remove_reg
+
+- name: Read the file back after the search string removal
+  o0_o.posix.read:
+    path: "{{ line_search_dest }}"
+    content: true
+    lines: true
+  register: line_search_remove_read_reg
+
+- name: Assert the removal counted only the search string matches
+  ansible.builtin.assert:
+    that:
+      - line_search_reset_reg['raw'] == raw
+      - line_search_remove_reg is changed
+      - line_search_remove_reg['raw'] == raw
+      - line_search_remove_reg['found'] == 2
+      - "'2 line(s) removed' in line_search_remove_reg['msg']"
+      - "'dupe=1' not in line_now['lines']"
+      - "'tail=end' in line_now['lines']"
+      - >-
+        line_now['lines'] | length
+        == line_search_seed.splitlines() | length - 2
+  vars:
+    line_now: >-
+      {{ line_search_remove_read_reg['paths'][line_search_dest] }}
+
+- name: Clear the destination the missing file removal names
+  ansible.builtin.file:
+    path: "{{ line_missing_dest }}"
+    state: absent
+  check_mode: false
+
+- name: Remove a line from a file that does not exist
+  o0_o.posix.write:
+    dest: "{{ line_missing_dest }}"
+    line: 'nothing to remove'
+    state: absent
+    raw: "{{ raw }}"
+  check_mode: false
+  register: line_missing_reg
+
+- name: Remove the same line a second time
+  o0_o.posix.write:
+    dest: "{{ line_missing_dest }}"
+    line: 'nothing to remove'
+    state: absent
+    raw: "{{ raw }}"
+  check_mode: false
+  register: line_missing_idempotent_reg
+
+- name: Read the destination the removals were pointed at
+  o0_o.posix.read:
+    path: "{{ line_missing_dest }}"
+  register: line_missing_read_reg
+
+- name: Assert removing from a missing file reports nothing to do
+  ansible.builtin.assert:
+    that:
+      - line_missing_reg is not changed
+      - line_missing_reg['raw'] == raw
+      - >-
+        line_missing_reg['msg']
+        == 'file not present, nothing to do'
+      - "'found' not in line_missing_reg"
+      - line_missing_idempotent_reg is not changed
+      - line_missing_idempotent_reg['raw'] == raw
+      - line_missing_read_reg['paths'][line_missing_dest] is none

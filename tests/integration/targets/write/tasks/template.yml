@@ -106,3 +106,73 @@
       - tmpl_now['lines'][1] == tmpl_inert_line
   vars:
     tmpl_now: "{{ tmpl_custom_read_reg['paths'][tmpl_custom_dest] }}"
+
+# One fixture carries the angle notation and the brace notation side by
+# side. Moving the block and comment delimiters onto the angle forms
+# has to render those and leave the brace forms as text; leaving the
+# delimiters at their defaults has to do exactly the reverse. Rendering
+# the same fixture both ways proves the options moved the delimiters
+# rather than merely adding a second set.
+
+- name: Render a template through custom block and comment delimiters
+  o0_o.posix.write:
+    dest: "{{ tmpl_delims_dest }}"
+    template: write_delims.j2
+    block_start_string: '<%'
+    block_end_string: '%>'
+    comment_start_string: '<#'
+    comment_end_string: '#>'
+    mode: '0644'
+    raw: "{{ raw }}"
+  check_mode: false
+  register: tmpl_delims_reg
+
+- name: Read the custom block and comment render back
+  o0_o.posix.read:
+    path: "{{ tmpl_delims_dest }}"
+    content: true
+    lines: true
+  register: tmpl_delims_read_reg
+
+- name: Assert the angle notation rendered and the braces stayed text
+  ansible.builtin.assert:
+    that:
+      - tmpl_delims_reg is changed
+      - tmpl_delims_reg['raw'] == raw
+      - tmpl_now['lines'][0] == '# rendered by o0_o.posix.write'
+      - tmpl_now['lines'][1] == 'block=on;'
+      - tmpl_now['lines'][2] == 'comment=none;'
+      - tmpl_now['lines'][3] == tmpl_brace_block
+      - tmpl_now['lines'][4] == 'greeting=' ~ tmpl_greeting
+  vars:
+    tmpl_now: "{{ tmpl_delims_read_reg['paths'][tmpl_delims_dest] }}"
+
+- name: Render the same template with the delimiters left alone
+  o0_o.posix.write:
+    dest: "{{ tmpl_defaults_dest }}"
+    template: write_delims.j2
+    mode: '0644'
+    raw: "{{ raw }}"
+  check_mode: false
+  register: tmpl_defaults_reg
+
+- name: Read the default delimiter render back
+  o0_o.posix.read:
+    path: "{{ tmpl_defaults_dest }}"
+    content: true
+    lines: true
+  register: tmpl_defaults_read_reg
+
+- name: Assert the defaults rendered the braces and spared the angles
+  ansible.builtin.assert:
+    that:
+      - tmpl_defaults_reg is changed
+      - tmpl_defaults_reg['raw'] == raw
+      - tmpl_now['lines'][0] == '# rendered by o0_o.posix.write'
+      - tmpl_now['lines'][1] == tmpl_angle_block
+      - tmpl_now['lines'][2] == tmpl_angle_comment
+      - tmpl_now['lines'][3] == 'inert=never;'
+      - tmpl_now['lines'][4] == 'greeting=' ~ tmpl_greeting
+  vars:
+    tmpl_now: >-
+      {{ tmpl_defaults_read_reg['paths'][tmpl_defaults_dest] }}
