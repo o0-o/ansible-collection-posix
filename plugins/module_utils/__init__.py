@@ -23,7 +23,6 @@ from ansible_collections.o0_o.posix.plugins.module_utils.env_utils import (
     process_env_command_results,
 )
 from ansible_collections.o0_o.posix.plugins.module_utils.dmidecode_utils import (  # noqa: E501
-    dmidecode,
     get_dmidecode_command_requests,
     process_dmidecode_command_results,
 )
@@ -144,7 +143,6 @@ __all__ = [
     "df",
     "parse_df",
     "parse_df_entry",
-    "dmidecode",
     "get_dmidecode_command_requests",
     "process_dmidecode_command_results",
     "fstab",

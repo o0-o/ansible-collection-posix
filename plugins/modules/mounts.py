@@ -34,6 +34,7 @@ options:
       - Device filesystems are those backed by block devices.
     type: bool
     default: true
+    version_added: "2.0.0"
   virtual:
     description:
       - Include virtual filesystems in the output.
@@ -41,12 +42,14 @@ options:
         filesystems like tmpfs, autofs, etc.
     type: bool
     default: false
+    version_added: "2.0.0"
   network:
     description:
       - Include network filesystems in the output.
       - Network filesystems include nfs, nfs4, cifs, smbfs, sshfs, etc.
     type: bool
     default: true
+    version_added: "2.0.0"
   pseudo:
     description:
       - Include pseudo filesystems in the output.
@@ -54,16 +57,19 @@ options:
         debugfs, etc.
       - If not specified, defaults to the value of I(virtual).
     type: bool
+    version_added: "2.0.0"
   overlay:
     description:
       - Include overlay filesystems in the output.
     type: bool
     default: true
+    version_added: "2.0.0"
   fuse:
     description:
       - Include FUSE (Filesystem in Userspace) filesystems in the output.
     type: bool
     default: true
+    version_added: "2.0.0"
 author:
   - oØ.o (@o0-o)
 notes:

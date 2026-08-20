@@ -89,6 +89,7 @@ options:
       - Useful for debugging, testing, or bootstrap scenarios.
     type: raw
     default: "auto"
+    version_added: "2.0.0"
 extends_documentation_fragment:
   - action_common_attributes
 attributes:

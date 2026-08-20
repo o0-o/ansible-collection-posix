@@ -32,6 +32,7 @@ options:
         ansible_facts without needing to register the result.
     type: bool
     default: false
+    version_added: "2.0.0"
 author:
   - oØ.o (@o0-o)
 notes:
