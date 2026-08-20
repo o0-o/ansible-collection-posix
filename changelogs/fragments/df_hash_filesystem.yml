@@ -1,0 +1,18 @@
+---
+bugfixes:
+  - >-
+    df - A filesystem name too wide for the header's Filesystem column
+    failed the filter outright, because jc replaces the name with a
+    shorter hash and every later field then slides left of the column
+    it belongs to. Every busybox container that carries a bind mount
+    prints such a row, its filesystem field a bare container layer
+    hash. Rows jc misplaces are now re-rendered from their whitespace
+    separated fields before parsing, which also recovers the mount
+    point a wide capacity used to swallow
+    (https://github.com/o0-o/ansible-collection-posix/pull/XXX).
+  - >-
+    df - A df row with fewer fields than the header has columns now
+    fails the filter with the offending line quoted. Its fields cannot
+    be placed, and a capacity reported against the wrong filesystem is
+    worse than no answer
+    (https://github.com/o0-o/ansible-collection-posix/pull/XXX).

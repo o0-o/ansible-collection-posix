@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import base64
 
-from typing import Any, Union
+from typing import Any, Optional, Union
 
 from ansible_collections.o0_o.posix.plugins.module_utils.filter_utils import (
     normalize_source,
@@ -130,6 +130,76 @@ def parse_df_entry(entry: dict[str, Any]) -> dict[str, Any]:
     return norm_entry
 
 
+def _realign_df(content: str) -> Optional[str]:
+    """Re-render a df table whose rows overflow their header columns.
+
+    jc reads df by slicing every line at the header's column
+    positions, and a row wider than the header defeats that slice. A
+    filesystem name running past the Filesystem column is swapped for
+    a shorter hash, which slides each later field left of the column
+    it belongs to; a capacity running past its own column swallows the
+    mount point. Fields jc cannot place come back as null, and jc's
+    own numeric conversion raises on them before the parse returns.
+
+    POSIX guarantees df -P prints one line per filesystem with the
+    mount point last, so the fields of a misread row are its
+    whitespace separated tokens, the final column taking any
+    remainder. The table is re-rendered from those fields, one column
+    per header name and wide enough that jc's slice lands on a
+    separator. Rows jc placed correctly keep the values it read, so a
+    field holding a space, such as an automounter map name or a mount
+    point with a space in it, survives the round trip. A row with
+    fewer fields than the header has columns cannot be placed at all
+    and raises.
+
+    :param content: Df output as string
+    :returns: Re-rendered table, or None if jc placed every field
+    :raises ValueError: If a row does not split into the header's
+                        columns
+    :raises ImportError: If jc is not available
+    """
+    lines = [ln for ln in content.splitlines() if ln.strip()]
+    if len(lines) < 2:
+        return None
+
+    raw = jc_parse("df", content, raw=True)
+    if len(raw) != len(lines) - 1:
+        return None
+
+    columns = list(raw[0].keys())
+    rows: list[list[str]] = []
+    misread = False
+
+    for entry, line in zip(raw, lines[1:]):
+        values = [entry.get(column) for column in columns]
+        fields = line.split()
+        placed = None not in values and fields == [
+            token for value in values for token in str(value).split()
+        ]
+        if placed:
+            rows.append([str(value) for value in values])
+            continue
+        if len(fields) < len(columns):
+            raise ValueError(f"Unparseable df row: {line!r}")
+        misread = True
+        last = len(columns) - 1
+        rows.append(fields[:last] + [" ".join(fields[last:])])
+
+    if not misread:
+        return None
+
+    widths = [
+        max(len(column), *(len(row[index]) for row in rows))
+        for index, column in enumerate(columns)
+    ]
+    return "\n".join(
+        "  ".join(
+            cell.ljust(width) for cell, width in zip(cells, widths)
+        ).rstrip()
+        for cells in [columns] + rows
+    )
+
+
 def parse_df(content: str) -> list[dict[str, Any]]:
     """Parse df output into normalized list of entries.
 
@@ -138,21 +208,10 @@ def parse_df(content: str) -> list[dict[str, Any]]:
     :raises ValueError: If parsing fails
     :raises ImportError: If jc is not available
     """
-    # Parse with jc_parse
-    parsed = jc_parse("df", content)
-
-    # jc slices df columns by header position, and busybox's df -P
-    # rows can overflow their columns, nulling fields jc could not
-    # place. POSIX guarantees df -P one line per filesystem with the
-    # mount point last, so a whitespace re-split of the source line
-    # recovers what the sliced read lost.
-    lines = [ln for ln in content.splitlines() if ln.strip()][1:]
-    if len(lines) == len(parsed):
-        for entry, line in zip(parsed, lines):
-            if entry.get("mounted_on") is None:
-                fields = line.split()
-                if len(fields) >= 6:
-                    entry["mounted_on"] = " ".join(fields[5:])
+    # Parse with jc_parse, from a re-rendered table when jc's
+    # positional read of this output loses fields
+    realigned = _realign_df(content)
+    parsed = jc_parse("df", content if realigned is None else realigned)
 
     # Normalize each entry
     normalized = []

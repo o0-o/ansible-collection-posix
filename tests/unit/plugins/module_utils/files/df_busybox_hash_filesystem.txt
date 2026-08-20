@@ -1,0 +1,25 @@
+Filesystem           1024-blocks    Used Available Capacity Mounted on
+a2a0ee2c717462feb1de2f5afd59de5fd2d8                 3902665360 1559751756 2342913604  40% /distro-job.sh
+tmpfs                   398080       372    397708   0% /etc/resolv.conf
+tmpfs                   398080       372    397708   0% /etc/hosts
+shm                      64000         0     64000   0% /dev/shm
+tmpfs                   398080       372    397708   0% /run/.containerenv
+tmpfs                   398080       372    397708   0% /run/secrets
+tmpfs                   398080       372    397708   0% /etc/hostname
+overlay               30778048   8100224  22677824  26% /
+tmpfs                    65536         0     65536   0% /dev
+devtmpfs               1905456         0   1905456   0% /dev/null
+devtmpfs               1905456         0   1905456   0% /dev/zero
+devtmpfs               1905456         0   1905456   0% /dev/full
+devtmpfs               1905456         0   1905456   0% /dev/tty
+devtmpfs               1905456         0   1905456   0% /dev/random
+devtmpfs               1905456         0   1905456   0% /dev/urandom
+tmpfs                   398080       372    397708   0% /proc/acpi
+devtmpfs               1905456         0   1905456   0% /proc/kcore
+devtmpfs               1905456         0   1905456   0% /proc/keys
+devtmpfs               1905456         0   1905456   0% /proc/latency_stats
+tmpfs                   398080       372    397708   0% /proc/scsi
+devtmpfs               1905456         0   1905456   0% /proc/timer_list
+tmpfs                   398080       372    397708   0% /sys/firmware
+tmpfs                   398080       372    397708   0% /sys/fs/selinux
+devtmpfs               1905456         0   1905456   0% /proc/interrupts
