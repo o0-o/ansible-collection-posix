@@ -59,6 +59,9 @@ options:
     description:
       - Include file content with encoding detection.
       - Binary content is returned base64 encoded.
+      - Only regular files are read. A directory, symlink, FIFO, socket
+        or device is reported with no C(content) key and no error; its
+        C(type) says why.
     type: bool
     default: false
   lines:
@@ -67,6 +70,7 @@ options:
       - Only returned for content that decodes to text; binary content
         is returned as C(content) with a C(base64) or C(hex) encoding
         instead.
+      - Reads only regular files, exactly as I(content) does.
     type: bool
     default: false
   encoding:
@@ -161,6 +165,11 @@ notes:
   - This module is implemented as an action plugin and supports raw fallback.
   - Requesting I(content) or I(lines) turns I(attributes) off unless it is
     set explicitly, so content reads stay cheap.
+  - Content is read in a second command batch, once the first has typed
+    every path, because reading a FIFO with no writer would otherwise
+    block until the connection timed out. A read that asks for no
+    content, or whose paths are all directories or special files, costs
+    no extra round trip.
   - Child entries are only expanded for the paths named in I(paths), not
     for directories added by I(parents).
 seealso:
@@ -402,14 +411,19 @@ paths:
           returned: when content is included
           sample: utf-8
         content:
-          description: Decoded file content using the reported encoding
+          description:
+            - Decoded file content using the reported encoding.
+            - Only regular files are read, so any other type is
+              reported without this key.
           type: str
-          returned: when I(content=true), I(lines=true), or I(encoding) is set
+          returned: when I(content=true), I(lines=true), or I(encoding) is
+            set, and the path is a regular file
         lines:
           description: File content split into lines, without terminators
           type: list
           elements: str
-          returned: when I(lines=true) and the content decodes to text
+          returned: when I(lines=true), the path is a regular file, and the
+            content decodes to text
         children:
           description: List of child paths for directories
           type: list

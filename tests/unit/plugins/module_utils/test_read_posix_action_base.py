@@ -13,6 +13,9 @@
 
 from __future__ import annotations
 
+from typing import Any, Optional
+from unittest.mock import MagicMock
+
 import pytest
 
 try:
@@ -32,6 +35,43 @@ class DummyReadAction(ReadPosixActionBase):
 
     def __init__(self) -> None:
         self.inventory_hostname = "testhost"
+        self._display = MagicMock()
+
+
+class BatchingReadAction(DummyReadAction):
+    """DummyReadAction recording the command batches it is asked to run.
+
+    Overriding _run_action on the class rather than the instance keeps
+    the stub honest: its signature must keep matching production's.
+    """
+
+    def __init__(self, commands: Optional[dict[str, Any]] = None) -> None:
+        super().__init__()
+        self.batches: list[dict[str, Any]] = []
+        self.reply = {
+            "commands": commands if commands is not None else {},
+            "count": 4,
+            "batches": 1,
+        }
+
+    def _run_action(
+        self,
+        plugin_name: str,
+        plugin_args: dict[str, Any],
+        task_vars: Optional[dict[str, Any]] = None,
+        check_mode: Optional[bool] = None,
+    ) -> dict[str, Any]:
+        """Record the batch and answer with a canned run result."""
+        self.batches.append(plugin_args["commands"])
+        return self.reply
+
+
+def _ls_result(flags: str, path: str = "/f") -> dict[str, Any]:
+    """Build an ls -dn result whose flags carry the wanted file type."""
+    return {
+        "rc": 0,
+        "stdout": f"{flags}  1  0  0  0 Aug 16 10:00 {path}",
+    }
 
 
 @pytest.fixture
@@ -262,39 +302,35 @@ class TestGetReadCommands:
             "/f_xattr_macos",
         ]
 
-    def test_content_without_forced_encoding_probes_file(self, action) -> None:
-        """Test content adds cat plus all three encoding probes."""
+    @pytest.mark.parametrize(
+        "options",
+        [
+            {"content": True},
+            {"lines": True},
+            {"content": True, "encoding": "utf-8"},
+            {"content": True, "attributes": True},
+        ],
+    )
+    def test_content_is_never_read_in_this_batch(self, action, options) -> None:
+        """Test no content command joins the batch that types a path."""
+        commands = action._get_read_commands(["/f"], options)
+
+        # cat blocks forever on a FIFO, so it may not travel with the
+        # ls that discovers whether the path is a FIFO at all
+        assert "/f_cat" not in commands
+        assert "/f_encoding" not in commands
+        assert "/f_encoding_bsd" not in commands
+        assert "/f_encoding_desc" not in commands
+
+    def test_content_request_still_probes_metadata(self, action) -> None:
+        """Test a content request keeps the ordinary metadata commands."""
         commands = action._get_read_commands(["/f"], {"content": True})
 
-        assert commands["/f_cat"] == ["cat", "/f"]
-        assert commands["/f_encoding"] == [
-            "file",
-            "-b",
-            "--mime-encoding",
-            "/f",
-        ]
-        assert commands["/f_encoding_bsd"] == ["file", "-b", "-I", "/f"]
-        assert commands["/f_encoding_desc"] == ["file", "-b", "/f"]
-
-    def test_forced_encoding_skips_detection(self, action) -> None:
-        """Test a forced encoding drops the file detection commands."""
-        commands = action._get_read_commands(
-            ["/f"], {"content": True, "encoding": "utf-8"}
-        )
-
         assert sorted(commands) == [
-            "/f_cat",
             "/f_inode",
             "/f_inode_bsd",
             "/f_ls",
         ]
-
-    def test_lines_implies_content(self, action) -> None:
-        """Test requesting lines pulls in the content commands."""
-        commands = action._get_read_commands(["/f"], {"lines": True})
-
-        assert "/f_cat" in commands
-        assert "/f_encoding" in commands
 
     def test_mime_requests_both_file_variants(self, action) -> None:
         """Test mime adds the GNU and BSD file invocations."""
@@ -368,6 +404,175 @@ class TestGetReadCommands:
     def test_no_paths_yields_no_commands(self, action) -> None:
         """Test an empty path list produces an empty command dict."""
         assert action._get_read_commands([], {"attributes": True}) == {}
+
+
+class TestGetContentCommands:
+    """Tests for _get_content_commands."""
+
+    def test_content_adds_cat_and_encoding_probes(self, action) -> None:
+        """Test content asks for cat plus all three encoding probes."""
+        commands = action._get_content_commands(["/f"], {"content": True})
+
+        assert commands == {
+            "/f_cat": ["cat", "/f"],
+            "/f_encoding": ["file", "-b", "--mime-encoding", "/f"],
+            "/f_encoding_bsd": ["file", "-b", "-I", "/f"],
+            "/f_encoding_desc": ["file", "-b", "/f"],
+        }
+
+    def test_forced_encoding_skips_detection(self, action) -> None:
+        """Test a forced encoding drops the file detection commands."""
+        commands = action._get_content_commands(
+            ["/f"], {"content": True, "encoding": "utf-8"}
+        )
+
+        assert commands == {"/f_cat": ["cat", "/f"]}
+
+    def test_lines_implies_content(self, action) -> None:
+        """Test requesting lines pulls in the content commands."""
+        commands = action._get_content_commands(["/f"], {"lines": True})
+
+        assert "/f_cat" in commands
+        assert "/f_encoding" in commands
+
+    @pytest.mark.parametrize(
+        "options", [{}, {"attributes": True}, {"mime": True, "md5": True}]
+    )
+    def test_no_content_request_yields_no_commands(
+        self, action, options
+    ) -> None:
+        """Test a read that wants no content plans none."""
+        assert action._get_content_commands(["/f"], options) == {}
+
+    def test_no_paths_yields_no_commands(self, action) -> None:
+        """Test an empty path list produces an empty command dict."""
+        assert action._get_content_commands([], {"content": True}) == {}
+
+    def test_multiple_paths_are_keyed_by_path(self, action) -> None:
+        """Test each path gets its own prefixed content entries."""
+        commands = action._get_content_commands(
+            ["/a", "/b"], {"content": True, "encoding": "utf-8"}
+        )
+
+        assert sorted(commands) == ["/a_cat", "/b_cat"]
+
+
+class TestRegularPathsFromResults:
+    """Tests for _regular_paths_from_results and _ls_file_type."""
+
+    @pytest.mark.parametrize(
+        "flags,expected",
+        [
+            ("-rw-r--r--", "regular"),
+            ("drwxr-xr-x", "directory"),
+            ("lrwxr-xr-x", "link"),
+            ("prw-r--r--", "pipe"),
+            ("srw-r--r--", "socket"),
+            ("crw-r--r--", "character"),
+            ("brw-r--r--", "block"),
+            ("?rw-r--r--", "unknown"),
+            ("", "unknown"),
+        ],
+    )
+    def test_ls_flags_name_the_type(self, action, flags, expected) -> None:
+        """Test the first ls flag character names the file type."""
+        assert action._ls_file_type({"flags": flags}) == expected
+
+    def test_only_regular_files_are_selected(self, action) -> None:
+        """Test a mixed batch yields the regular files alone."""
+        results = {
+            "/reg_ls": _ls_result("-rw-r--r--", "/reg"),
+            "/fifo_ls": _ls_result("prw-r--r--", "/fifo"),
+            "/dir_ls": _ls_result("drwxr-xr-x", "/dir"),
+            "/link_ls": _ls_result("lrwxr-xr-x", "/link"),
+            "/dev_ls": _ls_result("crw-r--r--", "/dev"),
+        }
+
+        assert action._regular_paths_from_results(
+            results, ["/reg", "/fifo", "/dir", "/link", "/dev"]
+        ) == ["/reg"]
+
+    def test_paths_keep_their_request_order(self, action) -> None:
+        """Test the selection follows the order the paths came in."""
+        results = {
+            "/b_ls": _ls_result("-rw-r--r--", "/b"),
+            "/a_ls": _ls_result("-rw-r--r--", "/a"),
+        }
+
+        assert action._regular_paths_from_results(results, ["/b", "/a"]) == [
+            "/b",
+            "/a",
+        ]
+
+    def test_failed_ls_is_not_regular(self, action) -> None:
+        """Test a path ls could not stat is left out."""
+        results = {"/gone_ls": {"rc": 1, "stdout": ""}}
+
+        assert action._regular_paths_from_results(results, ["/gone"]) == []
+
+    def test_missing_ls_result_is_not_regular(self, action) -> None:
+        """Test a path with no ls result at all is left out."""
+        assert action._regular_paths_from_results({}, ["/f"]) == []
+
+    @pytest.mark.parametrize("stdout", ["", "not an ls listing at all"])
+    def test_unusable_ls_output_is_not_regular(self, action, stdout) -> None:
+        """Test output with no flags to read is left out."""
+        results = {"/f_ls": {"rc": 0, "stdout": stdout}}
+
+        assert action._regular_paths_from_results(results, ["/f"]) == []
+
+
+class TestRunContentCommands:
+    """Tests for _run_content_commands."""
+
+    def test_no_batch_without_a_content_request(self) -> None:
+        """Test a read wanting no content runs no second batch."""
+        action = BatchingReadAction()
+        results = {"/f_ls": _ls_result("-rw-r--r--", "/f")}
+
+        counts = action._run_content_commands(
+            ["/f"], {"attributes": True}, results
+        )
+
+        assert action.batches == []
+        assert counts == {"count": 0, "batches": 0}
+        assert "/f_cat" not in results
+
+    def test_no_batch_when_nothing_typed_regular(self) -> None:
+        """Test a batch of specials and directories reads no content."""
+        action = BatchingReadAction()
+        results = {
+            "/fifo_ls": _ls_result("prw-r--r--", "/fifo"),
+            "/dir_ls": _ls_result("drwxr-xr-x", "/dir"),
+        }
+
+        counts = action._run_content_commands(
+            ["/fifo", "/dir"], {"content": True}, results
+        )
+
+        assert action.batches == []
+        assert counts == {"count": 0, "batches": 0}
+
+    def test_regular_files_alone_are_read(self) -> None:
+        """Test a mixed batch cats the regular file and nothing else."""
+        action = BatchingReadAction(
+            commands={"/reg_cat": {"rc": 0, "stdout": "hello"}}
+        )
+        results = {
+            "/reg_ls": _ls_result("-rw-r--r--", "/reg"),
+            "/fifo_ls": _ls_result("prw-r--r--", "/fifo"),
+        }
+
+        counts = action._run_content_commands(
+            ["/reg", "/fifo"], {"content": True, "encoding": "utf-8"}, results
+        )
+
+        assert action.batches == [{"/reg_cat": ["cat", "/reg"]}]
+        assert counts == {"count": 4, "batches": 1}
+        # The content results join the first batch's so the caller
+        # processes one dictionary
+        assert results["/reg_cat"] == {"rc": 0, "stdout": "hello"}
+        assert results["/reg_ls"]["rc"] == 0
 
 
 class TestDetectPlatformFromResults:

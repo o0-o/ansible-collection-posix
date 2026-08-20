@@ -393,6 +393,16 @@ class ActionModule(ReadPosixActionBase, ActionBase):
                 f"flags_bsd={platform['ls_supports_flags_bsd']}"
             )
 
+            # Read content once the first path's type is known
+            content_counts = self._run_content_commands(
+                [first_path],
+                options,
+                detection_result["commands"],
+                task_vars=task_vars,
+            )
+            total_commands += content_counts["count"]
+            total_batches += content_counts["batches"]
+
             # Process first path's results
             first_file_data = self._process_read_results(
                 results=detection_result["commands"],
@@ -426,6 +436,15 @@ class ActionModule(ReadPosixActionBase, ActionBase):
                 self._display_longest_command(
                     commands_result, "remaining paths"
                 )
+
+                content_counts = self._run_content_commands(
+                    remaining_paths,
+                    options,
+                    commands_result["commands"],
+                    task_vars=task_vars,
+                )
+                total_commands += content_counts["count"]
+                total_batches += content_counts["batches"]
 
                 # Process remaining results
                 remaining_file_data = self._process_read_results(
@@ -537,6 +556,14 @@ class ActionModule(ReadPosixActionBase, ActionBase):
                         total_commands += child_result.get("count", 0)
                         total_batches += child_result.get("batches", 0)
                         self._display_longest_command(child_result, "children")
+                        content_counts = self._run_content_commands(
+                            new_children,
+                            options,
+                            child_result["commands"],
+                            task_vars=task_vars,
+                        )
+                        total_commands += content_counts["count"]
+                        total_batches += content_counts["batches"]
                         child_data = self._process_read_results(
                             results=child_result["commands"],
                             paths=new_children,
@@ -605,6 +632,14 @@ class ActionModule(ReadPosixActionBase, ActionBase):
                     self._display_longest_command(
                         target_result, "recursive symlink targets"
                     )
+                    content_counts = self._run_content_commands(
+                        new_targets,
+                        options,
+                        target_result["commands"],
+                        task_vars=task_vars,
+                    )
+                    total_commands += content_counts["count"]
+                    total_batches += content_counts["batches"]
                     target_data = self._process_read_results(
                         results=target_result["commands"],
                         paths=new_targets,
@@ -671,6 +706,14 @@ class ActionModule(ReadPosixActionBase, ActionBase):
                         self._display_longest_command(
                             target_result, "resolved symlink targets"
                         )
+                        content_counts = self._run_content_commands(
+                            unique_targets,
+                            options,
+                            target_result["commands"],
+                            task_vars=task_vars,
+                        )
+                        total_commands += content_counts["count"]
+                        total_batches += content_counts["batches"]
                         target_data = self._process_read_results(
                             results=target_result["commands"],
                             paths=unique_targets,

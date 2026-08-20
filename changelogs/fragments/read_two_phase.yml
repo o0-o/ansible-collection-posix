@@ -1,0 +1,12 @@
+---
+bugfixes:
+  - >-
+    read - Reading a FIFO with content or lines requested hung the task
+    until the connection timed out, because cat went out in the same
+    batch as the ls that discovers a path is a FIFO and cat waits
+    forever for a writer. Content commands now run in a second batch
+    against the paths the first batch typed as regular files, so a
+    special file returns its metadata and its type instead of blocking
+    the run. Only a read that asks for content pays the extra round
+    trip, and only when at least one path proved regular
+    (https://github.com/o0-o/ansible-collection-posix/pull/XXX).

@@ -32,6 +32,17 @@ from ansible_collections.o0_o.utils.plugins.module_utils import (
     unflatten,
 )
 
+# File type named by the first character of an ls flags string
+LS_TYPE_MAP = {
+    "-": "regular",
+    "d": "directory",
+    "l": "link",
+    "p": "pipe",
+    "s": "socket",
+    "c": "character",
+    "b": "block",
+}
+
 
 class ReadPosixActionBase(PosixActionBase):
     """Base class for stat and read plugins with shared methods."""
@@ -85,9 +96,14 @@ class ReadPosixActionBase(PosixActionBase):
         commands are added based on the options dict and platform
         capabilities.
 
+        Content is not read here even when it is requested. Reading it
+        takes a path that has already been typed as a regular file, so
+        those commands are planned by _get_content_commands once these
+        results are in.
+
         :param list[str] paths: Paths to inspect
         :param dict[str, Any] options: Options dict with keys: attributes,
-            extended, content, encoding, mime, md5, sha1, sha256, sha512
+            extended, mime, md5, sha1, sha256, sha512
         :param bool need_dir_contents: If True, add commands to list
             directory contents (for children feature)
         :param Optional[dict[str, Any]] platform: Platform capabilities
@@ -109,10 +125,6 @@ class ReadPosixActionBase(PosixActionBase):
             "extended", False
         )
         include_extended = options.get("extended", False)
-        include_content = options.get("content", False) or options.get(
-            "lines", False
-        )
-        forced_encoding = options.get("encoding")
         include_mime = options.get("mime", False)
         include_md5 = options.get("md5", False)
         include_sha1 = options.get("sha1", False)
@@ -186,30 +198,6 @@ class ReadPosixActionBase(PosixActionBase):
                         "%m %c %B",
                         path,
                     ]
-
-            # File content reading if requested
-            if include_content:
-                # Only auto-detect encoding if not forced
-                if not forced_encoding:
-                    # Try GNU, BSD, and basic file command variants
-                    # GNU: file -b --mime-encoding
-                    commands[f"{path}_encoding"] = [
-                        "file",
-                        "-b",
-                        "--mime-encoding",
-                        path,
-                    ]
-                    # FreeBSD/macOS: file -b -I
-                    commands[f"{path}_encoding_bsd"] = [
-                        "file",
-                        "-b",
-                        "-I",
-                        path,
-                    ]
-                    # OpenBSD/fallback: file -b (descriptive text)
-                    commands[f"{path}_encoding_desc"] = ["file", "-b", path]
-                # Always need cat to read the content
-                commands[f"{path}_cat"] = ["cat", path]
 
             # MIME type detection if requested
             if include_mime:
@@ -369,6 +357,156 @@ class ReadPosixActionBase(PosixActionBase):
                 commands[f"{path}_contents"] = ["ls", "-1A", path]
 
         return commands
+
+    def _get_content_commands(
+        self,
+        paths: list[str],
+        options: dict[str, Any],
+    ) -> dict[str, Any]:
+        """
+        Generate the commands that read the content of known files.
+
+        cat on a FIFO blocks until a writer appears, so every path
+        named here must already have been typed as a regular file by an
+        earlier batch. The encoding probes travel with cat rather than
+        going out with the metadata: file is safe on a special file,
+        which it stats rather than reads unless given -s, but its
+        answer is only ever consumed for a regular file, so asking
+        about anything else is wasted work.
+
+        :param list[str] paths: Paths that proved to be regular files
+        :param dict[str, Any] options: Options dict with keys: content,
+            lines, encoding
+        :returns dict: Command dictionary keyed by path-prefixed tags,
+            empty when content was not requested
+        """
+        if not (options.get("content", False) or options.get("lines", False)):
+            return {}
+
+        commands: dict[str, Any] = {}
+        forced_encoding = options.get("encoding")
+
+        for path in paths:
+            # Only auto-detect encoding if not forced
+            if not forced_encoding:
+                # Try GNU, BSD, and basic file command variants
+                # GNU: file -b --mime-encoding
+                commands[f"{path}_encoding"] = [
+                    "file",
+                    "-b",
+                    "--mime-encoding",
+                    path,
+                ]
+                # FreeBSD/macOS: file -b -I
+                commands[f"{path}_encoding_bsd"] = ["file", "-b", "-I", path]
+                # OpenBSD/fallback: file -b (descriptive text)
+                commands[f"{path}_encoding_desc"] = ["file", "-b", path]
+            # Always need cat to read the content
+            commands[f"{path}_cat"] = ["cat", path]
+
+        return commands
+
+    def _regular_paths_from_results(
+        self,
+        results: dict[str, Any],
+        paths: list[str],
+    ) -> list[str]:
+        """
+        Select the paths whose ls result typed them a regular file.
+
+        A path ls could not stat, or whose listing does not parse, is
+        left out: the results processor reports the failure for itself.
+
+        :param dict[str, Any] results: Command results holding an ls
+            entry per path
+        :param list[str] paths: Paths to test, in request order
+        :returns list[str]: The regular files among them
+        """
+        regular_paths: list[str] = []
+
+        for path in paths:
+            ls_result = results.get(f"{path}_ls", {})
+            if ls_result.get("rc") != 0:
+                continue
+
+            try:
+                parsed = jc_parse("ls", ls_result.get("stdout", ""))
+            except (ValueError, ImportError):
+                continue
+
+            if not parsed or not isinstance(parsed, list):
+                continue
+
+            if self._ls_file_type(parsed[0]) == "regular":
+                regular_paths.append(path)
+
+        return regular_paths
+
+    def _run_content_commands(
+        self,
+        paths: list[str],
+        options: dict[str, Any],
+        results: dict[str, Any],
+        task_vars: Optional[dict[str, Any]] = None,
+    ) -> dict[str, int]:
+        """
+        Read the content of the paths an earlier batch typed regular.
+
+        A read that asks for no content never reaches a second batch,
+        and neither does one whose paths all turned out to be
+        directories, links or devices. When a batch does run, its
+        results are merged into results so the caller processes a
+        single dictionary covering both.
+
+        :param list[str] paths: Paths covered by results
+        :param dict[str, Any] options: Options dict as passed to
+            _get_read_commands
+        :param dict[str, Any] results: Results of the batch that typed
+            the paths, updated in place with the content results
+        :param Optional[dict[str, Any]] task_vars: Task variables for
+            the run action
+        :returns dict[str, int]: The count and batches this pass ran,
+            both zero when no batch was needed
+        """
+        if not (options.get("content", False) or options.get("lines", False)):
+            return {"count": 0, "batches": 0}
+
+        content_paths = self._regular_paths_from_results(results, paths)
+        content_commands = self._get_content_commands(content_paths, options)
+        if not content_commands:
+            return {"count": 0, "batches": 0}
+
+        self._display.vvv(
+            f"[{self.inventory_hostname}] Reading content of "
+            f"{len(content_paths)} of {len(paths)} paths"
+        )
+
+        content_result = self._run_action(
+            "o0_o.posix.run",
+            {"commands": content_commands},
+            task_vars=task_vars,
+            check_mode=False,
+        )
+        results.update(content_result["commands"])
+
+        return {
+            "count": content_result.get("count", 0),
+            "batches": content_result.get("batches", 0),
+        }
+
+    def _ls_file_type(self, entry: dict[str, Any]) -> str:
+        """
+        Name the file type recorded in a parsed ls entry.
+
+        :param dict[str, Any] entry: A single jc ls entry
+        :returns str: The type name, unknown when the flags are absent
+            or unrecognized
+        """
+        flags = entry.get("flags", "")
+        if not flags:
+            return "unknown"
+
+        return LS_TYPE_MAP.get(flags[0], "unknown")
 
     def _detect_platform_from_results(
         self,
@@ -740,23 +878,10 @@ class ReadPosixActionBase(PosixActionBase):
                 # Extract file type from first char of flags
                 # (always needed for content/extended logic)
                 flags = entry.get("flags", "")
-                if flags:
-                    type_char = flags[0]
-                    type_map = {
-                        "-": "regular",
-                        "d": "directory",
-                        "l": "link",
-                        "p": "pipe",
-                        "s": "socket",
-                        "c": "character",
-                        "b": "block",
-                    }
-                    file_type = type_map.get(type_char, "unknown")
-                    # Only add type if attributes requested
-                    if include_attributes:
-                        attributes["type"] = file_type
-                else:
-                    file_type = "unknown"
+                file_type = self._ls_file_type(entry)
+                # Only add type if attributes requested
+                if flags and include_attributes:
+                    attributes["type"] = file_type
 
                 # Add optional attributes fields only if requested
                 if include_attributes:
@@ -838,7 +963,9 @@ class ReadPosixActionBase(PosixActionBase):
                                 except (ValueError, TypeError):
                                     pass
 
-                # Add content and encoding if requested and available
+                # Add content and encoding if requested and available.
+                # Nothing but a regular file is read, which is why the
+                # command side plans cat for nothing else
                 if file_type == "regular":
                     cat_key = f"{path}_cat"
                     forced_encoding = options.get("encoding")

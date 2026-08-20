@@ -236,6 +236,35 @@
       - >-
         read_fifo_reg['paths'][read_fifo_path]['writable'] is boolean
 
+# The FIFO leads so it is also the path platform detection runs on,
+# which is where cat used to go out alongside the ls that types it. The
+# timeout fails the task instead of wedging the run: a cat on a FIFO
+# with no writer waits forever.
+- name: Read a FIFO and a regular file with content in one call
+  o0_o.posix.read:
+    paths:
+      - "{{ read_fifo_path }}"
+      - "{{ read_regular_path }}"
+    content: true
+    attributes: true
+  register: read_fifo_content_reg
+  timeout: 60
+
+- name: Assert the FIFO returned metadata only and the file its content
+  ansible.builtin.assert:
+    that:
+      - read_fifo_content_reg is not changed
+      - read_fifo_content_reg['paths'][read_fifo_path]['type'] == 'pipe'
+      - "'content' not in read_fifo_content_reg['paths'][read_fifo_path]"
+      - "'lines' not in read_fifo_content_reg['paths'][read_fifo_path]"
+      - "'encoding' not in read_fifo_content_reg['paths'][read_fifo_path]"
+      - >-
+        read_fifo_content_reg['paths'][read_regular_path]['type']
+        == 'regular'
+      - >-
+        'quick brown fox' in
+        read_fifo_content_reg['paths'][read_regular_path]['content']
+
 - name: Read symbolic link recursively
   o0_o.posix.read:
     path: "{{ read_symlink_path }}"
