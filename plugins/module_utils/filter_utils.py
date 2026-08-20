@@ -23,10 +23,11 @@ def process_registered_result(
 ) -> Any:
     """Process registered result dict with automatic base64 detection.
 
-    Handles dict input from registered results (command/slurp modules):
+    Handles dict input from registered results (read/command/slurp
+    modules):
     - Extracts content from 'stdout' or 'content' keys
-    - Automatically detects and decodes base64 for 'content' key
-    - Falls back to base64 decode on parse errors
+    - Decodes base64 content when the result declares that encoding
+    - Falls back to base64 decode on parse errors when it does not
 
     :param config: Dict with registered result from command or slurp
     :param parser: Function to parse the extracted content
@@ -39,7 +40,12 @@ def process_registered_result(
         return parser(content)
     elif "content" in config:
         content = config["content"]
-        # content from slurp is usually base64 encoded
+        # A read or slurp result declares its base64 encoding. Trust
+        # the declaration: encoded text can parse as though it were the
+        # file, and a parser that accepts it reports fiction
+        if config.get("encoding") == "base64":
+            return parser(base64.b64decode(content).decode("utf-8"))
+        # Nothing declared, so the encoding has to be guessed.
         # Try parsing as-is first (in case it's not encoded)
         try:
             return parser(content)

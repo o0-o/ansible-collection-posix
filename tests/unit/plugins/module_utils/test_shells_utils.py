@@ -41,11 +41,24 @@ def test_parse_shells_from_slurp() -> None:
 /bin/bash  # trailing comment
 /bin/zsh
 """.strip()
-    payload = {"content": b64encode(content.encode()).decode()}
+    payload = {
+        "content": b64encode(content.encode()).decode(),
+        "encoding": "base64",
+    }
 
     result = parse_shells(payload)
 
     assert result == ["/bin/bash", "/bin/zsh"]
+
+
+def test_parse_shells_leaves_undeclared_content_alone() -> None:
+    """Text content is not decoded, however base64 it looks."""
+
+    # Every character here is base64 alphabet and the count is a
+    # multiple of four, so a decode attempt succeeds and returns junk
+    payload = {"content": "/bin/sh\n/bin/bash\n", "encoding": "utf-8"}
+
+    assert parse_shells(payload) == ["/bin/sh", "/bin/bash"]
 
 
 def test_parse_shells_plain_string() -> None:

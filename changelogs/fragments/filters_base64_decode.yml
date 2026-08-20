@@ -1,0 +1,19 @@
+---
+bugfixes:
+  - >-
+    hosts - Content that a read or slurp result declares base64 failed
+    the filter, because the encoded text was handed to the parser as
+    though it were the file. A declared base64 encoding is now decoded
+    first (https://github.com/o0-o/ansible-collection-posix/pull/XXX).
+  - >-
+    passwd, group, id, jc - A declared base64 encoding is now decoded
+    before parsing rather than guessed at afterwards. The encoded text
+    was offered to the parser first, and a parser that accepted it
+    would have reported fiction
+    (https://github.com/o0-o/ansible-collection-posix/pull/XXX).
+  - >-
+    shells - Plain text content was decoded as base64 whenever the
+    guess happened to succeed, so a file listing /bin/sh and /bin/bash
+    parsed to a single junk entry. Content is now decoded only when the
+    result declares base64
+    (https://github.com/o0-o/ansible-collection-posix/pull/XXX).

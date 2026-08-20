@@ -38,8 +38,29 @@ def test_process_registered_result_with_stdout() -> None:
     assert seen == "hello"
 
 
-def test_process_registered_result_with_base64_content() -> None:
-    """Try plain parse, then fall back to base64 decode."""
+def test_process_registered_result_honors_declared_base64() -> None:
+    """A declared base64 encoding is decoded before any parse."""
+
+    text = "Filesystem     1024-blocks"
+    encoded = base64.b64encode(text.encode()).decode()
+
+    attempts = []
+
+    def parser(value: str) -> str:
+        attempts.append(value)
+        return value
+
+    payload = {"content": encoded, "encoding": "base64"}
+    result = filter_utils.process_registered_result(payload, parser)
+
+    assert result == text
+    # The encoded text is never offered to the parser: one that
+    # accepted it would report fiction
+    assert attempts == [text]
+
+
+def test_process_registered_result_guesses_undeclared_base64() -> None:
+    """Without a declaration, try plain parse then base64 decode."""
 
     text = "Filesystem     1024-blocks"
     encoded = base64.b64encode(text.encode()).decode()
@@ -52,7 +73,7 @@ def test_process_registered_result_with_base64_content() -> None:
             raise ValueError("need decoded text")
         return value
 
-    payload = {"content": encoded, "encoding": "base64"}
+    payload = {"content": encoded}
     result = filter_utils.process_registered_result(payload, parser)
 
     assert result == text

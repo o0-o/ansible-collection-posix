@@ -46,9 +46,13 @@ def parse_shells(data: Union[str, Sequence[str], dict[str, Any]]) -> list[str]:
         stdout = data.get("stdout")
 
         if isinstance(content, str):
-            try:
-                text = b64decode(content).decode("utf-8", errors="ignore")
-            except Exception:
+            # A read or slurp result declares its base64 encoding.
+            # Only a declaration justifies decoding: shell paths are
+            # themselves base64 alphabet, so /bin/sh and /bin/bash
+            # together decode without complaint into five junk bytes
+            if data.get("encoding") == "base64":
+                text = b64decode(content).decode("utf-8")
+            else:
                 text = content
         elif isinstance(stdout, str):
             text = stdout

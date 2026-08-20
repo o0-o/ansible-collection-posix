@@ -13,6 +13,7 @@
 
 from __future__ import annotations
 
+from base64 import b64encode
 from typing import Any
 from unittest.mock import patch
 
@@ -182,6 +183,30 @@ def test_hosts_handles_dict_with_content_key() -> None:
         hosts_utils, "jc_parse", return_value=jc_return
     ) as mock_parse:
         result = hosts_utils.hosts(slurp_result)
+
+    mock_parse.assert_called_once_with("hosts", "127.0.0.1 localhost")
+    assert len(result) == 1
+
+
+def test_hosts_decodes_declared_base64_content() -> None:
+    """Test hosts() decodes content a read result declares base64."""
+
+    jc_return: list[dict[str, Any]] = [
+        {
+            "ip": "127.0.0.1",
+            "hostname": ["localhost"],
+        }
+    ]
+
+    read_result = {
+        "content": b64encode(b"127.0.0.1 localhost").decode(),
+        "encoding": "base64",
+    }
+
+    with patch.object(
+        hosts_utils, "jc_parse", return_value=jc_return
+    ) as mock_parse:
+        result = hosts_utils.hosts(read_result)
 
     mock_parse.assert_called_once_with("hosts", "127.0.0.1 localhost")
     assert len(result) == 1

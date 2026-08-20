@@ -13,11 +13,14 @@
 
 from __future__ import annotations
 
+from base64 import b64encode
 from typing import Any
 
 import pytest
 
 from ansible_collections.o0_o.posix.plugins.module_utils import passwd_info
+
+PASSWD_TEXT = "root:*:0:0:System Administrator:/var/root:/bin/sh\n"
 
 SAMPLE_PASSWD = [
     {
@@ -74,6 +77,25 @@ def test_passwd_info_key_name(monkeypatch: pytest.MonkeyPatch) -> None:
     assert result["o0-o"]["gid"] == 20
     assert result["o0-o"]["shell"] == "/bin/zsh"
     assert result["o0-o"]["gecos"] == "o0-o"
+
+
+def test_passwd_info_decodes_declared_base64() -> None:
+    """Content a read result declares base64 is decoded, not parsed."""
+
+    read_result = {
+        "content": b64encode(PASSWD_TEXT.encode()).decode(),
+        "encoding": "base64",
+    }
+
+    assert passwd_info(read_result, key="name") == {
+        "root": {
+            "gid": 0,
+            "gecos": "System Administrator",
+            "home": "/var/root",
+            "shell": "/bin/sh",
+            "id": 0,
+        }
+    }
 
 
 def test_passwd_info_invalid_key() -> None:

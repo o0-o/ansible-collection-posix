@@ -13,6 +13,8 @@
 
 from __future__ import annotations
 
+import base64
+
 from typing import Any, Union
 
 from ansible_collections.o0_o.posix.plugins.module_utils.jc_utils import (
@@ -128,6 +130,10 @@ def hosts(
         # Try common keys for file content
         if "content" in config:
             content = config["content"]
+            # A read or slurp result declares its base64 encoding;
+            # stdout never carries one
+            if config.get("encoding") == "base64":
+                content = base64.b64decode(content).decode("utf-8")
         elif "stdout" in config:
             content = config["stdout"]
         else:

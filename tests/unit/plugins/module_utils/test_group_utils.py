@@ -13,11 +13,14 @@
 
 from __future__ import annotations
 
+from base64 import b64encode
 from typing import Any
 
 import pytest
 
 from ansible_collections.o0_o.posix.plugins.module_utils import group_info
+
+GROUP_TEXT = "staff:*:20:root\n"
 
 SAMPLE_GROUPS = [
     {"group_name": "staff", "gid": 20, "members": ["root"]},
@@ -60,6 +63,19 @@ def test_group_info_key_name(monkeypatch: pytest.MonkeyPatch) -> None:
     assert result["staff"] == {"id": 20, "members": ["root"]}
     assert result["access_bpf"] == {"id": 101, "members": []}
     assert result["61"] == {"id": 61, "members": []}
+
+
+def test_group_info_decodes_declared_base64() -> None:
+    """Content a read result declares base64 is decoded, not parsed."""
+
+    read_result = {
+        "content": b64encode(GROUP_TEXT.encode()).decode(),
+        "encoding": "base64",
+    }
+
+    assert group_info(read_result, key="id") == {
+        "20": {"name": "staff", "members": ["root"]}
+    }
 
 
 def test_group_info_invalid_key() -> None:
