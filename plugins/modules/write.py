@@ -65,6 +65,18 @@ options:
         reports no change.
       - C(directory), C(touch), and C(link) are bare states and cannot
         be combined with a family argument.
+      - C(touch) asserts that the destination exists and nothing more.
+        An absent path is created and the task reports changed; an
+        existing path is left exactly as it is, with no C(touch) run
+        against it and no timestamp rewritten, and the task reports no
+        change. Ownership and mode given alongside the state are
+        enforced either way.
+      - That timestamp behavior is a deliberate divergence from
+        M(ansible.builtin.file), whose C(touch) state defaults
+        C(modification_time) and C(access_time) to C(now) and so
+        rewrites both stamps and reports changed on every run. Use
+        M(ansible.builtin.file) or M(ansible.builtin.command) when
+        bumping a timestamp is the point.
     type: str
     choices: [present, absent, directory, touch, link]
     default: present
