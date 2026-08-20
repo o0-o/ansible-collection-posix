@@ -264,6 +264,39 @@ class TestAddContentWithEncoding:
 
         assert attributes == {"encoding": "utf-8"}
 
+    @pytest.mark.parametrize(
+        "encoding,expected",
+        [
+            ("hex", "hex"),
+            ("base64", "base64"),
+            ("binary", "base64"),
+            ("unknown", "base64"),
+        ],
+    )
+    def test_nontext_without_content_records_encoding_only(
+        self, action, encoding, expected
+    ) -> None:
+        """Test non-text encodings honor the content flag like text."""
+        attributes = {}
+
+        action._add_content_with_encoding(
+            attributes, "hi", encoding, "/tmp/f", {}
+        )
+
+        assert attributes == {"encoding": expected}
+
+    def test_fallback_without_content_records_encoding_only(
+        self, action
+    ) -> None:
+        """Test the base64 fallback also honors the content flag."""
+        attributes = {}
+
+        action._add_content_with_encoding(
+            attributes, "café", "us-ascii", "/tmp/f", {}
+        )
+
+        assert attributes == {"encoding": "base64"}
+
     def test_empty_content(self, action) -> None:
         """Test an empty file yields empty content and no lines."""
         attributes = {}

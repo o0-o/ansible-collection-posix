@@ -58,7 +58,7 @@ class TestStatPermissionBooleans:
             "isuid": False,
             "isgid": False,
             "readable": True,
-            "writeable": True,
+            "writable": True,
             "executable": False,
         }
 
@@ -77,7 +77,7 @@ class TestStatPermissionBooleans:
             "isuid": True,
             "isgid": True,
             "readable": True,
-            "writeable": True,
+            "writable": True,
             "executable": True,
         }
 

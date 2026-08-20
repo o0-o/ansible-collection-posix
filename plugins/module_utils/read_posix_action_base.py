@@ -630,23 +630,22 @@ class ReadPosixActionBase(PosixActionBase):
                 f"a text encoding."
             )
 
-        # Handle special encodings (only valid with content, not lines)
+        # Handle special encodings (only valid with content, not lines).
+        # The encoding key is always recorded; content is added only
+        # when requested, mirroring the text branch below
         if encoding_lower == "hex":
             # Hexadecimal representation
-            attributes["content"] = content_bytes.hex()
             attributes["encoding"] = "hex"
-        elif encoding_lower == "base64":
-            # Base64 representation (user forced or auto-detected binary)
-            attributes["content"] = base64.b64encode(content_bytes).decode(
-                "ascii"
-            )
+            if want_content:
+                attributes["content"] = content_bytes.hex()
+        elif encoding_lower in {"base64", "binary", "unknown"}:
+            # base64 forced by the user, or auto-detected binary:
+            # either way the representation is base64
             attributes["encoding"] = "base64"
-        elif encoding_lower in {"binary", "unknown"}:
-            # Auto-detected binary: use base64
-            attributes["content"] = base64.b64encode(content_bytes).decode(
-                "ascii"
-            )
-            attributes["encoding"] = "base64"
+            if want_content:
+                attributes["content"] = base64.b64encode(
+                    content_bytes
+                ).decode("ascii")
         else:
             # Text encoding: try to decode with specified encoding
             try:
@@ -683,10 +682,11 @@ class ReadPosixActionBase(PosixActionBase):
                             f"Remove lines=true or specify a text encoding."
                         )
                     # Auto-detected encoding failed - fall back to base64
-                    attributes["content"] = base64.b64encode(
-                        content_bytes
-                    ).decode("ascii")
                     attributes["encoding"] = "base64"
+                    if want_content:
+                        attributes["content"] = base64.b64encode(
+                            content_bytes
+                        ).decode("ascii")
 
     def _process_read_results(
         self,
@@ -782,7 +782,7 @@ class ReadPosixActionBase(PosixActionBase):
                     if flags and len(flags) >= 10:
                         perms = self._stat_permission_booleans(flags)
                         attributes["readable"] = perms.get("readable", False)
-                        attributes["writable"] = perms.get("writeable", False)
+                        attributes["writable"] = perms.get("writable", False)
                         attributes["executable"] = perms.get(
                             "executable", False
                         )
@@ -1350,7 +1350,7 @@ class ReadPosixActionBase(PosixActionBase):
 
         # High-level permission flags (simplified)
         perms["readable"] = perms["rusr"]
-        perms["writeable"] = perms["wusr"]
+        perms["writable"] = perms["wusr"]
         perms["executable"] = perms["xusr"]
 
         return perms
