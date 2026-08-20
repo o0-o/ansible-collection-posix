@@ -1,0 +1,11 @@
+---
+breaking_changes:
+  - >-
+    read - The owner and group attributes are replaced by uid and gid,
+    reported as integers. Ownership is gathered with ls -dn so the
+    numbers survive any locale, which means those keys always carried
+    numeric IDs while the documentation promised names; the keys now
+    say what they hold. Resolved names return in a later release as
+    optional owner and group attributes, present only when the ID can
+    be resolved
+    (https://github.com/o0-o/ansible-collection-posix/pull/XXX).

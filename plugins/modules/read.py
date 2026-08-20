@@ -40,7 +40,7 @@ options:
   attributes:
     description:
       - Include basic metadata and extended filesystem attributes such as
-        type, mode, owner, group, size, readable, writable, hardlinks,
+        type, mode, uid, gid, size, readable, writable, hardlinks,
         inode, timestamps (modified, created, changed), ACL, filesystem
         flags, and SELinux context.
       - Does not include extended attributes (xattrs); use I(extended)
@@ -273,14 +273,14 @@ paths:
           description: Octal permission mode
           type: str
           sample: '0644'
-        owner:
-          description: Owning user name when available
-          type: str
-          sample: root
-        group:
-          description: Owning group name when available
-          type: str
-          sample: wheel
+        uid:
+          description: Numeric ID of the owning user
+          type: int
+          sample: 0
+        gid:
+          description: Numeric ID of the owning group
+          type: int
+          sample: 0
         size:
           description:
             - Size of the file in bytes, with a human readable rendering.

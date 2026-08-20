@@ -226,11 +226,11 @@
         read_include_all_reg['paths'][read_regular_path]['mode']
         is defined
       - >-
-        read_include_all_reg['paths'][read_regular_path]['owner']
-        is defined
+        read_include_all_reg['paths'][read_regular_path]['uid']
+        is integer
       - >-
-        read_include_all_reg['paths'][read_regular_path]['group']
-        is defined
+        read_include_all_reg['paths'][read_regular_path]['gid']
+        is integer
       - >-
         read_include_all_reg['paths'][read_regular_path]['size']['bytes']
         is number

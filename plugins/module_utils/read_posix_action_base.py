@@ -773,10 +773,12 @@ class ReadPosixActionBase(PosixActionBase):
                         attributes["size"] = parse_si(
                             size_str, binary=True, optimize=True
                         )
+                    # ls -dn reports ownership numerically for locale
+                    # safety and jc leaves the numbers as strings
                     if "owner" in entry:
-                        attributes["owner"] = entry["owner"]
+                        attributes["uid"] = int(entry["owner"])
                     if "group" in entry:
-                        attributes["group"] = entry["group"]
+                        attributes["gid"] = int(entry["group"])
 
                     # Calculate permission flags
                     if flags and len(flags) >= 10:

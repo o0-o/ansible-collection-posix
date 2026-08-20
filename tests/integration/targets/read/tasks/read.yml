@@ -26,11 +26,17 @@
         == 'regular'
       - read_regular_content_reg['paths'][read_regular_path]['mode'] == '0640'
       - >-
+        read_regular_content_reg['paths'][read_regular_path]['uid']
+        is integer
+      - >-
+        read_regular_content_reg['paths'][read_regular_path]['gid']
+        is integer
+      - >-
         read_regular_content_reg['paths'][read_regular_path]['owner']
-        is defined
+        is not defined
       - >-
         read_regular_content_reg['paths'][read_regular_path]['group']
-        is defined
+        is not defined
       - >-
         read_regular_content_reg['paths'][read_regular_path]['size']['bytes']
         is number
