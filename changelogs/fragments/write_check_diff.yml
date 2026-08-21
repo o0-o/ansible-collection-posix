@@ -1,0 +1,25 @@
+---
+bugfixes:
+  - >-
+    write - Diff mode produced nothing. The diff was gated on a
+    ``diff`` key in the task variables, which Ansible never sets, so
+    neither ``diff: true`` on the task nor ``--diff`` on the command
+    line ever reached it and the only test covering it supplied the
+    key by hand. The task's own diff request is read instead, and a
+    bare file state, which has no text to diff, now reports the
+    attributes of the path it moves alongside any permissions it
+    carries
+    (https://github.com/o0-o/ansible-collection-posix/pull/XXX).
+  - >-
+    write - Check mode failed outright. The content, copy, template,
+    line, and block families died creating the directory they stage
+    into and a bare state carrying permissions died reading the
+    current mode, because both went out through commands that honour
+    check mode and so returned success having done nothing. Probing
+    the destination and staging the candidate now run for real,
+    deliberately, so that ``validate`` vets the file that would have
+    landed and refuses an invalid one in check mode exactly as it
+    would outside it. Check mode withholds the placement alone: the
+    destination keeps its content, ownership, mode, and context, no
+    backup is created, and the candidate is removed
+    (https://github.com/o0-o/ansible-collection-posix/pull/XXX).

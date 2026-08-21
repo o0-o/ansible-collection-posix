@@ -123,13 +123,13 @@
       - copy_now['lines'] == copy_remote_body.splitlines()
   vars:
     copy_now: "{{ copy_remote_read_reg['paths'][copy_remote_dest] }}"
-  when: not ansible_check_mode
+  when: not check
 
 - name: Assert check mode never created the remote source copy
   ansible.builtin.assert:
     that:
       - copy_remote_read_reg['paths'][copy_remote_dest] is none
-  when: ansible_check_mode
+  when: check
 
 - name: Settle the remote source copy outside check mode
   o0_o.posix.write:

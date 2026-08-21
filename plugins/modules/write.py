@@ -281,11 +281,26 @@ attributes:
     description:
       - This module fully supports check mode. It reports the change it
         would make without touching the destination.
+      - Check mode withholds the final placement alone. The
+        destination is probed, the candidate file is staged on the
+        remote host, and C(validate) runs against that candidate, so
+        the reported change is read off the file that would have
+        landed and an invalid candidate fails the task in check mode
+        exactly as it would outside it.
+      - Nothing else is left behind. The candidate is removed, no
+        backup is created, and the destination keeps its content,
+        ownership, mode, and SELinux context.
   diff_mode:
     support: full
     description:
-      - This module returns a unified diff of the destination before
-        and after the write.
+      - This module returns a diff whenever the task asks for one,
+        through its own C(diff) keyword or C(--diff) on the command
+        line, and the destination changed.
+      - The families that write content return a unified diff of the
+        destination before and after. A bare file state returns the
+        attributes of the path it moves, and the permissions it
+        carries join that same report.
+      - A task that changes nothing returns no diff.
   async:
     support: none
     description:
@@ -434,11 +449,16 @@ backup_file:
   sample: /etc/motd.d41d8cd98f00b204e9800998ecf8427e.20250101120000
 diff:
   description:
-    - Before and after content of the destination.
-    - Contains the C(before), C(after), C(before_header),
-      C(after_header), and C(unified_diff) keys.
+    - Before and after state of the destination.
+    - For the content, copy, template, line, and block families,
+      C(before) and C(after) hold the destination's text, alongside
+      the C(before_header), C(after_header), and C(unified_diff) keys.
+    - For a bare file state, C(before) and C(after) are dictionaries
+      naming the path's state, the symbolic link's target, and any
+      ownership, mode, or SELinux keys the task changes.
   type: dict
-  returned: in diff mode, when the destination changed
+  returned: >-
+    when the task asks for a diff and the destination changed
 found:
   description: Number of lines removed by the line family.
   type: int

@@ -50,7 +50,7 @@
         block_now['lines'][:4] == block_seed.splitlines()
   vars:
     block_now: "{{ block_add_read_reg['paths'][block_dest] }}"
-  when: not ansible_check_mode
+  when: not check
 
 - name: Assert check mode left the file exactly as it found it
   ansible.builtin.assert:
@@ -58,7 +58,7 @@
       - block_now['lines'] == block_seed.splitlines()
   vars:
     block_now: "{{ block_add_read_reg['paths'][block_dest] }}"
-  when: ansible_check_mode
+  when: check
 
 - name: Settle the added block outside check mode
   o0_o.posix.write:
@@ -312,7 +312,7 @@
       - block_now['lines'] == block_seed.splitlines()
   vars:
     block_now: "{{ block_remove_read_reg['paths'][block_dest] }}"
-  when: not ansible_check_mode
+  when: not check
 
 - name: Assert check mode left the managed block in place
   ansible.builtin.assert:
@@ -321,7 +321,7 @@
       - "'doomed = 1' in block_now['lines']"
   vars:
     block_now: "{{ block_remove_read_reg['paths'][block_dest] }}"
-  when: ansible_check_mode
+  when: check
 
 - name: Reset the file before the empty block test
   o0_o.posix.write:
@@ -405,13 +405,13 @@
       - block_now['mode'] == '0644'
   vars:
     block_now: "{{ block_create_read_reg['paths'][block_created_dest] }}"
-  when: not ansible_check_mode
+  when: not check
 
 - name: Assert check mode never created the file
   ansible.builtin.assert:
     that:
       - block_create_read_reg['paths'][block_created_dest] is none
-  when: ansible_check_mode
+  when: check
 
 - name: Clear the destination the missing file removal names
   ansible.builtin.file:

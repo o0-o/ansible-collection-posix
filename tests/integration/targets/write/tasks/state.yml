@@ -41,13 +41,13 @@
       - state_now['mode'] == '0755'
   vars:
     state_now: "{{ state_mkdir_read_reg['paths'][state_tree] }}"
-  when: not ansible_check_mode
+  when: not check
 
 - name: Assert check mode never created the directory
   ansible.builtin.assert:
     that:
       - state_mkdir_read_reg['paths'][state_tree] is none
-  when: ansible_check_mode
+  when: check
 
 - name: Settle the directory outside check mode
   o0_o.posix.write:
@@ -101,13 +101,13 @@
       - state_now['mode'] == '0640'
   vars:
     state_now: "{{ state_touch_read_reg['paths'][state_touched] }}"
-  when: not ansible_check_mode
+  when: not check
 
 - name: Assert check mode never created the touched file
   ansible.builtin.assert:
     that:
       - state_touch_read_reg['paths'][state_touched] is none
-  when: ansible_check_mode
+  when: check
 
 - name: Settle the touched file outside check mode
   o0_o.posix.write:
@@ -172,13 +172,13 @@
       - state_now['target'] == state_target
   vars:
     state_now: "{{ state_link_read_reg['paths'][state_link] }}"
-  when: not ansible_check_mode
+  when: not check
 
 - name: Assert check mode never created the link
   ansible.builtin.assert:
     that:
       - state_link_read_reg['paths'][state_link] is none
-  when: ansible_check_mode
+  when: check
 
 - name: Settle the link outside check mode
   o0_o.posix.write:
@@ -276,7 +276,7 @@
     that:
       - state_rm_file_read_reg['paths'][state_doomed_file] is none
       - state_rm_file_reg['msg'] == 'path removed'
-  when: not ansible_check_mode
+  when: not check
 
 - name: Assert check mode removed nothing
   ansible.builtin.assert:
@@ -284,7 +284,7 @@
       - state_rm_file_read_reg['paths'][state_doomed_file] is not none
       - >-
         'Check mode' in state_rm_file_reg['msg']
-  when: ansible_check_mode
+  when: check
 
 - name: Create the directory the removal test takes away
   o0_o.posix.write:

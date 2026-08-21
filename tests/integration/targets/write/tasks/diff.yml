@@ -1,0 +1,352 @@
+# vim: ts=2:sw=2:sts=2:et:ft=yaml.ansible
+# -*- mode: yaml; yaml-indent-offset: 2; indent-tabs-mode: nil; -*-
+---
+# GNU General Public License v3.0+
+# SPDX-License-Identifier: GPL-3.0-or-later
+# (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
+#
+# Copyright (c) 2025 oØ.o (@o0-o)
+#
+# This file is part of the o0_o.posix Ansible Collection.
+
+# Every task under test here names diff: true for itself, which is one
+# of the two ways a diff can be asked for; --diff on the command line
+# is the other and reaches the same attribute. The diff a task returns
+# says what would change, so it reads the same in a check row as in a
+# real one and the assertions do not branch. Content arrives without a
+# trailing newline, so both sides are compared line by line.
+
+- name: Start the diff cases from an empty tree
+  ansible.builtin.file:
+    path: "{{ diff_dir }}"
+    state: absent
+  check_mode: false
+
+- name: Seed the file the content diff replaces
+  o0_o.posix.write:
+    dest: "{{ diff_content_dest }}"
+    content: "{{ diff_seed }}"
+    raw: "{{ raw }}"
+  check_mode: false
+
+- name: Replace the content, asking for a diff
+  o0_o.posix.write:
+    dest: "{{ diff_content_dest }}"
+    content: "{{ diff_update }}"
+    raw: "{{ raw }}"
+  diff: true
+  register: diff_content_reg
+
+- name: Assert the content diff holds both sides of the replacement
+  ansible.builtin.assert:
+    that:
+      - diff_content_reg is changed
+      - "'diff' in diff_content_reg"
+      - diff_now['before_header'] == diff_content_dest
+      - diff_now['after_header'] == diff_content_dest
+      - diff_now['before'].splitlines() == diff_seed.splitlines()
+      - diff_now['after'].splitlines() == diff_update.splitlines()
+      - "'-setting_one = true' in diff_now['unified_diff']"
+      - "'+setting_one = false' in diff_now['unified_diff']"
+  vars:
+    diff_now: "{{ diff_content_reg['diff'] }}"
+
+- name: Read the destination the content diff described
+  o0_o.posix.read:
+    path: "{{ diff_content_dest }}"
+    lines: true
+  register: diff_content_read_reg
+
+- name: Assert a diff in check mode described a write it did not make
+  ansible.builtin.assert:
+    that:
+      - diff_content_read_reg['paths'][diff_content_dest]['lines'] ==
+        diff_seed.splitlines()
+  when: check
+
+- name: Settle the replaced content so both rows agree from here
+  o0_o.posix.write:
+    dest: "{{ diff_content_dest }}"
+    content: "{{ diff_update }}"
+    raw: "{{ raw }}"
+  check_mode: false
+
+- name: Write the settled content again, asking for a diff
+  o0_o.posix.write:
+    dest: "{{ diff_content_dest }}"
+    content: "{{ diff_update }}"
+    raw: "{{ raw }}"
+  diff: true
+  register: diff_unchanged_reg
+
+- name: Assert a write that changes nothing returns no diff
+  ansible.builtin.assert:
+    that:
+      - diff_unchanged_reg is not changed
+      - "'diff' not in diff_unchanged_reg"
+
+- name: Replace the content again without asking for a diff
+  o0_o.posix.write:
+    dest: "{{ diff_content_dest }}"
+    content: "{{ diff_seed }}"
+    raw: "{{ raw }}"
+  register: diff_unasked_reg
+
+- name: Assert a task that never asked for a diff is given none
+  ansible.builtin.assert:
+    that:
+      - diff_unasked_reg is changed
+      - "'diff' not in diff_unasked_reg"
+
+- name: Seed the file the copy diff replaces
+  o0_o.posix.write:
+    dest: "{{ diff_copy_dest }}"
+    content: "{{ diff_seed }}"
+    raw: "{{ raw }}"
+  check_mode: false
+
+- name: Copy over the seeded file, asking for a diff
+  o0_o.posix.write:
+    dest: "{{ diff_copy_dest }}"
+    src: greeting.txt
+    raw: "{{ raw }}"
+  diff: true
+  register: diff_copy_reg
+
+- name: Assert the copy diff names the fixture it would install
+  ansible.builtin.assert:
+    that:
+      - diff_copy_reg is changed
+      - diff_now['before'].splitlines() == diff_seed.splitlines()
+      - diff_now['after'].splitlines() == copy_expected
+      - "'+greeting=hello' in diff_now['unified_diff']"
+  vars:
+    diff_now: "{{ diff_copy_reg['diff'] }}"
+    copy_expected:
+      - '# o0_o.posix.write copy fixture'
+      - 'greeting=hello'
+      - 'trailing=1'
+
+- name: Seed the file the template diff replaces
+  o0_o.posix.write:
+    dest: "{{ diff_tmpl_dest }}"
+    content: "{{ diff_seed }}"
+    raw: "{{ raw }}"
+  check_mode: false
+
+- name: Render over the seeded file, asking for a diff
+  o0_o.posix.write:
+    dest: "{{ diff_tmpl_dest }}"
+    template: write_fixture.j2
+    raw: "{{ raw }}"
+  vars:
+    tmpl_greeting: "{{ diff_greeting }}"
+  diff: true
+  register: diff_tmpl_reg
+
+- name: Assert the template diff holds the rendered result
+  ansible.builtin.assert:
+    that:
+      - diff_tmpl_reg is changed
+      - diff_now['before'].splitlines() == diff_seed.splitlines()
+      - diff_now['after'].splitlines() == tmpl_expected
+      - "'+greeting=' ~ diff_greeting in diff_now['unified_diff']"
+  vars:
+    diff_now: "{{ diff_tmpl_reg['diff'] }}"
+    tmpl_expected:
+      - '# rendered by o0_o.posix.write'
+      - 'greeting={{ diff_greeting }}'
+      - 'destination={{ diff_tmpl_dest }}'
+
+- name: Seed the file the line diff edits
+  o0_o.posix.write:
+    dest: "{{ diff_line_dest }}"
+    content: "{{ diff_seed }}"
+    raw: "{{ raw }}"
+  check_mode: false
+
+- name: Edit one line, asking for a diff
+  o0_o.posix.write:
+    dest: "{{ diff_line_dest }}"
+    line: 'setting_one = false'
+    regexp: '^setting_one'
+    raw: "{{ raw }}"
+  diff: true
+  register: diff_line_reg
+
+- name: Assert the line diff shows the line it swapped
+  ansible.builtin.assert:
+    that:
+      - diff_line_reg is changed
+      - diff_now['before'].splitlines() == diff_seed.splitlines()
+      - diff_now['after'].splitlines() == diff_update.splitlines()
+      - "'-setting_one = true' in diff_now['unified_diff']"
+      - "'+setting_one = false' in diff_now['unified_diff']"
+  vars:
+    diff_now: "{{ diff_line_reg['diff'] }}"
+
+- name: Seed the file the block diff edits
+  o0_o.posix.write:
+    dest: "{{ diff_block_dest }}"
+    content: "{{ diff_seed }}"
+    raw: "{{ raw }}"
+  check_mode: false
+
+- name: Insert a marked block, asking for a diff
+  o0_o.posix.write:
+    dest: "{{ diff_block_dest }}"
+    block: |
+      inserted = true
+    raw: "{{ raw }}"
+  diff: true
+  register: diff_block_reg
+
+- name: Assert the block diff shows the markers it would add
+  ansible.builtin.assert:
+    that:
+      - diff_block_reg is changed
+      - diff_now['before'].splitlines() == diff_seed.splitlines()
+      - "'+# BEGIN ANSIBLE MANAGED BLOCK' in diff_now['unified_diff']"
+      - "'+inserted = true' in diff_now['unified_diff']"
+      - "'+# END ANSIBLE MANAGED BLOCK' in diff_now['unified_diff']"
+  vars:
+    diff_now: "{{ diff_block_reg['diff'] }}"
+
+- name: Create a directory, asking for a diff
+  o0_o.posix.write:
+    dest: "{{ diff_state_dest }}"
+    state: directory
+    raw: "{{ raw }}"
+  diff: true
+  register: diff_dir_reg
+
+- name: Assert the directory diff names the state it would reach
+  ansible.builtin.assert:
+    that:
+      - diff_dir_reg is changed
+      - diff_now['before_header'] == diff_state_dest
+      - "diff_now['before'] == {'state': 'absent'}"
+      - "diff_now['after'] == {'state': 'directory'}"
+  vars:
+    diff_now: "{{ diff_dir_reg['diff'] }}"
+
+- name: Settle the directory so both rows find it there
+  o0_o.posix.write:
+    dest: "{{ diff_state_dest }}"
+    state: directory
+    raw: "{{ raw }}"
+  check_mode: false
+
+- name: Ask for the settled directory again, asking for a diff
+  o0_o.posix.write:
+    dest: "{{ diff_state_dest }}"
+    state: directory
+    raw: "{{ raw }}"
+  diff: true
+  register: diff_dir_again_reg
+
+- name: Assert a directory that is already there returns no diff
+  ansible.builtin.assert:
+    that:
+      - diff_dir_again_reg is not changed
+      - "'diff' not in diff_dir_again_reg"
+
+- name: Create a file, asking for a diff
+  o0_o.posix.write:
+    dest: "{{ diff_touch_dest }}"
+    state: touch
+    raw: "{{ raw }}"
+  diff: true
+  register: diff_touch_reg
+
+- name: Assert the touch diff names the file it would create
+  ansible.builtin.assert:
+    that:
+      - diff_touch_reg is changed
+      - "diff_now['before'] == {'state': 'absent'}"
+      - "diff_now['after'] == {'state': 'file'}"
+  vars:
+    diff_now: "{{ diff_touch_reg['diff'] }}"
+
+- name: Link to the target, asking for a diff
+  o0_o.posix.write:
+    dest: "{{ diff_link_dest }}"
+    target: "{{ diff_touch_dest }}"
+    state: link
+    raw: "{{ raw }}"
+  diff: true
+  register: diff_link_reg
+
+- name: Assert the link diff names where it would point
+  ansible.builtin.assert:
+    that:
+      - diff_link_reg is changed
+      - "diff_now['before'] == {'state': 'absent'}"
+      - diff_now['after']['state'] == 'link'
+      - diff_now['after']['target'] == diff_touch_dest
+  vars:
+    diff_now: "{{ diff_link_reg['diff'] }}"
+
+- name: Seed the file whose permissions the diff changes
+  o0_o.posix.write:
+    dest: "{{ diff_perms_dest }}"
+    content: "{{ diff_seed }}"
+    mode: '0644'
+    raw: "{{ raw }}"
+  check_mode: false
+
+- name: Change the mode of an existing file, asking for a diff
+  o0_o.posix.write:
+    dest: "{{ diff_perms_dest }}"
+    state: touch
+    mode: '0600'
+    raw: "{{ raw }}"
+  diff: true
+  register: diff_perms_reg
+
+- name: Assert the permission diff names both modes symbolically
+  ansible.builtin.assert:
+    that:
+      - diff_perms_reg is changed
+      - "diff_now['before'] == {'mode': 'rw-r--r--'}"
+      - "diff_now['after'] == {'mode': 'rw-------'}"
+  vars:
+    diff_now: "{{ diff_perms_reg['diff'] }}"
+
+- name: Seed the file the removal diff takes away
+  o0_o.posix.write:
+    dest: "{{ diff_absent_dest }}"
+    content: "{{ diff_seed }}"
+    raw: "{{ raw }}"
+  check_mode: false
+
+- name: Remove the file, asking for a diff
+  o0_o.posix.write:
+    dest: "{{ diff_absent_dest }}"
+    state: absent
+    raw: "{{ raw }}"
+  diff: true
+  register: diff_absent_reg
+
+- name: Assert the removal diff names the file it would take away
+  ansible.builtin.assert:
+    that:
+      - diff_absent_reg is changed
+      - "diff_now['before'] == {'state': 'file'}"
+      - "diff_now['after'] == {'state': 'absent'}"
+  vars:
+    diff_now: "{{ diff_absent_reg['diff'] }}"
+
+- name: Remove a path that was never there, asking for a diff
+  o0_o.posix.write:
+    dest: "{{ diff_dir }}/never_existed"
+    state: absent
+    raw: "{{ raw }}"
+  diff: true
+  register: diff_nothing_reg
+
+- name: Assert a removal with nothing to remove returns no diff
+  ansible.builtin.assert:
+    that:
+      - diff_nothing_reg is not changed
+      - "'diff' not in diff_nothing_reg"

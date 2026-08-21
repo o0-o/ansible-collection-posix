@@ -125,6 +125,7 @@ class RecordingWriteAction(ActionModule):
         task_vars: Optional[dict[str, Any]] = None,
         parents: Optional[bool] = True,
         mode: Optional[str] = None,
+        check_mode: Optional[bool] = None,
     ) -> dict[str, Any]:
         """Record the directory creation."""
         self.mkdirs.append(target_path)
@@ -146,6 +147,7 @@ def plugin() -> RecordingWriteAction:
     task = MagicMock()
     task.async_val = 0
     task.check_mode = False
+    task.diff = False
     task.args = {}
 
     connection = MagicMock()
@@ -683,3 +685,125 @@ def test_raw_arg_rejects_an_unusable_value(plugin) -> None:
         plugin.run(task_vars={})
 
     assert plugin.writes == []
+
+
+# Diff mode
+
+# A directory listing the ls probe can return for /etc/foo
+LS_ROOT_0644 = {
+    "rc": 0,
+    "stdout": "-rw-r--r--  1 root  wheel  0 Jan  1 00:00 /etc/foo",
+    "stdout_lines": ["-rw-r--r--  1 root  wheel  0 Jan  1 00:00 /etc/foo"],
+    "stderr": "",
+}
+
+
+@pytest.mark.parametrize(
+    "args, stats, command_results, expected_before, expected_after",
+    [
+        (
+            {"dest": "/etc/foo", "state": "absent"},
+            {"/etc/foo": {"exists": True, "type": "file", "raw": False}},
+            [],
+            {"state": "file"},
+            {"state": "absent"},
+        ),
+        (
+            {"dest": "/etc/dir", "state": "directory"},
+            {},
+            [],
+            {"state": "absent"},
+            {"state": "directory"},
+        ),
+        (
+            {"dest": "/etc/foo", "state": "touch"},
+            {},
+            [],
+            {"state": "absent"},
+            {"state": "file"},
+        ),
+        (
+            {"dest": "/etc/link", "state": "link", "target": "/etc/foo"},
+            {},
+            [{"rc": 1, "stdout": "", "stderr": ""}],
+            {"state": "absent"},
+            {"state": "link", "target": "/etc/foo"},
+        ),
+        # A link that already exists names where it used to point
+        (
+            {"dest": "/etc/link", "state": "link", "target": "/etc/foo"},
+            {
+                "/etc/link": {
+                    "exists": True,
+                    "type": "file",
+                    "is_symlink": True,
+                    "raw": False,
+                }
+            },
+            [
+                {"rc": 0, "stdout": "", "stderr": ""},
+                {"rc": 0, "stdout": "/etc/other\n", "stderr": ""},
+            ],
+            {"state": "link", "target": "/etc/other"},
+            {"state": "link", "target": "/etc/foo"},
+        ),
+        # Permissions carried onto an existing path diff on their own
+        (
+            {"dest": "/etc/foo", "state": "touch", "mode": "0600"},
+            {"/etc/foo": {"exists": True, "type": "file", "raw": False}},
+            [LS_ROOT_0644],
+            {"mode": "rw-r--r--"},
+            {"mode": "rw-------"},
+        ),
+    ],
+)
+def test_bare_state_diffs_name_what_would_move(
+    plugin, args, stats, command_results, expected_before, expected_after
+) -> None:
+    """Test a bare state reports the attributes it would change.
+
+    Check mode is on throughout: the diff is a prediction, and it has
+    to be readable without the change having been made.
+    """
+
+    plugin._task.check_mode = True
+    plugin._task.diff = True
+    plugin.stats.update(stats)
+    plugin.command_results = list(command_results)
+    plugin._task.args = dict(args)
+
+    result = plugin.run(task_vars={})
+
+    assert result["changed"] is True
+    assert result["diff"]["before_header"] == args["dest"]
+    assert result["diff"]["after_header"] == args["dest"]
+    assert result["diff"]["before"] == expected_before
+    assert result["diff"]["after"] == expected_after
+
+
+def test_bare_state_reports_no_diff_when_unasked(plugin) -> None:
+    """Test a task that never asked for a diff is given none."""
+
+    plugin.stats["/etc/foo"] = {
+        "exists": True,
+        "type": "file",
+        "raw": False,
+    }
+    plugin._task.args = {"dest": "/etc/foo", "state": "absent"}
+
+    result = plugin.run(task_vars={})
+
+    assert result["changed"] is True
+    assert "diff" not in result
+
+
+def test_bare_state_reports_no_diff_when_nothing_moves(plugin) -> None:
+    """Test an unchanged path returns no diff even in diff mode."""
+
+    plugin._task.diff = True
+    plugin._task.args = {"dest": "/etc/gone", "state": "absent"}
+
+    result = plugin.run(task_vars={})
+
+    assert result["changed"] is False
+    assert "diff" not in result

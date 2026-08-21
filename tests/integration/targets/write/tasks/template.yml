@@ -46,13 +46,13 @@
       - tmpl_now['lines'][2] == 'destination=' ~ tmpl_dest
   vars:
     tmpl_now: "{{ tmpl_render_read_reg['paths'][tmpl_dest] }}"
-  when: not ansible_check_mode
+  when: not check
 
 - name: Assert check mode never created the rendered file
   ansible.builtin.assert:
     that:
       - tmpl_render_read_reg['paths'][tmpl_dest] is none
-  when: ansible_check_mode
+  when: check
 
 - name: Settle the rendered file outside check mode
   o0_o.posix.write:

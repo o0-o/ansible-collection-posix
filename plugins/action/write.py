@@ -98,6 +98,11 @@ class ActionModule(WritePosixActionBase, ActionBase):
     All families support raw fallback for hosts without Python, check
     mode, and diff, and the content families share backup, validate,
     and permission handling through the write machinery.
+
+    Check mode withholds placement and nothing else. Probing the
+    destination and staging the candidate happen for real, so the
+    change reported is read off the file that would have landed and a
+    validate command vets that file rather than being skipped.
     """
 
     TRANSFERS_FILES = False
@@ -659,6 +664,38 @@ class ActionModule(WritePosixActionBase, ActionBase):
             )
         }
 
+    def _record_diff(
+        self,
+        dest: str,
+        before: dict[str, Any],
+        after: dict[str, Any],
+    ) -> None:
+        """Record a bare state's before and after for diff mode.
+
+        The content families diff their text through the write
+        machinery. A bare state has no text to diff, so its diff names
+        the attributes of the path the task moves, and a state change
+        carrying permissions merges both into the one report.
+
+        :param str dest: The path the diff describes
+        :param dict[str, Any] before: Attributes as they were found
+        :param dict[str, Any] after: Attributes as the task leaves them
+        """
+        if not self._task.diff:
+            return
+
+        diff = self.result.setdefault(
+            "diff",
+            {
+                "before_header": dest,
+                "after_header": dest,
+                "before": {},
+                "after": {},
+            },
+        )
+        diff["before"].update(before)
+        diff["after"].update(after)
+
     def _write_content(
         self,
         content: Any,
@@ -720,6 +757,11 @@ class ActionModule(WritePosixActionBase, ActionBase):
                 self.result["msg"] = "path already absent"
                 return
             self.result["changed"] = True
+            self._record_diff(
+                dest,
+                {"state": dest_stat["type"]},
+                {"state": "absent"},
+            )
             if check_mode:
                 self.result["msg"] = (
                     "Check mode: path would have been removed."
@@ -740,6 +782,11 @@ class ActionModule(WritePosixActionBase, ActionBase):
         if state == "directory":
             if not dest_stat["exists"]:
                 self.result["changed"] = True
+                self._record_diff(
+                    dest,
+                    {"state": "absent"},
+                    {"state": "directory"},
+                )
                 if check_mode:
                     self.result["msg"] = (
                         "Check mode: directory would have been created."
@@ -763,6 +810,11 @@ class ActionModule(WritePosixActionBase, ActionBase):
         if state == "touch":
             if not dest_stat["exists"]:
                 self.result["changed"] = True
+                self._record_diff(
+                    dest,
+                    {"state": "absent"},
+                    {"state": "file"},
+                )
                 if check_mode:
                     self.result["msg"] = (
                         "Check mode: file would have been created."
@@ -796,24 +848,29 @@ class ActionModule(WritePosixActionBase, ActionBase):
                 task_vars=task_vars,
                 check_mode=False,
             )
+            before = {"state": "absent"}
             if symlink_test["rc"] == 0:
                 readlink_result = self._command(
                     ["readlink", dest],
                     task_vars=task_vars,
                     check_mode=False,
                 )
-                if (
-                    readlink_result["rc"] == 0
-                    and readlink_result["stdout"].strip() == target
-                ):
-                    self.result["msg"] = "link already points at target"
-                    return
+                before = {"state": "link"}
+                if readlink_result["rc"] == 0:
+                    old_target = readlink_result["stdout"].strip()
+                    if old_target == target:
+                        self.result["msg"] = "link already points at target"
+                        return
+                    before["target"] = old_target
             elif dest_stat["exists"]:
                 raise AnsibleActionFail(
                     f"Path {dest} exists and is a "
                     f"{dest_stat['type']}, not a symlink"
                 )
             self.result["changed"] = True
+            self._record_diff(
+                dest, before, {"state": "link", "target": target}
+            )
             if check_mode:
                 self.result["msg"] = (
                     "Check mode: link would have been created."
@@ -864,14 +921,20 @@ class ActionModule(WritePosixActionBase, ActionBase):
             old_perms = {}
 
         perms_changed = False
+        before: dict[str, Any] = {}
+        after: dict[str, Any] = {}
         for key in ("owner", "group", "seuser", "serole", "setype", "selevel"):
             if perms.get(key) and perms[key] != old_perms.get(key):
                 perms_changed = True
+                before[key] = old_perms.get(key)
+                after[key] = perms[key]
         if perms.get("mode"):
             try:
                 symbolic = self._convert_octal_mode_to_symbolic(perms["mode"])
                 if symbolic != old_perms.get("mode"):
                     perms_changed = True
+                    before["mode"] = old_perms.get("mode")
+                    after["mode"] = symbolic
             except (RuntimeError, ValueError) as e:
                 raise AnsibleActionFail(f"Invalid mode: {perms['mode']}: {e}")
 
@@ -879,6 +942,7 @@ class ActionModule(WritePosixActionBase, ActionBase):
             return
 
         self.result["changed"] = True
+        self._record_diff(dest, before, after)
         if check_mode:
             self.result["msg"] = (
                 "Check mode: permissions would have been changed."

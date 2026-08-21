@@ -16,10 +16,12 @@
 # the distribution lanes run as root and the SELinux distributions
 # reach the labelling cases.
 #
-# Every case here writes for real. The permission machinery reads the
-# current owner, group, and mode off the destination before it decides
-# whether to change them, and it cannot take that reading in check
-# mode, so there is no prediction to assert against.
+# The cases that build the sequence up write for real, whichever row
+# they run in, because each one reads the ownership the one before it
+# left. The prediction cases name check mode for themselves. Reading
+# the current owner, group, mode, and context is a probe that runs in
+# check mode too, which is what gives those cases something to
+# predict from.
 
 - name: Clear the tree the permission cases write under
   ansible.builtin.file:
@@ -250,6 +252,69 @@
       {{ perms_rechown_read_reg['paths'][perms_touched_dest] }}
   when: perms_can_chown
 
+# The file is root's by now. Asking for the other account back in
+# check mode is the case that has to read the current ownership to
+# know it would change, and then leave it alone.
+- name: Predict handing the file to the requested account again
+  o0_o.posix.write:
+    dest: "{{ perms_touched_dest }}"
+    state: touch
+    owner: "{{ perms_account }}"
+    mode: '0600'
+    raw: "{{ raw }}"
+  check_mode: true
+  register: perms_predict_reg
+  when: perms_can_chown
+
+- name: Read the file back after the prediction
+  o0_o.posix.read:
+    path: "{{ perms_touched_dest }}"
+    attributes: true
+  check_mode: false
+  register: perms_predict_read_reg
+  when: perms_can_chown
+
+- name: Assert check mode predicted the change and changed nothing
+  ansible.builtin.assert:
+    that:
+      - perms_predict_reg is changed
+      - >-
+        perms_predict_reg['msg'] ==
+        'Check mode: permissions would have been changed.'
+      - perms_now['uid'] == 0
+      - perms_now['mode'] == '0600'
+  vars:
+    perms_now: >-
+      {{ perms_predict_read_reg['paths'][perms_touched_dest] }}
+  when: perms_can_chown
+
+- name: Predict writing content under the requested account
+  o0_o.posix.write:
+    dest: "{{ perms_predict_dest }}"
+    content: "predicted\n"
+    owner: "{{ perms_account }}"
+    group: "{{ perms_group_reg['stdout'] }}"
+    mode: '0640'
+    raw: "{{ raw }}"
+  check_mode: true
+  register: perms_content_predict_reg
+  when: perms_can_chown
+
+- name: Read the destination the content prediction described
+  o0_o.posix.read:
+    path: "{{ perms_predict_dest }}"
+  check_mode: false
+  register: perms_content_predict_read_reg
+  when: perms_can_chown
+
+- name: Assert an owned write in check mode created nothing
+  ansible.builtin.assert:
+    that:
+      - perms_content_predict_reg is changed
+      - perms_content_predict_read_reg['paths'][perms_predict_dest]
+        is none
+  when: perms_can_chown
+
 - name: Create a directory the requested account owns
   o0_o.posix.write:
     dest: "{{ perms_tree_dest }}"
@@ -360,6 +425,37 @@
     that:
       - perms_selinux_idempotent_reg is not changed
       - perms_selinux_idempotent_reg['raw'] == raw
+  when: perms_can_relabel
+
+# Finding chcon is a probe like any other, so a context request in
+# check mode reaches the prediction instead of being refused for a
+# tool the host has.
+- name: Predict a labelled write on a host that can label
+  o0_o.posix.write:
+    dest: "{{ perms_dir }}/predicted_label.conf"
+    content: "labelled\n"
+    setype: "{{ perms_setype }}"
+    mode: '0644'
+    raw: "{{ raw }}"
+  check_mode: true
+  register: perms_selinux_predict_reg
+  when: perms_can_relabel
+
+- name: Read the destination the labelled prediction described
+  o0_o.posix.read:
+    path: "{{ perms_dir }}/predicted_label.conf"
+  check_mode: false
+  register: perms_selinux_predict_read_reg
+  when: perms_can_relabel
+
+- name: Assert a labelled write in check mode created nothing
+  ansible.builtin.assert:
+    that:
+      - perms_selinux_predict_reg is changed
+      - perms_selinux_predict_read_reg['paths'][perms_label_predict_dest]
+        is none
+  vars:
+    perms_label_predict_dest: "{{ perms_dir }}/predicted_label.conf"
   when: perms_can_relabel
 
 - name: 'Fail: A context on a host with no tool to set it'

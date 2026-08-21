@@ -1,0 +1,191 @@
+# vim: ts=2:sw=2:sts=2:et:ft=yaml.ansible
+# -*- mode: yaml; yaml-indent-offset: 2; indent-tabs-mode: nil; -*-
+---
+# GNU General Public License v3.0+
+# SPDX-License-Identifier: GPL-3.0-or-later
+# (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
+#
+# Copyright (c) 2025 oØ.o (@o0-o)
+#
+# This file is part of the o0_o.posix Ansible Collection.
+
+# One row of the check mode and raw matrix. The block's check_mode
+# keyword is what puts the row in check mode: the magic variable
+# ansible_check_mode belongs to Ansible and a play cannot set it, so
+# the row's own value travels as 'check' for the assertions to read.
+# Tasks that seed, settle, or clean up name check_mode: false for
+# themselves and run either way.
+- name: Run the families with the row's check mode in force
+  check_mode: "{{ check }}"
+  block:
+
+    - name: Run literal content family tests
+      ansible.builtin.include_tasks: content.yml
+      vars:
+        content_dir: "{{ write_test_dir }}/content"
+        content_dest: "{{ content_dir }}/app.conf"
+        content_validate_dest: "{{ content_dir }}/validated.conf"
+        content_witness: "{{ content_dir }}/witness.conf"
+        content_predict_dir: "{{ content_dir }}/predicted"
+        content_predict_dest: "{{ content_predict_dir }}/app.conf"
+        content_seed: |
+          # managed by o0_o.posix.write
+          setting_one = true
+          setting_two = false
+        content_update: |
+          # managed by o0_o.posix.write
+          setting_one = false
+          setting_two = false
+
+    - name: Run copy family tests
+      ansible.builtin.include_tasks: copy.yml
+      vars:
+        copy_dir: "{{ write_test_dir }}/copy"
+        copy_dest: "{{ copy_dir }}/greeting.txt"
+        copy_preserve_dest: "{{ copy_dir }}/preserve_mode.sh"
+        copy_remote_source: "{{ copy_dir }}/remote_source.txt"
+        copy_remote_dest: "{{ copy_dir }}/remote_copy.txt"
+        copy_binary_source: "{{ copy_dir }}/binary.bin"
+        copy_binary_dest: "{{ copy_dir }}/binary_copy.bin"
+        copy_expected:
+          - '# o0_o.posix.write copy fixture'
+          - 'greeting=hello'
+          - 'trailing=1'
+        copy_remote_body: |
+          # created on the target host
+          remote = true
+
+    - name: Run template family tests
+      ansible.builtin.include_tasks: template.yml
+      vars:
+        tmpl_dir: "{{ write_test_dir }}/template"
+        tmpl_dest: "{{ tmpl_dir }}/rendered.txt"
+        tmpl_custom_dest: "{{ tmpl_dir }}/custom.txt"
+        tmpl_delims_dest: "{{ tmpl_dir }}/delims.txt"
+        tmpl_defaults_dest: "{{ tmpl_dir }}/defaults.txt"
+        tmpl_greeting: 'Hello world'
+        tmpl_inert_line: '{% raw %}inert={{ tmpl_greeting }}{% endraw %}'
+        # The delimiter fixture carries both notations at once. Under
+        # the custom delimiters the angle forms render and the brace
+        # forms stay literal; under the defaults the roles swap.
+        tmpl_angle_block: 'block=<% if true %>on<% endif %>;'
+        tmpl_angle_comment: 'comment=<# never lands #>none;'
+        tmpl_brace_block: >-
+          {% raw %}inert={% if true %}never{% endif %};{% endraw %}
+
+    - name: Run line edit family tests
+      ansible.builtin.include_tasks: line.yml
+      vars:
+        line_dir: "{{ write_test_dir }}/line"
+        line_dest: "{{ line_dir }}/app.conf"
+        line_created_dest: "{{ line_dir }}/created.conf"
+        line_search_dest: "{{ line_dir }}/search.conf"
+        line_missing_dest: "{{ line_dir }}/never_existed.conf"
+        # pattern=a.c is a regular expression that matches its own
+        # neighbour, so a literal match and a pattern match land on
+        # different lines of this seed.
+        line_search_seed: |
+          # write line family search fixture
+          pattern=a.c
+          pattern=abc
+          dupe=1
+          dupe=1
+          tail=end
+        line_seed: |
+          # write line family fixture
+          # Anchor Start
+          setting_one = true
+          path=/usr/local/bin
+          log_level=info
+          # Anchor Middle
+          path=/usr/local/bin
+          setting_two = false
+
+    - name: Run block edit family tests
+      ansible.builtin.include_tasks: block.yml
+      vars:
+        block_dir: "{{ write_test_dir }}/block"
+        block_dest: "{{ block_dir }}/app.conf"
+        block_created_dest: "{{ block_dir }}/created.conf"
+        block_missing_dest: "{{ block_dir }}/never_existed.conf"
+        block_begin: '# BEGIN ANSIBLE MANAGED BLOCK'
+        block_end: '# END ANSIBLE MANAGED BLOCK'
+        block_seed: |
+          # write block family fixture
+          alpha = 1
+          # Anchor Middle
+          beta = 2
+        block_dupes: |
+          # write block family fixture
+          # BEGIN ANSIBLE MANAGED BLOCK
+          first = 1
+          # END ANSIBLE MANAGED BLOCK
+          alpha = 1
+          # BEGIN ANSIBLE MANAGED BLOCK
+          second = 2
+          # END ANSIBLE MANAGED BLOCK
+          beta = 2
+
+    - name: Run bare file state tests
+      ansible.builtin.include_tasks: state.yml
+      vars:
+        state_dir: "{{ write_test_dir }}/state"
+        state_tree: "{{ state_dir }}/tree/leaf"
+        state_touched: "{{ state_dir }}/touched.txt"
+        state_link: "{{ state_dir }}/link"
+        state_target: "{{ state_dir }}/target_one.txt"
+        state_target_alt: "{{ state_dir }}/target_two.txt"
+        state_doomed_file: "{{ state_dir }}/doomed.txt"
+        state_doomed_dir: "{{ state_dir }}/doomed_dir"
+        state_missing: "{{ state_dir }}/never_existed"
+
+    - name: Run ownership and SELinux tests
+      ansible.builtin.include_tasks: perms.yml
+      vars:
+        perms_dir: "{{ write_test_dir }}/perms"
+        perms_content_dest: "{{ perms_dir }}/owned.conf"
+        perms_touched_dest: "{{ perms_dir }}/touched.conf"
+        perms_tree_dest: "{{ perms_dir }}/owned_tree"
+        perms_selinux_dest: "{{ perms_dir }}/labelled.conf"
+        perms_selinux_probe: "{{ perms_dir }}/relabel_probe"
+        perms_predict_dest: "{{ perms_dir }}/predicted.conf"
+        # daemon is the most portable non-root account across the
+        # distributions this collection targets; its primary group is
+        # read back rather than assumed, because the name differs.
+        perms_account: daemon
+        perms_setype: etc_t
+
+    - name: Run diff mode tests
+      ansible.builtin.include_tasks: diff.yml
+      vars:
+        diff_dir: "{{ write_test_dir }}/diff"
+        diff_content_dest: "{{ diff_dir }}/app.conf"
+        diff_copy_dest: "{{ diff_dir }}/greeting.txt"
+        diff_tmpl_dest: "{{ diff_dir }}/rendered.txt"
+        diff_line_dest: "{{ diff_dir }}/line.conf"
+        diff_block_dest: "{{ diff_dir }}/block.conf"
+        diff_state_dest: "{{ diff_dir }}/tree"
+        diff_touch_dest: "{{ diff_dir }}/touched.txt"
+        diff_link_dest: "{{ diff_dir }}/link"
+        diff_absent_dest: "{{ diff_dir }}/doomed.txt"
+        diff_perms_dest: "{{ diff_dir }}/owned.conf"
+        diff_greeting: 'Hello diff'
+        diff_seed: |
+          # managed by o0_o.posix.write
+          setting_one = true
+        diff_update: |
+          # managed by o0_o.posix.write
+          setting_one = false
+
+    - name: Run failure tests
+      ansible.builtin.include_tasks: failures.yml
+      vars:
+        fail_dir: "{{ write_test_dir }}/failures"
+        fail_dest: "{{ fail_dir }}/app.conf"
+        fail_missing: "{{ fail_dir }}/missing.conf"
+        fail_validate_dest: "{{ fail_dir }}/validated.conf"
+        fail_directory: "{{ fail_dir }}/a_directory"
+        fail_seed: |
+          # write failure fixture
+          alpha = 1
+          # BEGIN ANSIBLE MANAGED BLOCK

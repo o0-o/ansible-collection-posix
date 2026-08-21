@@ -86,7 +86,7 @@
       - content_now['lines'] == content_update.splitlines()
   vars:
     content_now: "{{ content_update_read_reg['paths'][content_dest] }}"
-  when: not ansible_check_mode
+  when: not check
 
 - name: Assert check mode left the file exactly as it found it
   ansible.builtin.assert:
@@ -94,7 +94,7 @@
       - content_now['lines'] == content_seed.splitlines()
   vars:
     content_now: "{{ content_update_read_reg['paths'][content_dest] }}"
-  when: ansible_check_mode
+  when: check
 
 - name: Restore the seeded content before the backup test
   o0_o.posix.write:
@@ -165,13 +165,75 @@
   vars:
     content_now: >-
       {{ content_validate_read_reg['paths'][content_validate_dest] }}
-  when: not ansible_check_mode
+  when: not check
 
 - name: Assert check mode never created the validated file
   ansible.builtin.assert:
     that:
       - content_validate_read_reg['paths'][content_validate_dest] is none
-  when: ansible_check_mode
+  when: check
+
+# Check mode withholds the placement and nothing else, so the file the
+# validation command is handed is real. The validator keeps a copy of
+# it, and that copy is the evidence: it holds what the write would have
+# placed while the destination still holds what it held. These tasks
+# name check mode for themselves so the case runs in every row.
+- name: Seed the file the prediction would replace
+  o0_o.posix.write:
+    dest: "{{ content_predict_dest }}"
+    content: "{{ content_seed }}"
+    mode: '0644'
+    raw: "{{ raw }}"
+  check_mode: false
+
+- name: Predict a validated write, keeping what the validator saw
+  o0_o.posix.write:
+    dest: "{{ content_predict_dest }}"
+    content: "{{ content_update }}"
+    validate: "/bin/sh -c 'cp %s {{ content_witness }}'"
+    mode: '0600'
+    backup: true
+    raw: "{{ raw }}"
+  check_mode: true
+  register: content_predict_reg
+
+- name: Read the destination and the validator's copy back
+  o0_o.posix.read:
+    path:
+      - "{{ content_predict_dest }}"
+      - "{{ content_witness }}"
+    attributes: true
+    lines: true
+  check_mode: false
+  register: content_predict_read_reg
+
+- name: Assert the prediction vetted a real candidate and placed nothing
+  ansible.builtin.assert:
+    that:
+      - content_predict_reg is changed
+      - "'backup_file' not in content_predict_reg"
+      - content_witness_now['lines'] == content_update.splitlines()
+      - content_dest_now['lines'] == content_seed.splitlines()
+      - content_dest_now['mode'] == '0644'
+  vars:
+    content_witness_now: >-
+      {{ content_predict_read_reg['paths'][content_witness] }}
+    content_dest_now: >-
+      {{ content_predict_read_reg['paths'][content_predict_dest] }}
+
+- name: Find everything the prediction left in its tree
+  ansible.builtin.find:
+    paths: "{{ content_predict_dir }}"
+    patterns: '*'
+    hidden: true
+  check_mode: false
+  register: content_residue_reg
+
+- name: Assert the prediction left no backup and no candidate behind
+  ansible.builtin.assert:
+    that:
+      - content_residue_reg['matched'] == 1
+      - content_residue_reg['files'][0]['path'] == content_predict_dest
 
 - name: Decline to overwrite an existing file with force disabled
   o0_o.posix.write:

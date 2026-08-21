@@ -47,7 +47,7 @@
       - line_now['lines'] == line_seed.splitlines() + ['timeout=30']
   vars:
     line_now: "{{ line_append_read_reg['paths'][line_dest] }}"
-  when: not ansible_check_mode
+  when: not check
 
 - name: Assert check mode left the file exactly as it found it
   ansible.builtin.assert:
@@ -55,7 +55,7 @@
       - line_now['lines'] == line_seed.splitlines()
   vars:
     line_now: "{{ line_append_read_reg['paths'][line_dest] }}"
-  when: ansible_check_mode
+  when: check
 
 - name: Reset the file before the regular expression replacement
   o0_o.posix.write:
@@ -97,7 +97,7 @@
       - line_now['lines'] | length == line_seed.splitlines() | length
   vars:
     line_now: "{{ line_replace_read_reg['paths'][line_dest] }}"
-  when: not ansible_check_mode
+  when: not check
 
 - name: Assert check mode left the matched line alone
   ansible.builtin.assert:
@@ -106,7 +106,7 @@
       - "'log_level=debug' not in line_now['lines']"
   vars:
     line_now: "{{ line_replace_read_reg['paths'][line_dest] }}"
-  when: ansible_check_mode
+  when: check
 
 - name: Settle the replacement outside check mode
   o0_o.posix.write:
@@ -434,7 +434,7 @@
         | list | length == 0
   vars:
     line_now: "{{ line_remove_read_reg['paths'][line_dest] }}"
-  when: not ansible_check_mode
+  when: not check
 
 - name: Assert check mode removed nothing from the file
   ansible.builtin.assert:
@@ -444,7 +444,7 @@
         | list | length == 2
   vars:
     line_now: "{{ line_remove_read_reg['paths'][line_dest] }}"
-  when: ansible_check_mode
+  when: check
 
 - name: Clear the file the create test writes
   ansible.builtin.file:
@@ -482,13 +482,13 @@
       - line_now['mode'] == '0644'
   vars:
     line_now: "{{ line_create_read_reg['paths'][line_created_dest] }}"
-  when: not ansible_check_mode
+  when: not check
 
 - name: Assert check mode never created the file
   ansible.builtin.assert:
     that:
       - line_create_read_reg['paths'][line_created_dest] is none
-  when: ansible_check_mode
+  when: check
 
 # The search string matches literally where the regular expression
 # matches by pattern. Every case below runs outside check mode, so the

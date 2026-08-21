@@ -201,7 +201,11 @@ class PosixActionBase(CoreActionBase):
         """
         quoted = shlex.quote(cmd)
         shell_cmd = f"unalias -a 2>/dev/null; command -v {quoted}"
-        cmd_result = self._command(shell_cmd, task_vars=task_vars)
+        # Locating an executable changes nothing, and a check-mode run
+        # that skipped the lookup would read as the tool being absent
+        cmd_result = self._command(
+            shell_cmd, task_vars=task_vars, check_mode=False
+        )
         stdout = cmd_result.get("stdout", "").strip()
 
         if cmd_result["rc"] == 0 and stdout:
@@ -214,7 +218,9 @@ class PosixActionBase(CoreActionBase):
             self._display.vvv(f"command -v {cmd} failed, trying which")
 
         # Fallback to 'which' if available
-        cmd_result = self._command(["which", cmd], task_vars=task_vars)
+        cmd_result = self._command(
+            ["which", cmd], task_vars=task_vars, check_mode=False
+        )
         stdout = cmd_result.get("stdout", "").strip()
         stdout_lower = stdout.lower()
 

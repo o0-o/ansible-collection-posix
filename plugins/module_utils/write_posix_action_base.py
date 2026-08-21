@@ -99,6 +99,7 @@ class WritePosixActionBase(ReadPosixActionBase):
         task_vars: Optional[Dict[str, Any]] = None,
         parents: Optional[bool] = True,
         mode: Optional[str] = None,
+        check_mode: Optional[bool] = None,
     ) -> Dict[str, Any]:
         """
         Ensure a directory exists on the remote host.
@@ -113,6 +114,8 @@ class WritePosixActionBase(ReadPosixActionBase):
             (``mkdir -p``)
         :param Optional[str] mode: Optional permission mode string
             (e.g. "0755")
+        :param Optional[bool] check_mode: Override check mode, so a
+            caller staging its own scratch space can create it for real
         :returns dict: Dictionary with ``changed`` boolean key
         :raises RuntimeError: On directory creation error
         """
@@ -137,7 +140,9 @@ class WritePosixActionBase(ReadPosixActionBase):
             args.extend(["-m", mode])
         args.append(target_path)
 
-        mkdir_result = self._command(args, task_vars=task_vars)
+        mkdir_result = self._command(
+            args, task_vars=task_vars, check_mode=check_mode
+        )
         if mkdir_result["rc"] != 0:
             raise RuntimeError(
                 f"Failed to create directory '{target_path}': "
@@ -179,7 +184,10 @@ class WritePosixActionBase(ReadPosixActionBase):
             return
 
         cmd = validate_cmd % quote(tmpfile, shell=self._connection._shell)
-        result = self._command(cmd, task_vars=task_vars)
+        # Validation runs even in check mode: the candidate it is handed
+        # is a real file, and a check-mode run that skipped it would
+        # promise a write the validator would have refused
+        result = self._command(cmd, task_vars=task_vars, check_mode=False)
 
         if result["rc"] != 0:
             raise RuntimeError(
@@ -252,7 +260,11 @@ class WritePosixActionBase(ReadPosixActionBase):
             ls_args.append("-ld")
         ls_args.append(target)
 
-        cmd_result = self._command(ls_args, task_vars=task_vars)
+        # Reading a path's permissions changes nothing, and check mode
+        # needs them to predict whether applying any would
+        cmd_result = self._command(
+            ls_args, task_vars=task_vars, check_mode=False
+        )
         if cmd_result["rc"] != 0:
             raise RuntimeError(
                 f"Could not stat {target}: {cmd_result['stderr']}"
@@ -314,10 +326,14 @@ class WritePosixActionBase(ReadPosixActionBase):
         """
         self._display.vvv(f"Writing to temp file: {tmpfile}")
         lines_str = "\n".join(lines)
+        # The candidate is staged for real even in check mode; it never
+        # reaches the destination from here, and a validate command has
+        # to be given a file that actually holds the content
         write_result = self._command(
             cmd=["tee", tmpfile],
             stdin=lines_str,
             task_vars=task_vars,
+            check_mode=False,
         )
         if write_result.get("rc", 1) != 0:
             raise RuntimeError(
@@ -327,7 +343,7 @@ class WritePosixActionBase(ReadPosixActionBase):
 
         self._display.vvv(f"Setting temp file permissions: {tmpfile}")
         chmod_result = self._command(
-            ["chmod", "0600", tmpfile], task_vars=task_vars
+            ["chmod", "0600", tmpfile], task_vars=task_vars, check_mode=False
         )
         if chmod_result.get("rc", 1) != 0:
             raise RuntimeError(
@@ -569,6 +585,13 @@ class WritePosixActionBase(ReadPosixActionBase):
         support for optional validation, backup creation, and
         permission handling.
 
+        Check mode withholds placement alone. The scratch directory is
+        created, the candidate is staged, and any validate command runs
+        against it, so the change reported is a prediction drawn from
+        the file that would have landed. The candidate is then removed
+        and the destination, its backup, and its permissions are left
+        as they were found.
+
         :param Union[str, List[str]] content: A string or list of
             strings to write
         :param str dest: The remote destination file path
@@ -609,8 +632,15 @@ class WritePosixActionBase(ReadPosixActionBase):
         # Detect if any SELinux parameters are requested
         selinux = self._check_selinux_tools(perms, task_vars=task_vars)
 
-        # Ensure the remote temporary directory exists
-        self._mkdir(tmpdir, task_vars=task_vars, parents=True, mode="0700")
+        # Ensure the remote temporary directory exists, check mode or
+        # not, for the same reason the candidate is staged for real
+        self._mkdir(
+            tmpdir,
+            task_vars=task_vars,
+            parents=True,
+            mode="0700",
+            check_mode=False,
+        )
 
         # Write the lines to a temporary file
         self._write_temp_file(lines, tmpfile, task_vars=task_vars)
@@ -625,8 +655,9 @@ class WritePosixActionBase(ReadPosixActionBase):
         )
         result["changed"] = changed
 
-        # Calculate diff
-        if task_vars.get("diff", False) and result["changed"]:
+        # Calculate diff when the task asked for one, whether through
+        # its own diff keyword or the command line's --diff
+        if self._task.diff and result["changed"]:
             diff = "\n".join(
                 difflib.unified_diff(
                     old_lines, lines, fromfile=dest, tofile=dest, lineterm=""
@@ -643,6 +674,9 @@ class WritePosixActionBase(ReadPosixActionBase):
 
         if check_mode:
             self._display.vvv("Check mode is enabled")
+            # The candidate was staged for real; withholding placement
+            # would otherwise leave the content it holds behind
+            cmd(["rm", "-f", tmpfile], task_vars=task_vars, check_mode=False)
             if result["changed"]:
                 result.update(
                     {"msg": "Check mode: changes would have been made."}
@@ -878,7 +912,12 @@ class WritePosixActionBase(ReadPosixActionBase):
             # /tmp/ansible_xyz
             self._display.vvv("Creating temporary directory")
             tmp_path_cmd = ["mktemp", "-d", "/tmp/ansible.XXXXXX"]
-            cmd_result = cmd(tmp_path_cmd, task_vars=task_vars)
+            # Scratch space is created for real in check mode: it is
+            # where the candidate is staged, and mktemp reporting a
+            # path it did not create is what made check mode fail here
+            cmd_result = cmd(
+                tmp_path_cmd, task_vars=task_vars, check_mode=False
+            )
 
             if cmd_result["rc"] != 0 or not cmd_result["stdout"]:
                 raise RuntimeError(
