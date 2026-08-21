@@ -116,6 +116,8 @@ from ansible_collections.o0_o.posix.plugins.module_utils.uname_utils import (
     process_uname_command_results,
 )
 from ansible_collections.o0_o.posix.plugins.module_utils.user_utils import (
+    compose_homes,
+    compose_shell_files,
     compose_users_groups,
     lookup_group,
     lookup_user,
@@ -169,6 +171,8 @@ __all__ = [
     "get_effective_uid_command_requests",
     "id_info",
     "process_effective_uid_results",
+    "compose_homes",
+    "compose_shell_files",
     "compose_users_groups",
     "group_info",
     "normalize_group_members",

@@ -21,6 +21,9 @@ from ansible.errors import AnsibleActionFail, AnsibleConnectionFailure
 from ansible_collections.o0_o.posix.plugins.action.facts import (
     ActionModule,
 )
+from ansible_collections.o0_o.posix.plugins.action.users import (
+    ActionModule as UsersActionModule,
+)
 
 # The files the legacy subsets read, as a host answers them
 ETC_PASSWD = (
@@ -30,6 +33,14 @@ ETC_PASSWD = (
 ETC_GROUP = "wheel:*:0:root\nstaff:*:20:\naccess_bpf:*:101:o0-o"
 ETC_SHELLS = "# comment\n/bin/sh\n/bin/zsh"
 ETC_FSTAB = "/dev/sd0a / ffs rw 1 1"
+
+# What the read action answers for the paths those files name
+READ_TYPES = {
+    "/var/root": "directory",
+    "/home/o0-o": "directory",
+    "/bin/sh": "regular",
+    "/bin/zsh": "regular",
+}
 
 # What each batched subset's processor really emits, trimmed to one
 # entry per namespace. Captured from a default gather on a live host.
@@ -131,6 +142,30 @@ def _mock_run(
         return answers
 
     monkeypatch.setattr(plugin, "_run", mock_run)
+
+
+def _mock_read(monkeypatch, plugin: Any) -> None:
+    """Answer the read action with the type each path really is.
+
+    The home and shell-file facts are metadata the read action
+    gathers, and read has its own tests; answering with the type is
+    enough for the compositions that key on it to run for real.
+
+    :param monkeypatch: The pytest monkeypatch fixture
+    :param Any plugin: Action instance to patch
+    """
+
+    def mock_read(paths, **kwargs) -> dict[str, Any]:
+        if isinstance(paths, str):
+            paths = [paths]
+        return {
+            "paths": {
+                path: {"type": READ_TYPES.get(path, "directory")}
+                for path in paths
+            }
+        }
+
+    monkeypatch.setattr(plugin, "_read", mock_read)
 
 
 def _no_python(monkeypatch, plugin: ActionModule) -> None:
@@ -480,6 +515,7 @@ class TestGatherUsers:
         """Test the aggregator emits the same shape the users module
         composes."""
         _no_python(monkeypatch, plugin)
+        _mock_read(monkeypatch, plugin)
         _mock_run(
             monkeypatch,
             plugin,
@@ -508,9 +544,68 @@ class TestGatherUsers:
         }
         assert facts["o0_shells"] == ["/bin/sh", "/bin/zsh"]
 
+    def test_publishes_every_user_fact(self, monkeypatch, plugin) -> None:
+        """Test the subset publishes the whole set the users module
+        returns, not the three of five it used to."""
+        _no_python(monkeypatch, plugin)
+        _mock_read(monkeypatch, plugin)
+        _mock_run(
+            monkeypatch,
+            plugin,
+            {
+                "/etc/passwd": ETC_PASSWD,
+                "/etc/group": ETC_GROUP,
+                "/etc/shells": ETC_SHELLS,
+            },
+        )
+
+        facts = plugin._gather_users(task_vars={})
+
+        assert set(facts) == {
+            "o0_users",
+            "o0_groups",
+            "o0_shells",
+            "o0_homes",
+            "o0_shell_files",
+        }
+        assert facts["o0_homes"]["/home/o0-o"]["residents"] == [1000]
+        assert facts["o0_homes"]["/var/root"]["residents"] == [0]
+        assert facts["o0_shell_files"]["/bin/zsh"]["tags"] == [
+            "posix",
+            "shell",
+        ]
+
+    def test_shell_files_extend_a_prior_gather(
+        self, monkeypatch, plugin
+    ) -> None:
+        """Test the accumulate-across-calls loop closes now that the
+        fact it seeds from is a fact the gather publishes."""
+        _no_python(monkeypatch, plugin)
+        _mock_read(monkeypatch, plugin)
+        _mock_run(
+            monkeypatch,
+            plugin,
+            {
+                "/etc/passwd": ETC_PASSWD,
+                "/etc/group": ETC_GROUP,
+                "/etc/shells": ETC_SHELLS,
+            },
+        )
+
+        facts = plugin._gather_users(
+            task_vars={"o0_shell_files": {"/bin/ksh": {"type": "regular"}}}
+        )
+
+        assert set(facts["o0_shell_files"]) == {
+            "/bin/ksh",
+            "/bin/sh",
+            "/bin/zsh",
+        }
+
     def test_one_round_trip(self, monkeypatch, plugin) -> None:
         """Test all three files are read in a single batch."""
         _no_python(monkeypatch, plugin)
+        _mock_read(monkeypatch, plugin)
         batches = []
 
         def mock_run(commands, **kwargs):
@@ -533,6 +628,7 @@ class TestGatherUsers:
         """Test a failed /etc/group read leaves the cross-referenced
         facts unpublished."""
         _no_python(monkeypatch, plugin)
+        _mock_read(monkeypatch, plugin)
         _mock_run(
             monkeypatch,
             plugin,
@@ -554,6 +650,7 @@ class TestGatherUsers:
         rather than empty, since an empty list reads as a host with no
         login shells."""
         _no_python(monkeypatch, plugin)
+        _mock_read(monkeypatch, plugin)
         _mock_run(
             monkeypatch,
             plugin,
@@ -608,6 +705,7 @@ class TestDefaultGather:
         """
         plugin._task.args = {}
         _no_python(monkeypatch, plugin)
+        _mock_read(monkeypatch, plugin)
         _mock_effective_uid(monkeypatch, 0)
         _mock_run(
             monkeypatch,
@@ -715,3 +813,68 @@ class TestRun:
         plugin._task.args = {"gather_subset": ["!all"]}
         result = plugin.run(tmp=None, task_vars={})
         assert result["ansible_facts"] == {}
+
+
+class TestUsersProducersAgree:
+    """Tests that a gather and the users module answer alike."""
+
+    ETC_FILES = {
+        "/etc/passwd": ETC_PASSWD,
+        "/etc/group": ETC_GROUP,
+        "/etc/shells": ETC_SHELLS,
+    }
+
+    @pytest.fixture
+    def standalone(self, monkeypatch, base) -> dict[str, Any]:
+        """Run the users module against the fabricated host.
+
+        :returns dict[str, Any]: The module's result
+        """
+        base._task.action = "users"
+        base._task.args = {}
+
+        module = UsersActionModule(
+            task=base._task,
+            connection=base._connection,
+            play_context=base._play_context,
+            loader=base._loader,
+            templar=base._templar,
+            shared_loader_obj=base._shared_loader_obj,
+        )
+        module._display = base._display
+        module.inventory_hostname = "localhost"
+
+        def mock_cmd(cmd, task_vars=None, **kwargs):
+            if isinstance(cmd, list) and cmd[:1] == ["cat"]:
+                content = self.ETC_FILES.get(cmd[1])
+                if content is not None:
+                    return {"rc": 0, "stdout": content}
+            return {"rc": 1}
+
+        monkeypatch.setattr(module, "_command", mock_cmd)
+        _mock_read(monkeypatch, module)
+
+        return module.run(task_vars={})
+
+    def test_both_publish_one_set_of_facts(
+        self, monkeypatch, plugin, standalone
+    ) -> None:
+        """Test every user fact means the same thing from either
+        producer. The gather used to publish three of the five and the
+        module the other four, disagreeing on which names existed.
+        """
+        _no_python(monkeypatch, plugin)
+        _mock_read(monkeypatch, plugin)
+        _mock_run(monkeypatch, plugin, self.ETC_FILES)
+
+        gathered = plugin._gather_users(task_vars={})
+
+        assert set(gathered) == {
+            "o0_users",
+            "o0_groups",
+            "o0_shells",
+            "o0_homes",
+            "o0_shell_files",
+        }
+        for fact, value in gathered.items():
+            assert value == standalone[fact], fact

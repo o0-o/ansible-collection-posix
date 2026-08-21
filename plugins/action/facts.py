@@ -17,7 +17,9 @@ from ansible.errors import AnsibleActionFail, AnsibleConnectionFailure
 from ansible.plugins.action import ActionBase
 
 from ansible_collections.o0_o.posix.plugins.module_utils import (
-    PosixActionBase,
+    ReadPosixActionBase,
+    compose_homes,
+    compose_shell_files,
     compose_users_groups,
     fstab,
     get_compliance_command_requests,
@@ -140,7 +142,7 @@ def _process_environment_results(
     return env_data, []
 
 
-class ActionModule(PosixActionBase, ActionBase):
+class ActionModule(ReadPosixActionBase, ActionBase):
     """Gather comprehensive POSIX facts from the managed host.
 
     Collects system information using shell commands and file reads,
@@ -306,14 +308,16 @@ class ActionModule(PosixActionBase, ActionBase):
     def _gather_users(
         self, task_vars: Optional[dict[str, Any]] = None
     ) -> dict[str, Any]:
-        """Gather user and group information.
+        """Gather user, group, home and shell information.
 
-        The o0_users and o0_groups facts come from the same
-        composition the users module publishes, so both producers
-        emit one shape.
+        Every fact here comes from the same composition the users
+        module publishes, so both producers emit one shape under one
+        set of names.  The module additionally reads each user's SSH
+        keys into their o0_users entry; a gather does not, because the
+        cost is per user and the answer is not what a gather is for.
 
         :param Optional[dict[str, Any]] task_vars: Task variables
-        :returns dict[str, Any]: User/group facts
+        :returns dict[str, Any]: User, group, shell and home facts
         """
         contents = self._read_files(
             ["/etc/passwd", "/etc/group", "/etc/shells"], task_vars
@@ -328,8 +332,16 @@ class ActionModule(PosixActionBase, ActionBase):
         # both reads to have landed.
         if passwd is not None and group is not None:
             users, groups = compose_users_groups(passwd, group)
+
+            def read(paths: list[str]) -> dict[str, Any]:
+                return self._read(paths=paths, task_vars=task_vars)
+
             facts["o0_users"] = users
             facts["o0_groups"] = groups
+            facts["o0_homes"] = compose_homes(users, read)
+            facts["o0_shell_files"] = compose_shell_files(
+                users, read, (task_vars or {}).get("o0_shell_files")
+            )
 
         if shells is not None:
             facts["o0_shells"] = parse_shells(shells)

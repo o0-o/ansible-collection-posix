@@ -14,13 +14,17 @@
 ``compose_users_groups`` is the one definition of ``o0_users`` and
 ``o0_groups``: both are keyed by the stringified numeric ID, both
 carry that ID as an integer field, and membership is expressed in
-integer IDs on both sides.  Every producer of these facts composes
-them here so consumers see one shape.
+integer IDs on both sides.  ``compose_homes`` and
+``compose_shell_files`` define the two facts that follow from them,
+the directories users live in and the shells they log in with, each
+taking the caller's own way of reading a path's metadata.  Every
+producer of these facts composes them here so consumers see one
+shape.
 """
 
 from __future__ import annotations
 
-from typing import Any, Optional, Union
+from typing import Any, Callable, Optional, Union
 
 from ansible_collections.o0_o.posix.plugins.module_utils.group_utils import (
     group_info,
@@ -30,6 +34,10 @@ from ansible_collections.o0_o.posix.plugins.module_utils.passwd_utils import (
 )
 
 Source = Union[str, dict[str, Any], list[dict[str, Any]]]
+
+# How a producer reads metadata for a list of paths: the read action's
+# result, carrying one entry per path under its ``paths`` key
+ReadPaths = Callable[[list[str]], dict[str, Any]]
 
 
 def compose_users_groups(
@@ -123,6 +131,120 @@ def _add_member(
         entry["members"].append(uid)
 
 
+def _read_paths(read: ReadPaths, paths: list[str]) -> dict[str, Any]:
+    """Read metadata for paths, answering with what came back.
+
+    :param ReadPaths read: The caller's read
+    :param list[str] paths: Paths to inspect
+    :returns dict[str, Any]: Metadata per path, empty when the read
+        failed
+    """
+    result = read(paths)
+    if result.get("failed") or "paths" not in result:
+        return {}
+    return {
+        path: data for path, data in result["paths"].items() if data
+    }
+
+
+def compose_homes(
+    users: dict[str, dict[str, Any]],
+    read: ReadPaths,
+) -> dict[str, dict[str, Any]]:
+    """Compose the canonical o0_homes fact.
+
+    Homes are keyed by path and carry the path's own metadata plus
+    ``residents``, the UIDs that call it home.  Two users sharing a
+    home share an entry.  Where a home is a symlink, the target gets
+    an entry of its own carrying the same residents, because that is
+    where their files actually are.
+
+    :param dict[str, dict[str, Any]] users: The o0_users mapping
+    :param ReadPaths read: How to read a path's metadata
+    :returns dict[str, dict[str, Any]]: The o0_homes mapping
+    """
+    residents_by_home: dict[str, list[int]] = {}
+    for user in users.values():
+        home = user.get("home")
+        uid = user.get("uid")
+        if isinstance(home, str) and home and isinstance(uid, int):
+            residents_by_home.setdefault(home, []).append(uid)
+
+    if not residents_by_home:
+        return {}
+
+    homes: dict[str, dict[str, Any]] = {}
+    read_homes = _read_paths(read, list(residents_by_home))
+
+    for home, data in read_homes.items():
+        data["tags"] = ["posix", "home"]
+        data["residents"] = residents_by_home.get(home, [])
+        homes[home] = data
+
+    # A home that is a symlink houses its residents at the target
+    for home in list(homes):
+        entry = homes[home]
+        if entry.get("type") != "link" or "target" not in entry:
+            continue
+
+        target = entry["target"]
+        residents = residents_by_home.get(home, [])
+
+        if target in homes:
+            known = homes[target].setdefault("residents", [])
+            homes[target]["residents"] = sorted(set(known) | set(residents))
+            continue
+
+        for path, data in _read_paths(read, [target]).items():
+            data["tags"] = ["posix", "home"]
+            data["residents"] = residents
+            homes[path] = data
+
+    return homes
+
+
+def compose_shell_files(
+    users: dict[str, dict[str, Any]],
+    read: ReadPaths,
+    known: Optional[dict[str, dict[str, Any]]] = None,
+) -> dict[str, dict[str, Any]]:
+    """Compose the canonical o0_shell_files fact.
+
+    Shell files are keyed by the path of the shell binary and carry
+    that path's metadata.  A shell already described in ``known`` is
+    kept as it stands rather than read again, so a run adds to what an
+    earlier gather published instead of replacing it.
+
+    Distinct from ``o0_shells``, which is the list of paths named in
+    /etc/shells: this fact describes the shells users actually hold,
+    named or not.
+
+    :param dict[str, dict[str, Any]] users: The o0_users mapping
+    :param ReadPaths read: How to read a path's metadata
+    :param Optional[dict[str, dict[str, Any]]] known: Shell files a
+        previous gather already described
+    :returns dict[str, dict[str, Any]]: The o0_shell_files mapping
+    """
+    shell_files: dict[str, dict[str, Any]] = dict(known or {})
+
+    unread = {
+        user["shell"]
+        for user in users.values()
+        if isinstance(user.get("shell"), str)
+        and user["shell"]
+        and user["shell"] not in shell_files
+    }
+
+    if not unread:
+        return shell_files
+
+    for path, data in _read_paths(read, sorted(unread)).items():
+        data["tags"] = ["posix", "shell"]
+        shell_files[path] = data
+
+    return shell_files
+
+
 def lookup_user(
     identifier: Union[int, str], users: dict[str, dict[str, Any]]
 ) -> Optional[dict[str, Any]]:
@@ -180,4 +302,10 @@ def _lookup(
     return None
 
 
-__all__ = ["compose_users_groups", "lookup_group", "lookup_user"]
+__all__ = [
+    "compose_homes",
+    "compose_shell_files",
+    "compose_users_groups",
+    "lookup_group",
+    "lookup_user",
+]

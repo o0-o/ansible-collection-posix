@@ -1,0 +1,23 @@
+---
+minor_changes:
+  - >-
+    facts - The users subset publishes o0_homes and o0_shell_files
+    alongside o0_users, o0_groups and o0_shells, so a gather and the
+    users module name the same five facts. The two new facts are
+    composed by the same functions the module uses
+    (https://github.com/o0-o/ansible-collection-posix/pull/XXX).
+  - >-
+    users - The module returns o0_shells, the login shells
+    /etc/shells names, which its own notes already told playbooks to
+    read a user's shell against. A host without the file returns no
+    o0_shells rather than an empty list, which would read as a host
+    that names none. The file it reads is the new shells_path option
+    (https://github.com/o0-o/ansible-collection-posix/pull/XXX).
+bugfixes:
+  - >-
+    users - The shell-file gather seeded from an o0_shell_files fact
+    that no producer published, so the loop meant to add to an earlier
+    gather's answer could never close unless a playbook set the fact
+    by hand. The facts module publishes that fact now, and both
+    producers seed from it
+    (https://github.com/o0-o/ansible-collection-posix/pull/XXX).

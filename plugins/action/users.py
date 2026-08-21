@@ -18,7 +18,10 @@ from ansible.plugins.action import ActionBase
 
 from ansible_collections.o0_o.posix.plugins.module_utils import (
     ReadPosixActionBase,
+    compose_homes,
+    compose_shell_files,
     compose_users_groups,
+    parse_shells,
 )
 
 # The o0_o.ssh collection is an optional dependency: without it, user
@@ -54,7 +57,7 @@ class ActionModule(ReadPosixActionBase, ActionBase):
         :param Optional[dict[str, Any]] task_vars: Available Ansible
             variables
         :returns dict[str, Any]: Result dictionary with o0_users,
-            o0_groups, o0_homes, and o0_shell_files data
+            o0_groups, o0_shells, o0_homes, and o0_shell_files data
         """
         task_vars = task_vars or {}
         self._def_inventory_hostname(task_vars)
@@ -69,6 +72,7 @@ class ActionModule(ReadPosixActionBase, ActionBase):
                 "no_log": False,
             },
             "group_path": {"type": "str", "default": "/etc/group"},
+            "shells_path": {"type": "str", "default": "/etc/shells"},
         }
 
         validation_result, module_args = self.validate_argument_spec(
@@ -78,6 +82,7 @@ class ActionModule(ReadPosixActionBase, ActionBase):
 
         passwd_path = module_args["passwd_path"]
         group_path = module_args["group_path"]
+        shells_path = module_args["shells_path"]
 
         users, groups = compose_users_groups(
             self._read_text_file(passwd_path, task_vars),
@@ -87,28 +92,41 @@ class ActionModule(ReadPosixActionBase, ActionBase):
         # Gather SSH keys for users
         self._gather_ssh_keys_for_users(users, task_vars)
 
-        # Gather home directory metadata
-        homes = self._gather_home_metadata(users, task_vars)
-
-        # Gather shell binary metadata from user shells
-        shell_files = self._gather_shell_binaries(users, task_vars)
+        def read(paths: list[str]) -> dict[str, Any]:
+            return self._read(paths=paths, task_vars=task_vars)
 
         result.update(
             {
                 "changed": False,
                 "o0_users": users,
                 "o0_groups": groups,
-                "o0_homes": homes,
-                "o0_shell_files": shell_files,
+                "o0_homes": compose_homes(users, read),
+                "o0_shell_files": compose_shell_files(
+                    users, read, task_vars.get("o0_shell_files")
+                ),
             }
         )
+
+        # Not every host names its login shells, and an empty list
+        # would read as a host that has none
+        shells = self._read_text_file(shells_path, task_vars, required=False)
+        if shells is not None:
+            result["o0_shells"] = parse_shells(shells)
+
         return result
 
-    def _read_text_file(self, path: str, task_vars: dict[str, Any]) -> str:
+    def _read_text_file(
+        self,
+        path: str,
+        task_vars: dict[str, Any],
+        required: bool = True,
+    ) -> Optional[str]:
         cmd_result = self._command(
             ["cat", path], task_vars=task_vars, check_mode=False
         )
         if cmd_result.get("rc") != 0:
+            if not required:
+                return None
             error_msg = cmd_result.get("stderr") or cmd_result.get("stdout")
             raise AnsibleActionFail(f"Failed to read {path}: {error_msg}")
         return cmd_result.get("stdout", "")
@@ -367,133 +385,3 @@ class ActionModule(ReadPosixActionBase, ActionBase):
                 continue
 
         return pub_keys
-
-    def _gather_home_metadata(
-        self, users: dict[str, dict[str, Any]], task_vars: dict[str, Any]
-    ) -> dict[str, dict[str, Any]]:
-        """Gather metadata for all user home directories.
-
-        Creates homes dict keyed by home path with file metadata and
-        residents list. For symlinks, users are listed in both the
-        link and target entries.
-
-        :param dict[str, dict[str, Any]] users: User mapping
-        :param dict[str, Any] task_vars: Task variables
-        :returns dict[str, dict[str, Any]]: Home paths with metadata
-        """
-        # Collect unique home paths and build residents mapping
-        home_paths = set()
-        home_to_residents: dict[str, list[int]] = {}
-
-        for user_data in users.values():
-            home = user_data.get("home")
-            uid = user_data.get("uid")
-            if home and isinstance(home, str) and isinstance(uid, int):
-                home_paths.add(home)
-                if home not in home_to_residents:
-                    home_to_residents[home] = []
-                home_to_residents[home].append(uid)
-
-        if not home_paths:
-            return {}
-
-        # Batch read metadata for all homes; the read action's default
-        # attributes cover type, ownership, mode, timestamps, ACL, and
-        # SELinux context
-        read_result = self._read(
-            paths=list(home_paths),
-            task_vars=task_vars,
-        )
-
-        homes: dict[str, dict[str, Any]] = {}
-        if not read_result.get("failed") and "paths" in read_result:
-            for home_path, home_data in read_result["paths"].items():
-                if home_data:
-                    # Add tag and residents list
-                    home_data["tags"] = ["posix", "home"]
-                    home_data["residents"] = home_to_residents.get(
-                        home_path, []
-                    )
-                    homes[home_path] = home_data
-
-                    # For symlinks, also add residents to target
-                    if (
-                        home_data.get("type") == "link"
-                        and "target" in home_data
-                    ):
-                        target = home_data["target"]
-                        # Read target metadata if not already read
-                        if target not in homes:
-                            target_read = self._read(
-                                paths=target,
-                                task_vars=task_vars,
-                            )
-                            if (
-                                not target_read.get("failed")
-                                and "paths" in target_read
-                            ):
-                                target_data = target_read["paths"].get(target)
-                                if target_data:
-                                    target_data["tags"] = ["posix", "home"]
-                                    target_data["residents"] = (
-                                        home_to_residents.get(home_path, [])
-                                    )
-                                    homes[target] = target_data
-                        else:
-                            # Target already in homes, add residents
-                            if "residents" not in homes[target]:
-                                homes[target]["residents"] = []
-                            homes[target]["residents"].extend(
-                                home_to_residents.get(home_path, [])
-                            )
-                            # Remove duplicates
-                            homes[target]["residents"] = list(
-                                set(homes[target]["residents"])
-                            )
-
-        return homes
-
-    def _gather_shell_binaries(
-        self, users: dict[str, dict[str, Any]], task_vars: dict[str, Any]
-    ) -> dict[str, dict[str, Any]]:
-        """Gather metadata for shell binaries used by users.
-
-        Creates the o0_shell_files dict keyed by shell path with file
-        metadata. Only adds shells that don't already exist in
-        o0_shell_files from previous facts gathering.
-
-        :param dict[str, dict[str, Any]] users: User mapping
-        :param dict[str, Any] task_vars: Task variables
-        :returns dict[str, dict[str, Any]]: Shell paths with metadata
-        """
-        # Start with existing shell files if available
-        existing_shells = task_vars.get("o0_shell_files", {})
-        shells = dict(existing_shells)  # Copy to preserve existing
-
-        # Collect unique shell paths that don't already exist
-        shell_paths_to_read = set()
-        for user_data in users.values():
-            shell = user_data.get("shell")
-            if shell and isinstance(shell, str):
-                # Only gather metadata if shell not already in dict
-                if shell not in shells:
-                    shell_paths_to_read.add(shell)
-
-        if not shell_paths_to_read:
-            return shells
-
-        # Batch read metadata for all new shells; the read action's
-        # default attributes cover everything gathered here
-        read_result = self._read(
-            paths=list(shell_paths_to_read),
-            task_vars=task_vars,
-        )
-
-        if not read_result.get("failed") and "paths" in read_result:
-            for shell_path, shell_data in read_result["paths"].items():
-                if shell_data:
-                    # Add tag to identify as shell binary
-                    shell_data["tags"] = ["posix", "shell"]
-                    shells[shell_path] = shell_data
-
-        return shells

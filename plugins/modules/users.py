@@ -23,7 +23,9 @@ description:
     keys and public key files.
   - Returns the canonical C(o0_users) and C(o0_groups) mappings, keyed
     by stringified UID and GID and cross-referenced by numeric ID.
-    The C(o0_o.posix.facts) module publishes the same shape.
+    The C(o0_o.posix.facts) module publishes the same shape under the
+    same names, along with C(o0_shells), C(o0_homes) and
+    C(o0_shell_files).
 options:
   passwd_path:
     description:
@@ -35,6 +37,12 @@ options:
       - Path to the C(/etc/group) file.
     type: str
     default: /etc/group
+  shells_path:
+    description:
+      - Path to the C(/etc/shells) file.
+      - A host that does not have this file returns no C(o0_shells).
+    type: str
+    default: /etc/shells
 author:
   - oØ.o (@o0-o)
 notes:
@@ -44,7 +52,7 @@ notes:
     user's C(groups) lists GIDs and a group's C(members) lists UIDs -
     and every user counts as a member of their primary group.
   - Whether a user's shell is a known login shell is not stored. The
-    C(o0_shells) fact lists the paths named in C(/etc/shells), so
+    C(o0_shells) return lists the paths named in C(/etc/shells), so
     C(user.shell in o0_shells) answers the question wherever it is
     asked and leaves no copy to go stale.
   - SSH keys are only gathered if the user's C(.ssh) directory is
@@ -203,9 +211,9 @@ o0_homes:
         - 1000
 o0_shell_files:
   description: >-
-    Mapping of login shell paths to their file metadata. Distinct from
-    the C(o0_shells) fact, which lists the paths named in
-    C(/etc/shells).
+    Mapping of the login shell paths users actually hold to their file
+    metadata. Distinct from C(o0_shells), which lists the paths named
+    in C(/etc/shells) whether anyone holds them or not.
   returned: always
   type: dict
   sample:
@@ -216,6 +224,15 @@ o0_shell_files:
       tags:
         - posix
         - shell
+o0_shells:
+  description: >-
+    The login shells C(/etc/shells) names, in the order it names them.
+  returned: when the shells file is readable
+  type: list
+  elements: str
+  sample:
+    - /bin/sh
+    - /bin/zsh
 """
 from ansible.module_utils.basic import AnsibleModule
 
@@ -230,6 +247,7 @@ def main() -> None:
             "no_log": False,
         },
         "group_path": {"type": "str", "default": "/etc/group"},
+        "shells_path": {"type": "str", "default": "/etc/shells"},
     }
 
     module = AnsibleModule(
