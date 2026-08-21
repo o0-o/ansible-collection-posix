@@ -743,3 +743,76 @@ class TestDetectPlatformFromResults:
         platform = action._detect_platform_from_results(results, "/f")
 
         assert platform["has_shasum"] is True
+
+
+class TestProcessReadResults:
+    """Tests for _process_read_results.
+
+    The type an option needs is the one the ls reported, not the one
+    the result publishes: attributes decides only what is published.
+    """
+
+    EMPTY_MD5 = "d41d8cd98f00b204e9800998ecf8427e"
+
+    def test_checksum_reported_without_attributes(self, action) -> None:
+        """Test a hash is reported when the type is unpublished."""
+        results = {
+            "/f_ls": _ls_result("-rw-r--r--"),
+            "/f_md5": {"rc": 0, "stdout": f"{self.EMPTY_MD5}  /f\n"},
+        }
+
+        file_data = action._process_read_results(
+            results, ["/f"], {"attributes": False, "md5": True}
+        )
+
+        assert file_data["/f"]["md5"] == self.EMPTY_MD5
+        assert "type" not in file_data["/f"]
+
+    def test_failed_checksum_raises_without_attributes(self, action) -> None:
+        """Test a hash that cannot be taken says so either way."""
+        results = {
+            "/f_ls": _ls_result("-rw-r--r--"),
+            "/f_md5": {"rc": 127, "stdout": ""},
+        }
+
+        with pytest.raises(ValueError, match="all hash commands failed"):
+            action._process_read_results(
+                results, ["/f"], {"attributes": False, "md5": True}
+            )
+
+    def test_children_reported_without_attributes(self, action) -> None:
+        """Test a listing is reported when the type is unpublished."""
+        results = {
+            "/d_ls": _ls_result("drwxr-xr-x", "/d"),
+            "/d_contents": {"rc": 0, "stdout": "one\ntwo\n"},
+        }
+
+        file_data = action._process_read_results(
+            results, ["/d"], {"attributes": False}
+        )
+
+        assert file_data["/d"]["children"] == ["/d/one", "/d/two"]
+        assert "type" not in file_data["/d"]
+
+    def test_hash_skipped_for_a_directory(self, action) -> None:
+        """Test only a regular file is hashed, published type or not."""
+        results = {
+            "/d_ls": _ls_result("drwxr-xr-x", "/d"),
+            "/d_md5": {"rc": 1, "stdout": ""},
+        }
+
+        file_data = action._process_read_results(
+            results, ["/d"], {"attributes": False, "md5": True}
+        )
+
+        assert "md5" not in file_data["/d"]
+
+    def test_attributes_publish_the_type(self, action) -> None:
+        """Test the type is published when attributes are requested."""
+        results = {"/f_ls": _ls_result("-rw-r--r--")}
+
+        file_data = action._process_read_results(
+            results, ["/f"], {"attributes": True}
+        )
+
+        assert file_data["/f"]["type"] == "regular"

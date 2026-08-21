@@ -120,6 +120,22 @@ def test_df_accepts_dict_inputs() -> None:
     assert result[0]["mount"] == "/"
 
 
+def test_df_decodes_declared_hex_content() -> None:
+    """Content a read result declares hex is decoded, not parsed."""
+
+    text = "Filesystem 1024-blocks"
+    with patch.object(
+        df_utils,
+        "jc_parse",
+        return_value=[{"filesystem": "/dev/sda1", "mounted_on": "/"}],
+    ) as mock_parse:
+        payload = {"content": text.encode().hex(), "encoding": "hex"}
+        result = df_utils.df(payload)
+
+    mock_parse.assert_called_once_with("df", text)
+    assert result[0]["mount"] == "/"
+
+
 def test_df_skips_invalid_entries() -> None:
     """Invalid jc entries are ignored rather than crashing."""
 

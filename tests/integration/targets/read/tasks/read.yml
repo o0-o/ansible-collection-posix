@@ -148,6 +148,27 @@
         read_regular_digest_reg['paths'][read_regular_path]['sha512']
         is match('^[0-9a-f]{128}$')
 
+# The type a checksum needs is the one ls reported, and asking for
+# content is what turns off publishing it
+- name: Read regular file with content and a checksum
+  o0_o.posix.read:
+    path: "{{ read_regular_path }}"
+    content: true
+    md5: true
+  register: read_digest_no_attrs_reg
+
+- name: Assert the checksum arrives with attributes off
+  ansible.builtin.assert:
+    that:
+      - read_digest_no_attrs_reg is not changed
+      - "'type' not in read_digest_no_attrs_reg['paths'][read_regular_path]"
+      - >-
+        read_digest_no_attrs_reg['paths'][read_regular_path]['md5']
+        == '58badea9b79664d51d8ad4048fb0819c'
+      - >-
+        'quick brown fox' in
+        read_digest_no_attrs_reg['paths'][read_regular_path]['content']
+
 - name: Read binary file with content enabled
   o0_o.posix.read:
     path: "{{ read_binary_path }}"
@@ -437,3 +458,25 @@
       - >-
         'xattrs' not in
         read_attributes_only_reg['paths'][read_regular_path]
+
+# Rejections
+
+# An empty list satisfies the spec's required=True, so nothing but the
+# action's own check stands between a templating accident upstream and
+# a result that reports no paths as though none were asked for
+- name: 'Fail: Read an empty paths list'
+  block:
+
+    - name: Read no paths at all
+      o0_o.posix.read:
+        paths: []
+
+  rescue:
+
+    - name: Assert the empty list is rejected by name
+      ansible.builtin.assert:
+        that:
+          - ansible_failed_result is failed
+          - >-
+            'paths must contain at least one path'
+            in ansible_failed_result['msg']

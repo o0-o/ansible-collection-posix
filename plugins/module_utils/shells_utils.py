@@ -13,9 +13,11 @@
 
 from __future__ import annotations
 
-from base64 import b64decode
 from typing import Any, Iterable, Sequence, Union
 
+from ansible_collections.o0_o.posix.plugins.module_utils.filter_utils import (
+    decode_declared_content,
+)
 from ansible_collections.o0_o.utils.plugins.module_utils import strip_comments
 
 
@@ -46,14 +48,12 @@ def parse_shells(data: Union[str, Sequence[str], dict[str, Any]]) -> list[str]:
         stdout = data.get("stdout")
 
         if isinstance(content, str):
-            # A read or slurp result declares its base64 encoding.
-            # Only a declaration justifies decoding: shell paths are
+            # A read or slurp result declares an encoded content. Only
+            # a declaration justifies decoding: shell paths are
             # themselves base64 alphabet, so /bin/sh and /bin/bash
             # together decode without complaint into five junk bytes
-            if data.get("encoding") == "base64":
-                text = b64decode(content).decode("utf-8")
-            else:
-                text = content
+            declared = decode_declared_content(content, data.get("encoding"))
+            text = content if declared is None else declared
         elif isinstance(stdout, str):
             text = stdout
         else:

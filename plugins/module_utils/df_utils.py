@@ -13,11 +13,10 @@
 
 from __future__ import annotations
 
-import base64
-
 from typing import Any, Optional, Union
 
 from ansible_collections.o0_o.posix.plugins.module_utils.filter_utils import (
+    decode_declared_content,
     normalize_source,
 )
 from ansible_collections.o0_o.posix.plugins.module_utils.jc_utils import (
@@ -244,9 +243,12 @@ def df(config: Union[str, dict[str, Any]]) -> list[dict[str, Any]]:
             content = config["stdout"]
         elif "content" in config:
             content = config["content"]
-            # A slurp result declares its base64 encoding
-            if config.get("encoding") == "base64":
-                content = base64.b64decode(content).decode("utf-8")
+            # A read or slurp result declares an encoded content
+            declared = decode_declared_content(
+                content, config.get("encoding")
+            )
+            if declared is not None:
+                content = declared
         else:
             raise ValueError("Dict input must have 'stdout' or 'content' key")
     else:

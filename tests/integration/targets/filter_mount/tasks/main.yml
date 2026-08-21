@@ -136,6 +136,23 @@
       - mount_from_slurp | length == 1
       - mount_from_slurp[0]['source']['path'] == '/dev/sda1'
 
+- name: Test with hex encoded content (read result)
+  vars:
+    read_result:
+      # '/dev/sda1 on / type ext4 (rw)' as read returns it when a
+      # task asks for encoding hex
+      content: "2f6465762f73646131206f6e202f207479706520657874342028727729"
+      encoding: hex
+  ansible.builtin.set_fact:
+    mount_from_hex: "{{ read_result | o0_o.posix.mount }}"
+
+- name: Verify hex input works
+  ansible.builtin.assert:
+    that:
+      - mount_from_hex is sequence
+      - mount_from_hex | length == 1
+      - mount_from_hex[0]['source']['path'] == '/dev/sda1'
+
 - name: Test empty options handling
   vars:
     empty_opts_output: "/dev/sda1 on / type ext4 ()"

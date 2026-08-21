@@ -401,6 +401,28 @@
         that:
           - parsed_decoded == parsed_from_slurp
 
+    # read is the only producer of hex, so it stands in for slurp here
+    - name: Read the test fstab file as hex
+      o0_o.posix.read:
+        path: /tmp/test_fstab_for_slurp
+        encoding: hex
+      register: read_hex_fstab_reg
+
+    - name: Name the result that declares hex
+      ansible.builtin.set_fact:
+        hex_fstab: >-
+          {{ read_hex_fstab_reg['paths']['/tmp/test_fstab_for_slurp'] }}
+
+    - name: Parse hex encoded content from read
+      ansible.builtin.set_fact:
+        parsed_from_hex: "{{ hex_fstab | o0_o.posix.fstab }}"
+
+    - name: Assert hex content was properly decoded and parsed
+      ansible.builtin.assert:
+        that:
+          - hex_fstab['encoding'] == 'hex'
+          - parsed_from_hex == parsed_from_slurp
+
   always:
     - name: Clean up test file
       ansible.builtin.file:

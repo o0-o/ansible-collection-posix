@@ -51,6 +51,21 @@ def test_parse_shells_from_slurp() -> None:
     assert result == ["/bin/bash", "/bin/zsh"]
 
 
+def test_parse_shells_from_declared_hex() -> None:
+    """Decode a read result that declares hex and strip comments."""
+
+    content = """
+# Comment line
+/bin/bash  # trailing comment
+/bin/zsh
+""".strip()
+    payload = {"content": content.encode().hex(), "encoding": "hex"}
+
+    result = parse_shells(payload)
+
+    assert result == ["/bin/bash", "/bin/zsh"]
+
+
 def test_parse_shells_leaves_undeclared_content_alone() -> None:
     """Text content is not decoded, however base64 it looks."""
 

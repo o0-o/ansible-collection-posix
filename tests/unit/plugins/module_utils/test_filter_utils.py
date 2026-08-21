@@ -59,6 +59,25 @@ def test_process_registered_result_honors_declared_base64() -> None:
     assert attempts == [text]
 
 
+def test_process_registered_result_honors_declared_hex() -> None:
+    """A declared hex encoding is decoded before any parse."""
+
+    text = "Filesystem     1024-blocks"
+    encoded = text.encode().hex()
+
+    attempts = []
+
+    def parser(value: str) -> str:
+        attempts.append(value)
+        return value
+
+    payload = {"content": encoded, "encoding": "hex"}
+    result = filter_utils.process_registered_result(payload, parser)
+
+    assert result == text
+    assert attempts == [text]
+
+
 def test_process_registered_result_guesses_undeclared_base64() -> None:
     """Without a declaration, try plain parse then base64 decode."""
 
@@ -85,6 +104,40 @@ def test_process_registered_result_missing_keys() -> None:
 
     with pytest.raises(ValueError, match="stdout"):
         filter_utils.process_registered_result({}, lambda value: value)
+
+
+TEXT = "/dev/sda1 / ext4 defaults 0 1\n"
+
+
+@pytest.mark.parametrize(
+    "encoding,content",
+    [
+        ("base64", base64.b64encode(TEXT.encode()).decode()),
+        ("hex", TEXT.encode().hex()),
+        # A declaration names the same encoding whatever its case
+        ("HEX", TEXT.encode().hex()),
+    ],
+)
+def test_declared_encodings_are_decoded(encoding, content) -> None:
+    """An encoded representation is decoded to the file's text."""
+
+    assert filter_utils.decode_declared_content(content, encoding) == TEXT
+
+
+@pytest.mark.parametrize("encoding", [None, "", "utf-8", "iso-8859-1"])
+def test_undecoded_declarations_report_nothing(encoding) -> None:
+    """A text encoding or no declaration at all decodes nothing."""
+
+    assert filter_utils.decode_declared_content(TEXT, encoding) is None
+
+
+@pytest.mark.parametrize("encoding", ["base64", "hex"])
+def test_content_that_belies_its_declaration_raises(encoding) -> None:
+    """A declaration is authoritative, so a payload that fails it
+    fails the filter rather than parsing as text."""
+
+    with pytest.raises(ValueError):
+        filter_utils.decode_declared_content("not encoded at all", encoding)
 
 
 @pytest.mark.parametrize(

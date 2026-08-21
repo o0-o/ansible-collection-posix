@@ -108,6 +108,26 @@ def test_parse_fstab_uses_jc_parse() -> None:
     assert result[0]["mount"] == "/"
 
 
+def test_fstab_decodes_declared_hex_content() -> None:
+    """Content a read result declares hex is decoded, not parsed."""
+
+    # parse_fstab hands jc one stripped line at a time
+    text = "/dev/sda1 / ext4 defaults 0 1"
+    jc_return = [
+        {"fs_spec": "/dev/sda1", "fs_file": "/", "fs_vfstype": "ext4"},
+    ]
+
+    with patch.object(
+        fstab_utils, "jc_parse", return_value=jc_return
+    ) as mock_parse:
+        result = fstab_utils.fstab(
+            {"content": f"{text}\n".encode().hex(), "encoding": "hex"}
+        )
+
+    mock_parse.assert_called_once_with("fstab", text)
+    assert result[0]["mount"] == "/"
+
+
 def test_generate_fstab_joins_lines() -> None:
     """generate_fstab produces newline-terminated content."""
 

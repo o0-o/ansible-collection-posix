@@ -192,6 +192,25 @@
         | length == 2
       - read_list_reg['paths'] | length == 1
 
+# The listing reads the type ls reported, published or not
+- name: Read directory with list enabled and attributes off
+  o0_o.posix.read:
+    path: "{{ read_dir_path }}/nested"
+    list: true
+    attributes: false
+  register: read_list_no_attrs_reg
+
+- name: Assert the listing arrives with attributes off
+  ansible.builtin.assert:
+    that:
+      - read_list_no_attrs_reg is not changed
+      - >-
+        'type' not in
+        read_list_no_attrs_reg['paths'][read_dir_path + '/nested']
+      - >-
+        read_list_no_attrs_reg['paths'][read_dir_path + '/nested']['children']
+        | length == 2
+
 - name: Read empty directory with list enabled
   o0_o.posix.read:
     path: "{{ read_directory_path }}"

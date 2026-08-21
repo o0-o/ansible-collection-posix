@@ -222,6 +222,12 @@ class ActionModule(ReadPosixActionBase, ActionBase):
         self.sha512 = new_module_args["sha512"]
         self.list = new_module_args["list"]
 
+        # required=True only proves the key was given: an empty list
+        # satisfies the spec and is almost always a templating
+        # accident upstream, which an empty result would hide
+        if not self.paths:
+            raise AnsibleActionFail("paths must contain at least one path")
+
         # Extended implies attributes
         if self.extended:
             self.attributes = True
@@ -354,16 +360,15 @@ class ActionModule(ReadPosixActionBase, ActionBase):
         file_data: dict[str, Any] = {}
 
         try:
-            if self.paths:
-                # Phase 1: Process first path with all command variants
-                # (detection)
-                first_path = self.paths[0]
-                detection_commands = self._get_read_commands(
-                    [first_path],
-                    options,
-                    need_dir_contents=self.list,
-                    platform=None,  # Detection mode: run all variants
-                )
+            # Phase 1: Process first path with all command variants
+            # (detection)
+            first_path = self.paths[0]
+            detection_commands = self._get_read_commands(
+                [first_path],
+                options,
+                need_dir_contents=self.list,
+                platform=None,  # Detection mode: run all variants
+            )
             self._display.vvv(
                 f"[{self.inventory_hostname}] Platform detection: generated "
                 f"{len(detection_commands)} commands for {first_path}"

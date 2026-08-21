@@ -207,3 +207,18 @@ def test_mount_handles_dict_input() -> None:
     # mount() extracts stdout from dict input before parsing
     mock_parse.assert_called_once_with("mount", payload["stdout"])
     assert result[0]["mount"] == "/dev"
+
+
+def test_mount_decodes_declared_hex_content() -> None:
+    """Content a read result declares hex is decoded, not parsed."""
+
+    text = "dev on /dev type tmpfs (rw)"
+    jc_return = [{"filesystem": "dev", "mount_point": "/dev"}]
+    with patch.object(
+        mount_utils, "jc_parse", return_value=jc_return
+    ) as mock_parse:
+        payload = {"content": text.encode().hex(), "encoding": "hex"}
+        result = mount_utils.mount(payload)
+
+    mock_parse.assert_called_once_with("mount", text)
+    assert result[0]["mount"] == "/dev"

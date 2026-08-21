@@ -78,6 +78,19 @@ def test_group_info_decodes_declared_base64() -> None:
     }
 
 
+def test_group_info_decodes_declared_hex() -> None:
+    """Content a read result declares hex is decoded, not parsed."""
+
+    read_result = {
+        "content": GROUP_TEXT.encode().hex(),
+        "encoding": "hex",
+    }
+
+    assert group_info(read_result, key="id") == {
+        "20": {"name": "staff", "members": ["root"]}
+    }
+
+
 def test_group_info_invalid_key() -> None:
     """Invalid key values raise ValueError."""
 

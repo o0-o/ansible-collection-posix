@@ -98,6 +98,25 @@ def test_passwd_info_decodes_declared_base64() -> None:
     }
 
 
+def test_passwd_info_decodes_declared_hex() -> None:
+    """Content a read result declares hex is decoded, not parsed."""
+
+    read_result = {
+        "content": PASSWD_TEXT.encode().hex(),
+        "encoding": "hex",
+    }
+
+    assert passwd_info(read_result, key="name") == {
+        "root": {
+            "gid": 0,
+            "gecos": "System Administrator",
+            "home": "/var/root",
+            "shell": "/bin/sh",
+            "id": 0,
+        }
+    }
+
+
 def test_passwd_info_invalid_key() -> None:
     """Invalid key values raise ValueError."""
 

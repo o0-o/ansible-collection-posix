@@ -18,15 +18,44 @@ from typing import Any, Callable, Optional, Union
 import base64
 
 
+# The encodings a read or slurp result declares when its content is a
+# representation of the file's bytes rather than the file's text. read
+# emits base64 for a file that does not decode as text, and either of
+# these when a task forces one; slurp emits base64 always
+_CONTENT_DECODERS: dict[str, Callable[[str], bytes]] = {
+    "base64": base64.b64decode,
+    "hex": bytes.fromhex,
+}
+
+
+def decode_declared_content(
+    content: str, encoding: Optional[str]
+) -> Optional[str]:
+    """Decode content whose result declares an encoded representation.
+
+    :param content: The content value from a read or slurp result
+    :param encoding: The encoding that same result declares, if any
+    :returns: The decoded text, or None when the declaration names no
+        encoded representation, which includes every text encoding and
+        a result that declares nothing at all
+    :raises ValueError: If the content does not decode as declared
+    """
+    decoder = _CONTENT_DECODERS.get((encoding or "").lower())
+    if decoder is None:
+        return None
+
+    return decoder(content).decode("utf-8")
+
+
 def process_registered_result(
     config: dict[str, Any], parser: Callable[[Union[str, list]], Any]
 ) -> Any:
-    """Process registered result dict with automatic base64 detection.
+    """Process registered result dict, decoding encoded content.
 
     Handles dict input from registered results (read/command/slurp
     modules):
     - Extracts content from 'stdout' or 'content' keys
-    - Decodes base64 content when the result declares that encoding
+    - Decodes content when the result declares base64 or hex
     - Falls back to base64 decode on parse errors when it does not
 
     :param config: Dict with registered result from command or slurp
@@ -40,11 +69,12 @@ def process_registered_result(
         return parser(content)
     elif "content" in config:
         content = config["content"]
-        # A read or slurp result declares its base64 encoding. Trust
-        # the declaration: encoded text can parse as though it were the
+        # A read or slurp result declares its encoding. Trust the
+        # declaration: encoded text can parse as though it were the
         # file, and a parser that accepts it reports fiction
-        if config.get("encoding") == "base64":
-            return parser(base64.b64decode(content).decode("utf-8"))
+        declared = decode_declared_content(content, config.get("encoding"))
+        if declared is not None:
+            return parser(declared)
         # Nothing declared, so the encoding has to be guessed.
         # Try parsing as-is first (in case it's not encoded)
         try:

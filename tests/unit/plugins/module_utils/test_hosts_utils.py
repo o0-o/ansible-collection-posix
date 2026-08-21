@@ -212,6 +212,30 @@ def test_hosts_decodes_declared_base64_content() -> None:
     assert len(result) == 1
 
 
+def test_hosts_decodes_declared_hex_content() -> None:
+    """Test hosts() decodes content a read result declares hex."""
+
+    jc_return: list[dict[str, Any]] = [
+        {
+            "ip": "127.0.0.1",
+            "hostname": ["localhost"],
+        }
+    ]
+
+    read_result = {
+        "content": b"127.0.0.1 localhost".hex(),
+        "encoding": "hex",
+    }
+
+    with patch.object(
+        hosts_utils, "jc_parse", return_value=jc_return
+    ) as mock_parse:
+        result = hosts_utils.hosts(read_result)
+
+    mock_parse.assert_called_once_with("hosts", "127.0.0.1 localhost")
+    assert len(result) == 1
+
+
 def test_hosts_handles_dict_with_stdout_key() -> None:
     """Test hosts() handles dict with stdout key (command result)."""
 

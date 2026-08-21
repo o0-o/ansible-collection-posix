@@ -1,0 +1,26 @@
+---
+bugfixes:
+  - >-
+    read - A checksum or a directory listing asked for without
+    attributes came back empty and unexplained, because both read the
+    file type out of the result they were about to publish and
+    attributes is what publishes it. The ls that types every path runs
+    in every batch, so the type is always known; both now read it from
+    there and attributes decides only whether it is published. A hash
+    command that fails says so either way
+    (https://github.com/o0-o/ansible-collection-posix/pull/XXX).
+  - >-
+    read - An empty paths list raised an UnboundLocalError from the
+    middle of the action. The argument spec's required=True is
+    satisfied by the key alone, and an empty list is almost always a
+    templating accident upstream, so it is now rejected by name before
+    any host work
+    (https://github.com/o0-o/ansible-collection-posix/pull/XXX).
+  - >-
+    df, fstab, hosts, mount, passwd, group, id, jc, shells - Content
+    that a read result declares hex, as read returns it when a task
+    forces that encoding, either raised or reached the parser still
+    encoded. Every filter that honors a declared base64 encoding now
+    honors hex the same way, through one decoder the six of them share
+    rather than a branch each
+    (https://github.com/o0-o/ansible-collection-posix/pull/XXX).

@@ -875,11 +875,12 @@ class ReadPosixActionBase(PosixActionBase):
                 attributes = {}
                 include_attributes = options.get("attributes", False)
 
-                # Extract file type from first char of flags
-                # (always needed for content/extended logic)
+                # Extract file type from first char of flags. The ls
+                # runs in every batch, so the type is always known and
+                # every decision below reads this local; only its
+                # publication waits on the attributes option
                 flags = entry.get("flags", "")
                 file_type = self._ls_file_type(entry)
-                # Only add type if attributes requested
                 if flags and include_attributes:
                     attributes["type"] = file_type
 
@@ -1302,7 +1303,7 @@ class ReadPosixActionBase(PosixActionBase):
                 # Add directory children if this is a directory and
                 # ls command was run (either for children parameter or
                 # explicitly requested via include)
-                if attributes.get("type") == "directory":
+                if file_type == "directory":
                     contents_key = f"{path}_contents"
                     if contents_key in results:
                         contents_result = results.get(contents_key, {})
@@ -1327,7 +1328,7 @@ class ReadPosixActionBase(PosixActionBase):
 
                 # Add hash checksums if requested
                 # Only process for regular files
-                if attributes.get("type") == "regular":
+                if file_type == "regular":
                     # MD5 - try GNU md5sum first, then BSD md5
                     if (
                         f"{path}_md5" in results
