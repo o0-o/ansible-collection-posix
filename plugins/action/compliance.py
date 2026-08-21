@@ -131,11 +131,18 @@ class ActionModule(PosixActionBase, ActionBase):
             check_mode=False,  # Always run getconf even in check mode
         )
 
-        # Process results into compliance structure
-        processed_result, errors = process_all_compliance_command_results(
-            commands_result
+        # Process results into compliance structure. The processor
+        # names the facts; the module's own returns are the same
+        # values unwrapped.
+        facts, errors = process_all_compliance_command_results(commands_result)
+        result.update(
+            {
+                "compliance": facts["o0_os"]["compliance"],
+                "shells": facts["o0_os"]["shells"],
+                "paths": facts["o0_paths"],
+                "missing_commands": facts["o0_missing"]["commands"],
+            }
         )
-        result.update(processed_result)
 
         # Emit any errors
         for err in errors:
@@ -146,16 +153,7 @@ class ActionModule(PosixActionBase, ActionBase):
 
         # Set ansible_facts when gather is enabled
         if gather:
-            result["ansible_facts"] = {
-                "o0_os": {
-                    "compliance": result["compliance"],
-                    "shells": result["shells"],
-                },
-                "o0_paths": result["paths"],
-                "o0_missing": {
-                    "commands": result["missing_commands"],
-                },
-            }
+            result["ansible_facts"] = facts
 
         result["changed"] = False
 

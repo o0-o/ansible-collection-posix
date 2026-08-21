@@ -13,13 +13,83 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from ansible_collections.o0_o.posix.plugins.module_utils.compliance_utils import (  # noqa: E501
     SUS,
     POSIX,
     XSH,
     XCU,
     XSI,
+    get_compliance_command_requests,
+    process_all_compliance_command_results,
 )
+
+# What the fabricated host answers for each getconf probe
+GETCONF_ANSWERS = {
+    "_POSIX_VERSION": "200809",
+    "_POSIX2_VERSION": "200809",
+    "_XOPEN_UNIX": "1",
+    "_XOPEN_VERSION": "700",
+}
+
+# Everything else it has as a path; these it answers otherwise
+BUILTIN_COMMANDS = {".", ":", "[", "cd", "exec"}
+ALIASED_COMMANDS = {"ls": "ls --color=auto"}
+MISSING_COMMANDS = {"pax"}
+
+
+def _answer(request: dict[str, Any]) -> dict[str, Any]:
+    """Answer one compliance request the way the run plugin does.
+
+    The run plugin merges each request dict with the return code and
+    output of the command it names, so a fabricated answer is the
+    request plus those keys.
+
+    :param dict[str, Any] request: A compliance command request
+    :returns dict[str, Any]: The request merged with its result
+    """
+    if request["type"] == "lookup_command":
+        cmd = request["args"]["cmd"]
+        if cmd in MISSING_COMMANDS:
+            return dict(
+                request,
+                rc=1,
+                stdout="",
+                stdout_lines=[],
+                stderr="",
+                stderr_lines=[],
+            )
+        if cmd in ALIASED_COMMANDS:
+            stdout = f"alias {cmd}='{ALIASED_COMMANDS[cmd]}'"
+        elif cmd in BUILTIN_COMMANDS:
+            stdout = cmd
+        else:
+            stdout = f"/usr/bin/{cmd}"
+    elif request["type"] == "sh_test":
+        stdout = "posix sh"
+    else:
+        stdout = GETCONF_ANSWERS[request["command"][1]]
+
+    return dict(
+        request,
+        rc=0,
+        stdout=stdout,
+        stdout_lines=[stdout],
+        stderr="",
+        stderr_lines=[],
+    )
+
+
+def _process_fabricated_host() -> dict[str, Any]:
+    """Run every compliance request through the shared processor.
+
+    :returns dict[str, Any]: The facts the processor publishes
+    """
+    results = [_answer(r) for r in get_compliance_command_requests()]
+    facts, errors = process_all_compliance_command_results(results)
+    assert errors == []
+    return facts
 
 
 class TestConstants:
@@ -51,3 +121,47 @@ class TestConstants:
         """Test XSI constant has required fields."""
         assert XSI["abbreviation"] == "XSI"
         assert "name" in XSI
+
+
+class TestProcessAllComplianceCommandResults:
+    """Tests for the facts the shared compliance processor names."""
+
+    def test_every_namespace_is_prefixed(self) -> None:
+        """Test the processor publishes o0_ namespaces only, so the
+        facts aggregator merging its return cannot leak a bare key."""
+        facts = _process_fabricated_host()
+
+        assert set(facts) == {"o0_os", "o0_paths", "o0_missing"}
+        assert all(ns.startswith("o0_") for ns in facts)
+
+    def test_compliance_and_shells_under_o0_os(self) -> None:
+        """Test compliance and shells land where the standalone
+        action has published them since 2026-01-13."""
+        facts = _process_fabricated_host()
+
+        compliance = facts["o0_os"]["compliance"]
+        assert compliance["posix"]["supported"] is True
+        assert compliance["xsh"]["version"]["name"] == "POSIX.1-2008"
+        assert compliance["xsi"]["version"]["issue"] == 7
+
+        shells = facts["o0_os"]["shells"]
+        assert shells["/bin/sh"]["aliases"] == {"ls": "ls --color=auto"}
+        assert shells["/bin/sh"]["builtins"] == sorted(BUILTIN_COMMANDS)
+
+    def test_paths_and_missing_commands(self) -> None:
+        """Test the path map and the missing command list keep their
+        own namespaces."""
+        facts = _process_fabricated_host()
+
+        assert facts["o0_paths"]["/bin/sh"] == {}
+        assert facts["o0_paths"]["/usr/bin/awk"] == {}
+        assert facts["o0_missing"]["commands"] == sorted(MISSING_COMMANDS)
+
+    def test_a_missing_command_downgrades_its_standard(self) -> None:
+        """Test a missing XSI command is recorded as a canary and
+        turns full support into partial."""
+        facts = _process_fabricated_host()
+
+        xsi = facts["o0_os"]["compliance"]["xsi"]
+        assert xsi["supported"] == "partial"
+        assert xsi["canaries"]["missing"] == sorted(MISSING_COMMANDS)

@@ -213,14 +213,16 @@ def process_all_compliance_command_results(
     """Process compliance command results through their parsers.
 
     Takes command results from run plugin, calls the appropriate
-    parser for each command type, and merges the partial results.
+    parser for each command type, and merges the partial results into
+    the facts both compliance producers publish: ``o0_os.compliance``,
+    ``o0_os.shells``, ``o0_paths``, and ``o0_missing.commands``.
 
     :param list[dict[str, Any]] cmds_completed: List of command result
         dicts, each containing 'type', 'implementation', 'rc', 'stdout',
         and optionally 'parser' from the command spec
     :returns tuple[dict[str, Any], list[Exception]]: Tuple of
-        (result, errors) where result_dict contains 'compliance',
-        'shells', 'paths', and 'missing_commands' keys
+        (facts, errors) where facts holds the o0_os, o0_paths, and
+        o0_missing namespaces
     """
     # Initialize compliance dict with standard metadata
     compliance = {
@@ -348,7 +350,17 @@ def process_all_compliance_command_results(
     else:
         compliance["sus"]["supported"] = False
 
-    result["compliance"] = compliance
     result["paths"]["/bin/sh"] = {}
 
-    return result, errors
+    # The processor names its own facts, so the two producers that
+    # share it cannot disagree about where they land.
+    facts = {
+        "o0_os": {
+            "compliance": compliance,
+            "shells": result["shells"],
+        },
+        "o0_paths": result["paths"],
+        "o0_missing": {"commands": result["missing_commands"]},
+    }
+
+    return facts, errors
