@@ -207,6 +207,30 @@ def get_compliance_command_requests() -> list[dict[str, Any]]:
 
 
 @typechecked
+def _record_canary(
+    standard: dict[str, Any],
+    canary: dict[str, Any],
+) -> None:
+    """Add one canary to a standard's record of what it asked.
+
+    A standard's canaries accumulate: XSI is probed twice, the missing
+    list is seeded before any probe runs, and a missing utility is
+    recorded after the probes are done. Writing a canary therefore has
+    to merge into what the other probes left rather than replace it.
+
+    :param dict[str, Any] standard: One standard's compliance dict,
+        edited in place
+    :param dict[str, Any] canary: The canary to merge under 'canaries'
+    """
+    standard["canaries"] = merge_hash(
+        standard.get("canaries", {}),
+        canary,
+        recursive=True,
+        list_merge="append",
+    )
+
+
+@typechecked
 def process_all_compliance_command_results(
     cmds_completed: list[dict[str, Any]],
 ) -> tuple[dict[str, Any], list[Exception]]:
@@ -247,8 +271,9 @@ def process_all_compliance_command_results(
 
     # Only process getconf results if getconf is available
     if "getconf" in missing:
+        # getconf is an XSI utility, so the loop below is what records
+        # it as missing; naming it here too would name it twice
         compliance["xsi"]["supported"] = False
-        compliance["xsi"]["canaries"] = {"missing": ["getconf"]}
 
     else:
         cmd_type = "xsi_support"
@@ -259,9 +284,10 @@ def process_all_compliance_command_results(
             compliance["xsi"].update(parsed)
             getconf_var = support_result["command"][1]
             getconf_val = support_result["stdout_lines"][0]
-            compliance["xsi"]["canaries"] = {
-                "getconf": {getconf_var: getconf_val},
-            }
+            _record_canary(
+                compliance["xsi"],
+                {"getconf": {getconf_var: getconf_val}},
+            )
             errors.extend(support_result.pop("errors", []))
         else:
             # busybox getconf exits nonzero for variables it does
@@ -269,9 +295,10 @@ def process_all_compliance_command_results(
             # answering no; the null canary records that it was asked
             getconf_var = support_result["command"][1]
             compliance["xsi"]["supported"] = False
-            compliance["xsi"]["canaries"] = {
-                "getconf": {getconf_var: None},
-            }
+            _record_canary(
+                compliance["xsi"],
+                {"getconf": {getconf_var: None}},
+            )
 
         for standard in ["xsh", "xcu", "xsi"]:
             cmd_type = f"{standard}_version"
@@ -291,34 +318,21 @@ def process_all_compliance_command_results(
                 compliance[standard].update(parsed)
                 getconf_var = version_result["command"][1]
                 getconf_val = version_result["stdout_lines"][0]
-                compliance[standard]["canaries"] = {
-                    "getconf": {getconf_var: getconf_val},
-                }
+                _record_canary(
+                    compliance[standard],
+                    {"getconf": {getconf_var: getconf_val}},
+                )
                 errors.extend(version_result.pop("errors", []))
 
     for cmd in sorted(missing):
         if cmd in XCU_REQUIRED_COMMANDS:
             if compliance["xcu"].get("supported") is True:
                 compliance["xcu"]["supported"] = "partial"
-            canary = {
-                "canaries": {
-                    "missing": [cmd],
-                },
-            }
-            compliance["xcu"] = merge_hash(
-                compliance["xcu"], canary, recursive=True, list_merge="append"
-            )
+            _record_canary(compliance["xcu"], {"missing": [cmd]})
         elif cmd in XSI_REQUIRED_COMMANDS:
             if compliance["xsi"].get("supported") is True:
                 compliance["xsi"]["supported"] = "partial"
-            canary = {
-                "canaries": {
-                    "missing": [cmd],
-                },
-            }
-            compliance["xsi"] = merge_hash(
-                compliance["xsi"], canary, recursive=True, list_merge="append"
-            )
+            _record_canary(compliance["xsi"], {"missing": [cmd]})
 
     # POSIX requires both XSH (system interfaces) and XCU (shell/utilities)
     xsh_support = compliance["xsh"].get("supported")

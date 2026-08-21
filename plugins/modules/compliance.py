@@ -229,12 +229,13 @@ compliance:
             What was asked and what answered. C(getconf) maps each
             variable probed to the value it printed, null where the
             variable was probed and the platform would not answer.
-            C(missing) appears beside it only when a required utility
-            was not found, and names the ones that were not.
+            C(missing) beside it names the required utilities that were
+            not found, and is empty when they all were.
           type: dict
           sample:
             getconf:
               _POSIX2_VERSION: "200809"
+            missing: []
     xsi:
       description: X/Open System Interfaces (XSI) extensions
       type: dict
@@ -273,16 +274,20 @@ compliance:
               sample: "Issue 7"
         canaries:
           description: >-
-            What was asked and what answered. C(getconf) maps each
-            variable probed to the value it printed, null where the
-            variable was probed and the platform would not answer.
-            C(missing) appears beside it only when a required utility
-            was not found, and stands alone naming C(getconf) itself
-            when the host has no C(getconf) to ask.
+            What was asked and what answered. XSI is probed twice, so
+            C(getconf) carries both the C(_XOPEN_UNIX) that decided
+            support and the C(_XOPEN_VERSION) that dated it, each
+            mapped to the value it printed and null where the variable
+            was probed and the platform would not answer. C(missing)
+            beside it names the required utilities that were not found,
+            and is empty when they all were; it stands alone naming
+            C(getconf) itself when the host has none to ask.
           type: dict
           sample:
             getconf:
+              _XOPEN_UNIX: "1"
               _XOPEN_VERSION: "700"
+            missing: []
     posix:
       description: Overall POSIX compliance (requires XSH + XCU)
       type: dict

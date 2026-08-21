@@ -165,3 +165,30 @@ class TestProcessAllComplianceCommandResults:
         xsi = facts["o0_os"]["compliance"]["xsi"]
         assert xsi["supported"] == "partial"
         assert xsi["canaries"]["missing"] == sorted(MISSING_COMMANDS)
+
+    def test_every_probe_leaves_its_canary(self) -> None:
+        """Test a canary adds to what the earlier probes left rather
+        than replacing it, so the _XOPEN_UNIX answer that decided XSI
+        support survives the _XOPEN_VERSION one that dated it."""
+        compliance = _process_fabricated_host()["o0_os"]["compliance"]
+
+        assert compliance["xsi"]["canaries"]["getconf"] == {
+            "_XOPEN_UNIX": "1",
+            "_XOPEN_VERSION": "700",
+        }
+        assert compliance["xsh"]["canaries"]["getconf"] == {
+            "_POSIX_VERSION": "200809",
+        }
+        assert compliance["xcu"]["canaries"]["getconf"] == {
+            "_POSIX2_VERSION": "200809",
+        }
+
+    def test_the_missing_list_outlives_the_probes(self) -> None:
+        """Test the missing list seeded for the standards that require
+        utilities is still there once the getconf canaries are in, so
+        a standard that found all of its own says so with an empty
+        list rather than with silence."""
+        compliance = _process_fabricated_host()["o0_os"]["compliance"]
+
+        assert compliance["xcu"]["canaries"]["missing"] == []
+        assert set(compliance["xsi"]["canaries"]) == {"getconf", "missing"}
