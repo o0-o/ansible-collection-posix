@@ -165,6 +165,10 @@ notes:
   - This module is implemented as an action plugin and supports raw fallback.
   - Requesting I(content) or I(lines) turns I(attributes) off unless it is
     set explicitly, so content reads stay cheap.
+  - The file type of every path is always determined, the C(ls) that types
+    it running in every batch, and I(attributes) governs only whether that
+    type is published. I(children) recursion and I(follow) therefore behave
+    the same whether or not a C(type) key appears in the result.
   - Content is read in a second command batch, once the first has typed
     every path, because reading a FIFO with no writer would otherwise
     block until the connection timed out. A read that asks for no

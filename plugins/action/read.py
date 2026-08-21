@@ -359,6 +359,11 @@ class ActionModule(ReadPosixActionBase, ActionBase):
         # detected capabilities for remaining paths to avoid redundant commands
         file_data: dict[str, Any] = {}
 
+        # The type of every path, published or not: recursion and
+        # symlink following depend on the type the ls reported, and
+        # attributes decides only whether it reaches the result
+        file_types: dict[str, str] = {}
+
         try:
             # Phase 1: Process first path with all command variants
             # (detection)
@@ -409,12 +414,13 @@ class ActionModule(ReadPosixActionBase, ActionBase):
             total_batches += content_counts["batches"]
 
             # Process first path's results
-            first_file_data = self._process_read_results(
+            first_file_data, first_file_types = self._process_read_results(
                 results=detection_result["commands"],
                 paths=[first_path],
                 options=options,
             )
             file_data.update(first_file_data)
+            file_types.update(first_file_types)
 
             # Phase 2: Process remaining paths with detected platform
             remaining_paths = self.paths[1:]
@@ -452,12 +458,16 @@ class ActionModule(ReadPosixActionBase, ActionBase):
                 total_batches += content_counts["batches"]
 
                 # Process remaining results
-                remaining_file_data = self._process_read_results(
+                (
+                    remaining_file_data,
+                    remaining_file_types,
+                ) = self._process_read_results(
                     results=commands_result["commands"],
                     paths=remaining_paths,
                     options=options,
                 )
                 file_data.update(remaining_file_data)
+                file_types.update(remaining_file_types)
 
             # If children is set, recursively read child entries within
             # directories
@@ -473,11 +483,7 @@ class ActionModule(ReadPosixActionBase, ActionBase):
                 # (don't process children for auto-added parent paths)
                 dirs_to_process = []
                 for path in self.original_paths:
-                    if (
-                        path in file_data
-                        and file_data[path]
-                        and file_data[path].get("type") == "directory"
-                    ):
+                    if file_types.get(path) == "directory":
                         dirs_to_process.append((path, 0))
 
                 self._display.vvv(
@@ -569,22 +575,18 @@ class ActionModule(ReadPosixActionBase, ActionBase):
                         )
                         total_commands += content_counts["count"]
                         total_batches += content_counts["batches"]
-                        child_data = self._process_read_results(
+                        child_data, child_types = self._process_read_results(
                             results=child_result["commands"],
                             paths=new_children,
                             options=options,
                         )
                         file_data.update(child_data)
+                        file_types.update(child_types)
 
                     # Add subdirectories to processing queue
                     subdirs_found = 0
                     for child_path in new_children:
-                        if (
-                            child_path in file_data
-                            and file_data[child_path]
-                            and file_data[child_path].get("type")
-                            == "directory"
-                        ):
+                        if file_types.get(child_path) == "directory":
                             dirs_to_process.append(
                                 (child_path, current_depth + 1)
                             )
@@ -606,10 +608,9 @@ class ActionModule(ReadPosixActionBase, ActionBase):
                     new_targets = []
                     for path, data in file_data.items():
                         if (
-                            data
-                            and data.get("type") == "link"
-                            and "target" in data
-                            and data["target"]
+                            file_types.get(path) == "link"
+                            and data
+                            and data.get("target")
                         ):
                             target = data["target"]
                             # Resolve relative paths to absolute
@@ -645,18 +646,19 @@ class ActionModule(ReadPosixActionBase, ActionBase):
                     )
                     total_commands += content_counts["count"]
                     total_batches += content_counts["batches"]
-                    target_data = self._process_read_results(
+                    target_data, target_types = self._process_read_results(
                         results=target_result["commands"],
                         paths=new_targets,
                         options=options,
                     )
                     file_data.update(target_data)
+                    file_types.update(target_types)
 
             elif self.follow is True:
                 # Resolve symlinks to their ultimate targets
                 links_to_resolve = []
-                for path, data in file_data.items():
-                    if data and data.get("type") == "link":
+                for path in file_data:
+                    if file_types.get(path) == "link":
                         links_to_resolve.append(path)
 
                 if links_to_resolve:
@@ -719,11 +721,15 @@ class ActionModule(ReadPosixActionBase, ActionBase):
                         )
                         total_commands += content_counts["count"]
                         total_batches += content_counts["batches"]
-                        target_data = self._process_read_results(
+                        (
+                            target_data,
+                            target_types,
+                        ) = self._process_read_results(
                             results=target_result["commands"],
                             paths=unique_targets,
                             options=options,
                         )
+                        file_types.update(target_types)
 
                         # Replace symlink data with target data
                         for link_path, target in resolved_targets.items():

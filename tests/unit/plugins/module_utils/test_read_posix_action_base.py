@@ -761,7 +761,7 @@ class TestProcessReadResults:
             "/f_md5": {"rc": 0, "stdout": f"{self.EMPTY_MD5}  /f\n"},
         }
 
-        file_data = action._process_read_results(
+        file_data, _types = action._process_read_results(
             results, ["/f"], {"attributes": False, "md5": True}
         )
 
@@ -787,7 +787,7 @@ class TestProcessReadResults:
             "/d_contents": {"rc": 0, "stdout": "one\ntwo\n"},
         }
 
-        file_data = action._process_read_results(
+        file_data, _types = action._process_read_results(
             results, ["/d"], {"attributes": False}
         )
 
@@ -801,7 +801,7 @@ class TestProcessReadResults:
             "/d_md5": {"rc": 1, "stdout": ""},
         }
 
-        file_data = action._process_read_results(
+        file_data, _types = action._process_read_results(
             results, ["/d"], {"attributes": False, "md5": True}
         )
 
@@ -811,8 +811,43 @@ class TestProcessReadResults:
         """Test the type is published when attributes are requested."""
         results = {"/f_ls": _ls_result("-rw-r--r--")}
 
-        file_data = action._process_read_results(
+        file_data, _types = action._process_read_results(
             results, ["/f"], {"attributes": True}
         )
 
         assert file_data["/f"]["type"] == "regular"
+
+    def test_type_returned_without_being_published(self, action) -> None:
+        """Test the caller is told the type the result withholds.
+
+        Recursion and symlink following depend on the type, so it is
+        determined for every path and handed back beside the file data
+        whatever attributes decided to publish.
+        """
+        results = {
+            "/d_ls": _ls_result("drwxr-xr-x", "/d"),
+            "/l_ls": _ls_result("lrwxrwxrwx", "/l"),
+            "/f_ls": _ls_result("-rw-r--r--"),
+        }
+
+        file_data, file_types = action._process_read_results(
+            results, ["/d", "/l", "/f"], {"attributes": False}
+        )
+
+        assert file_types == {
+            "/d": "directory",
+            "/l": "link",
+            "/f": "regular",
+        }
+        assert all("type" not in data for data in file_data.values())
+
+    def test_missing_path_is_typed_by_neither(self, action) -> None:
+        """Test a path with no listing appears in neither mapping."""
+        results = {"/gone_ls": {"rc": 1, "stdout": ""}}
+
+        file_data, file_types = action._process_read_results(
+            results, ["/gone"], {"attributes": True}
+        )
+
+        assert file_data == {"/gone": None}
+        assert file_types == {}

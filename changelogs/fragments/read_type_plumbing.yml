@@ -1,0 +1,12 @@
+---
+bugfixes:
+  - >-
+    read - A tree asked for without attributes came back one level
+    deep, and a symlink asked for with content came back an empty
+    dict. The children recursion and both symlink following passes
+    read the file type out of the result they were about to publish,
+    and attributes is what publishes it, so none of them fired. The ls
+    that types every path runs in every batch, so the type is now
+    determined for every path and handed to those callers whatever the
+    result shows; attributes decides publication alone
+    (https://github.com/o0-o/ansible-collection-posix/pull/XXX).

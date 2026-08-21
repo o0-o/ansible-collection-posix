@@ -119,6 +119,118 @@
         read_children_depth2_reg['paths'][read_dir_path +
         '/nested/level1/level2/level3'] is not defined
 
+# Recursion descends on the type ls reported for each entry, so it
+# reaches the bottom of the tree whether or not the type is published
+- name: Name the entries of a two level subtree
+  ansible.builtin.set_fact:
+    read_subtree_dir: "{{ read_dir_path }}/nested/level1/level2"
+    read_subtree_file: "{{ read_dir_path }}/nested/level1/level2/file2.txt"
+    read_subtree_sub: "{{ read_dir_path }}/nested/level1/level2/level3"
+    read_subtree_leaf: >-
+      {{ read_dir_path }}/nested/level1/level2/level3/file3.txt
+
+- name: Read a two level tree with children and attributes off
+  o0_o.posix.read:
+    path: "{{ read_subtree_dir }}"
+    children: true
+    attributes: false
+  register: read_children_no_attrs_reg
+
+- name: Assert the tree is walked to the bottom and nothing published
+  ansible.builtin.assert:
+    that:
+      - read_children_no_attrs_reg is not changed
+      - read_children_no_attrs_reg['paths'] | length == 4
+      - read_children_no_attrs_reg['paths'][read_subtree_file] is defined
+      - read_children_no_attrs_reg['paths'][read_subtree_leaf] is defined
+      - >-
+        read_children_no_attrs_reg['paths'][read_subtree_dir]['children']
+        | sort == [read_subtree_file, read_subtree_sub]
+      - >-
+        read_children_no_attrs_reg['paths'][read_subtree_sub]['children']
+        == [read_subtree_leaf]
+      - >-
+        read_children_no_attrs_reg['paths'].values() | map('list')
+        | flatten | select('in', ['type', 'mode', 'uid']) | length == 0
+
+# A symlink to a directory inside a walked tree gets an entry of its
+# own and is never descended into: the queue takes what the ls typed a
+# directory, and an ls types a link a link. Which is the same walk
+# published or not, so both reads below must visit the same entries.
+- name: Create a directory to link to inside a fresh tree
+  ansible.builtin.file:
+    state: directory
+    path: "{{ read_dir_path }}/linktree/real"
+
+- name: Put a file below the directory that is linked to
+  ansible.builtin.copy:
+    dest: "{{ read_dir_path }}/linktree/real/inner.txt"
+    content: 'inner'
+    mode: '0644'
+
+- name: Link to that directory beside it
+  ansible.builtin.file:
+    state: link
+    src: "{{ read_dir_path }}/linktree/real"
+    path: "{{ read_dir_path }}/linktree/dirlink"
+
+- name: Name the entries of the linked tree
+  ansible.builtin.set_fact:
+    read_linktree_dir: "{{ read_dir_path }}/linktree"
+    read_linktree_real: "{{ read_dir_path }}/linktree/real"
+    read_linktree_link: "{{ read_dir_path }}/linktree/dirlink"
+    read_linktree_inner: "{{ read_dir_path }}/linktree/real/inner.txt"
+
+- name: Read a tree holding a directory symlink with attributes on
+  o0_o.posix.read:
+    path: "{{ read_linktree_dir }}"
+    children: true
+    attributes: true
+  register: read_dirlink_reg
+
+- name: Read the same tree with attributes off
+  o0_o.posix.read:
+    path: "{{ read_linktree_dir }}"
+    children: true
+    attributes: false
+  register: read_dirlink_no_attrs_reg
+
+- name: Assert the walk stops at the directory symlink either way
+  ansible.builtin.assert:
+    that:
+      - read_dirlink_reg is not changed
+      - read_dirlink_no_attrs_reg is not changed
+      # The link is read as an entry, the real directory is descended
+      # into, and nothing is reached through the link: no
+      # linktree/dirlink/inner.txt either way
+      - >-
+        read_dirlink_reg['paths'].keys() | sort
+        == [read_linktree_dir, read_linktree_link, read_linktree_real,
+        read_linktree_inner] | sort
+      - >-
+        read_dirlink_no_attrs_reg['paths'].keys() | sort
+        == read_dirlink_reg['paths'].keys() | sort
+      # follow defaults to true, so the link's own entry describes the
+      # directory it resolves to, listing nothing of its own
+      - >-
+        read_dirlink_reg['paths'][read_linktree_link]['type']
+        == 'directory'
+      - >-
+        read_dirlink_reg['paths'][read_linktree_link]['realpath']
+        | basename == 'real'
+      - "'children' not in read_dirlink_reg['paths'][read_linktree_link]"
+      - >-
+        read_dirlink_reg['paths'][read_linktree_real]['children']
+        == [read_linktree_inner]
+      - >-
+        read_dirlink_no_attrs_reg['paths'][read_linktree_real]['children']
+        == [read_linktree_inner]
+      # Pinned as found, not endorsed: a followed link takes the
+      # target's data only when there is data to take, and a directory
+      # read without attributes publishes none, so the entry stays
+      # empty and the realpath the action adds goes with it
+      - read_dirlink_no_attrs_reg['paths'][read_linktree_link] == {}
+
 # Test parents parameter with boolean True
 - name: Read file with parents=true
   o0_o.posix.read:

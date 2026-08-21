@@ -226,6 +226,26 @@
         read_symlink_follow_reg['paths'][read_symlink_path]['realpath']
         | basename == 'regular.txt'
 
+# Following the link needs the type ls reported, and asking for
+# content is what stops the result from publishing one
+- name: Read symbolic link with content and attributes off
+  o0_o.posix.read:
+    path: "{{ read_symlink_path }}"
+    content: true
+  register: read_symlink_content_reg
+
+- name: Assert the followed link returns its target's content
+  ansible.builtin.assert:
+    that:
+      - read_symlink_content_reg is not changed
+      - "'type' not in read_symlink_content_reg['paths'][read_symlink_path]"
+      - >-
+        read_symlink_content_reg['paths'][read_symlink_path]['content']
+        == 'The quick brown fox\njumps over the lazy dog'
+      - >-
+        read_symlink_content_reg['paths'][read_symlink_path]['realpath']
+        | basename == 'regular.txt'
+
 - name: Read directory metadata
   o0_o.posix.read:
     path: "{{ read_directory_path }}"
