@@ -22,8 +22,10 @@ description:
   - Combines data from the C(mount) and C(df -P) commands to provide
     comprehensive mount point information.
   - Also parses C(/etc/fstab) to provide configured mount points.
-  - Returns device names, filesystem types, and capacity information
-    where available.
+  - Returns what is mounted where, the filesystem type and options
+    C(mount) reports, and the capacity C(df) reports.
+  - Returns the same C(mounts) shape M(o0_o.posix.facts) publishes
+    under C(o0_storage.mounts), built by the same composition.
   - By default, excludes virtual and pseudo filesystems, but includes
     network filesystems.
   - Does not require Python on the target host.
@@ -74,10 +76,14 @@ author:
   - oØ.o (@o0-o)
 notes:
   - The module runs the C(mount) command to get mount information.
-  - It also runs C(df -P) to get capacity information when available.
+  - It also runs C(df -P) to get capacity information.
   - It reads and parses C(/etc/fstab) to provide configured mount points.
-  - If C(df) is not available, mount information is still returned
-    without capacity data.
+  - Capacity is what C(df) alone knows, so C(df) names what gets
+    reported - a mount point only C(mount) named is left out rather
+    than reported without its capacity, and a host where C(df) cannot
+    run fails the task rather than answering with half the fact.
+  - Where C(df) and C(mount) disagree about a mount point's source,
+    C(df) is taken and the disagreement is logged at C(-vvv).
   - If C(/etc/fstab) cannot be read, an empty list is returned for fstab.
   - Virtual filesystems (excluded by default) include memory-based and
     special purpose filesystems.
@@ -99,8 +105,8 @@ attributes:
 """
 
 EXAMPLES = r"""
-- name: Gather filesystem information
-  o0_o.posix.filesystems:
+- name: Gather mounted filesystems
+  o0_o.posix.mounts:
   register: mount_info
 
 - name: Display all mount points
@@ -112,45 +118,40 @@ EXAMPLES = r"""
     var: mount_info.mounts['/']
   when: "'/' in mount_info.mounts"
 
-- name: Get filesystems including virtual filesystems
-  o0_o.posix.filesystems:
-    include_virtual: true
+- name: Include virtual and pseudo filesystems
+  o0_o.posix.mounts:
+    virtual: true
   register: all_mounts
 
-- name: Get only physical and network filesystems
-  o0_o.posix.filesystems:
-    include_virtual: false
-    include_network: true
-    include_pseudo: false
-  register: physical_mounts
-
-- name: Get only local physical filesystems (no network)
-  o0_o.posix.filesystems:
-    include_virtual: false
-    include_network: false
-    include_pseudo: false
+- name: Report only local filesystems on block devices
+  o0_o.posix.mounts:
+    network: false
+    overlay: false
+    fuse: false
   register: local_mounts
 
-- name: Find mounts with low space (< 10% free)
+- name: Find mounts with less than ten percent free
   ansible.builtin.set_fact:
-    low_space_mounts: |
-      {%- set result = [] -%}
-      {%- for mount, info in mount_info.mounts.items() -%}
-        {%- if info.capacity is defined -%}
-          {%- set used = info.capacity.used.value -%}
-          {%- set total = info.capacity.total.value -%}
-          {%- set percent_used = (used / total * 100) | round -%}
-          {%- if percent_used > 90 -%}
-            {%- set _ = result.append({
-              'mount': mount,
-              'device': info.device,
-              'percent_used': percent_used
-            }) -%}
-          {%- endif -%}
-        {%- endif -%}
-      {%- endfor -%}
-      {{ result }}
-  when: mount_info.mounts
+    low_space_mounts: >-
+      {{ mount_info.mounts
+         | dict2items(key_name='mount', value_name='info')
+         | selectattr('info.capacity.used.percent', 'gt', 90)
+         | list }}
+
+- name: Name a mount's source, whatever kind of source it is
+  ansible.builtin.debug:
+    msg: >-
+      {{ item.key }} is
+      {{ item.value.source.path
+         | default(item.value.source.address)
+         | default(item.value.source.name)
+         | default('unnamed') }}
+  loop: "{{ mount_info.mounts | dict2items }}"
+
+- name: Read a mount option by its normalized name
+  ansible.builtin.debug:
+    msg: "/ is writable: {{ mount_info.mounts['/'].options.writable }}"
+  when: mount_info.mounts['/'].options.writable is defined
 
 - name: Display fstab entries
   ansible.builtin.debug:
@@ -169,141 +170,172 @@ EXAMPLES = r"""
 
 RETURN = r"""
 mounts:
-  description: Dictionary of mounted filesystems
+  description: >-
+    What is mounted, keyed by mount point. Composed from C(df) and
+    C(mount) together, so a mount point C(df) did not report is not
+    reported here either. M(o0_o.posix.facts) publishes the same
+    composition under C(o0_storage.mounts).
   returned: always
   type: dict
   contains:
-    <mount_point>:
-      description: Information about a specific mount point
+    source:
+      description: >-
+        What is mounted there, as C(df) named it - a C(path) for a
+        device, an C(address) for a network export, a C(uuid) or
+        C(label) for a named volume, a C(map) for an automounter, or a
+        C(name) for a special filesystem. Null where the source is
+        C(none) or C(-).
+      type: dict
+      sample:
+        path: /dev/sda1
+    type:
+      description: Filesystem type, as C(mount) named it
+      returned: when mount reported the mount point too
+      type: str
+      sample: ext4
+    options:
+      description: >-
+        The options it was mounted with, merged into one dict with
+        normalized names - C(ro) reads as C(writable: false), C(nosuid)
+        as C(suid: false), the C(atime) family collapses into a single
+        C(atime) enum of C(true), C(false), C(relative) or C(strict),
+        and an option carrying a value keeps it. This is a dict where
+        the C(fstab) return's C(options) is a list of dicts, because
+        C(mount) reports the options in effect while C(fstab) records
+        the order they were written in.
+      returned: when mount reported the mount point too
+      type: dict
+      sample:
+        writable: true
+        suid: false
+        atime: relative
+    capacity:
+      description: How much of the filesystem C(df) reported in use.
       type: dict
       contains:
-        device:
-          description: Device or source of the mount
-          type: str
-          sample: "/dev/sda1"
-        filesystem:
-          description: Filesystem type
-          type: str
-          sample: "ext4"
-        capacity:
-          description: Capacity information from df command
-          returned: when df command is available
+        total:
+          description: Size of the filesystem
           type: dict
           contains:
-            total:
-              description: Total capacity
-              type: dict
-              contains:
-                value:
-                  description: Total capacity in bytes
-                  type: int
-                  sample: 10737418240
-                unit:
-                  description: Unit of measurement
-                  type: str
-                  sample: "B"
-            used:
-              description: Used capacity
-              type: dict
-              contains:
-                value:
-                  description: Used capacity in bytes
-                  type: int
-                  sample: 5368709120
-                unit:
-                  description: Unit of measurement
-                  type: str
-                  sample: "B"
+            bytes:
+              description: Size in bytes
+              type: int
+              sample: 10737418240
+            pretty:
+              description: Size in binary units
+              type: str
+              sample: 10.00 GiB
+        used:
+          description: Space in use
+          type: dict
+          contains:
+            bytes:
+              description: Bytes in use
+              type: int
+              sample: 5368709120
+            pretty:
+              description: Space in use, in binary units
+              type: str
+              sample: 5.00 GiB
+            percent:
+              description: >-
+                Share of the filesystem in use, computed from the byte
+                counts rather than taken from C(df)
+              type: float
+              sample: 50.0
   sample:
     "/":
-      device: "/dev/sda1"
-      filesystem: "ext4"
+      source:
+        path: /dev/sda1
+      type: ext4
+      options:
+        writable: true
+        atime: relative
       capacity:
         total:
-          value: 10737418240
-          unit: "B"
+          bytes: 10737418240
+          pretty: 10.00 GiB
         used:
-          value: 5368709120
-          unit: "B"
-    "/boot":
-      device: "/dev/sda2"
-      filesystem: "ext4"
+          bytes: 5368709120
+          pretty: 5.00 GiB
+          percent: 50.0
+    /home:
+      source:
+        uuid: 1b0f9a2c-6d31-4e5a-9c77-2f4d8e6a1b03
+        partition: false
+      type: xfs
+      options:
+        writable: true
       capacity:
         total:
-          value: 524288000
-          unit: "B"
+          bytes: 107374182400
+          pretty: 100.00 GiB
         used:
-          value: 104857600
-          unit: "B"
-    "/home":
-      device: "/dev/sdb1"
-      filesystem: "xfs"
-      capacity:
-        total:
-          value: 107374182400
-          unit: "B"
-        used:
-          value: 21474836480
-          unit: "B"
+          bytes: 21474836480
+          pretty: 20.00 GiB
+          percent: 20.0
 fstab:
-  description: List of parsed /etc/fstab entries
+  description: >-
+    The entries C(/etc/fstab) names, in file order, or an empty list
+    where the file could not be read. Every key is present on every
+    entry, null where the file omitted the field.
+    M(o0_o.posix.facts) publishes the same list under
+    C(o0_storage.config['/etc/fstab']).
   returned: always
   type: list
   elements: dict
   contains:
     source:
-      description: Device or filesystem source
+      description: >-
+        What to mount, as the file spells it - a device path, or a
+        C(UUID=) or C(LABEL=) form, left unparsed
       type: str
-      sample: "/dev/sda1"
+      sample: UUID=abc-123
     mount:
-      description: Mount point (null for swap)
+      description: Where to mount it, null for swap
       type: str
-      sample: "/"
+      sample: /
     type:
-      description: Filesystem type
-      type: str
-      sample: "ext4"
+      description: >-
+        Filesystem type, or the list of them where the field named
+        more than one
+      type: raw
+      sample: ext4
     options:
-      description: Mount options as list of dicts
+      description: >-
+        Mount options in file order, one single-key dict each, the
+        value C(true) for a flag and the string for an option carrying
+        one. A list of dicts where the C(mounts) return's C(options) is
+        a merged dict.
       type: list
       elements: dict
       sample:
         - defaults: true
         - noatime: true
     dump:
-      description: Dump frequency (null if omitted in fstab)
+      description: Dump frequency, null if the file omitted it
       type: int
       sample: 0
     pass:
-      description: Fsck pass number (null if omitted in fstab)
+      description: Fsck pass number, null if the file omitted it
       type: int
       sample: 1
   sample:
-    - source: "/dev/sda1"
-      mount: "/"
-      type: "ext4"
+    - source: UUID=abc-123
+      mount: /
+      type: ext4
       options:
         - defaults: true
         - noatime: true
       dump: 0
       pass: 1
-    - source: "/dev/sda2"
-      mount: "/home"
-      type: "ext4"
+    - source: /dev/sda2
+      mount: null
+      type: swap
       options:
-        - defaults: true
+        - sw: true
       dump: 0
-      pass: 2
-mount_count:
-  description: Number of mounted filesystems found
-  returned: always
-  type: int
-  sample: 3
-msg:
-  description: Summary message
-  returned: always
-  type: str
-  sample: "Found 3 mounted filesystem(s)"
+      pass: 0
 changed:
   description: Always false as this is an information gathering module
   returned: always

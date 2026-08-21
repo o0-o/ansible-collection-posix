@@ -1,5 +1,4 @@
 plugins/modules/facts.py validate-modules:bad-return-value-key # facts are keyed by real paths (/etc/fstab, /etc/localtime); bracket notation is the collection's access convention
-plugins/modules/mounts.py validate-modules:bad-return-value-key # mounts are keyed by mount point; bracket notation is the collection's access convention
 plugins/modules/read.py validate-modules:bad-return-value-key # results are keyed by the path read; bracket notation is the collection's access convention
 plugins/modules/uptime.py validate-modules:bad-return-value-key # load averages are keyed by window (1m, 5m, 15m); bracket notation is the collection's access convention
 plugins/modules/users.py validate-modules:bad-return-value-key # a user's keys entry shadows dict.keys in dot notation only; bracket notation is the collection's access convention

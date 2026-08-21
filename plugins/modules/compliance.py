@@ -21,15 +21,22 @@ description:
   - Tests whether the target system is POSIX-compliant by checking for
     POSIX and X/Open compliance using getconf commands.
   - Returns detailed compliance information in the C(compliance) key.
-  - Use the C(posix) Jinja2 test to check if the system is
-    POSIX-compliant based on the returned compliance data.
+  - Read C(compliance.posix.supported) to decide whether the system is
+    POSIX-compliant. It answers C(true), C(false), or C("partial") where
+    only one of XSH and XCU is supported, so a task that needs full
+    compliance tests for C(true) rather than for truthiness.
   - Does not require Python on the target host.
 options:
   gather:
     description:
-      - When true, also sets compliance data in ansible_facts.o0_os.compliance.
+      - When true, also publishes everything this module answers with as
+        facts - C(o0_os.compliance), C(o0_os.shells), C(o0_paths) and
+        C(o0_missing.commands).
       - This allows the compliance data to be used by subsequent tasks via
         ansible_facts without needing to register the result.
+      - The facts are the same values this module returns, under the
+        names M(o0_o.posix.facts) publishes them by, because both
+        producers share the processor that names them.
     type: bool
     default: false
     version_added: "2.0.0"
@@ -76,12 +83,14 @@ EXAMPLES = r"""
 
 - name: Display POSIX compliance status
   ansible.builtin.debug:
-    msg: "System is POSIX-compliant: {{ ansible_facts is posix }}"
+    msg: >-
+      System is POSIX-compliant:
+      {{ posix_compliance.compliance.posix.supported }}
 
-- name: Run POSIX-specific task only if compliant
+- name: Run POSIX-specific task only if fully compliant
   o0_o.posix.command:
     argv: [grep, -E, "pattern", /etc/passwd]
-  when: ansible_facts is posix
+  when: posix_compliance.compliance.posix.supported is true
 
 - name: Skip tasks on non-POSIX systems
   block:
@@ -91,14 +100,21 @@ EXAMPLES = r"""
     - name: Run POSIX commands
       o0_o.posix.command:
         cmd: find /var -name "*.log"
-  when: ansible_facts is posix
+  when: ansible_facts.o0_os.compliance.posix.supported is true
+
+- name: Report which utilities a partially compliant host is missing
+  ansible.builtin.debug:
+    msg: >-
+      Missing: {{ posix_compliance.missing_commands | join(', ') }}
+  when: posix_compliance.compliance.posix.supported != true
 """
 
 RETURN = r"""
 ansible_facts:
   description: >-
-    Ansible facts set when gather=true. Contains o0_os.compliance with
-    the same structure as the compliance return value.
+    The facts published when C(gather=true) - every value this module
+    returns, under the names the shared processor gives them. Nothing
+    here is un-prefixed, and nothing this module returns is left out.
   returned: when gather=true
   type: dict
   contains:
@@ -108,8 +124,25 @@ ansible_facts:
       contains:
         compliance:
           description: >-
-            Compliance data (same structure as compliance return value)
+            Compliance data, the same structure as the C(compliance)
+            return value
           type: dict
+        shells:
+          description: >-
+            The same structure as the C(shells) return value
+          type: dict
+    o0_paths:
+      description: The same structure as the C(paths) return value
+      type: dict
+    o0_missing:
+      description: What the host was asked for and did not have
+      type: dict
+      contains:
+        commands:
+          description: >-
+            The same list as the C(missing_commands) return value
+          type: list
+          elements: str
 compliance:
   description: >-
     Dictionary of compliance standards detected. Contains top-level keys for
@@ -150,7 +183,9 @@ compliance:
               type: str
               sample: "POSIX.1-2008"
         canaries:
-          description: Raw getconf values for verification
+          description: >-
+            What was asked and what answered - C(getconf) maps the
+            variable probed to the value it printed
           type: dict
           sample:
             getconf:
@@ -172,8 +207,10 @@ compliance:
           type: str
           sample: "POSIX Shell and Utilities"
         supported:
-          description: Whether XCU is supported
-          type: bool
+          description: >-
+            Whether XCU is supported. Can be true, false, or "partial"
+            when a required utility is missing.
+          type: raw
           sample: true
         version:
           description: Version information (when supported)
@@ -188,7 +225,12 @@ compliance:
               type: str
               sample: "POSIX.1-2008"
         canaries:
-          description: Raw getconf values for verification
+          description: >-
+            What was asked and what answered. C(getconf) maps each
+            variable probed to the value it printed, null where the
+            variable was probed and the platform would not answer.
+            C(missing) appears beside it only when a required utility
+            was not found, and names the ones that were not.
           type: dict
           sample:
             getconf:
@@ -210,27 +252,36 @@ compliance:
           type: str
           sample: "SUS X/Open System Interfaces (UNIX extensions to POSIX)"
         supported:
-          description: Whether XSI is supported
-          type: bool
+          description: >-
+            Whether XSI is supported. Can be true, false, or "partial"
+            when a required utility is missing.
+          type: raw
           sample: true
         version:
           description: Version information (when supported)
           type: dict
           contains:
             issue:
-              description: X/Open Issue number
-              type: float
-              sample: 7.0
+              description: >-
+                X/Open Issue number, the C(_XOPEN_VERSION) getconf
+                printed divided by one hundred
+              type: int
+              sample: 7
             pretty:
               description: Human-readable issue string
               type: str
               sample: "Issue 7"
         canaries:
-          description: Raw getconf values for verification
+          description: >-
+            What was asked and what answered. C(getconf) maps each
+            variable probed to the value it printed, null where the
+            variable was probed and the platform would not answer.
+            C(missing) appears beside it only when a required utility
+            was not found, and stands alone naming C(getconf) itself
+            when the host has no C(getconf) to ask.
           type: dict
           sample:
             getconf:
-              _XOPEN_UNIX: "1"
               _XOPEN_VERSION: "700"
     posix:
       description: Overall POSIX compliance (requires XSH + XCU)
@@ -271,19 +322,24 @@ compliance:
           type: str
           sample: "Unified UNIX standard combining POSIX with XSI extensions"
         supported:
-          description: Whether SUS is supported
-          type: bool
+          description: >-
+            Whether SUS is supported. Can be true, false, or "partial"
+            when XSI is supported but POSIX is not fully.
+          type: raw
           sample: true
         version:
-          description: Version information (when supported)
+          description: >-
+            Version information, returned only when both POSIX and XSI
+            are fully supported and XSI named an issue
+          returned: when SUS is fully supported
           type: dict
           contains:
             issue:
-              description: X/Open Issue number
-              type: float
-              sample: 7.0
+              description: The X/Open Issue number this version derives from
+              type: int
+              sample: 7
             id:
-              description: SUS version number
+              description: SUS version number, the XSI issue less three
               type: int
               sample: 4
             pretty:
@@ -292,18 +348,42 @@ compliance:
               sample: "v4"
 shells:
   description: >-
-    Dictionary mapping shell paths to their properties, including detected
-    builtins.
+    What the host's C(/bin/sh) is, keyed by its path. Describes the one
+    shell the probes ran in, not the login shells C(/etc/shells) names -
+    M(o0_o.posix.users) and M(o0_o.posix.facts) answer that under
+    C(o0_shells).
   returned: always
   type: dict
-  sample:
-    /bin/sh:
-      builtins:
+  contains:
+    aliases:
+      description: >-
+        The aliases the shell reported, mapping the alias name to what
+        it expands to
+      type: dict
+      sample:
+        ls: ls --color=auto
+    builtins:
+      description: >-
+        The probed commands the shell answers itself rather than by
+        running a file, sorted
+      type: list
+      elements: str
+      sample:
+        - "["
         - command
         - test
+  sample:
+    /bin/sh:
+      aliases: {}
+      builtins:
         - "["
+        - command
+        - test
 paths:
-  description: Dictionary of command paths found on the system
+  description: >-
+    The paths the probed commands resolve to, keyed by path. Each value
+    is an empty dict, left as room for metadata another producer may
+    fill.
   returned: always
   type: dict
   sample:
@@ -311,7 +391,10 @@ paths:
     /usr/bin/grep: {}
     /bin/sh: {}
 missing_commands:
-  description: List of required commands not found on the system
+  description: >-
+    The probed commands C(command -v) could not find, sorted. Names
+    C(command) alone when C(command) itself is missing, since no other
+    lookup can be trusted then.
   returned: always
   type: list
   elements: str

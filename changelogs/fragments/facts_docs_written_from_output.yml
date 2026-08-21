@@ -1,0 +1,42 @@
+---
+bugfixes:
+  - >-
+    facts - The RETURN block described a namespace layout the module
+    had not published since March. It promised o0_os.time with an
+    epoch and a zone config, an o0_os.locale from a subset that does
+    not exist, o0_os.users, o0_os.groups and o0_os.shells that are
+    top-level names, an o0_os.compliance the gather never reached, and
+    a hardware subset renamed to dmidecode. It is written from what a
+    gather publishes now: all eleven namespaces, o0_homes,
+    o0_shell_files, o0_paths and o0_missing among them, each key named
+    for the producer that fills it. The storage group was missing from
+    the choices list, so ansible-doc hid a spelling the module accepts,
+    and the two descriptions of min called it uname only when it is
+    uname, environment, timezone and compliance
+    (https://github.com/o0-o/ansible-collection-posix/pull/XXX).
+  - >-
+    mounts - The RETURN block named a device and a filesystem where
+    the module answers with a source and a type, gave capacity a value
+    and a unit where it carries bytes and pretty, and documented
+    neither the options mount contributes nor the percent df's numbers
+    yield. It promised a mount_count and a msg the module has never
+    set, and its notes said a host without df still gets mounts
+    without capacity when df is what names them. The examples invoked
+    a filesystems module that does not exist and passed options named
+    include_virtual and include_network that the module does not take
+    (https://github.com/o0-o/ansible-collection-posix/pull/XXX).
+  - >-
+    compliance - The ansible_facts contains block documented
+    o0_os.compliance alone, omitting the o0_os.shells, o0_paths and
+    o0_missing.commands the module publishes beside it. The XSI and
+    SUS issue numbers were typed float and produced int. XCU, XSI and
+    SUS supported were typed bool and answer partial as well, and the
+    shells return documented its builtins without its aliases
+    (https://github.com/o0-o/ansible-collection-posix/pull/XXX).
+  - >-
+    compliance, facts - Both modules told playbooks to read a posix
+    Jinja2 test that no collection in the namespace defines, in three
+    examples and a description. They read
+    compliance.posix.supported instead, and test it for true rather
+    than for truthiness, since partial is a value it takes
+    (https://github.com/o0-o/ansible-collection-posix/pull/XXX).
