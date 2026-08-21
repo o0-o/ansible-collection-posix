@@ -22,5 +22,10 @@
     "alpine:3.21",
     "alpine:latest",
     "alpine:edge"
-  ]
+  ],
+  "arch": {
+    "archlinux": [
+      "x86_64"
+    ]
+  }
 }
