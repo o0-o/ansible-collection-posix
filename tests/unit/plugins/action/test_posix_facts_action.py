@@ -55,14 +55,24 @@ PRODUCER_FACTS = {
     },
     "mounts": {
         "o0_storage": {
-            "mounts": [
-                {
+            "mounts": {
+                "/": {
                     "source": {"path": "/dev/disk3s1s1"},
-                    "mount": "/",
+                    "capacity": {
+                        "total": {
+                            "bytes": 494384795648,
+                            "pretty": "460.43 GiB",
+                        },
+                        "used": {
+                            "bytes": 10485760000,
+                            "pretty": "9.77 GiB",
+                            "percent": 2.12,
+                        },
+                    },
                     "type": "apfs",
                     "options": {"local": True, "read-only": True},
                 },
-            ],
+            },
         },
     },
     "compliance": {
@@ -635,7 +645,7 @@ class TestDefaultGather:
         assert gathered["o0_os"]["timezone"]["abbreviation"] == "EDT"
         assert gathered["o0_os"]["compliance"]["posix"]["supported"] is True
         assert gathered["o0_hardware"]["baseboard"]["make"] == "Apple Inc."
-        assert gathered["o0_storage"]["mounts"][0]["mount"] == "/"
+        assert gathered["o0_storage"]["mounts"]["/"]["type"] == "apfs"
         assert gathered["o0_storage"]["config"]["/etc/fstab"][0]["type"] == (
             "ffs"
         )
@@ -643,6 +653,14 @@ class TestDefaultGather:
         assert gathered["o0_users"]["0"]["environment"]["LANG"] == (
             "en_US.UTF-8"
         )
+
+    def test_mounts_are_keyed_and_carry_capacity(self, gathered) -> None:
+        """Test the gathered mounts fact is the shape the mounts
+        module returns: keyed by mount point, capacity included."""
+        mounts = gathered["o0_storage"]["mounts"]
+        assert list(mounts) == ["/"]
+        assert isinstance(mounts["/"]["capacity"]["total"]["bytes"], int)
+        assert "mount" not in mounts["/"]
 
     def test_shells_is_a_list_of_paths(self, gathered) -> None:
         """Test o0_shells is the list of shells /etc/shells names,

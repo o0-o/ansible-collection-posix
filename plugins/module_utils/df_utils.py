@@ -225,6 +225,32 @@ def parse_df(content: str) -> list[dict[str, Any]]:
     return normalized
 
 
+def _parse_df(
+    output: str,
+    e_prefix: str,
+) -> tuple[Optional[list[dict[str, Any]]], Optional[list[Exception]]]:
+    """Canonical COMMAND_SPEC parser for ``df -P`` output.
+
+    :param str output: Raw stdout from ``df -P``
+    :param str e_prefix: Error prefix for context
+    :returns tuple[Optional[list[dict[str, Any]]], Optional[list[Exception]]]:
+        Parsed df entries and list of errors
+    """
+    errors: list[Exception] = []
+    text = (output or "").strip()
+    if not text:
+        errors.append(ValueError(f"{e_prefix}Empty df output"))
+        return None, errors
+
+    try:
+        parsed = parse_df(text)
+    except Exception as e:
+        errors.append(ValueError(f"{e_prefix}Failed to parse df: {e}"))
+        return None, errors
+
+    return parsed, errors
+
+
 def df(config: Union[str, dict[str, Any]]) -> list[dict[str, Any]]:
     """Process df data - parse command output into structured format.
 

@@ -16,7 +16,9 @@ from typing import Any, Optional
 from ansible.errors import AnsibleActionFail
 from ansible.plugins.action import ActionBase
 from ansible_collections.o0_o.posix.plugins.module_utils import (
+    MOUNT_FILTER_DEFAULTS,
     PosixActionBase,
+    compose_mounts,
     df,
     mount,
     parse_fstab,
@@ -120,66 +122,39 @@ class ActionModule(PosixActionBase, ActionBase):
     def _get_mounts_dict(
         self, task_vars: dict[str, Any]
     ) -> dict[str, dict[str, Any]]:
-        """Get mount information as a dict keyed by mountpoint.
+        """Get the mounts fact, keyed by mount point.
 
-        This method:
-        1. Runs df and filters it, converting to dict with mountpoint
-           keys
-        2. Runs mount and filters it
-        3. Merges mount entries into the df dict
-        4. Only includes mount entries that have keys from the df dict
+        The composition is shared with the facts module, which
+        publishes the same shape under ``o0_storage.mounts``; this
+        module only chooses which filesystem categories to report.
 
         :param task_vars: Task variables dictionary
         :returns: Dict of mount entries keyed by mountpoint
         """
-        # Step 1: Get df output and convert to dict with mountpoint keys
-        df_dict = self._get_df_dict(task_vars)
-
-        # Step 2: Get mount output
+        df_list = self._get_df_list(task_vars)
         mount_list = self._get_mount_list(task_vars)
 
-        # Step 3: Merge mount data into df dict
-        # Only process mount entries that match df entries
-        for mount_entry in mount_list:
-            mountpoint = mount_entry.get("mount")
-            if not mountpoint:
-                continue
+        mounts, notes = compose_mounts(
+            df_list,
+            mount_list,
+            filters={
+                name: self._task.args.get(name, default)
+                for name, default in MOUNT_FILTER_DEFAULTS.items()
+            },
+        )
 
-            # Only merge if this mountpoint exists in df output
-            if mountpoint in df_dict:
-                df_entry = df_dict[mountpoint]
+        for note in notes:
+            self._display.vvv(note)
 
-                # Check if sources match
-                df_source = df_entry.get("source")
-                mount_source = mount_entry.get("source")
+        return mounts
 
-                # Merge mount data into df entry
-                # Mount provides type and options that df doesn't have
-                if "type" in mount_entry:
-                    df_entry["type"] = mount_entry["type"]
-                if "options" in mount_entry:
-                    df_entry["options"] = mount_entry["options"]
-
-                # If sources don't match, log it but still merge
-                if df_source and mount_source and df_source != mount_source:
-                    self._display.vvv(
-                        f"Mount point {mountpoint}: df reports source as "
-                        f"'{df_source}' but mount reports '{mount_source}'. "
-                        f"Using df source."
-                    )
-
-        # Step 4: Filter the final dict based on module arguments
-        filtered_dict = self._filter_mounts_dict(df_dict)
-
-        return filtered_dict
-
-    def _get_df_dict(
+    def _get_df_list(
         self, task_vars: dict[str, Any]
-    ) -> dict[str, dict[str, Any]]:
-        """Get df output and convert to dict keyed by mountpoint.
+    ) -> list[dict[str, Any]]:
+        """Get df output as a list.
 
         :param task_vars: Task variables dictionary
-        :returns: Dict of df entries keyed by mountpoint
+        :returns: List of df entries
         :raises AnsibleActionFail: If df command fails
         """
         try:
@@ -189,19 +164,7 @@ class ActionModule(PosixActionBase, ActionBase):
             )
 
             # Parse using df filter from module_utils
-            df_list = df(df_result)
-
-            # Convert to dict keyed by mountpoint
-            df_dict = {}
-            for entry in df_list:
-                mountpoint = entry.get("mount")
-                if mountpoint:
-                    # Remove the redundant 'mount' key since mountpoint
-                    # is the dict key
-                    entry.pop("mount", None)
-                    df_dict[mountpoint] = entry
-
-            return df_dict
+            return df(df_result)
 
         except Exception as e:
             raise AnsibleActionFail(f"Failed to execute df command: {e}")
@@ -261,127 +224,3 @@ class ActionModule(PosixActionBase, ActionBase):
                 f"Could not read /etc/fstab: {type(e).__name__}: {e}"
             )
             return []
-
-    def _should_include_mount(self, mount_info: dict[str, Any]) -> bool:
-        """Check if mount should be included based on filter arguments.
-
-        :param mount_info: Mount entry to check
-        :returns: True if the mount should be included
-        """
-        include_device = self._task.args.get("device", True)
-        include_virtual = self._task.args.get("virtual", False)
-        include_network = self._task.args.get("network", True)
-        include_pseudo = self._task.args.get("pseudo", None)
-        include_overlay = self._task.args.get("overlay", True)
-        include_fuse = self._task.args.get("fuse", True)
-
-        # Default pseudo to virtual if not specified
-        if include_pseudo is None:
-            include_pseudo = include_virtual
-
-        fs_type = mount_info.get("type", "")
-
-        # Categorize filesystem types
-        virtual_types = {
-            "tmpfs",
-            "devtmpfs",
-            "proc",
-            "sysfs",
-            "devpts",
-            "securityfs",
-            "cgroup",
-            "cgroup2",
-            "debugfs",
-            "tracefs",
-            "configfs",
-            "fusectl",
-            "pstore",
-            "efivarfs",
-            "bpf",
-            "autofs",
-            "mqueue",
-            "hugetlbfs",
-            "rpc_pipefs",
-            "binfmt_misc",
-            "ramfs",
-        }
-
-        network_types = {
-            "nfs",
-            "nfs4",
-            "cifs",
-            "smb",
-            "smbfs",
-            "ncpfs",
-            "ncp",
-            "afs",
-            "coda",
-            "ftpfs",
-            "sshfs",
-            "webdav",
-            "davfs",
-        }
-
-        overlay_types = {"overlay", "overlayfs", "aufs", "unionfs"}
-
-        # Pseudo filesystems (subset of virtual)
-        pseudo_types = {
-            "proc",
-            "sysfs",
-            "devpts",
-            "devtmpfs",
-            "securityfs",
-            "debugfs",
-            "tracefs",
-            "configfs",
-            "fusectl",
-            "pstore",
-            "efivarfs",
-            "bpf",
-            "cgroup",
-            "cgroup2",
-            "mqueue",
-            "hugetlbfs",
-            "rpc_pipefs",
-        }
-
-        # Check filesystem type categories
-        is_virtual = fs_type in virtual_types
-        is_network = fs_type in network_types
-        is_overlay = fs_type in overlay_types
-        is_pseudo = fs_type in pseudo_types
-        is_fuse = fs_type.startswith("fuse")
-
-        # Device filesystems are those not in any special category
-        is_device = not (is_virtual or is_network or is_overlay or is_fuse)
-
-        # Apply filters
-        if not include_device and is_device:
-            return False
-        if not include_virtual and is_virtual:
-            return False
-        if not include_network and is_network:
-            return False
-        if not include_overlay and is_overlay:
-            return False
-        if not include_pseudo and is_pseudo:
-            return False
-        if not include_fuse and is_fuse:
-            return False
-
-        return True
-
-    def _filter_mounts_dict(
-        self, mounts_dict: dict[str, dict[str, Any]]
-    ) -> dict[str, dict[str, Any]]:
-        """Filter mounts dict based on module arguments.
-
-        :param mounts_dict: Dict of all mounts keyed by mountpoint
-        :returns: Filtered dict of mounts
-        """
-        filtered = {}
-        for mountpoint, mount_info in mounts_dict.items():
-            if self._should_include_mount(mount_info):
-                filtered[mountpoint] = mount_info
-
-        return filtered

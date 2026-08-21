@@ -71,7 +71,10 @@ from ansible_collections.o0_o.posix.plugins.module_utils.passwd_utils import (
     passwd_info,
 )
 from ansible_collections.o0_o.posix.plugins.module_utils.mount_utils import (
+    MOUNT_FILTER_DEFAULTS,
+    compose_mounts,
     get_mount_command_requests,
+    include_mount,
     mount,
     parse_mount,
     parse_mount_entry,
@@ -170,7 +173,10 @@ __all__ = [
     "group_info",
     "normalize_group_members",
     "passwd_info",
+    "MOUNT_FILTER_DEFAULTS",
+    "compose_mounts",
     "get_mount_command_requests",
+    "include_mount",
     "mount",
     "parse_mount",
     "parse_mount_entry",

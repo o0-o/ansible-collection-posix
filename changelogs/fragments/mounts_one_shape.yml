@@ -1,0 +1,23 @@
+---
+breaking_changes:
+  - >-
+    facts - o0_storage.mounts is a dict keyed by mount point, not a
+    flat list, and every entry carries the capacity df reports beside
+    the type and options mount reports. The mounts module has answered
+    with that shape since it was written; the gather answered with
+    mount alone, so the same name held two different answers depending
+    on which producer filled it. One composition builds the fact for
+    both, and the mount field each entry carried is now the key. A
+    playbook walking o0_storage.mounts as a list must read the values
+    of the dict instead
+    (https://github.com/o0-o/ansible-collection-posix/pull/XXX).
+minor_changes:
+  - >-
+    facts - The mounts subset runs df -P alongside mount in the same
+    batch, so a gathered mount carries capacity without a second round
+    trip (https://github.com/o0-o/ansible-collection-posix/pull/XXX).
+  - >-
+    mounts - The df and mount merge, and the filesystem categories the
+    module selects by, move to module_utils where the facts module
+    shares them. The module's own return shape is unchanged
+    (https://github.com/o0-o/ansible-collection-posix/pull/XXX).

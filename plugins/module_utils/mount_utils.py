@@ -13,6 +13,12 @@
 
 The canonical parser is ``_parse_mount`` which implements the
 COMMAND_SPEC ``(output, e_prefix) -> (parsed, errors)`` contract.
+
+``compose_mounts`` is the one definition of the mounts fact: what
+``df`` reports, keyed by mount point and carrying the capacity only
+``df`` knows, with the type and options only ``mount`` knows merged
+in.  Every producer of the fact composes it here so consumers see one
+shape.
 """
 
 from __future__ import annotations
@@ -75,6 +81,83 @@ ATIME_OPTIONS = {
     "noatime": False,  # No access time updates
     "relatime": "relative",  # Update atime relative to mtime/ctime
     "strictatime": "strict",  # Always update atime (kernel default)
+}
+
+# Filesystem type categories the mounts fact is selected by
+VIRTUAL_FS_TYPES = {
+    "tmpfs",
+    "devtmpfs",
+    "proc",
+    "sysfs",
+    "devpts",
+    "securityfs",
+    "cgroup",
+    "cgroup2",
+    "debugfs",
+    "tracefs",
+    "configfs",
+    "fusectl",
+    "pstore",
+    "efivarfs",
+    "bpf",
+    "autofs",
+    "mqueue",
+    "hugetlbfs",
+    "rpc_pipefs",
+    "binfmt_misc",
+    "ramfs",
+}
+
+NETWORK_FS_TYPES = {
+    "nfs",
+    "nfs4",
+    "cifs",
+    "smb",
+    "smbfs",
+    "ncpfs",
+    "ncp",
+    "afs",
+    "coda",
+    "ftpfs",
+    "sshfs",
+    "webdav",
+    "davfs",
+}
+
+OVERLAY_FS_TYPES = {"overlay", "overlayfs", "aufs", "unionfs"}
+
+# Pseudo filesystems, a subset of the virtual ones
+PSEUDO_FS_TYPES = {
+    "proc",
+    "sysfs",
+    "devpts",
+    "devtmpfs",
+    "securityfs",
+    "debugfs",
+    "tracefs",
+    "configfs",
+    "fusectl",
+    "pstore",
+    "efivarfs",
+    "bpf",
+    "cgroup",
+    "cgroup2",
+    "mqueue",
+    "hugetlbfs",
+    "rpc_pipefs",
+}
+
+# Which categories a producer reports when it is not told otherwise.
+# A virtual filesystem stores nothing that outlives a boot, so it
+# stays out of the answer both producers give.  ``pseudo`` follows
+# ``virtual`` wherever it is left unset.
+MOUNT_FILTER_DEFAULTS = {
+    "device": True,
+    "virtual": False,
+    "network": True,
+    "pseudo": None,
+    "overlay": True,
+    "fuse": True,
 }
 
 
@@ -294,6 +377,112 @@ def mount(config: Union[str, dict[str, Any]]) -> list[dict[str, Any]]:
     raise ValueError("Failed to parse mount output")
 
 
+def include_mount(
+    entry: dict[str, Any],
+    filters: Optional[dict[str, Any]] = None,
+) -> bool:
+    """Decide whether a mount belongs in the fact.
+
+    :param dict[str, Any] entry: Composed mount entry
+    :param Optional[dict[str, Any]] filters: Category selections,
+        defaulting to MOUNT_FILTER_DEFAULTS for anything unnamed
+    :returns bool: True when the entry should be reported
+    """
+    selected = dict(MOUNT_FILTER_DEFAULTS)
+    selected.update(
+        {k: v for k, v in (filters or {}).items() if v is not None}
+    )
+    if selected["pseudo"] is None:
+        selected["pseudo"] = selected["virtual"]
+
+    fs_type = entry.get("type") or ""
+
+    is_virtual = fs_type in VIRTUAL_FS_TYPES
+    is_network = fs_type in NETWORK_FS_TYPES
+    is_overlay = fs_type in OVERLAY_FS_TYPES
+    is_pseudo = fs_type in PSEUDO_FS_TYPES
+    is_fuse = fs_type.startswith("fuse")
+
+    # A device filesystem is one in no other category
+    is_device = not (is_virtual or is_network or is_overlay or is_fuse)
+
+    categories = (
+        ("device", is_device),
+        ("virtual", is_virtual),
+        ("network", is_network),
+        ("overlay", is_overlay),
+        ("pseudo", is_pseudo),
+        ("fuse", is_fuse),
+    )
+
+    return not any(
+        member and not selected[name] for name, member in categories
+    )
+
+
+def compose_mounts(
+    df_entries: list[dict[str, Any]],
+    mount_entries: list[dict[str, Any]],
+    filters: Optional[dict[str, Any]] = None,
+) -> tuple[dict[str, dict[str, Any]], list[str]]:
+    """Compose the canonical mounts fact from df and mount.
+
+    The fact is keyed by mount point, so the ``mount`` field each
+    parser reports becomes the key rather than a field.  ``df`` names
+    what is mounted and how much of it is used; ``mount`` names the
+    filesystem type and the options it was mounted with.  A mount
+    point ``df`` did not report is not reported here either: without
+    ``df`` there is no capacity, and half the fact under the same name
+    is the drift this composition exists to end.
+
+    Where the two commands disagree about a mount point's source,
+    ``df`` is taken and the disagreement is described in the returned
+    notes, for a caller with somewhere to put them.
+
+    :param list[dict[str, Any]] df_entries: Parsed ``df -P`` entries
+    :param list[dict[str, Any]] mount_entries: Parsed ``mount`` entries
+    :param Optional[dict[str, Any]] filters: Category selections, see
+        ``include_mount``
+    :returns tuple[dict[str, dict[str, Any]], list[str]]: The mounts
+        fact keyed by mount point, and notes about source
+        disagreements
+    """
+    mounts: dict[str, dict[str, Any]] = {}
+    notes: list[str] = []
+
+    for entry in df_entries:
+        entry = dict(entry)
+        mountpoint = entry.pop("mount", None)
+        if mountpoint:
+            mounts[mountpoint] = entry
+
+    for entry in mount_entries:
+        mountpoint = entry.get("mount")
+        if not mountpoint or mountpoint not in mounts:
+            continue
+
+        composed = mounts[mountpoint]
+
+        for field in ("type", "options"):
+            if field in entry:
+                composed[field] = entry[field]
+
+        df_source = composed.get("source")
+        mount_source = entry.get("source")
+        if df_source and mount_source and df_source != mount_source:
+            notes.append(
+                f"Mount point {mountpoint}: df reports source as"
+                f" '{df_source}' but mount reports '{mount_source}'."
+                f" Using df source."
+            )
+
+    return {
+        mountpoint: entry
+        for mountpoint, entry in mounts.items()
+        if include_mount(entry, filters)
+    }, notes
+
+
 def get_mount_command_requests() -> list[dict[str, Any]]:
     """Build command requests for mount fact gathering.
 
@@ -309,7 +498,10 @@ def get_mount_command_requests() -> list[dict[str, Any]]:
 def process_mount_command_results(
     cmds_completed: list[dict[str, Any]],
 ) -> tuple[dict[str, Any], list[Exception]]:
-    """Process mount command results into structured facts.
+    """Process df and mount results into the mounts fact.
+
+    Both commands feed one fact, composed the way the mounts module
+    composes it, so a gather and a standalone run answer alike.
 
     :param list[dict[str, Any]] cmds_completed: List of command
         result dicts from run plugin
@@ -318,16 +510,25 @@ def process_mount_command_results(
         namespace key
     """
     processed = process_all_command_results(cmds_completed)
-    errors = []
+    errors: list[Exception] = []
 
+    df_result = processed.get("df")
     mount_result = processed.get("mount")
-    if mount_result is None:
-        return {}, [ValueError("No mount result found")]
+    if df_result is None or mount_result is None:
+        missing = "df" if df_result is None else "mount"
+        return {}, [ValueError(f"No {missing} result found")]
 
+    errors.extend(df_result.get("errors", []))
     errors.extend(mount_result.get("errors", []))
-    mount_facts = mount_result.get("parsed")
 
-    if mount_facts is None:
+    df_entries = df_result.get("parsed")
+    mount_entries = mount_result.get("parsed")
+
+    # Capacity comes from df alone, so a df that did not answer
+    # leaves the fact unpublished rather than published short a half.
+    if df_entries is None or mount_entries is None:
         return {}, errors
 
-    return {"o0_storage": {"mounts": mount_facts}}, errors
+    mounts, _notes = compose_mounts(df_entries, mount_entries)
+
+    return {"o0_storage": {"mounts": mounts}}, errors

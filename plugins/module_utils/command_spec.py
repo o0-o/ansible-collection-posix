@@ -27,6 +27,9 @@ from ansible_collections.o0_o.posix.plugins.module_utils.compliance_parsers impo
     _parse_xopen_support,
     _parse_xopen_version,
 )
+from ansible_collections.o0_o.posix.plugins.module_utils.df_utils import (
+    _parse_df,
+)
 from ansible_collections.o0_o.posix.plugins.module_utils.dmidecode_utils import (  # noqa: E501
     _parse_dmidecode,
 )
@@ -97,12 +100,17 @@ LOCALE_COMMAND_SPEC = {
     },
 }
 
-# Mount command spec
+# Mount command spec. The mounts fact is composed from both
+# commands: mount names the type and options, df names the capacity.
 MOUNT_COMMAND_SPEC = {
     "posix": {
         "mount": {
             "command": ("mount",),
             "parser": _parse_mount,
+        },
+        "df": {
+            "command": ("df", "-P"),
+            "parser": _parse_df,
         },
     },
 }

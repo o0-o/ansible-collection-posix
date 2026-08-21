@@ -11,11 +11,28 @@
 
 from __future__ import annotations
 
-from typing import Generator
+from typing import Any, Generator
 
 import pytest
 
 from ansible_collections.o0_o.posix.plugins.action.mounts import ActionModule
+from ansible_collections.o0_o.posix.plugins.module_utils import (
+    get_mount_command_requests,
+    process_mount_command_results,
+)
+
+# One host's answers, fed to both producers of the mounts fact
+MOUNT_OUTPUT = (
+    "/dev/sda1 on / type ext4 (rw,relatime)\n"
+    "/dev/sda2 on /boot type ext4 (rw,relatime)\n"
+    "tmpfs on /run type tmpfs (rw,nosuid,nodev)"
+)
+DF_OUTPUT = (
+    "Filesystem     1024-blocks    Used Available Capacity  Mounted on\n"
+    "/dev/sda1         1024000  512000    512000     50%   /\n"
+    "/dev/sda2          512000  256000    256000     50%   /boot\n"
+    "tmpfs              512000    1000    511000      1%   /run"
+)
 
 
 @pytest.fixture
@@ -391,3 +408,85 @@ def test_run_method(monkeypatch, plugin) -> None:
     assert len(result["fstab"]) == 2
     assert result["fstab"][0]["mount"] == "/"
     assert result["fstab"][1]["mount"] == "/home"
+
+
+def _answer(request: dict[str, Any]) -> dict[str, Any]:
+    """Answer one batched mounts request the way the run plugin does.
+
+    :param dict[str, Any] request: A mount or df command request
+    :returns dict[str, Any]: The request merged with its result
+    """
+    stdout = MOUNT_OUTPUT if request["type"] == "mount" else DF_OUTPUT
+    return dict(
+        request,
+        rc=0,
+        stdout=stdout,
+        stdout_lines=stdout.splitlines(),
+        stderr="",
+        stderr_lines=[],
+    )
+
+
+def test_both_producers_compose_one_shape(monkeypatch, plugin) -> None:
+    """Test a gather and a standalone run answer identically.
+
+    The facts module publishes this fact as o0_storage.mounts and this
+    module returns it as mounts. One composition builds both, so the
+    same host answers give the same fact either way.
+    """
+
+    def mock_cmd(cmd, task_vars=None, **kwargs):
+        if cmd == "mount":
+            return {"rc": 0, "stdout": MOUNT_OUTPUT}
+        if cmd == "df -P":
+            return {"rc": 0, "stdout": DF_OUTPUT}
+        return {"rc": 1}
+
+    monkeypatch.setattr(plugin, "_command", mock_cmd)
+
+    standalone = plugin._get_mounts_dict(task_vars={})
+
+    facts, errors = process_mount_command_results(
+        [_answer(r) for r in get_mount_command_requests()]
+    )
+    assert errors == []
+
+    gathered = facts["o0_storage"]["mounts"]
+    assert gathered == standalone
+
+    # The shape both now carry: keyed by mount point, capacity from df
+    # and type from mount in one entry, and no redundant mount field
+    assert set(gathered) == {"/", "/boot"}
+    assert gathered["/"]["type"] == "ext4"
+    assert gathered["/"]["capacity"]["total"]["bytes"] == 1024000 * 1024
+    assert gathered["/"]["options"]["writable"] is True
+    assert "mount" not in gathered["/"]
+
+
+def test_gather_without_df_publishes_nothing(plugin) -> None:
+    """Test a df that did not answer leaves the fact unpublished.
+
+    Capacity comes from df alone, so publishing the mount half under
+    the same name is the drift the shared composition ends.
+    """
+    requests = get_mount_command_requests()
+    answers = []
+    for request in requests:
+        if request["type"] == "df":
+            answers.append(
+                dict(
+                    request,
+                    rc=1,
+                    stdout="",
+                    stdout_lines=[],
+                    stderr="df: not found",
+                    stderr_lines=["df: not found"],
+                )
+            )
+        else:
+            answers.append(_answer(request))
+
+    facts, errors = process_mount_command_results(answers)
+
+    assert facts == {}
+    assert errors
