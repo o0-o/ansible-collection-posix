@@ -368,8 +368,8 @@
     block_now: "{{ block_empty_read_reg['paths'][block_dest] }}"
 
 - name: Clear the file the block create test writes
-  ansible.builtin.file:
-    path: "{{ block_created_dest }}"
+  o0_o.posix.write:
+    dest: "{{ block_created_dest }}"
     state: absent
   check_mode: false
 
@@ -414,8 +414,8 @@
   when: check
 
 - name: Clear the destination the missing file removal names
-  ansible.builtin.file:
-    path: "{{ block_missing_dest }}"
+  o0_o.posix.write:
+    dest: "{{ block_missing_dest }}"
     state: absent
   check_mode: false
 

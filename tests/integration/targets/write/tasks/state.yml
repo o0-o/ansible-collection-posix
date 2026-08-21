@@ -10,8 +10,8 @@
 # This file is part of the o0_o.posix Ansible Collection.
 
 - name: Start the bare state family from an empty tree
-  ansible.builtin.file:
-    path: "{{ state_dir }}"
+  o0_o.posix.write:
+    dest: "{{ state_dir }}"
     state: absent
   check_mode: false
 

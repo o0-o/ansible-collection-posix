@@ -10,8 +10,8 @@
 # This file is part of the o0_o.posix Ansible Collection.
 
 - name: Start the template family from an empty tree
-  ansible.builtin.file:
-    path: "{{ tmpl_dir }}"
+  o0_o.posix.write:
+    dest: "{{ tmpl_dir }}"
     state: absent
   check_mode: false
 

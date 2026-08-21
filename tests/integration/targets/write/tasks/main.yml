@@ -9,19 +9,31 @@
 #
 # This file is part of the o0_o.posix Ansible Collection.
 
+# The tree is made by mktemp rather than ansible.builtin.tempfile, and
+# taken down by this collection's own write, so that this file needs no
+# interpreter on the target and the raw lane can enter through it. Only
+# -d is portable across the platforms this collection targets.
 - name: Create temporary directory for write integration tests
-  ansible.builtin.tempfile:
-    state: directory
-    suffix: write
+  o0_o.posix.command:
+    argv:
+      - mktemp
+      - -d
+  check_mode: false
   register: write_tmpdir_reg
 
 - name: Name the tree every family writes under
   ansible.builtin.set_fact:
-    write_test_dir: "{{ write_tmpdir_reg['path'] }}"
+    write_test_dir: "{{ write_tmpdir_reg['stdout'] | trim }}"
 
+# write_raw_modes is the raw column of the matrix. It is a var so that
+# the raw lane can pin it to the fallback alone: an interpreter-free
+# host cannot answer raw=false, which asks for the interpreted path by
+# name. Every other runner takes both.
 - name: Check mode and raw permutation loop
   vars:
-    loop_list: "{{ [true, false] | ansible.builtin.product([true, false]) }}"
+    loop_list: >-
+      {{ [true, false] | ansible.builtin.product(
+         write_raw_modes | default([true, false])) }}
   block:
 
     # Check mode cannot be turned on from here: it is a keyword, and
@@ -40,6 +52,7 @@
   always:
 
     - name: Remove the temporary directory tree
-      ansible.builtin.file:
-        path: "{{ write_test_dir }}"
+      o0_o.posix.write:
+        dest: "{{ write_test_dir }}"
         state: absent
+      check_mode: false

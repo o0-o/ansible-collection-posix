@@ -126,8 +126,8 @@
       - command_reg['raw'] == raw
 
 - name: Ensure dummy file is absent
-  ansible.builtin.file:
-    path: /tmp/o0_foo
+  o0_o.posix.write:
+    dest: /tmp/o0_foo
     state: absent
 
 - name: Run with creates when file is missing (should run or be marked changed)

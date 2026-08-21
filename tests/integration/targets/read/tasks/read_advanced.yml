@@ -11,16 +11,16 @@
 # Advanced read module tests for children, parents, list and timestamps
 
 - name: Create nested directory structure for advanced tests
-  ansible.builtin.file:
+  o0_o.posix.write:
     state: directory
-    path: "{{ item }}"
+    dest: "{{ item }}"
   loop:
     - "{{ read_dir_path }}/nested/level1"
     - "{{ read_dir_path }}/nested/level1/level2"
     - "{{ read_dir_path }}/nested/level1/level2/level3"
 
 - name: Create files in nested structure
-  ansible.builtin.copy:
+  o0_o.posix.write:
     dest: "{{ item }}"
     content: 'test content'
   loop:
@@ -158,29 +158,29 @@
 # directory, and an ls types a link a link. Which is the same walk
 # published or not, so both reads below must visit the same entries.
 - name: Create a directory to link to inside a fresh tree
-  ansible.builtin.file:
+  o0_o.posix.write:
     state: directory
-    path: "{{ read_dir_path }}/linktree/real"
+    dest: "{{ read_dir_path }}/linktree/real"
 
 - name: Put a file below the directory that is linked to
-  ansible.builtin.copy:
+  o0_o.posix.write:
     dest: "{{ read_dir_path }}/linktree/real/inner.txt"
     content: 'inner'
     mode: '0644'
 
 - name: Link to that directory beside it
-  ansible.builtin.file:
+  o0_o.posix.write:
     state: link
-    src: "{{ read_dir_path }}/linktree/real"
-    path: "{{ read_dir_path }}/linktree/dirlink"
+    target: "{{ read_dir_path }}/linktree/real"
+    dest: "{{ read_dir_path }}/linktree/dirlink"
 
-# Kept out of the tree above so it does not join that walk
+# Kept out of the tree above so it does not join that walk. A link
+# needs no coaxing to point at nothing, so the state carries no force
 - name: Link to a path that is not there
-  ansible.builtin.file:
+  o0_o.posix.write:
     state: link
-    src: "{{ read_dir_path }}/gone.txt"
-    path: "{{ read_dir_path }}/dangling.link"
-    force: true
+    target: "{{ read_dir_path }}/gone.txt"
+    dest: "{{ read_dir_path }}/dangling.link"
 
 - name: Name the entries of the linked tree
   ansible.builtin.set_fact:

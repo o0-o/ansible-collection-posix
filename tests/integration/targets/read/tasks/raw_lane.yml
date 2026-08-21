@@ -1,0 +1,30 @@
+# vim: ts=2:sw=2:sts=2:et:ft=yaml.ansible
+# -*- mode: yaml; yaml-indent-offset: 2; indent-tabs-mode: nil; -*-
+---
+# GNU General Public License v3.0+
+# SPDX-License-Identifier: GPL-3.0-or-later
+# (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
+# Copyright (c) 2025 oØ.o (@o0-o)
+#
+# This file is part of the o0_o.posix Ansible Collection.
+
+# The raw lane runs the same task files against a host with no
+# interpreter and gathers no facts, so the one gathered fact the
+# assertions gate on is asked for directly. Nothing here asserts
+# anything: every assertion the target makes lives in the files
+# main.yml includes.
+
+- name: Ask the host which system it is
+  o0_o.posix.uname:
+  register: read_uname_reg
+
+- name: Name the system the platform gates read
+  ansible.builtin.set_fact:
+    read_system: "{{ read_uname_reg['uname']['kernel']['pretty'] }}"
+
+# Both rows of the check mode loop run the same reads, so the raw lane
+# takes one of them and pays for the round trips once
+- name: Run the read target against a host without an interpreter
+  ansible.builtin.include_tasks: main.yml
+  vars:
+    read_check_modes: [false]

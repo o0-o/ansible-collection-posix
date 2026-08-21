@@ -10,8 +10,8 @@
 # This file is part of the o0_o.posix Ansible Collection.
 
 - name: Start the copy family from an empty tree
-  ansible.builtin.file:
-    path: "{{ copy_dir }}"
+  o0_o.posix.write:
+    dest: "{{ copy_dir }}"
     state: absent
   check_mode: false
 
@@ -159,7 +159,7 @@
       - copy_remote_idempotent_reg['raw'] == raw
 
 - name: Create a binary file on the target host
-  ansible.builtin.command:
+  o0_o.posix.command:
     argv:
       - dd
       - if=/dev/zero

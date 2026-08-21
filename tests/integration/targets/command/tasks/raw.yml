@@ -59,9 +59,19 @@
           - '"HOME" in no_var_exp_raw_reg["stdout"]'
           - '"My home" in var_exp_raw_reg["stdout"]'
           - '"My home" in no_var_exp_raw_reg["stdout"]'
+      when: not ansible_check_mode
+
+    # The two paths are only comparable where both of them ran. The
+    # raw lane has no interpreter for the never_raw half, so it leaves
+    # these registers unset and this comparison sits out.
+    - name: Assert raw output matches the interpreted output
+      ansible.builtin.assert:
+        that:
           - 'var_exp_raw_reg["stdout"] == var_exp_builtin_reg["stdout"]'
           - 'no_var_exp_raw_reg["stdout"] == no_var_exp_builtin_reg["stdout"]'
-      when: not ansible_check_mode
+      when:
+        - not ansible_check_mode
+        - var_exp_builtin_reg is defined
 
 - name: Assert raw execution is as intended
   ansible.builtin.assert:

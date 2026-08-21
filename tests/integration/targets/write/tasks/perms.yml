@@ -24,20 +24,20 @@
 # predict from.
 
 - name: Clear the tree the permission cases write under
-  ansible.builtin.file:
-    path: "{{ perms_dir }}"
+  o0_o.posix.write:
+    dest: "{{ perms_dir }}"
     state: absent
   check_mode: false
 
 - name: Create the tree the permission cases write under
-  ansible.builtin.file:
-    path: "{{ perms_dir }}"
+  o0_o.posix.write:
+    dest: "{{ perms_dir }}"
     state: directory
     mode: '0755'
   check_mode: false
 
 - name: Ask which account the play is running as
-  ansible.builtin.command:
+  o0_o.posix.command:
     argv:
       - id
       - -u
@@ -46,7 +46,7 @@
   register: perms_whoami_reg
 
 - name: Ask the numeric user ID the ownership cases hand files to
-  ansible.builtin.command:
+  o0_o.posix.command:
     argv:
       - id
       - -u
@@ -57,7 +57,7 @@
   register: perms_uid_reg
 
 - name: Ask the numeric group ID that account belongs to
-  ansible.builtin.command:
+  o0_o.posix.command:
     argv:
       - id
       - -g
@@ -68,7 +68,7 @@
   register: perms_gid_reg
 
 - name: Ask the name of that group
-  ansible.builtin.command:
+  o0_o.posix.command:
     argv:
       - id
       - -gn
@@ -81,7 +81,7 @@
 # Both probes answer on every platform: a host with no getenforce is
 # reported as Disabled, and a host with no chcon as absent.
 - name: Ask whether this host enforces SELinux
-  ansible.builtin.command:
+  o0_o.posix.command:
     argv:
       - sh
       - -c
@@ -91,7 +91,7 @@
   register: perms_selinux_reg
 
 - name: Ask whether the tool that sets a context is installed
-  ansible.builtin.command:
+  o0_o.posix.command:
     argv:
       - sh
       - -c
@@ -352,15 +352,15 @@
 # too. Asking it directly keeps the assertions below on hosts that can
 # actually answer them.
 - name: Create the file the relabel probe tries to label
-  ansible.builtin.file:
-    path: "{{ perms_selinux_probe }}"
+  o0_o.posix.write:
+    dest: "{{ perms_selinux_probe }}"
     state: touch
     mode: '0644'
   check_mode: false
   when: perms_has_selinux
 
 - name: Ask whether this filesystem accepts a context change
-  ansible.builtin.command:
+  o0_o.posix.command:
     argv:
       - chcon
       - -t

@@ -1,0 +1,23 @@
+# vim: ts=2:sw=2:sts=2:et:ft=yaml.ansible
+# -*- mode: yaml; yaml-indent-offset: 2; indent-tabs-mode: nil; -*-
+---
+#
+# GNU General Public License v3.0+
+# SPDX-License-Identifier: GPL-3.0-or-later
+# (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
+#
+# Copyright (c) 2025 oØ.o (@o0-o)
+#
+# This file is part of the o0_o.posix Ansible Collection.
+
+# This target's entry into the raw lane, per Running CI. Every task
+# main.yml runs is raw-clean, so the lane enters through main.yml
+# itself and there is nothing here to keep in step with it: all this
+# file does is narrow the matrix to the half an interpreter-free host
+# can answer. Both check mode rows still run, since check mode arrives
+# as a keyword on the row's block and holds on these hosts too.
+
+- name: Run the write matrix with the raw path as the only path
+  ansible.builtin.include_tasks: main.yml
+  vars:
+    write_raw_modes: [true]

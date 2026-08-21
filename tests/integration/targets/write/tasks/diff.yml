@@ -17,8 +17,8 @@
 # trailing newline, so both sides are compared line by line.
 
 - name: Start the diff cases from an empty tree
-  ansible.builtin.file:
-    path: "{{ diff_dir }}"
+  o0_o.posix.write:
+    dest: "{{ diff_dir }}"
     state: absent
   check_mode: false
 

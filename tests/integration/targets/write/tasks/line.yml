@@ -447,8 +447,8 @@
   when: check
 
 - name: Clear the file the create test writes
-  ansible.builtin.file:
-    path: "{{ line_created_dest }}"
+  o0_o.posix.write:
+    dest: "{{ line_created_dest }}"
     state: absent
   check_mode: false
 
@@ -705,8 +705,8 @@
       {{ line_search_remove_read_reg['paths'][line_search_dest] }}
 
 - name: Clear the destination the missing file removal names
-  ansible.builtin.file:
-    path: "{{ line_missing_dest }}"
+  o0_o.posix.write:
+    dest: "{{ line_missing_dest }}"
     state: absent
   check_mode: false
 

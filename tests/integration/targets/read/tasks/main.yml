@@ -8,57 +8,77 @@
 #
 # This file is part of the o0_o.posix Ansible Collection.
 
+# The platform gates below read this fact rather than ansible_system,
+# so an entry point that runs without gathered facts can name the
+# system itself and leave the gates alone
+- name: Name the system the platform gates read
+  ansible.builtin.set_fact:
+    read_system: "{{ ansible_system }}"
+  when: read_system is not defined
+
 - name: Create temporary directory for read integration tests
-  ansible.builtin.tempfile:
-    state: directory
-    suffix: read
+  o0_o.posix.command:
+    argv:
+      - mktemp
+      - -d
   register: read_tempdir_reg
+
+- name: Name the directory every read runs under
+  ansible.builtin.set_fact:
+    read_dir_path: "{{ read_tempdir_reg['stdout'] | trim }}"
 
 - name: Define test paths
   ansible.builtin.set_fact:
-    read_dir_path: "{{ read_tempdir_reg['path'] }}"
-    read_regular_path: "{{ read_tempdir_reg['path'] }}/regular.txt"
-    read_hardlink_path: "{{ read_tempdir_reg['path'] }}/regular.hard"
-    read_symlink_path: "{{ read_tempdir_reg['path'] }}/regular.link"
-    read_binary_path: "{{ read_tempdir_reg['path'] }}/binary.bin"
-    read_directory_path: "{{ read_tempdir_reg['path'] }}/subdir"
-    read_fifo_path: "{{ read_tempdir_reg['path'] }}/special.fifo"
+    read_regular_path: "{{ read_dir_path }}/regular.txt"
+    read_hardlink_path: "{{ read_dir_path }}/regular.hard"
+    read_symlink_path: "{{ read_dir_path }}/regular.link"
+    read_binary_path: "{{ read_dir_path }}/binary.bin"
+    read_directory_path: "{{ read_dir_path }}/subdir"
+    read_fifo_path: "{{ read_dir_path }}/special.fifo"
 
+# The checksums asserted downstream are of these two lines with no
+# newline after the second, and write always terminates what it lands
+# with one, so the bytes are laid down by printf instead
 - name: Create regular file with known content
-  ansible.builtin.copy:
+  o0_o.posix.command:
+    cmd: >-
+      printf 'The quick brown fox\njumps over the lazy dog'
+      > {{ read_regular_path }}
+    _uses_shell: true
+
+- name: Hold the regular file at the mode the assertions expect
+  o0_o.posix.write:
     dest: "{{ read_regular_path }}"
-    content: |-
-      The quick brown fox
-      jumps over the lazy dog
+    state: touch
     mode: '0640'
 
 - name: Create hard link to regular file
-  ansible.builtin.command:
+  o0_o.posix.command:
     argv:
       - ln
       - "{{ read_regular_path }}"
       - "{{ read_hardlink_path }}"
 
 - name: Create symbolic link to regular file
-  ansible.builtin.file:
+  o0_o.posix.write:
     state: link
-    src: "{{ read_regular_path }}"
-    path: "{{ read_symlink_path }}"
+    target: "{{ read_regular_path }}"
+    dest: "{{ read_symlink_path }}"
 
 - name: Create directory entry
-  ansible.builtin.file:
+  o0_o.posix.write:
     state: directory
-    path: "{{ read_directory_path }}"
+    dest: "{{ read_directory_path }}"
     mode: '0750'
 
 - name: Create FIFO entry
-  ansible.builtin.command:
+  o0_o.posix.command:
     argv:
       - mkfifo
       - "{{ read_fifo_path }}"
 
 - name: Create binary file with non-text content
-  ansible.builtin.command:
+  o0_o.posix.command:
     argv:
       - dd
       - if=/dev/zero
@@ -73,7 +93,7 @@
 
     - name: Execute read module scenarios
       ansible.builtin.include_tasks: read.yml
-      loop: "{{ [true, false] }}"
+      loop: "{{ read_check_modes | default([true, false]) }}"
       loop_control:
         loop_var: read_check_mode
       vars:
@@ -81,7 +101,7 @@
 
     - name: Execute advanced read module tests
       ansible.builtin.include_tasks: read_advanced.yml
-      loop: "{{ [true, false] }}"
+      loop: "{{ read_check_modes | default([true, false]) }}"
       loop_control:
         loop_var: read_check_mode
       vars:
@@ -90,6 +110,6 @@
   always:
 
     - name: Remove temporary directory tree
-      ansible.builtin.file:
-        path: "{{ read_dir_path }}"
+      o0_o.posix.write:
+        dest: "{{ read_dir_path }}"
         state: absent

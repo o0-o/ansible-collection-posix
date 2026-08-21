@@ -1,0 +1,45 @@
+# vim: ts=2:sw=2:sts=2:et:ft=yaml.ansible
+# -*- mode: yaml; yaml-indent-offset: 2; indent-tabs-mode: nil; -*-
+---
+#
+# GNU General Public License v3.0+
+# SPDX-License-Identifier: GPL-3.0-or-later
+# (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
+#
+# Copyright (c) 2025 oØ.o (@o0-o)
+#
+# This file is part of the o0_o.posix Ansible Collection.
+
+# This target's entry into the raw lane, per Running CI. It runs the
+# same task files main.yml runs, so the assertions have one home; what
+# it chooses is which of them an interpreter-free host can answer and
+# what vars they run under.
+#
+# never_raw.yml sits out: it asks for the interpreted path by name and
+# asserts it was taken, which is exactly what a host with no
+# interpreter cannot do. raw is pinned true rather than left at auto
+# because the shared files assert the mode they were asked for; that
+# the auto path finds its way to raw on these hosts is what the lane's
+# own preflight proves.
+#
+# main.yml runs each file twice over ansible_check_mode. That variable
+# is Ansible's own and a play cannot set it, so both of those rows are
+# the same row; the lane runs it once.
+
+- name: Run raw tests
+  ansible.builtin.include_tasks: raw.yml
+
+- name: Run success tests
+  ansible.builtin.include_tasks: successes.yml
+  vars:
+    raw: true
+
+- name: Run shell operator tests
+  ansible.builtin.include_tasks: shell_operators.yml
+  vars:
+    raw: true
+
+- name: Run failures tests
+  ansible.builtin.include_tasks: failures.yml
+  vars:
+    raw: true

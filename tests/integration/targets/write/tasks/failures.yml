@@ -15,8 +15,8 @@
 # the rescue instead of passing quietly.
 
 - name: Start the failure family from an empty tree
-  ansible.builtin.file:
-    path: "{{ fail_dir }}"
+  o0_o.posix.write:
+    dest: "{{ fail_dir }}"
     state: absent
   check_mode: false
 

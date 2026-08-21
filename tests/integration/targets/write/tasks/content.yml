@@ -10,8 +10,8 @@
 # This file is part of the o0_o.posix Ansible Collection.
 
 - name: Start the content family from an empty tree
-  ansible.builtin.file:
-    path: "{{ content_dir }}"
+  o0_o.posix.write:
+    dest: "{{ content_dir }}"
     state: absent
   check_mode: false
 
@@ -221,19 +221,25 @@
     content_dest_now: >-
       {{ content_predict_read_reg['paths'][content_predict_dest] }}
 
-- name: Find everything the prediction left in its tree
-  ansible.builtin.find:
-    paths: "{{ content_predict_dir }}"
-    patterns: '*'
-    hidden: true
+- name: Read everything the prediction left in its tree
+  o0_o.posix.read:
+    path: "{{ content_predict_dir }}"
+    children: 1
   check_mode: false
   register: content_residue_reg
 
 - name: Assert the prediction left no backup and no candidate behind
   ansible.builtin.assert:
     that:
-      - content_residue_reg['matched'] == 1
-      - content_residue_reg['files'][0]['path'] == content_predict_dest
+      - content_residue | length == 1
+      - content_residue[0] == content_predict_dest
+  vars:
+    # The walk publishes the directory it was handed alongside its
+    # entries, and dotfiles among them, so a backup or a landing
+    # candidate left behind would show up here.
+    content_residue: >-
+      {{ content_residue_reg['paths'].keys() | reject('eq',
+         content_predict_dir) | list }}
 
 - name: Decline to overwrite an existing file with force disabled
   o0_o.posix.write:

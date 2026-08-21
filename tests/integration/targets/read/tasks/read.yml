@@ -386,7 +386,7 @@
     path: "{{ read_regular_path }}"
     extended: true
   register: read_extended_reg
-  when: ansible_system in ['Linux', 'Darwin']
+  when: read_system in ['Linux', 'Darwin']
 
 - name: Assert extended metadata fields
   ansible.builtin.assert:
@@ -399,7 +399,7 @@
         'xattrs' not in read_extended_reg['paths'][read_regular_path]
         or read_extended_reg['paths'][read_regular_path]['xattrs']
         is mapping
-  when: ansible_system in ['Linux', 'Darwin']
+  when: read_system in ['Linux', 'Darwin']
 
 # Test the full request (attributes + extended + content + mime)
 - name: Read file with every metadata option
@@ -411,7 +411,7 @@
     lines: true
     mime: true
   register: read_all_reg
-  when: ansible_system in ['Linux', 'Darwin']
+  when: read_system in ['Linux', 'Darwin']
 
 - name: Assert all metadata fields
   ansible.builtin.assert:
@@ -422,17 +422,17 @@
       - read_all_reg['paths'][read_regular_path]['lines'] | length == 2
       - read_all_reg['paths'][read_regular_path]['encoding'] is defined
       - read_all_reg['paths'][read_regular_path]['mime']['type'] == 'text'
-  when: ansible_system in ['Linux', 'Darwin']
+  when: read_system in ['Linux', 'Darwin']
 
 # Test SELinux context (only on SELinux-enabled Linux systems)
 - name: Check if SELinux is enabled
-  ansible.builtin.command:
+  o0_o.posix.command:
     argv:
       - getenforce
   register: selinux_status_reg
   changed_when: false
   failed_when: false
-  when: ansible_system == 'Linux'
+  when: read_system == 'Linux'
 
 - name: Read file with attributes on an SELinux system
   o0_o.posix.read:
@@ -440,7 +440,7 @@
     attributes: true
   register: read_selinux_reg
   when:
-    - ansible_system == 'Linux'
+    - read_system == 'Linux'
     - selinux_status_reg is defined
     - selinux_status_reg['rc'] == 0
     - selinux_status_reg['stdout'] | default('') != 'Disabled'
@@ -455,7 +455,7 @@
         or read_selinux_reg['paths'][read_regular_path]['selinux']
         is string
   when:
-    - ansible_system == 'Linux'
+    - read_system == 'Linux'
     - selinux_status_reg is defined
     - selinux_status_reg['rc'] == 0
     - selinux_status_reg['stdout'] | default('') != 'Disabled'
