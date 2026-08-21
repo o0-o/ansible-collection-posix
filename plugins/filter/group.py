@@ -47,8 +47,92 @@ requirements:
   - jc
 notes:
   - The jc library must be available on the controller.
+  - The C(key) option chooses the mapping's key and renames the field
+    that carries the GID, C(name) keying by group name with the GID in
+    C(id), C(id) keying by stringified GID with the group name in
+    C(name).
+  - Members are the usernames C(/etc/group) lists, not their UIDs.
+    They are the names on the fourth field of each line, so a user's
+    primary group does not list them.
+  - The password field is discarded.
 author:
   - oØ.o (@o0-o)
+"""
+
+EXAMPLES = r"""
+- name: Read /etc/group
+  o0_o.posix.read:
+    path: /etc/group
+    content: true
+  register: group_read
+
+- name: Parse /etc/group keyed by GID
+  ansible.builtin.set_fact:
+    groups_by_gid: >-
+      {{ group_read.paths['/etc/group'] | o0_o.posix.group }}
+
+- name: Report the name of GID 0
+  ansible.builtin.debug:
+    msg: "GID 0 is {{ groups_by_gid['0'].name }}"
+
+- name: Parse /etc/group keyed by name instead
+  ansible.builtin.set_fact:
+    groups_by_name: >-
+      {{ group_read.paths['/etc/group']
+         | o0_o.posix.group(key='name') }}
+
+- name: Report which users are in the wheel group
+  ansible.builtin.debug:
+    msg: >-
+      wheel is GID {{ groups_by_name.wheel.id }} with members
+      {{ groups_by_name.wheel.members | join(', ') }}
+  when: "'wheel' in groups_by_name"
+"""
+
+RETURN = r"""
+_value:
+  description:
+    - Groups keyed by stringified GID, or by group name when C(key) is
+      C(name).
+    - In C(id) mode an entry whose GID is missing or non-numeric is
+      dropped, since it has no key. In C(name) mode a nameless entry
+      falls back to its stringified GID as the key.
+  type: dict
+  returned: always
+  contains:
+    name:
+      description: >-
+        Group name, C(null) when the line names none; the key already
+        carries it in C(name) mode, where this field is absent
+      returned: when C(key) is C(id)
+      type: str
+      sample: staff
+    id:
+      description: >-
+        Numeric group ID, C(null) when the line's GID is missing or
+        non-numeric; the key already carries it in C(id) mode, where
+        this field is absent
+      returned: when C(key) is C(name)
+      type: int
+      sample: 20
+    members:
+      description: >-
+        Usernames listed as supplementary members of the group, empty
+        when the line lists none
+      type: list
+      elements: str
+      sample:
+        - root
+        - o0-o
+  sample:
+    "0":
+      name: root
+      members: []
+    "20":
+      name: staff
+      members:
+        - root
+        - o0-o
 """
 
 

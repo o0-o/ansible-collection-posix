@@ -347,14 +347,19 @@ _value:
               description: BIOS release date
               type: dict
               contains:
-                pretty:
-                  description: Human-readable date string
-                  type: str
-                  sample: "05/21/2021"
-                epoch:
-                  description: Unix epoch timestamp (if parseable)
+                seconds:
+                  description: >-
+                    Seconds since the Unix epoch, C(null) when the
+                    vendor's date string cannot be placed on the
+                    timeline
                   type: int
-                  sample: 1621569600
+                  sample: 1621555200
+                pretty:
+                  description: >-
+                    Human-readable date, the vendor's own string
+                    verbatim when it cannot be parsed
+                  type: str
+                  sample: "Friday, May 21, 2021"
             features:
               description: List of BIOS features (cleaned)
               type: list

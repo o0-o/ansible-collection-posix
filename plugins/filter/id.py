@@ -47,8 +47,128 @@ requirements:
   - jc
 notes:
   - The jc library must be available on the controller.
+  - The C(key) option chooses the keys of both mappings and switches
+    every identity field between its numeric and its named form.
+  - C(id) sends every identity through as a number, C(name) sends
+    every identity through as a string, falling back to the
+    stringified number for a group C(id) could not name.
+  - C(users) describes the single user C(id) was asked about, so it
+    holds at most one entry.
 author:
   - oØ.o (@o0-o)
+"""
+
+EXAMPLES = r"""
+- name: Ask the managed host who it is running as
+  o0_o.posix.command:
+    argv: ['id']
+  register: id_result
+  changed_when: false
+
+- name: Parse id output keyed by numeric id
+  ansible.builtin.set_fact:
+    identity: "{{ id_result | o0_o.posix.id }}"
+
+- name: Report the effective UID and its groups
+  vars:
+    uid: "{{ identity.users | list | first }}"
+  ansible.builtin.debug:
+    msg: >-
+      UID {{ uid }} is {{ identity.users[uid].name }} in GIDs
+      {{ identity.users[uid].groups | join(', ') }}
+
+- name: Parse id output keyed by name instead
+  ansible.builtin.set_fact:
+    identity_by_name: "{{ id_result | o0_o.posix.id(key='name') }}"
+
+- name: Fail unless the remote user is in the wheel group
+  ansible.builtin.assert:
+    that:
+      - "'wheel' in identity_by_name.groups"
+"""
+
+RETURN = r"""
+_value:
+  description: >-
+    The effective identity, split into the user C(id) reported and
+    every group that user belongs to
+  type: dict
+  returned: always
+  contains:
+    users:
+      description:
+        - The single user C(id) reported, keyed by stringified UID, or
+          by username when C(key) is C(name).
+        - Empty when the output named no user, or when C(key) is
+          C(name) and the UID could not be named.
+      type: dict
+      returned: always
+      contains:
+        name:
+          description: >-
+            Username, C(null) when the output gives only a number; the
+            key already carries it in C(name) mode, where this field
+            is absent
+          returned: when C(key) is C(id)
+          type: str
+          sample: o0-o
+        id:
+          description: >-
+            Numeric user ID; the key already carries it in C(id) mode,
+            where this field is absent
+          returned: when C(key) is C(name)
+          type: int
+          sample: 1000
+        group:
+          description: >-
+            The primary group, as a GID under C(key=id) and as a name
+            under C(key=name); C(null) when the output names no
+            primary group
+          type: raw
+          sample: 20
+        groups:
+          description: >-
+            Every group the user belongs to, primary group included,
+            as GIDs under C(key=id) and as names under C(key=name),
+            in the order C(id) printed them
+          type: list
+          elements: raw
+          sample: [20, 101]
+    groups:
+      description:
+        - Every group named in the output, keyed by stringified GID,
+          or by group name when C(key) is C(name).
+        - A group the output leaves unnamed is keyed by its stringified
+          GID under either C(key).
+      type: dict
+      returned: always
+      contains:
+        name:
+          description: >-
+            Group name, C(null) when the output gives only a number;
+            the key already carries it in C(name) mode, where this
+            field is absent
+          returned: when C(key) is C(id)
+          type: str
+          sample: staff
+        id:
+          description: >-
+            Numeric group ID; the key already carries it in C(id)
+            mode, where this field is absent
+          returned: when C(key) is C(name)
+          type: int
+          sample: 20
+  sample:
+    users:
+      "1000":
+        name: o0-o
+        group: 20
+        groups: [20, 101]
+    groups:
+      "20":
+        name: staff
+      "101":
+        name: access_bpf
 """
 
 

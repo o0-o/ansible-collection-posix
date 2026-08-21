@@ -47,8 +47,106 @@ requirements:
   - jc
 notes:
   - The jc library must be available on the controller.
+  - The C(key) option chooses the mapping's key and renames the field
+    that carries the UID, C(name) keying by username with the UID in
+    C(id), C(id) keying by stringified UID with the username in
+    C(name). The primary group is C(gid) under either key.
+  - The comment field is reported as C(gecos).
+  - The password field is discarded.
 author:
   - oØ.o (@o0-o)
+"""
+
+EXAMPLES = r"""
+- name: Read /etc/passwd
+  o0_o.posix.read:
+    path: /etc/passwd
+    content: true
+  register: passwd_read
+
+- name: Parse /etc/passwd keyed by UID
+  ansible.builtin.set_fact:
+    users_by_uid: >-
+      {{ passwd_read.paths['/etc/passwd'] | o0_o.posix.passwd }}
+
+- name: Report root's login shell
+  ansible.builtin.debug:
+    msg: "root logs in with {{ users_by_uid['0'].shell }}"
+
+- name: Parse /etc/passwd keyed by name instead
+  ansible.builtin.set_fact:
+    users_by_name: >-
+      {{ passwd_read.paths['/etc/passwd']
+         | o0_o.posix.passwd(key='name') }}
+
+- name: Report the deploy account's home directory
+  ansible.builtin.debug:
+    msg: >-
+      deploy is UID {{ users_by_name.deploy.id }} at
+      {{ users_by_name.deploy.home }}
+  when: "'deploy' in users_by_name"
+"""
+
+RETURN = r"""
+_value:
+  description:
+    - Users keyed by stringified UID, or by username when C(key) is
+      C(name).
+    - In C(id) mode an entry whose UID is missing or non-numeric is
+      dropped, since it has no key. In C(name) mode a nameless entry
+      falls back to its stringified UID as the key.
+  type: dict
+  returned: always
+  contains:
+    name:
+      description: >-
+        Username, C(null) when the line names none; the key already
+        carries it in C(name) mode, where this field is absent
+      returned: when C(key) is C(id)
+      type: str
+      sample: o0-o
+    id:
+      description: >-
+        Numeric user ID, C(null) when the line's UID is missing or
+        non-numeric; the key already carries it in C(id) mode, where
+        this field is absent
+      returned: when C(key) is C(name)
+      type: int
+      sample: 1000
+    gid:
+      description: >-
+        Numeric ID of the user's primary group, C(null) when the
+        line's GID is missing or non-numeric
+      type: int
+      sample: 20
+    gecos:
+      description: >-
+        The comment field, C(null) when the line leaves it empty
+      type: str
+      sample: User Account
+    home:
+      description: >-
+        Home directory path, C(null) when the line names none
+      type: str
+      sample: /home/o0-o
+    shell:
+      description: >-
+        Login shell, C(null) when the line names none
+      type: str
+      sample: /bin/bash
+  sample:
+    "0":
+      name: root
+      gid: 0
+      gecos: System Administrator
+      home: /var/root
+      shell: /bin/sh
+    "1000":
+      name: o0-o
+      gid: 20
+      gecos: User Account
+      home: /home/o0-o
+      shell: /bin/bash
 """
 
 

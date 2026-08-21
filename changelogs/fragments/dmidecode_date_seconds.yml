@@ -1,0 +1,11 @@
+---
+bugfixes:
+  - >-
+    dmidecode - A BIOS release date the date parser could not read was
+    reported as a pretty string alone, with no seconds at all, so a
+    playbook reading date.seconds broke on exactly those hosts whose
+    vendor prints an unusual date. A point in time is {seconds,
+    pretty}, and the fallback now says so: the vendor's own string
+    stays as pretty, and seconds is null, which is the answer for a
+    date with no place on the timeline
+    (https://github.com/o0-o/ansible-collection-posix/pull/XXX).

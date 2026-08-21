@@ -94,7 +94,7 @@ def ps(config: Union[str, dict[str, Any]]) -> list[dict[str, Any]]:
     """Process ps data - parse command output into structured format.
 
     Parses ps command output and restructures it with:
-    - id, parent, user (int), group (int), title (full process title)
+    - id, parent, owner (int), group (int), title (full process title)
     - status dict with:
         - id: raw stat string
         - state: running, sleeping, uninterruptible, stopped, zombie,

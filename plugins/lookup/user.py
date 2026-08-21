@@ -31,10 +31,30 @@ options:
     required: true
     type: list
     elements: raw
+  host:
+    description:
+      - Read C(o0_users) from another host's variables rather than the
+        current host's.
+      - A host that has not gathered the fact answers the same way a
+        host with no such user does.
+    type: str
+  default:
+    description:
+      - Value to answer with in place of C(None) for a term that does
+        not resolve.
+      - Applies per term, so a lookup of several terms substitutes it
+        only for the ones that did not resolve.
+    type: raw
 notes:
-  - This lookup requires the C(o0_users) fact to be available in the
-    variable namespace.
-  - If the C(o0_users) fact is not available, the lookup will fail.
+  - This lookup reads the C(o0_users) fact from the variable
+    namespace.
+  - A namespace holding no C(o0_users) fact is read as a namespace
+    holding no users, so every term answers C(None) — or C(default)
+    when one is given — rather than failing. Gather the fact first and
+    check the answer; a missing fact and a missing user are not
+    distinguishable here.
+  - The lookup does fail when C(o0_users) is present but is not a
+    dictionary.
 seealso:
   - module: o0_o.posix.users
     description: Gather POSIX user and group information
@@ -145,15 +165,10 @@ class LookupModule(LookupBase, VarsLookupBase):
         has_default = "default" in kwargs
         default = kwargs.pop("default", None)
 
-        # Get the o0_users fact using the inherited method
-        try:
-            users = self.lookup_var("o0_users", default={}, **kwargs)
-        except AnsibleLookupError as e:
-            raise AnsibleLookupError(
-                f"Failed to access 'o0_users' fact. Ensure "
-                f"o0_o.posix.facts or o0_o.posix.users has been run. "
-                f"Error: {e}"
-            ) from e
+        # Get the o0_users fact using the inherited method. The default
+        # makes an absent fact an empty namespace rather than an error,
+        # so every term answers not-found
+        users = self.lookup_var("o0_users", default={}, **kwargs)
 
         if not isinstance(users, dict):
             raise AnsibleLookupError(

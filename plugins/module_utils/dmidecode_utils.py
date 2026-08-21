@@ -225,8 +225,15 @@ def _process_bios(bios_entry: dict[str, Any]) -> dict[str, Any]:
         if parsed_date is not None:
             bios["date"] = parsed_date
         else:
-            # Fallback if parsing fails
-            bios["date"] = {"pretty": values["release_date"]}
+            # A point in time is {seconds, pretty}. An unparseable
+            # vendor date still has a pretty rendering — its own
+            # string — but no place on the timeline, so seconds is
+            # null rather than missing: a consumer reading
+            # date.seconds gets an answer either way
+            bios["date"] = {
+                "seconds": None,
+                "pretty": values["release_date"],
+            }
 
     # Features (cleaned)
     if "characteristics" in values:
