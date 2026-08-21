@@ -9,19 +9,47 @@
 #
 # This file is part of the o0_o.posix Ansible Collection.
 
+# A host that cannot read its firmware tables is not an error: the
+# command may be absent, and /dev/mem is refused to a container even
+# where it is not. The module warns and answers with what it read,
+# which is why nothing here ignores a failure.
 - name: Run dmidecode module
   o0_o.posix.dmidecode:
   register: dmidecode_result_reg
-  ignore_errors: true
 
-- name: Verify module returns without exception
+- name: Verify the module answered with what it read
   ansible.builtin.assert:
     that:
-      - dmidecode_result_reg is defined
-    fail_msg: 'dmidecode module raised an exception'
+      - dmidecode_result_reg['changed'] == false
+      - dmidecode_result_reg['hardware'] is mapping
+    fail_msg: 'dmidecode module did not return a hardware reading'
+
+- name: Verify a reading names the system it read
+  when: dmidecode_result_reg['hardware'] | length > 0
+  vars:
+    hardware: "{{ dmidecode_result_reg['hardware'] }}"
+  ansible.builtin.assert:
+    that:
+      - hardware['make'] is not defined or hardware['make'] is string
+      - hardware['model'] is not defined or hardware['model'] is string
+      - >-
+        hardware['baseboard'] is not defined or
+        hardware['baseboard'] is mapping
+      - >-
+        hardware['processors'] is not defined or
+        hardware['processors'] is mapping
+      # A reading that named nothing would be the empty answer this
+      # block is gated against, so it names a system or a board
+      - >-
+        hardware['make'] is defined or hardware['model'] is defined
+        or hardware['baseboard'] is defined
+    fail_msg: >-
+      dmidecode read fields that name no system and no board:
+      {{ dmidecode_result_reg['hardware'].keys() | list | sort }}
 
 - name: Display result status
   ansible.builtin.debug:
     msg: >-
-      dmidecode {{ 'succeeded' if not dmidecode_result_reg['failed']
-      else 'failed (expected on systems without root or dmidecode)' }}
+      dmidecode read {{ dmidecode_result_reg['hardware'] | length }}
+      field(s){{ ' (none is expected without root or the command)'
+      if dmidecode_result_reg['hardware'] | length == 0 else '' }}

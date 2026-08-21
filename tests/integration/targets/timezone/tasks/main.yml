@@ -20,6 +20,11 @@
       - tz_reg['changed'] == false
       - tz_reg['timezone'] is defined
       - tz_reg['timezone'] is mapping
-      - tz_reg['timezone'].get('name', '') is string
-      - tz_reg['timezone'].get('abbr', '') is string
+      # What date "+%Z %z" printed, named the way the parser names it.
+      # A default under a name no producer emits asserts nothing.
+      - tz_reg['timezone']['abbreviation'] is string
+      - tz_reg['timezone']['abbreviation'] | length > 0
+      - tz_reg['timezone']['offset'] is match('^[+-][0-9]{4}$')
+      - tz_reg['timezone']['name'] is not defined
+      - tz_reg['timezone']['abbr'] is not defined
     fail_msg: 'Timezone module did not return expected structure'
