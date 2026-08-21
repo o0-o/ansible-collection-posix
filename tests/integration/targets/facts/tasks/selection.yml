@@ -1,0 +1,344 @@
+# vim: ts=2:sw=2:sts=2:et:ft=yaml.ansible
+# -*- mode: yaml; yaml-indent-offset: 2; indent-tabs-mode: nil; -*-
+---
+# GNU General Public License v3.0+
+# SPDX-License-Identifier: GPL-3.0-or-later
+# (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
+#
+# Copyright (c) 2025 oØ.o (@o0-o)
+#
+# This file is part of the o0_o.posix Ansible Collection.
+
+# What a gather_subset selects, asserted by the names each selection
+# publishes and the names it leaves alone. Every subset is asked for
+# by the name the module resolves: uname, environment, timezone,
+# compliance, dmidecode, mounts, fstab, users, and the groups min,
+# all and storage.
+
+- name: Gather the smallest useful subset
+  o0_o.posix.facts:
+    gather_subset: [min]
+  register: facts_min_reg
+
+# min is uname, environment, timezone and compliance: what a host can
+# say about itself before anything is read from a file. It is the one
+# selection that publishes o0_users without the users subset, so the
+# entry it publishes is the environment of the user the gather ran as
+# and nothing else about them.
+- name: Assert min gathers an identity's environment and no more
+  vars:
+    gathered: "{{ facts_min_reg['ansible_facts'] }}"
+    entry: "{{ gathered['o0_users'][facts_uid] }}"
+  ansible.builtin.assert:
+    that:
+      - gathered['o0_os']['kernel'] is mapping
+      - gathered['o0_os']['timezone'] is mapping
+      - gathered['o0_os']['compliance'] is mapping
+      - gathered['o0_network']['hostname'] is mapping
+      - gathered['o0_hardware']['baseboard'] is mapping
+      # The environment is keyed on the uid the gather ran as
+      - gathered['o0_users'].keys() | list == [facts_uid]
+      - entry['uid'] is integer
+      - entry['uid'] == facts_uid | int
+      - entry['environment']['PATH'] is string
+      - entry['environment']['PATH'] | length > 0
+      # Derived from LC_ALL or LANG, and never left as the C locale
+      - entry['locale'] is string
+      - entry['locale'] not in ['C', 'POSIX']
+      # What min deliberately lacks: everything read from a file
+      - entry['name'] is not defined
+      - entry['home'] is not defined
+      - entry['shell'] is not defined
+      - gathered['o0_storage'] is not defined
+      - gathered['o0_groups'] is not defined
+      - gathered['o0_shells'] is not defined
+      - gathered['o0_homes'] is not defined
+      - gathered['o0_shell_files'] is not defined
+    fail_msg: >-
+      min did not select uname, environment, timezone and compliance
+      alone: {{ gathered.keys() | list | sort }}
+
+- name: Gather the environment alone
+  o0_o.posix.facts:
+    gather_subset: [environment]
+  register: facts_env_reg
+
+- name: Assert the environment subset publishes one user and one uid
+  vars:
+    gathered: "{{ facts_env_reg['ansible_facts'] }}"
+    entry: "{{ gathered['o0_users'][facts_uid] }}"
+  ansible.builtin.assert:
+    that:
+      - gathered.keys() | list == ['o0_users']
+      - gathered['o0_users'] | length == 1
+      - entry.keys() | list | sort == ['environment', 'locale', 'uid']
+      - entry['environment']['HOME'] is string
+      - entry['environment'] | length > 0
+    fail_msg: >-
+      the environment subset published more than an identity's
+      environment: {{ gathered.keys() | list | sort }}
+
+- name: Gather what uname reported
+  o0_o.posix.facts:
+    gather_subset: [uname]
+  register: facts_uname_reg
+
+# One command answers for three namespaces, and for nothing else in
+# any of them.
+- name: Assert uname sorts its answer into three namespaces
+  vars:
+    gathered: "{{ facts_uname_reg['ansible_facts'] }}"
+  ansible.builtin.assert:
+    that:
+      - gathered.keys() | list | sort
+        == ['o0_hardware', 'o0_network', 'o0_os']
+      - gathered['o0_os'].keys() | list == ['kernel']
+      - gathered['o0_network'].keys() | list == ['hostname']
+      - gathered['o0_hardware'].keys() | list == ['baseboard']
+      - gathered['o0_hardware']['baseboard']['architecture'] is string
+      - gathered['o0_users'] is not defined
+    fail_msg: >-
+      uname did not publish the kernel, the hostname and the
+      architecture alone: {{ gathered }}
+
+- name: Gather the timezone alone
+  o0_o.posix.facts:
+    gather_subset: [timezone]
+  register: facts_tz_reg
+
+- name: Assert the timezone subset publishes an offset under o0_os
+  vars:
+    gathered: "{{ facts_tz_reg['ansible_facts'] }}"
+  ansible.builtin.assert:
+    that:
+      - gathered.keys() | list == ['o0_os']
+      - gathered['o0_os'].keys() | list == ['timezone']
+      - gathered['o0_os']['timezone']['abbreviation'] is string
+      - gathered['o0_os']['timezone']['offset']
+        is match('^[+-][0-9]{4}$')
+    fail_msg: >-
+      the timezone subset published something else: {{ gathered }}
+
+- name: Gather the users of the host alone
+  o0_o.posix.facts:
+    gather_subset: [users]
+  register: facts_users_reg
+
+# One subset, five facts: the users and groups it composes, the homes
+# and shells they hold, and the shells the host names as login
+# shells. A gather that published fewer than all five was what made
+# the idiom the users module documents unanswerable.
+- name: Assert the users subset publishes all five of its facts
+  vars:
+    gathered: "{{ facts_users_reg['ansible_facts'] }}"
+    expected: >-
+      {{ ['o0_groups', 'o0_homes', 'o0_shell_files', 'o0_users']
+         + (['o0_shells'] if facts_has_shells | bool else []) }}
+  ansible.builtin.assert:
+    that:
+      - gathered.keys() | list | sort == expected | sort
+      - gathered['o0_users']['0']['name'] == 'root'
+      - gathered['o0_users']['0']['uid'] is integer
+      - gathered['o0_groups'][
+          gathered['o0_users']['0']['gid'] | string
+        ]['members'] is sequence
+      - gathered['o0_os'] is not defined
+    fail_msg: >-
+      the users subset did not publish its five facts:
+      {{ gathered.keys() | list | sort }}
+
+- name: Gather the compliance of the host alone
+  o0_o.posix.facts:
+    gather_subset: [compliance]
+  register: facts_compliance_reg
+
+- name: Assert compliance publishes three namespaces and no bare name
+  vars:
+    gathered: "{{ facts_compliance_reg['ansible_facts'] }}"
+  ansible.builtin.assert:
+    that:
+      - gathered.keys() | list | sort
+        == ['o0_missing', 'o0_os', 'o0_paths']
+      - gathered['o0_os'].keys() | list | sort
+        == ['compliance', 'shells']
+      - gathered['o0_paths']['/bin/sh'] is defined
+      - gathered['o0_missing']['commands'] is sequence
+      - gathered['compliance'] is not defined
+      - gathered['shells'] is not defined
+      - gathered['paths'] is not defined
+      - gathered['missing_commands'] is not defined
+    fail_msg: >-
+      the compliance subset is not published under its o0_ names:
+      {{ gathered.keys() | list | sort }}
+
+- name: Gather the mounts of the host alone
+  o0_o.posix.facts:
+    gather_subset: [mounts]
+  register: facts_mounts_reg
+
+- name: Assert the mounts subset publishes storage and nothing else
+  vars:
+    gathered: "{{ facts_mounts_reg['ansible_facts'] }}"
+  ansible.builtin.assert:
+    that:
+      - gathered.keys() | list == ['o0_storage']
+      - gathered['o0_storage'].keys() | list == ['mounts']
+      - gathered['o0_storage']['mounts']['/'] is mapping
+    fail_msg: >-
+      the mounts subset published something else: {{ gathered }}
+
+- name: Gather the whole storage group
+  o0_o.posix.facts:
+    gather_subset: [storage]
+  register: facts_storage_reg
+
+# storage names mounts and fstab, and all names storage: a group that
+# names a group is expanded until only subsets are left, which is why
+# a default gather reaches the mounts of a host at all.
+- name: Assert the storage group expands to the subsets it names
+  vars:
+    gathered: "{{ facts_storage_reg['ansible_facts'] }}"
+    expected: >-
+      {{ ['mounts'] + (['config'] if facts_has_fstab | bool else []) }}
+  ansible.builtin.assert:
+    that:
+      - gathered.keys() | list == ['o0_storage']
+      - gathered['o0_storage'].keys() | list | sort
+        == expected | sort
+    fail_msg: >-
+      the storage group did not expand to mounts and fstab:
+      {{ gathered['o0_storage'].keys() | list | sort }}
+
+- name: Gather the filesystem table alone
+  o0_o.posix.facts:
+    gather_subset: [fstab]
+  register: facts_fstab_reg
+
+- name: Assert the fstab subset reads the table the host keeps
+  when: facts_has_fstab | bool
+  vars:
+    gathered: "{{ facts_fstab_reg['ansible_facts'] }}"
+  ansible.builtin.assert:
+    that:
+      - gathered.keys() | list == ['o0_storage']
+      - gathered['o0_storage'].keys() | list == ['config']
+      - gathered['o0_storage']['config']['/etc/fstab'] is sequence
+    fail_msg: >-
+      the fstab subset did not read /etc/fstab: {{ gathered }}
+
+# A subset with nothing to read publishes nothing at all: not an
+# empty namespace, which would read as a host that mounts nothing by
+# configuration.
+- name: Assert a host with no fstab publishes nothing for one
+  when: not facts_has_fstab | bool
+  ansible.builtin.assert:
+    that:
+      - facts_fstab_reg['ansible_facts'] == {}
+    fail_msg: >-
+      the fstab subset published a namespace with no fstab to read:
+      {{ facts_fstab_reg['ansible_facts'] }}
+
+- name: Gather the firmware tables alone
+  o0_o.posix.facts:
+    gather_subset: [dmidecode]
+  register: facts_dmidecode_gather_reg
+
+# Both producers read the firmware tables through one processor, so
+# the fact a gather publishes is the reading the module returns.
+- name: Assert dmidecode publishes the hardware both producers read
+  when: facts_has_dmidecode | bool
+  vars:
+    gathered: "{{ facts_dmidecode_gather_reg['ansible_facts'] }}"
+  ansible.builtin.assert:
+    that:
+      - gathered.keys() | list == ['o0_hardware']
+      - gathered['o0_hardware'] == facts_dmidecode_reg['hardware']
+    fail_msg: >-
+      the gather and the module disagree about the firmware tables
+
+- name: Assert a host without dmidecode publishes no hardware for it
+  when: not facts_has_dmidecode | bool
+  ansible.builtin.assert:
+    that:
+      - facts_dmidecode_gather_reg['ansible_facts'] == {}
+    fail_msg: >-
+      the dmidecode subset published a namespace it could not read:
+      {{ facts_dmidecode_gather_reg['ansible_facts'] }}
+
+- name: Gather everything except the firmware tables
+  o0_o.posix.facts:
+    gather_subset: ['!dmidecode']
+  register: facts_no_dmidecode_reg
+
+# A selection of negations alone starts from every subset there is and
+# takes the named ones away, so it can never reach further than all
+# does. It did, once, because all named a group that was never
+# expanded: the negated selection gathered the storage the default
+# gather had silently dropped.
+- name: Assert a negation reaches no further than all does
+  vars:
+    all_keys: "{{ facts_all_reg['ansible_facts'].keys() | list }}"
+    no_dmidecode_keys: >-
+      {{ facts_no_dmidecode_reg['ansible_facts'].keys() | list }}
+  ansible.builtin.assert:
+    that:
+      - no_dmidecode_keys | difference(all_keys) | length == 0
+      # dmidecode adds fields to o0_hardware, never a namespace of
+      # its own, so the two selections publish the same names
+      - all_keys | difference(no_dmidecode_keys) | length == 0
+    fail_msg: >-
+      ['!dmidecode'] and ['all'] disagree about what is published:
+      {{ no_dmidecode_keys | symmetric_difference(all_keys) }}
+
+- name: Gather everything except the users
+  o0_o.posix.facts:
+    gather_subset: ['all', '!users']
+  register: facts_no_users_reg
+
+- name: Assert a subset named after all is taken out of all
+  vars:
+    gathered: "{{ facts_no_users_reg['ansible_facts'] }}"
+  ansible.builtin.assert:
+    that:
+      - gathered['o0_storage']['mounts'] is mapping
+      - gathered['o0_groups'] is not defined
+      - gathered['o0_homes'] is not defined
+      - gathered['o0_shell_files'] is not defined
+      - gathered['o0_shells'] is not defined
+      # environment is still selected, and it is what keys o0_users
+      - gathered['o0_users'].keys() | list == [facts_uid]
+    fail_msg: >-
+      ['all', '!users'] still published the users:
+      {{ gathered.keys() | list | sort }}
+
+- name: Gather nothing at all
+  o0_o.posix.facts:
+    gather_subset: ['!all']
+  register: facts_none_reg
+
+- name: Assert a gather of nothing publishes nothing
+  ansible.builtin.assert:
+    that:
+      - facts_none_reg['ansible_facts'] == {}
+      - facts_none_reg['changed'] == false
+    fail_msg: >-
+      ['!all'] published facts: {{ facts_none_reg['ansible_facts'] }}
+
+# A gather reads and never writes, so check mode changes nothing about
+# what it does: the module declares support for it and then asks the
+# run plugin to run the commands anyway. The facts are the same facts.
+- name: Gather under check mode
+  o0_o.posix.facts:
+    gather_subset: [uname]
+  check_mode: true
+  register: facts_check_reg
+
+- name: Assert check mode gathers the same facts and changes nothing
+  ansible.builtin.assert:
+    that:
+      - facts_check_reg['changed'] == false
+      - facts_check_reg['ansible_facts']['o0_os']['kernel']
+        == facts_all_reg['ansible_facts']['o0_os']['kernel']
+    fail_msg: >-
+      a gather under check mode did not answer with the kernel the
+      host reported outside it

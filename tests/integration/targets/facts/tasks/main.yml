@@ -1,0 +1,145 @@
+# vim: ts=2:sw=2:sts=2:et:ft=yaml.ansible
+# -*- mode: yaml; yaml-indent-offset: 2; indent-tabs-mode: nil; -*-
+---
+# GNU General Public License v3.0+
+# SPDX-License-Identifier: GPL-3.0-or-later
+# (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
+#
+# Copyright (c) 2025 oØ.o (@o0-o)
+#
+# This file is part of the o0_o.posix Ansible Collection.
+
+# Every case here reads the facts a run registered rather than the
+# facts it set on the host. A gather publishes what it gathered, so a
+# host var carries whatever the last run to touch that name put there,
+# and a case about what one subset publishes cannot be asked of it.
+
+# The run every other case is measured against.
+- name: Gather with the default subset
+  o0_o.posix.facts:
+  register: facts_all_reg
+
+# What a host can answer for is not the same on every platform: a
+# BSD names its filesystems somewhere other than /etc/fstab, and
+# dmidecode is a Linux and root-only reading of firmware tables. Each
+# gate below decides between two real assertions, never between an
+# assertion and nothing.
+- name: Read the files the gather reads facts from
+  o0_o.posix.read:
+    paths:
+      - /etc/fstab
+      - /etc/shells
+  register: facts_files_reg
+
+# Whether a host answers for its firmware tables is not a question
+# about a command being installed: dmidecode reads /dev/mem, which a
+# container refuses even to root. The standalone producer is asked
+# first, and what it read decides what the gather is asked to match.
+- name: Read the firmware tables with the standalone producer
+  o0_o.posix.dmidecode:
+  register: facts_dmidecode_reg
+
+# The environment subset keys its answer on the effective uid, so the
+# target asks the host the same question the subset does, and by the
+# same means: a command, not an interpreter.
+- name: Ask the host for the uid the environment subset keys on
+  o0_o.posix.command:
+    argv:
+      - id
+      - -u
+  check_mode: false
+  register: facts_id_reg
+
+- name: Name what this host can be asked about
+  ansible.builtin.set_fact:
+    facts_uid: "{{ facts_id_reg['stdout'] | trim }}"
+    facts_has_fstab: >-
+      {{ facts_files_reg['paths']['/etc/fstab'] is not none }}
+    facts_has_shells: >-
+      {{ facts_files_reg['paths']['/etc/shells'] is not none }}
+    facts_has_dmidecode: >-
+      {{ facts_dmidecode_reg['hardware'] | length > 0 }}
+
+# The assertion that makes an un-prefixed fact impossible. The
+# collection publishes o0_ names and nothing else, and a gather that
+# reads a producer's top-level key as a namespace is the one place a
+# bare name can reach a host's facts.
+- name: Assert the gather published o0_ names and nothing else
+  vars:
+    gathered: "{{ facts_all_reg['ansible_facts'] }}"
+    strangers: "{{ gathered.keys() | reject('match', '^o0_') | list }}"
+  ansible.builtin.assert:
+    that:
+      - facts_all_reg['changed'] == false
+      - gathered is mapping
+      - strangers | length == 0
+    fail_msg: >-
+      the gather published names outside the o0_ namespaces:
+      {{ strangers }}
+
+# A namespace the merge opened for a subset that then failed used to
+# be published as {}, which reads as a host that has none of whatever
+# the namespace names. A namespace that holds a list is another
+# matter: a host whose /etc/shells names nothing names nothing, and
+# the empty list says so.
+- name: Assert no namespace was published as an empty mapping
+  vars:
+    gathered: "{{ facts_all_reg['ansible_facts'] }}"
+    hollow: >-
+      {{ gathered | dict2items | selectattr('value', 'mapping')
+         | selectattr('value', 'falsy') | map(attribute='key')
+         | list }}
+  ansible.builtin.assert:
+    that:
+      - hollow | length == 0
+    fail_msg: 'the gather published empty namespaces: {{ hollow }}'
+
+- name: Assert every namespace a POSIX host answers for is published
+  vars:
+    gathered: "{{ facts_all_reg['ansible_facts'] }}"
+  ansible.builtin.assert:
+    that:
+      - gathered['o0_os'] is mapping
+      - gathered['o0_network'] is mapping
+      - gathered['o0_hardware'] is mapping
+      - gathered['o0_storage'] is mapping
+      - gathered['o0_users'] is mapping
+      - gathered['o0_groups'] is mapping
+      - gathered['o0_homes'] is mapping
+      - gathered['o0_shell_files'] is mapping
+      - gathered['o0_paths'] is mapping
+      - gathered['o0_missing'] is mapping
+    fail_msg: >-
+      a default gather is missing a namespace:
+      {{ gathered.keys() | list | sort }}
+
+- name: Assert the shells a host names are published as a list
+  when: facts_has_shells | bool
+  vars:
+    shells: "{{ facts_all_reg['ansible_facts']['o0_shells'] }}"
+  ansible.builtin.assert:
+    that:
+      - shells is sequence
+      - shells is not mapping
+      - shells is not string
+      - shells | reject('match', '^/') | list | length == 0
+    fail_msg: >-
+      o0_shells is not a list of absolute paths: {{ shells }}
+
+# /etc/shells is what o0_shells is read from, so a host without the
+# file names no login shells and the fact is absent rather than empty.
+- name: Assert a host with no /etc/shells names no shells
+  when: not facts_has_shells | bool
+  ansible.builtin.assert:
+    that:
+      - facts_all_reg['ansible_facts']['o0_shells'] is not defined
+    fail_msg: 'o0_shells was published without /etc/shells to read'
+
+- name: Assert the shape of each namespace the gather published
+  ansible.builtin.include_tasks: namespaces.yml
+
+- name: Assert what each gather_subset selects
+  ansible.builtin.include_tasks: selection.yml
+
+- name: Assert a subset the module does not have is refused
+  ansible.builtin.include_tasks: failures.yml

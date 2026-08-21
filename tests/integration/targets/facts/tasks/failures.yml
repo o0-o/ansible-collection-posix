@@ -1,0 +1,36 @@
+# vim: ts=2:sw=2:sts=2:et:ft=yaml.ansible
+# -*- mode: yaml; yaml-indent-offset: 2; indent-tabs-mode: nil; -*-
+---
+# GNU General Public License v3.0+
+# SPDX-License-Identifier: GPL-3.0-or-later
+# (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
+#
+# Copyright (c) 2025 oØ.o (@o0-o)
+#
+# This file is part of the o0_o.posix Ansible Collection.
+
+# A name the module cannot resolve is refused before a single command
+# runs, and the refusal names the name.
+- name: 'Fail: A subset the module has no producer for'
+  block:
+
+    - name: Ask for a subset by a name no table holds
+      o0_o.posix.facts:
+        gather_subset: [bogus]
+
+    - name: Sentinel for the unresolvable subset task
+      ansible.builtin.fail:
+        msg: 'the facts module gathered a subset it does not have'
+
+  rescue:
+
+    - name: Assert the unresolvable subset was refused by name
+      ansible.builtin.assert:
+        that:
+          - >-
+            'Invalid gather_subset' in ansible_failed_result['msg']
+          - "'bogus' in ansible_failed_result['msg']"
+          - ansible_failed_result['ansible_facts'] is not defined
+        fail_msg: >-
+          the refusal did not name the subset it refused:
+          {{ ansible_failed_result['msg'] }}

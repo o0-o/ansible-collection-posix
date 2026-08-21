@@ -1,0 +1,286 @@
+# vim: ts=2:sw=2:sts=2:et:ft=yaml.ansible
+# -*- mode: yaml; yaml-indent-offset: 2; indent-tabs-mode: nil; -*-
+---
+# GNU General Public License v3.0+
+# SPDX-License-Identifier: GPL-3.0-or-later
+# (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
+#
+# Copyright (c) 2025 oØ.o (@o0-o)
+#
+# This file is part of the o0_o.posix Ansible Collection.
+
+# The shape of every namespace the default gather published, read from
+# the run registered in main.yml.
+
+- name: Assert the kernel is named the way the collection names one
+  vars:
+    kernel: "{{ facts_all_reg['ansible_facts']['o0_os']['kernel'] }}"
+  ansible.builtin.assert:
+    that:
+      # pretty is what uname printed; name is that, folded
+      - kernel['pretty'] is string
+      - kernel['pretty'] | length > 0
+      - kernel['name'] == (kernel['pretty'] | lower | replace(' ', '_'))
+      - kernel['version']['id'] is string
+      - kernel['version']['id'] | length > 0
+    fail_msg: 'o0_os.kernel is not the shape uname composes: {{ kernel }}'
+
+- name: Assert the timezone is an abbreviation and an offset
+  vars:
+    tz: "{{ facts_all_reg['ansible_facts']['o0_os']['timezone'] }}"
+  ansible.builtin.assert:
+    that:
+      - tz['abbreviation'] is string
+      - tz['abbreviation'] | length > 0
+      - tz['offset'] is match('^[+-][0-9]{4}$')
+      # The names an older target asserted and no producer ever emitted
+      - tz['name'] is not defined
+      - tz['abbr'] is not defined
+    fail_msg: 'o0_os.timezone is not the shape date composes: {{ tz }}'
+
+- name: Assert every standard the compliance subset reads is named
+  vars:
+    compliance: >-
+      {{ facts_all_reg['ansible_facts']['o0_os']['compliance'] }}
+    supports: >-
+      {{ compliance | dict2items
+         | map(attribute='value.supported', default=none) | list }}
+  ansible.builtin.assert:
+    that:
+      - compliance.keys() | list | sort == ['posix', 'sus', 'xcu',
+        'xsh', 'xsi']
+      - compliance['xsh']['name'] == 'System Interfaces'
+      - compliance['xsh']['abbreviation'] == 'XSH'
+      - compliance['xcu']['abbreviation'] == 'XCU'
+      - compliance['xsi']['abbreviation'] == 'XSI'
+      - compliance['posix']['abbreviation'] == 'POSIX'
+      - compliance['sus']['abbreviation'] == 'SUS'
+      # A standard is supported, unsupported, or supported in part
+      - supports | reject('in', [true, false, 'partial'])
+        | list | length == 0
+      # Each of the two standards with required commands says what it
+      # asked the host, whether the answer was a version or a miss
+      - compliance['xcu']['canaries'] is mapping
+      - compliance['xsi']['canaries'] is mapping
+    fail_msg: >-
+      o0_os.compliance does not name the standards it read, or one of
+      them will not say whether it is supported: {{ supports }}
+
+- name: Assert the aliases and builtins /bin/sh answers with
+  vars:
+    shells: "{{ facts_all_reg['ansible_facts']['o0_os']['shells'] }}"
+  ansible.builtin.assert:
+    that:
+      - shells['/bin/sh'] is mapping
+      - shells['/bin/sh']['aliases'] is mapping
+      - shells['/bin/sh']['builtins'] is sequence
+      - shells['/bin/sh']['builtins'] is not string
+    fail_msg: 'o0_os.shells does not describe /bin/sh: {{ shells }}'
+
+# The processor that builds the compliance payload names its own
+# facts. A bare name here is that payload published straight into the
+# host's facts, which is what the o0_ census above forbids in general
+# and these four forbid by name.
+- name: Assert the compliance payload arrived under its o0_ names
+  vars:
+    gathered: "{{ facts_all_reg['ansible_facts'] }}"
+  ansible.builtin.assert:
+    that:
+      - gathered['compliance'] is not defined
+      - gathered['shells'] is not defined
+      - gathered['paths'] is not defined
+      - gathered['missing_commands'] is not defined
+      - gathered['o0_paths'] | length > 0
+      - gathered['o0_paths'].keys() | reject('match', '^/')
+        | list | length == 0
+      - gathered['o0_missing']['commands'] is sequence
+      - gathered['o0_missing']['commands'] is not string
+    fail_msg: 'the compliance payload is not under its o0_ names'
+
+- name: Assert the host is named as a hostname, not a string
+  vars:
+    hostname: >-
+      {{ facts_all_reg['ansible_facts']['o0_network']['hostname'] }}
+  ansible.builtin.assert:
+    that:
+      - hostname['short'] is string
+      - hostname['short'] | length > 0
+      # A short name is the part before the first dot, so it has none
+      - "'.' not in hostname['short']"
+      # A long name, where there is one, is the short one qualified
+      - hostname['long'] is not defined or
+        hostname['long'].startswith(hostname['short'] ~ '.')
+    fail_msg: >-
+      o0_network.hostname is not the shape uname composes:
+      {{ hostname }}
+
+- name: Assert the architecture is a property of the board
+  vars:
+    hardware: "{{ facts_all_reg['ansible_facts']['o0_hardware'] }}"
+  ansible.builtin.assert:
+    that:
+      - hardware['baseboard']['architecture'] is string
+      - hardware['baseboard']['architecture'] | length > 0
+      # uname reads a machine, not a processor; an older target asked
+      # for o0_hardware.cpu, which no producer has ever published
+      - hardware['cpu'] is not defined
+    fail_msg: >-
+      o0_hardware does not carry the architecture uname reported:
+      {{ hardware }}
+
+- name: Assert the mounts of the host are keyed by mount point
+  vars:
+    mounts: >-
+      {{ facts_all_reg['ansible_facts']['o0_storage']['mounts'] }}
+    virtual_types:
+      - tmpfs
+      - devtmpfs
+      - proc
+      - sysfs
+      - cgroup
+      - cgroup2
+      - devpts
+    mounted_virtual: >-
+      {{ mounts.values() | list | map(attribute='type', default='')
+         | select('in', virtual_types) | list }}
+  ansible.builtin.assert:
+    that:
+      - mounts is mapping
+      - mounts | length > 0
+      - mounts.keys() | reject('match', '^/') | list | length == 0
+      # The mount point became the key, so it is no longer a field
+      - mounts.values() | list | selectattr('mount', 'defined')
+        | list | length == 0
+      # A filesystem that stores nothing outliving a boot is left out
+      # by the composition both producers share
+      - mounted_virtual | length == 0
+      - mounts['/'] is mapping
+    fail_msg: 'o0_storage.mounts is not keyed by mount point'
+
+# Capacity is what df alone knows, and the gather runs df beside
+# mount so that the fact a gather publishes carries it too.
+- name: Assert the root filesystem says how full it is
+  vars:
+    root: >-
+      {{ facts_all_reg['ansible_facts']['o0_storage']['mounts']['/'] }}
+  ansible.builtin.assert:
+    that:
+      - root['capacity']['total']['bytes'] is integer
+      - root['capacity']['total']['bytes'] > 0
+      - root['capacity']['total']['pretty'] is string
+      - root['capacity']['used']['bytes'] is integer
+      - root['capacity']['used']['percent'] is number
+      - root['type'] is not defined or root['type'] is string
+      - root['options'] is not defined or root['options'] is mapping
+    fail_msg: 'the root filesystem has no capacity: {{ root }}'
+
+# fstab_utils fills a field it cannot read with null, so every entry
+# carries all six names whatever the line said.
+- name: Assert the filesystems the host is configured to mount
+  when: facts_has_fstab | bool
+  vars:
+    config: >-
+      {{ facts_all_reg['ansible_facts']['o0_storage']['config'] }}
+    entries: "{{ config['/etc/fstab'] }}"
+  ansible.builtin.assert:
+    that:
+      - entries is sequence
+      - entries is not mapping
+      - entries is not string
+      - entries | selectattr('source', 'defined')
+        | selectattr('mount', 'defined')
+        | selectattr('type', 'defined')
+        | selectattr('options', 'defined')
+        | selectattr('dump', 'defined')
+        | selectattr('pass', 'defined')
+        | list | length == entries | length
+    fail_msg: >-
+      o0_storage.config['/etc/fstab'] does not carry all six fields
+
+- name: Assert a host with no /etc/fstab publishes no config for one
+  when: not facts_has_fstab | bool
+  ansible.builtin.assert:
+    that:
+      - facts_all_reg['ansible_facts']['o0_storage']['config']
+        is not defined
+    fail_msg: 'o0_storage.config was published without an fstab to read'
+
+# Two subsets answer under o0_users and the merge keys both on the
+# uid. The environment subset knows an identity by the uid it ran as,
+# which /etc/passwd need not describe at all: macOS keeps its local
+# users in a directory service and names only the system ones in the
+# file. So a uid keys every entry, and the fields a passwd line
+# composes are asserted of the entries that came from one.
+- name: Assert users are keyed by the uid they carry
+  vars:
+    users: "{{ facts_all_reg['ansible_facts']['o0_users'] }}"
+    described: >-
+      {{ users | dict2items | selectattr('value.name', 'defined')
+         | list }}
+  ansible.builtin.assert:
+    that:
+      - users | length > 0
+      - users | dict2items | map(attribute='key') | sort
+        == users | dict2items | map(attribute='value.uid')
+        | map('string') | sort
+      - users | dict2items | map(attribute='value.uid')
+        | reject('integer') | list | length == 0
+      - described | length > 0
+      # Every group a user holds is a gid. A user whose primary group
+      # no longer exists holds none, which is why the assertion is
+      # about what the list contains and not that it has anything.
+      - described | map(attribute='value.groups')
+        | flatten | reject('integer') | list | length == 0
+    fail_msg: 'o0_users is not keyed by a stringified uid'
+
+- name: Assert root is the user every POSIX host has
+  vars:
+    users: "{{ facts_all_reg['ansible_facts']['o0_users'] }}"
+    host_groups: "{{ facts_all_reg['ansible_facts']['o0_groups'] }}"
+    root: "{{ users['0'] }}"
+  ansible.builtin.assert:
+    that:
+      - root['name'] == 'root'
+      - root['uid'] is integer
+      - root['uid'] == 0
+      - root['gid'] is integer
+      - root['home'] is string
+      - root['shell'] is string
+      - root['gid'] in root['groups']
+      # A user's primary group counts them among its members
+      - 0 in host_groups[root['gid'] | string]['members']
+    fail_msg: 'o0_users["0"] is not root: {{ root }}'
+
+- name: Assert groups are keyed by gid and count members in uids
+  vars:
+    host_groups: "{{ facts_all_reg['ansible_facts']['o0_groups'] }}"
+  ansible.builtin.assert:
+    that:
+      - host_groups | length > 0
+      - host_groups | dict2items | map(attribute='key') | sort
+        == host_groups | dict2items | map(attribute='value.gid')
+        | map('string') | sort
+      # A member is a uid, never the name /etc/group wrote down
+      - host_groups | dict2items | map(attribute='value.members')
+        | flatten | reject('integer') | list | length == 0
+    fail_msg: 'o0_groups is not keyed by a stringified gid'
+
+- name: Assert homes and shell files are keyed by the path they are
+  vars:
+    homes: "{{ facts_all_reg['ansible_facts']['o0_homes'] }}"
+    shell_files: >-
+      {{ facts_all_reg['ansible_facts']['o0_shell_files'] }}
+  ansible.builtin.assert:
+    that:
+      - homes | length > 0
+      - homes.keys() | reject('match', '^/') | list | length == 0
+      - homes | dict2items | map(attribute='value.residents')
+        | flatten | reject('integer') | list | length == 0
+      - homes | dict2items | rejectattr('value.tags', 'contains',
+        'home') | list | length == 0
+      - shell_files | length > 0
+      - shell_files.keys() | reject('match', '^/')
+        | list | length == 0
+      - shell_files | dict2items | rejectattr('value.tags',
+        'contains', 'shell') | list | length == 0
+    fail_msg: 'o0_homes or o0_shell_files is not keyed by path'
