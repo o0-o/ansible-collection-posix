@@ -24,7 +24,7 @@ DOCUMENTATION = r"""
 ---
 name: group
 short_description: Parse /etc/group content
-version_added: "1.4.0"
+version_added: "2.0.0"
 description:
   - Parse the contents of the C(/etc/group) file using the jc parser
     and normalize the output into a dictionary keyed by either numeric

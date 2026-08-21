@@ -15,7 +15,7 @@ DOCUMENTATION = r"""
 ---
 module: run
 short_description: Execute multiple commands in a single SSH round trip
-version_added: "1.5.0"
+version_added: "2.0.0"
 description:
   - Executes multiple commands on the remote host in a single batched
     operation to minimize SSH latency.

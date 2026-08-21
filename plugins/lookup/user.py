@@ -15,7 +15,7 @@ DOCUMENTATION = r"""
 ---
 name: user
 short_description: Look up user information by UID or username
-version_added: "1.4.0"
+version_added: "2.0.0"
 description:
   - Look up user information from the C(o0_users) fact by UID (int) or
     username (str).

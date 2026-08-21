@@ -15,7 +15,7 @@ DOCUMENTATION = r"""
 ---
 module: uptime
 short_description: Gather POSIX uptime information
-version_added: "1.6.0"
+version_added: "2.0.0"
 description:
   - Collects uptime details (elapsed runtime, start time, logged-in
     sessions, load averages) by invoking the POSIX C(uptime) command.

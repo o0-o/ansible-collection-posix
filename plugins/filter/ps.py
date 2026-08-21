@@ -21,7 +21,7 @@ DOCUMENTATION = r"""
 ---
 name: ps
 short_description: Parse ps command output
-version_added: "1.2.0"
+version_added: "2.0.0"
 description:
   - Parse output from the ps command into structured data using jc
   - Returns a list of process entries with organized nested fields

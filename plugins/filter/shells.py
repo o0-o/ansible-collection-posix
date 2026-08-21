@@ -24,7 +24,7 @@ DOCUMENTATION = r"""
 ---
 name: shells
 short_description: Parse /etc/shells content
-version_added: "1.4.0"
+version_added: "2.0.0"
 description:
   - Parse the contents of the C(/etc/shells) file into a list of valid
     login shell paths.

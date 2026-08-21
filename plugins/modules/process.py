@@ -16,7 +16,7 @@ DOCUMENTATION = r"""
 ---
 module: process
 short_description: Gather process information from POSIX systems
-version_added: "1.4.0"
+version_added: "2.0.0"
 description:
   - Gathers process information using ps command with jc parsing.
   - >-

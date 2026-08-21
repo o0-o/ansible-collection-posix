@@ -24,7 +24,7 @@ DOCUMENTATION = r"""
 ---
 name: uptime
 short_description: Parse uptime command output
-version_added: "1.6.0"
+version_added: "2.0.0"
 description:
   - Parse the output of the POSIX C(uptime) command into structured data.
   - Returns elapsed uptime (seconds, ISO 8601, pretty) and load averages.

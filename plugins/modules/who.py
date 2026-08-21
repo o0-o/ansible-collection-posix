@@ -15,7 +15,7 @@ DOCUMENTATION = r"""
 ---
 module: who
 short_description: Gather active session information using who
-version_added: "1.6.0"
+version_added: "2.0.0"
 description:
   - Collects session details reported by the POSIX C(who) command using
     the accompanying action plugin.

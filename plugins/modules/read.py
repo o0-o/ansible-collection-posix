@@ -15,7 +15,7 @@ DOCUMENTATION = r"""
 ---
 module: read
 short_description: Inspect file metadata and optionally content on POSIX hosts
-version_added: "1.4.0"
+version_added: "2.0.0"
 description:
   - Gathers metadata about a file, directory, link, or special device on
     POSIX systems using portable commands and modules.
@@ -158,7 +158,6 @@ options:
       - Useful for debugging, testing, or bootstrap scenarios.
     type: raw
     default: "auto"
-    version_added: "2.0.0"
 author:
   - oØ.o (@o0-o)
 notes:

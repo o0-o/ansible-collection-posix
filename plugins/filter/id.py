@@ -24,7 +24,7 @@ DOCUMENTATION = r"""
 ---
 name: id
 short_description: Parse id command output
-version_added: "1.4.0"
+version_added: "2.0.0"
 description:
   - Parse output from the C(id) command using the jc parser and
     normalize it into user/group mappings that can be keyed by numeric

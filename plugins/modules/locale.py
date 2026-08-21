@@ -15,7 +15,7 @@ DOCUMENTATION = r"""
 ---
 module: locale
 short_description: Detect the system locale on POSIX hosts
-version_added: "1.4.0"
+version_added: "2.0.0"
 description:
   - Detects the system locale categories on POSIX hosts.
   - Reads locale values from the process environment and the

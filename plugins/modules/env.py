@@ -15,7 +15,7 @@ DOCUMENTATION = r"""
 ---
 module: env
 short_description: Collect POSIX environment variables
-version_added: "1.5.0"
+version_added: "2.0.0"
 description:
   - Collects specific environment variables from the target host.
   - Runs C(printf '%s' "$VAR") per variable using C(set -eu) so that

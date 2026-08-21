@@ -15,7 +15,7 @@ DOCUMENTATION = r"""
 ---
 name: group
 short_description: Look up group information by GID or group name
-version_added: "1.4.0"
+version_added: "2.0.0"
 description:
   - Look up group information from the C(o0_groups) fact by GID (int)
     or group name (str).

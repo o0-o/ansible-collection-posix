@@ -23,7 +23,7 @@ DOCUMENTATION = r"""
 ---
 name: uname
 short_description: Parse uname command output
-version_added: "1.1.0"
+version_added: "1.4.0"
 description:
   - Parse output from the uname command into structured data using jc
   - Returns normalized structure with kernel, architecture, and hostname

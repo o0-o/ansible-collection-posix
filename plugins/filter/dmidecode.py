@@ -23,7 +23,7 @@ DOCUMENTATION = r"""
 ---
 name: dmidecode
 short_description: Parse dmidecode command output
-version_added: "1.4.0"
+version_added: "2.0.0"
 description:
   - Parse output from the dmidecode command into structured hardware
     information using jc

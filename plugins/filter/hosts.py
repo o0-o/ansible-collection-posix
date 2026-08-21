@@ -21,7 +21,7 @@ DOCUMENTATION = r"""
 ---
 name: hosts
 short_description: Parse or generate /etc/hosts content
-version_added: "1.4.0"
+version_added: "2.0.0"
 description:
   - Bidirectional filter for /etc/hosts content
   - Parse hosts file text into structured data using jc

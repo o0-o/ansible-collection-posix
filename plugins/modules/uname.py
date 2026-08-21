@@ -15,7 +15,7 @@ DOCUMENTATION = r"""
 ---
 module: uname
 short_description: Gather kernel, hostname, and architecture facts
-version_added: "1.5.0"
+version_added: "2.0.0"
 description:
   - Runs C(uname -a) on the target and parses the output into
     structured kernel, hostname, and architecture data.

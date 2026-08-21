@@ -15,7 +15,7 @@ DOCUMENTATION = r"""
 ---
 module: dmidecode
 short_description: Gather hardware information using dmidecode
-version_added: "1.4.0"
+version_added: "2.0.0"
 description:
   - Executes the C(dmidecode) command and parses the output into
     structured hardware information.

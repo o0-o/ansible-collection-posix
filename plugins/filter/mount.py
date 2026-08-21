@@ -23,7 +23,7 @@ DOCUMENTATION = r"""
 ---
 name: mount
 short_description: Parse mount command output
-version_added: "1.1.0"
+version_added: "1.4.0"
 description:
   - Parse output from the mount command into structured data using jc
   - Returns a list of mount entries matching fstab structure

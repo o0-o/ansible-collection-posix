@@ -15,7 +15,7 @@ DOCUMENTATION = r"""
 ---
 module: timezone
 short_description: Detect the system-level timezone
-version_added: "1.5.0"
+version_added: "2.0.0"
 description:
   - Detects the effective timezone by running C(date "+%Z %z").
   - Returns the timezone abbreviation and UTC offset.

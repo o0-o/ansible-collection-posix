@@ -15,7 +15,7 @@ DOCUMENTATION = r"""
 ---
 module: which
 short_description: Resolve a command's full path on POSIX systems
-version_added: "1.4.0"
+version_added: "2.0.0"
 description:
   - Resolves the full path to a command by clearing aliases and using
     C(command -v) with a fallback to C(which).
