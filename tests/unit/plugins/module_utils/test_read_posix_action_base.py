@@ -74,6 +74,14 @@ def _ls_result(flags: str, path: str = "/f") -> dict[str, Any]:
     }
 
 
+def _ls_link_result(path: str, target: str) -> dict[str, Any]:
+    """Build an ls -dn result for a symlink naming its target."""
+    return {
+        "rc": 0,
+        "stdout": f"lrwxrwxrwx  1  0  0  0 Aug 16 10:00 {path} -> {target}",
+    }
+
+
 @pytest.fixture
 def action() -> DummyReadAction:
     """Provide a bare ReadPosixActionBase instance per test."""
@@ -761,7 +769,7 @@ class TestProcessReadResults:
             "/f_md5": {"rc": 0, "stdout": f"{self.EMPTY_MD5}  /f\n"},
         }
 
-        file_data, _types = action._process_read_results(
+        file_data, _facts = action._process_read_results(
             results, ["/f"], {"attributes": False, "md5": True}
         )
 
@@ -787,7 +795,7 @@ class TestProcessReadResults:
             "/d_contents": {"rc": 0, "stdout": "one\ntwo\n"},
         }
 
-        file_data, _types = action._process_read_results(
+        file_data, _facts = action._process_read_results(
             results, ["/d"], {"attributes": False}
         )
 
@@ -801,7 +809,7 @@ class TestProcessReadResults:
             "/d_md5": {"rc": 1, "stdout": ""},
         }
 
-        file_data, _types = action._process_read_results(
+        file_data, _facts = action._process_read_results(
             results, ["/d"], {"attributes": False, "md5": True}
         )
 
@@ -811,7 +819,7 @@ class TestProcessReadResults:
         """Test the type is published when attributes are requested."""
         results = {"/f_ls": _ls_result("-rw-r--r--")}
 
-        file_data, _types = action._process_read_results(
+        file_data, _facts = action._process_read_results(
             results, ["/f"], {"attributes": True}
         )
 
@@ -830,24 +838,65 @@ class TestProcessReadResults:
             "/f_ls": _ls_result("-rw-r--r--"),
         }
 
-        file_data, file_types = action._process_read_results(
+        file_data, ls_facts = action._process_read_results(
             results, ["/d", "/l", "/f"], {"attributes": False}
         )
 
-        assert file_types == {
-            "/d": "directory",
-            "/l": "link",
-            "/f": "regular",
-        }
+        assert ls_facts["/d"]["type"] == "directory"
+        assert ls_facts["/l"]["type"] == "link"
+        assert ls_facts["/f"]["type"] == "regular"
         assert all("type" not in data for data in file_data.values())
 
+    def test_link_target_returned_without_being_published(
+        self, action
+    ) -> None:
+        """Test the target a link points at travels with its type.
+
+        Following a link recursively needs where it points as much as
+        it needs to know that it points, and the same ls entry reports
+        both, so attributes governs neither.
+        """
+        results = {"/l_ls": _ls_link_result("/l", "/target")}
+
+        file_data, ls_facts = action._process_read_results(
+            results, ["/l"], {"attributes": False}
+        )
+
+        assert ls_facts["/l"] == {"type": "link", "target": "/target"}
+        assert file_data["/l"] == {}
+
+    def test_link_target_is_published_on_request(self, action) -> None:
+        """Test attributes publishes the target it does not decide."""
+        results = {"/l_ls": _ls_link_result("/l", "/target")}
+
+        file_data, ls_facts = action._process_read_results(
+            results, ["/l"], {"attributes": True}
+        )
+
+        assert file_data["/l"]["target"] == "/target"
+        assert ls_facts["/l"]["target"] == "/target"
+
+    def test_only_a_link_carries_a_target(self, action) -> None:
+        """Test a target is not invented for what cannot have one."""
+        results = {"/f_ls": _ls_result("-rw-r--r--")}
+
+        _data, ls_facts = action._process_read_results(
+            results, ["/f"], {"attributes": False}
+        )
+
+        assert "target" not in ls_facts["/f"]
+
     def test_missing_path_is_typed_by_neither(self, action) -> None:
-        """Test a path with no listing appears in neither mapping."""
+        """Test a path with no listing appears in neither mapping.
+
+        A dangling link's target lands here, and the absence is what
+        tells the action to leave the link's own data alone.
+        """
         results = {"/gone_ls": {"rc": 1, "stdout": ""}}
 
-        file_data, file_types = action._process_read_results(
+        file_data, ls_facts = action._process_read_results(
             results, ["/gone"], {"attributes": True}
         )
 
         assert file_data == {"/gone": None}
-        assert file_types == {}
+        assert ls_facts == {}

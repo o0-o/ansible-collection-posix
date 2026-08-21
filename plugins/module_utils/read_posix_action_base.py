@@ -831,30 +831,33 @@ class ReadPosixActionBase(PosixActionBase):
         results: dict[str, Any],
         paths: list[str],
         options: Optional[dict[str, Any]] = None,
-    ) -> tuple[dict[str, Optional[dict[str, Any]]], dict[str, str]]:
+    ) -> tuple[dict[str, Optional[dict[str, Any]]], dict[str, dict[str, Any]]]:
         """
         Process raw command results into structured file data.
 
         Parses ls -din output using jc and extracts file attributes.
 
-        The type is determined for every path whether or not it is
-        published. A caller that recurses into a directory or follows a
-        link depends on the type the ls reported, not on the one
-        attributes decided to show, so it is returned alongside the file
-        data rather than read back out of it.
+        What the ls established about each path is returned alongside
+        the file data, whatever the result publishes: the type of every
+        path and the target of every link, both free of the attributes
+        option because the ls that reports them runs in every batch. A
+        caller that recurses into a directory, follows a link, or asks
+        whether a path was there at all reads them from there rather
+        than out of the dict it is about to publish.
 
         :param dict results: Raw command results from _run()
         :param list[str] paths: Original paths that were inspected
         :param Optional[dict[str, bool]] options: Boolean options dict
             (attributes, extended, content, md5, sha1, sha256, sha512)
-        :returns tuple[dict, dict]: (file_data, file_types); file_data
+        :returns tuple[dict, dict]: (file_data, ls_facts); file_data
             maps each path to its parsed file data, or None when the
-            path does not exist, and file_types maps each path whose
-            listing parsed to the type the ls reported for it
+            path does not exist, and ls_facts maps each path whose
+            listing parsed to its type under 'type' and, for a link,
+            the target the ls reported under 'target'
         """
         options = options or {"attributes": True}
         file_data: dict[str, Optional[dict[str, Any]]] = {}
-        file_types: dict[str, str] = {}
+        ls_facts: dict[str, dict[str, Any]] = {}
 
         for path in paths:
             ls_key = f"{path}_ls"
@@ -884,14 +887,17 @@ class ReadPosixActionBase(PosixActionBase):
                 attributes = {}
                 include_attributes = options.get("attributes", False)
 
-                # Extract file type from first char of flags. The ls
-                # runs in every batch, so the type is always known:
-                # every decision below reads this local and the caller
-                # reads it from file_types; only its publication waits
-                # on the attributes option
+                # Extract file type from first char of flags, and a
+                # link's target from the same entry. The ls runs in
+                # every batch, so both are always known: every decision
+                # below reads them from facts and so does the caller;
+                # only their publication waits on the attributes option
                 flags = entry.get("flags", "")
                 file_type = self._ls_file_type(entry)
-                file_types[path] = file_type
+                facts: dict[str, Any] = {"type": file_type}
+                if file_type == "link":
+                    facts["target"] = entry.get("link_to", "")
+                ls_facts[path] = facts
                 if flags and include_attributes:
                     attributes["type"] = file_type
 
@@ -928,12 +934,9 @@ class ReadPosixActionBase(PosixActionBase):
 
                 # Add content/hardlinks field based on file type
                 if file_type == "link" and include_attributes:
-                    # For symlinks, target is the link target
-                    # jc returns link_to field for symlink targets
-                    if "link_to" in entry:
-                        attributes["target"] = entry["link_to"]
-                    else:
-                        attributes["target"] = ""
+                    # The target the ls reported, published on request
+                    # the way the type is
+                    attributes["target"] = facts["target"]
                 elif file_type == "regular" and include_attributes:
                     # For regular files, hardlinks is the count of OTHER links
                     # (raw count - 1), omit if zero
@@ -1457,7 +1460,7 @@ class ReadPosixActionBase(PosixActionBase):
                     f"{type(e).__name__}: {e}"
                 ) from e
 
-        return file_data, file_types
+        return file_data, ls_facts
 
     def _stat_permission_booleans(self, flags: str) -> dict[str, bool]:
         """Parse permission booleans from flags string.

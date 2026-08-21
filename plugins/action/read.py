@@ -359,10 +359,10 @@ class ActionModule(ReadPosixActionBase, ActionBase):
         # detected capabilities for remaining paths to avoid redundant commands
         file_data: dict[str, Any] = {}
 
-        # The type of every path, published or not: recursion and
-        # symlink following depend on the type the ls reported, and
-        # attributes decides only whether it reaches the result
-        file_types: dict[str, str] = {}
+        # What the ls established about every path, published or not:
+        # recursion and symlink following decide on the type and the
+        # target the ls reported, never on what reached the result
+        ls_facts: dict[str, dict[str, Any]] = {}
 
         try:
             # Phase 1: Process first path with all command variants
@@ -414,13 +414,13 @@ class ActionModule(ReadPosixActionBase, ActionBase):
             total_batches += content_counts["batches"]
 
             # Process first path's results
-            first_file_data, first_file_types = self._process_read_results(
+            first_file_data, first_ls_facts = self._process_read_results(
                 results=detection_result["commands"],
                 paths=[first_path],
                 options=options,
             )
             file_data.update(first_file_data)
-            file_types.update(first_file_types)
+            ls_facts.update(first_ls_facts)
 
             # Phase 2: Process remaining paths with detected platform
             remaining_paths = self.paths[1:]
@@ -460,14 +460,14 @@ class ActionModule(ReadPosixActionBase, ActionBase):
                 # Process remaining results
                 (
                     remaining_file_data,
-                    remaining_file_types,
+                    remaining_ls_facts,
                 ) = self._process_read_results(
                     results=commands_result["commands"],
                     paths=remaining_paths,
                     options=options,
                 )
                 file_data.update(remaining_file_data)
-                file_types.update(remaining_file_types)
+                ls_facts.update(remaining_ls_facts)
 
             # If children is set, recursively read child entries within
             # directories
@@ -483,7 +483,7 @@ class ActionModule(ReadPosixActionBase, ActionBase):
                 # (don't process children for auto-added parent paths)
                 dirs_to_process = []
                 for path in self.original_paths:
-                    if file_types.get(path) == "directory":
+                    if ls_facts.get(path, {}).get("type") == "directory":
                         dirs_to_process.append((path, 0))
 
                 self._display.vvv(
@@ -575,18 +575,19 @@ class ActionModule(ReadPosixActionBase, ActionBase):
                         )
                         total_commands += content_counts["count"]
                         total_batches += content_counts["batches"]
-                        child_data, child_types = self._process_read_results(
+                        child_data, child_facts = self._process_read_results(
                             results=child_result["commands"],
                             paths=new_children,
                             options=options,
                         )
                         file_data.update(child_data)
-                        file_types.update(child_types)
+                        ls_facts.update(child_facts)
 
                     # Add subdirectories to processing queue
                     subdirs_found = 0
                     for child_path in new_children:
-                        if file_types.get(child_path) == "directory":
+                        facts = ls_facts.get(child_path, {})
+                        if facts.get("type") == "directory":
                             dirs_to_process.append(
                                 (child_path, current_depth + 1)
                             )
@@ -606,19 +607,18 @@ class ActionModule(ReadPosixActionBase, ActionBase):
 
                 while True:
                     new_targets = []
-                    for path, data in file_data.items():
-                        if (
-                            file_types.get(path) == "link"
-                            and data
-                            and data.get("target")
-                        ):
-                            target = data["target"]
-                            # Resolve relative paths to absolute
-                            if not isabs(target):
-                                target = normpath(join(dirname(path), target))
-                            if target not in processed_paths:
-                                new_targets.append(target)
-                                processed_paths.add(target)
+                    for path, facts in ls_facts.items():
+                        if facts.get("type") != "link":
+                            continue
+                        target = facts.get("target")
+                        if not target:
+                            continue
+                        # Resolve relative paths to absolute
+                        if not isabs(target):
+                            target = normpath(join(dirname(path), target))
+                        if target not in processed_paths:
+                            new_targets.append(target)
+                            processed_paths.add(target)
 
                     if not new_targets:
                         break
@@ -646,19 +646,19 @@ class ActionModule(ReadPosixActionBase, ActionBase):
                     )
                     total_commands += content_counts["count"]
                     total_batches += content_counts["batches"]
-                    target_data, target_types = self._process_read_results(
+                    target_data, target_facts = self._process_read_results(
                         results=target_result["commands"],
                         paths=new_targets,
                         options=options,
                     )
                     file_data.update(target_data)
-                    file_types.update(target_types)
+                    ls_facts.update(target_facts)
 
             elif self.follow is True:
                 # Resolve symlinks to their ultimate targets
                 links_to_resolve = []
-                for path in file_data:
-                    if file_types.get(path) == "link":
+                for path, facts in ls_facts.items():
+                    if facts.get("type") == "link":
                         links_to_resolve.append(path)
 
                 if links_to_resolve:
@@ -723,17 +723,22 @@ class ActionModule(ReadPosixActionBase, ActionBase):
                         total_batches += content_counts["batches"]
                         (
                             target_data,
-                            target_types,
+                            target_facts,
                         ) = self._process_read_results(
                             results=target_result["commands"],
                             paths=unique_targets,
                             options=options,
                         )
-                        file_types.update(target_types)
+                        ls_facts.update(target_facts)
 
-                        # Replace symlink data with target data
+                        # Replace symlink data with target data. A
+                        # target the ls typed is a target that is
+                        # there, which is the question here: whether
+                        # its data is worth taking is not a question
+                        # publication answers, and a dangling link's
+                        # target types as nothing at all
                         for link_path, target in resolved_targets.items():
-                            if target in target_data and target_data[target]:
+                            if target in target_facts:
                                 file_data[link_path] = target_data[target]
                                 # Add realpath key when it differs from
                                 # original path

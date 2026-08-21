@@ -1,0 +1,14 @@
+---
+bugfixes:
+  - >-
+    read - A recursive walk without attributes stopped at the first
+    symlink, and a link to a directory came back with neither the
+    target's metadata nor a realpath. Following a link read where it
+    points, and deciding whether a target was worth taking read the
+    target's data, out of the same result attributes decides the
+    contents of. The ls that types every path reports a link's target
+    with it, and a target it typed is a target that is there, so both
+    questions are now answered from what the ls established rather
+    than from what was published. A dangling link still keeps its own
+    entry
+    (https://github.com/o0-o/ansible-collection-posix/pull/XXX).

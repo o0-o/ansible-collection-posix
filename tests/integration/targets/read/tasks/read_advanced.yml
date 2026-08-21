@@ -174,6 +174,14 @@
     src: "{{ read_dir_path }}/linktree/real"
     path: "{{ read_dir_path }}/linktree/dirlink"
 
+# Kept out of the tree above so it does not join that walk
+- name: Link to a path that is not there
+  ansible.builtin.file:
+    state: link
+    src: "{{ read_dir_path }}/gone.txt"
+    path: "{{ read_dir_path }}/dangling.link"
+    force: true
+
 - name: Name the entries of the linked tree
   ansible.builtin.set_fact:
     read_linktree_dir: "{{ read_dir_path }}/linktree"
@@ -225,11 +233,87 @@
       - >-
         read_dirlink_no_attrs_reg['paths'][read_linktree_real]['children']
         == [read_linktree_inner]
-      # Pinned as found, not endorsed: a followed link takes the
-      # target's data only when there is data to take, and a directory
-      # read without attributes publishes none, so the entry stays
-      # empty and the realpath the action adds goes with it
-      - read_dirlink_no_attrs_reg['paths'][read_linktree_link] == {}
+      # A followed link takes the target's data because the target is
+      # there, which the ls settles; a directory read without
+      # attributes publishes nothing, and the realpath the action adds
+      # arrives all the same. The same entry, its attribute keys held
+      # back
+      - >-
+        read_dirlink_no_attrs_reg['paths'][read_linktree_link]['realpath']
+        == read_dirlink_reg['paths'][read_linktree_link]['realpath']
+      - >-
+        read_dirlink_no_attrs_reg['paths'][read_linktree_link] | list
+        == ['realpath']
+
+# follow=recursive walks to where the link points, and where it points
+# is what the ls reported, not what the result was allowed to show, so
+# the walk reaches the same entries with the attribute keys held back
+- name: Walk a directory symlink recursively with attributes on
+  o0_o.posix.read:
+    path: "{{ read_linktree_link }}"
+    follow: recursive
+    attributes: true
+  register: read_recursive_reg
+
+- name: Walk the same symlink recursively with attributes off
+  o0_o.posix.read:
+    path: "{{ read_linktree_link }}"
+    follow: recursive
+    attributes: false
+  register: read_recursive_no_attrs_reg
+
+- name: Assert the recursive walk reaches the target either way
+  ansible.builtin.assert:
+    that:
+      - read_recursive_reg is not changed
+      - read_recursive_no_attrs_reg is not changed
+      - >-
+        read_recursive_reg['paths'].keys() | sort
+        == [read_linktree_link, read_linktree_real] | sort
+      - >-
+        read_recursive_no_attrs_reg['paths'].keys() | sort
+        == read_recursive_reg['paths'].keys() | sort
+      # The link is listed as a link and the directory it names is
+      # read beside it, rather than standing in for it
+      - >-
+        read_recursive_reg['paths'][read_linktree_link]['type'] == 'link'
+      - >-
+        read_recursive_reg['paths'][read_linktree_link]['target']
+        == read_linktree_real
+      - >-
+        read_recursive_reg['paths'][read_linktree_real]['type']
+        == 'directory'
+      - >-
+        'realpath' not in read_recursive_reg['paths'][read_linktree_link]
+      # Both entries with every attribute key held back, the target
+      # among them: it is the ls the walk read, not the result
+      - >-
+        read_recursive_no_attrs_reg['paths'].values() | map('list')
+        | flatten | length == 0
+
+# The other side of the same question: a followed link takes its
+# target's data because the ls found a target to take it from, and
+# nothing lies at the end of a dangling link, so it keeps its own
+- name: Read a dangling link with follow enabled
+  o0_o.posix.read:
+    path: "{{ read_dir_path }}/dangling.link"
+    follow: true
+  register: read_dangling_reg
+
+- name: Assert a dangling link keeps its own entry
+  ansible.builtin.assert:
+    that:
+      - read_dangling_reg is not changed
+      - read_dangling_reg['paths'] | length == 1
+      - >-
+        read_dangling_reg['paths'][read_dir_path + '/dangling.link']['type']
+        == 'link'
+      - >-
+        read_dangling_reg['paths'][read_dir_path + '/dangling.link']['target']
+        == read_dir_path + '/gone.txt'
+      - >-
+        'realpath' not in
+        read_dangling_reg['paths'][read_dir_path + '/dangling.link']
 
 # Test parents parameter with boolean True
 - name: Read file with parents=true
