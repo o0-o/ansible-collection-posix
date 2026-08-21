@@ -10,3 +10,12 @@ python-dateutil>=2.8.0      # Date parsing for dmidecode
 dnspython>=2.0.0            # DNS resolution for hostname
 idna>=3.0                   # IDN support for hostname
 tldextract>=3.1.0           # TLD extraction for hostname
+
+# Unit test runner. tests/unit/requirements.txt links here, which is
+# where ansible-test reads a collection's test requirements from, and
+# the shared development venv installs the lock this file compiles to.
+# ansible-test provisions these itself only for an environment it
+# manages, and the shared venv is not one, so `ansible-test units`
+# cannot run without them.
+pytest                      # Runs the unit tests
+pytest-xdist                # ansible-test units always passes -n
