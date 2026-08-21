@@ -84,9 +84,6 @@ class ActionModule(ReadPosixActionBase, ActionBase):
             self._read_text_file(group_path, task_vars),
         )
 
-        # Validate shells against /etc/shells if available
-        self._validate_user_shells(users, task_vars)
-
         # Gather SSH keys for users
         self._gather_ssh_keys_for_users(users, task_vars)
 
@@ -115,37 +112,6 @@ class ActionModule(ReadPosixActionBase, ActionBase):
             error_msg = cmd_result.get("stderr") or cmd_result.get("stdout")
             raise AnsibleActionFail(f"Failed to read {path}: {error_msg}")
         return cmd_result.get("stdout", "")
-
-    def _validate_user_shells(
-        self, users: dict[str, dict[str, Any]], task_vars: dict[str, Any]
-    ) -> None:
-        """Validate user shells against /etc/shells if available.
-
-        Adds 'known' boolean to each user indicating whether their
-        shell is listed in /etc/shells. Requires
-        config['/etc/shells'] to be populated from a previous
-        facts gather.
-
-        :param dict[str, dict[str, Any]] users: User mapping to augment
-        :param dict[str, Any] task_vars: Task variables
-        """
-        # Check if config exists with /etc/shells data
-        config = task_vars.get("config", {})
-        shells_config = config.get("/etc/shells", {})
-        shells_list = shells_config.get("config")
-
-        if not shells_list or not isinstance(shells_list, list):
-            # No /etc/shells config available, skip validation
-            return
-
-        # Build set of valid shells for fast lookup
-        valid_shells = set(shells_list)
-
-        # Validate each user's shell
-        for user_data in users.values():
-            shell = user_data.get("shell")
-            if shell and isinstance(shell, str):
-                user_data["known"] = shell in valid_shells
 
     def _gather_ssh_keys_for_users(
         self, users: dict[str, dict[str, Any]], task_vars: dict[str, Any]

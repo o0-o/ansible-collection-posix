@@ -1,0 +1,14 @@
+---
+minor_changes:
+  - >-
+    users - The known field is gone from o0_users entries. It claimed
+    to say whether a user's shell appears among the known login
+    shells, and it gated on config['/etc/shells']['config'], a task
+    variable nothing in the collection sets, so it has never once
+    appeared in real output. The field was derivative besides: the
+    o0_shells fact lists the paths named in /etc/shells, and
+    user.shell in o0_shells answers the question where it is asked
+    instead of storing an answer that can go stale. Because nothing
+    ever populated it, no output changes and no playbook needs
+    porting; what is withdrawn is the documented promise
+    (https://github.com/o0-o/ansible-collection-posix/pull/XXX).

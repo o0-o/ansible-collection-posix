@@ -43,6 +43,10 @@ notes:
   - Group membership is reported in numeric IDs on both sides - a
     user's C(groups) lists GIDs and a group's C(members) lists UIDs -
     and every user counts as a member of their primary group.
+  - Whether a user's shell is a known login shell is not stored. The
+    C(o0_shells) fact lists the paths named in C(/etc/shells), so
+    C(user.shell in o0_shells) answers the question wherever it is
+    asked and leaves no copy to go stale.
   - SSH keys are only gathered if the user's C(.ssh) directory is
     readable.
   - Both C(authorized_keys) and C(authorized_keys2) files are checked
@@ -135,11 +139,6 @@ o0_users:
       type: list
       elements: int
       sample: [20, 101]
-    known:
-      description: Whether the user's shell is listed in C(/etc/shells)
-      returned: when the C(/etc/shells) configuration is available
-      type: bool
-      sample: true
     keys:
       description: SSH key information for the user
       returned: when user's .ssh directory is readable
