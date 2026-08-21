@@ -439,6 +439,49 @@ class TestBatchedExecution:
         assert user_facts["environment"]["LANG"] == ("en_US.UTF-8")
         assert user_facts["locale"] == "en_US.UTF-8"
 
+    def test_id_shape_is_int_under_a_string_key(
+        self, monkeypatch, plugin
+    ) -> None:
+        """Test the identity a gather composes is one shape: the uid
+        is an integer field under its own stringified key, with
+        nothing flipping between the two forms.
+
+        This one drives the real id -u parse rather than stubbing the
+        uid in, so the whole path from what the host printed to what
+        is published is pinned.
+        """
+        plugin._task.args = {"gather_subset": ["!all", "environment"]}
+
+        def mock_run(commands, **kwargs):
+            answers = []
+            for request in commands:
+                if request["type"] == "effective_uid":
+                    stdout = "1000"
+                else:
+                    stdout = {"LANG": "en_US.UTF-8"}.get(
+                        request["args"]["env"], ""
+                    )
+                answers.append(
+                    dict(
+                        request,
+                        rc=0,
+                        stdout=stdout,
+                        stdout_lines=[stdout],
+                        stderr="",
+                        stderr_lines=[],
+                    )
+                )
+            return answers
+
+        monkeypatch.setattr(plugin, "_run", mock_run)
+
+        users = plugin.run(tmp=None, task_vars={})["ansible_facts"]["o0_users"]
+
+        assert list(users) == ["1000"]
+        assert users["1000"]["uid"] == 1000
+        assert isinstance(users["1000"]["uid"], int)
+        assert users["1000"]["locale"] == "en_US.UTF-8"
+
     def test_environment_dropped_without_uid(
         self, monkeypatch, plugin
     ) -> None:
@@ -878,3 +921,31 @@ class TestUsersProducersAgree:
         }
         for fact, value in gathered.items():
             assert value == standalone[fact], fact
+
+
+def test_no_action_plugin_reads_the_raw_identity_utils() -> None:
+    """Test every producer of a user fact routes through the shared
+    composition.
+
+    passwd_info, group_info and id_info answer with the shapes their
+    filters publish: a name-keyed id field, membership counted in
+    names, fields that flip between numeric and named form. Those
+    shapes are those filters' API and stay as they are; what keeps
+    them out of a fact is that no plugin publishing one reads them
+    directly.
+    """
+    import re
+    from pathlib import Path
+
+    from ansible_collections.o0_o.posix.plugins import action as action_pkg
+
+    directory = Path(action_pkg.__file__).parent
+    raw = re.compile(r"\b(passwd_info|group_info|id_info)\b")
+
+    offenders = sorted(
+        path.name
+        for path in directory.glob("*.py")
+        if raw.search(path.read_text())
+    )
+
+    assert offenders == []

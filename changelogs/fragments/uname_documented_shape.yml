@@ -1,0 +1,13 @@
+---
+breaking_changes:
+  - >-
+    uname - The uname return is what uname reported, with kernel,
+    architecture and hostname at the top level, which is the shape the
+    module documents, the shape its own example reads, and the shape
+    the uname filter answers with. It used to flatten the fact
+    namespaces the facts module sorts these fields into, one level
+    only, so the architecture arrived under a baseboard key that
+    nothing documented and uname.architecture did not exist. A
+    playbook reading uname.baseboard.architecture must read
+    uname.architecture
+    (https://github.com/o0-o/ansible-collection-posix/pull/XXX).

@@ -170,6 +170,33 @@ def get_uname_command_requests() -> list[dict[str, Any]]:
     return process_command_spec(UNAME_COMMAND_SPEC)
 
 
+def process_uname_results(
+    cmds_completed: list[dict[str, Any]],
+) -> tuple[dict[str, Any], list[Exception]]:
+    """Process uname command results into what uname reported.
+
+    The shape is the parser's own: ``kernel``, ``architecture`` and
+    ``hostname`` at the top level, which is what the uname filter
+    answers with and what the module documents.  Sorting those fields
+    into fact namespaces is the facts module's business, not uname's.
+
+    :param list[dict[str, Any]] cmds_completed: List of command
+        result dicts from run plugin
+    :returns tuple[dict[str, Any], list[Exception]]: Tuple of
+        (uname_dict, errors)
+    """
+    processed = process_all_command_results(cmds_completed)
+    errors: list[Exception] = []
+
+    uname_result = processed.get("uname")
+    if uname_result is None:
+        return {}, [ValueError("No uname result found")]
+
+    errors.extend(uname_result.get("errors", []))
+
+    return uname_result.get("parsed") or {}, errors
+
+
 def process_uname_command_results(
     cmds_completed: list[dict[str, Any]],
 ) -> tuple[dict[str, Any], list[Exception]]:
@@ -184,15 +211,7 @@ def process_uname_command_results(
         (facts_dict, errors) where facts_dict has o0_os, o0_network,
         and o0_hardware namespace keys
     """
-    processed = process_all_command_results(cmds_completed)
-    errors = []
-
-    uname_result = processed.get("uname")
-    if uname_result is None:
-        return {}, [ValueError("No uname result found")]
-
-    errors.extend(uname_result.get("errors", []))
-    uname_facts = uname_result.get("parsed")
+    uname_facts, errors = process_uname_results(cmds_completed)
 
     if not uname_facts:
         return {}, errors

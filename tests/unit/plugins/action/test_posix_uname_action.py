@@ -13,13 +13,41 @@
 
 from __future__ import annotations
 
-from typing import Generator
+from typing import Any, Generator
 
 import pytest
 
 from ansible_collections.o0_o.posix.plugins.action.uname import (
     ActionModule,
 )
+from ansible_collections.o0_o.posix.plugins.module_utils import (
+    get_uname_command_requests,
+    process_uname_command_results,
+)
+
+UNAME_A = (
+    "Linux host 5.15.0-91-generic #101-Ubuntu SMP Tue Nov 14 13:30:08 "
+    "UTC 2023 x86_64 x86_64 x86_64 GNU/Linux"
+)
+
+
+def _answer(output: str) -> list[dict[str, Any]]:
+    """Answer the batched ``uname -a`` the way the run plugin does.
+
+    :param str output: What the host printed
+    :returns list[dict[str, Any]]: Completed command results
+    """
+    return [
+        dict(
+            request,
+            rc=0,
+            stdout=output,
+            stdout_lines=output.splitlines(),
+            stderr="",
+            stderr_lines=[],
+        )
+        for request in get_uname_command_requests()
+    ]
 
 
 @pytest.fixture
@@ -42,65 +70,53 @@ def plugin(base) -> Generator[ActionModule, None, None]:
     return plugin
 
 
-def test_run_returns_uname_data(monkeypatch, plugin) -> None:
-    """Test run returns parsed uname data under 'uname' key."""
-
-    def mock_run(commands, **kwargs):
-        return []
-
-    monkeypatch.setattr(plugin, "_run", mock_run)
-
-    from ansible_collections.o0_o.posix.plugins.action import (
-        uname as uname_mod,
-    )
-
-    monkeypatch.setattr(
-        uname_mod,
-        "process_uname_command_results",
-        lambda results: (
-            {
-                "o0_os": {
-                    "kernel": {
-                        "name": "linux",
-                        "pretty": "Linux",
-                    }
-                },
-                "o0_network": {"hostname": {"short": "host"}},
-                "o0_hardware": {"baseboard": {"architecture": "x86_64"}},
-            },
-            [],
-        ),
-    )
+def test_run_returns_what_uname_reported(monkeypatch, plugin) -> None:
+    """Test the return is the shape the module documents and its own
+    example reads: kernel, architecture and hostname at the top."""
+    monkeypatch.setattr(plugin, "_run", lambda commands, **kw: _answer(UNAME_A))
 
     result = plugin.run(task_vars={})
 
+    assert set(result["uname"]) == {"kernel", "architecture", "hostname"}
     assert result["uname"]["kernel"]["name"] == "linux"
+    assert result["uname"]["kernel"]["pretty"] == "Linux"
+    assert result["uname"]["kernel"]["version"]["id"] == "5.15.0-91-generic"
+    assert result["uname"]["architecture"] == "x86_64"
     assert result["uname"]["hostname"]["short"] == "host"
-    assert result["uname"]["baseboard"]["architecture"] == "x86_64"
     assert result["changed"] is False
     assert result["msg"] == "Gathered uname facts"
 
 
+def test_run_answers_like_the_filter(monkeypatch, plugin) -> None:
+    """Test the module and the uname filter answer alike. The module
+    used to flatten the fact namespaces instead, which put the
+    architecture under a baseboard key nothing documented."""
+    from ansible_collections.o0_o.posix.plugins.filter.uname import (
+        FilterModule,
+    )
+
+    monkeypatch.setattr(plugin, "_run", lambda commands, **kw: _answer(UNAME_A))
+
+    result = plugin.run(task_vars={})
+
+    assert result["uname"] == FilterModule().uname_filter(UNAME_A)
+    assert "baseboard" not in result["uname"]
+
+
+def test_gather_sorts_the_same_fields_into_namespaces() -> None:
+    """Test the facts module is the one that namespaces these fields,
+    from the same parse the module returns flat."""
+    facts, errors = process_uname_command_results(_answer(UNAME_A))
+
+    assert errors == []
+    assert facts["o0_os"]["kernel"]["name"] == "linux"
+    assert facts["o0_network"]["hostname"]["short"] == "host"
+    assert facts["o0_hardware"]["baseboard"]["architecture"] == "x86_64"
+
+
 def test_run_emits_warnings_on_errors(monkeypatch, plugin) -> None:
-    """Test that processing errors emit warnings."""
-
-    def mock_run(commands, **kwargs):
-        return []
-
-    monkeypatch.setattr(plugin, "_run", mock_run)
-
-    from ansible_collections.o0_o.posix.plugins.action import (
-        uname as uname_mod,
-    )
-
-    monkeypatch.setattr(
-        uname_mod,
-        "process_uname_command_results",
-        lambda results: (
-            {},
-            [ValueError("parse failed")],
-        ),
-    )
+    """Test that a host whose uname says nothing warns."""
+    monkeypatch.setattr(plugin, "_run", lambda commands, **kw: _answer(""))
 
     result = plugin.run(task_vars={})
 
@@ -110,23 +126,13 @@ def test_run_emits_warnings_on_errors(monkeypatch, plugin) -> None:
 
 def test_run_calls_run_with_correct_kwargs(monkeypatch, plugin) -> None:
     """Test that _run is called with parallel and check_mode."""
-    captured = {}
+    captured: dict[str, Any] = {}
 
     def mock_run(commands, **kwargs):
         captured.update(kwargs)
-        return []
+        return _answer(UNAME_A)
 
     monkeypatch.setattr(plugin, "_run", mock_run)
-
-    from ansible_collections.o0_o.posix.plugins.action import (
-        uname as uname_mod,
-    )
-
-    monkeypatch.setattr(
-        uname_mod,
-        "process_uname_command_results",
-        lambda results: ({}, []),
-    )
 
     plugin.run(task_vars={})
 

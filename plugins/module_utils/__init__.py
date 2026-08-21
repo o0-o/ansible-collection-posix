@@ -114,6 +114,7 @@ from ansible_collections.o0_o.posix.plugins.module_utils.locale_utils import (
 from ansible_collections.o0_o.posix.plugins.module_utils.uname_utils import (
     get_uname_command_requests,
     process_uname_command_results,
+    process_uname_results,
 )
 from ansible_collections.o0_o.posix.plugins.module_utils.user_utils import (
     compose_homes,
@@ -203,6 +204,7 @@ __all__ = [
     "process_locale_command_results",
     "get_uname_command_requests",
     "process_uname_command_results",
+    "process_uname_results",
     "lookup_group",
     "lookup_user",
 ]

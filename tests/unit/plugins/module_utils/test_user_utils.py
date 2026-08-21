@@ -15,6 +15,12 @@ from __future__ import annotations
 
 from typing import Any
 
+from ansible_collections.o0_o.posix.plugins.module_utils.group_utils import (
+    group_info,
+)
+from ansible_collections.o0_o.posix.plugins.module_utils.passwd_utils import (
+    passwd_info,
+)
 from ansible_collections.o0_o.posix.plugins.module_utils.user_utils import (
     compose_homes,
     compose_shell_files,
@@ -364,3 +370,29 @@ def test_compose_shell_files_reads_nothing_new() -> None:
 
     assert set(shell_files) == {"/bin/sh", "/bin/zsh"}
     assert asked == []
+
+
+def test_composition_is_what_renames_the_util_shapes() -> None:
+    """Test the passwd and group utils keep their own field names and
+    this composition is what turns them into a fact.
+
+    Those utils are the /etc/passwd and /etc/group filters' parsers,
+    and their shapes are those filters' published API. The rule is
+    that a producer of an o0_ fact routes through here rather than
+    publishing a util's shape under a fact's name.
+    """
+    raw_users = passwd_info(SAMPLE_PASSWD, key="id")
+    raw_groups = group_info(SAMPLE_GROUP, key="id")
+
+    # What the utils answer with, left alone
+    assert "uid" not in raw_users["1000"]
+    assert "gid" not in raw_groups["101"]
+    assert raw_groups["101"]["members"] == ["o0-o", "ghost"]
+
+    users, groups = compose_users_groups(SAMPLE_PASSWD, SAMPLE_GROUP)
+
+    # What a fact carries: the numeric ID as a field, membership in
+    # numeric IDs, and a member with no passwd entry left out
+    assert users["1000"]["uid"] == 1000
+    assert groups["101"]["gid"] == 101
+    assert groups["101"]["members"] == [1000]

@@ -20,7 +20,7 @@ from ansible_collections.o0_o.posix.plugins.module_utils import (
 )
 from ansible_collections.o0_o.posix.plugins.module_utils.uname_utils import (
     get_uname_command_requests,
-    process_uname_command_results,
+    process_uname_results,
 )
 
 
@@ -66,16 +66,10 @@ class ActionModule(PosixActionBase, ActionBase):
             check_mode=False,
         )
 
-        facts, errors = process_uname_command_results(run_results)
+        uname_data, errors = process_uname_results(run_results)
 
         for err in errors:
             self._display.warning(f"[{self.inventory_hostname}] {err}")
-
-        # Flatten namespace structure into uname key
-        uname_data = {}
-        for ns_facts in facts.values():
-            for key, value in ns_facts.items():
-                uname_data[key] = value
 
         result.update(
             {
