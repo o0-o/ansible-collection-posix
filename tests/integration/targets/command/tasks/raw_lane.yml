@@ -17,29 +17,26 @@
 #
 # never_raw.yml sits out: it asks for the interpreted path by name and
 # asserts it was taken, which is exactly what a host with no
-# interpreter cannot do. raw is pinned true rather than left at auto
-# because the shared files assert the mode they were asked for; that
-# the auto path finds its way to raw on these hosts is what the lane's
-# own preflight proves.
+# interpreter cannot do. That leaves raw.yml on its own rather than in
+# the row it usually shares, which costs it only the comparison
+# against the interpreted output, and that comparison already stands
+# down when the interpreted registers are unset. raw is pinned true
+# rather than left at auto because the shared files assert the mode
+# they were asked for; that the auto path finds its way to raw on
+# these hosts is what the lane's own preflight proves.
 #
-# main.yml runs each file twice over ansible_check_mode. That variable
-# is Ansible's own and a play cannot set it, so both of those rows are
-# the same row; the lane runs it once.
+# main.yml runs each file over both check modes, which arrive as a
+# keyword on a row's block. The lane takes the row that runs: check
+# mode withholds the execution this lane exists to prove, so a check
+# row would send nothing over the transport under test.
 
 - name: Run raw tests
   ansible.builtin.include_tasks: raw.yml
-
-- name: Run success tests
-  ansible.builtin.include_tasks: successes.yml
   vars:
-    raw: true
+    check: false
 
-- name: Run shell operator tests
-  ansible.builtin.include_tasks: shell_operators.yml
+- name: Run the matrix files with the raw path as the only path
+  ansible.builtin.include_tasks: matrix_row.yml
   vars:
-    raw: true
-
-- name: Run failures tests
-  ansible.builtin.include_tasks: failures.yml
-  vars:
+    check: false
     raw: true

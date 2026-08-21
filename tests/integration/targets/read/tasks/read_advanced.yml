@@ -14,6 +14,7 @@
   o0_o.posix.write:
     state: directory
     dest: "{{ item }}"
+  check_mode: false
   loop:
     - "{{ read_dir_path }}/nested/level1"
     - "{{ read_dir_path }}/nested/level1/level2"
@@ -23,6 +24,7 @@
   o0_o.posix.write:
     dest: "{{ item }}"
     content: 'test content'
+  check_mode: false
   loop:
     - "{{ read_dir_path }}/nested/file0.txt"
     - "{{ read_dir_path }}/nested/level1/file1.txt"
@@ -161,18 +163,21 @@
   o0_o.posix.write:
     state: directory
     dest: "{{ read_dir_path }}/linktree/real"
+  check_mode: false
 
 - name: Put a file below the directory that is linked to
   o0_o.posix.write:
     dest: "{{ read_dir_path }}/linktree/real/inner.txt"
     content: 'inner'
     mode: '0644'
+  check_mode: false
 
 - name: Link to that directory beside it
   o0_o.posix.write:
     state: link
     target: "{{ read_dir_path }}/linktree/real"
     dest: "{{ read_dir_path }}/linktree/dirlink"
+  check_mode: false
 
 # Kept out of the tree above so it does not join that walk. A link
 # needs no coaxing to point at nothing, so the state carries no force
@@ -181,6 +186,7 @@
     state: link
     target: "{{ read_dir_path }}/gone.txt"
     dest: "{{ read_dir_path }}/dangling.link"
+  check_mode: false
 
 - name: Name the entries of the linked tree
   ansible.builtin.set_fact:

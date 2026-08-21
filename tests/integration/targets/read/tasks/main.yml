@@ -91,21 +91,17 @@
 - name: Try
   block:
 
-    - name: Execute read module scenarios
-      ansible.builtin.include_tasks: read.yml
+    # Check mode cannot be turned on from here: it is a keyword, and
+    # only a block or a task may carry one, which an include is
+    # neither. The row file exists so that one block can hold the
+    # row's check mode over both files the row runs.
+    - name: Run every read under one row of the check mode loop
+      ansible.builtin.include_tasks: check_row.yml
       loop: "{{ read_check_modes | default([true, false]) }}"
       loop_control:
         loop_var: read_check_mode
       vars:
-        ansible_check_mode: "{{ read_check_mode }}"
-
-    - name: Execute advanced read module tests
-      ansible.builtin.include_tasks: read_advanced.yml
-      loop: "{{ read_check_modes | default([true, false]) }}"
-      loop_control:
-        loop_var: read_check_mode
-      vars:
-        ansible_check_mode: "{{ read_check_mode }}"
+        check: "{{ read_check_mode }}"
 
   always:
 

@@ -20,7 +20,7 @@
     that:
       - simplest_reg['rc'] == 0
       - simplest_reg['stdout'] | trim == 'hello'
-  when: not ansible_check_mode
+  when: not check
 
 - name: Run command with argv
   o0_o.posix.command:
@@ -35,7 +35,7 @@
     that:
       - command_argv_reg['stdout'].rstrip() == 'foo'
       - command_argv_reg['stdout_lines'] == ['foo']
-  when: not ansible_check_mode
+  when: not check
 
 - name: Assert raw execution is as intended
   ansible.builtin.assert:
@@ -53,7 +53,7 @@
     that:
       - command_cmd_reg['stdout'].rstrip() == 'foo'
       - command_cmd_reg['stdout_lines'] == ['foo']
-  when: not ansible_check_mode
+  when: not check
 
 - name: Assert raw execution is as intended
   ansible.builtin.assert:
@@ -65,7 +65,7 @@
     that:
       - command_cmd_reg['stdout'] == ''
       - command_cmd_reg['stdout_lines'] == []
-  when: ansible_check_mode
+  when: check
 
 - name: Run command with cmd
   o0_o.posix.command:
@@ -78,7 +78,7 @@
     that:
       - command_reg['stdout'].rstrip() == 'foo'
       - command_reg['stdout_lines'] == ['foo']
-  when: not ansible_check_mode
+  when: not check
 
 - name: Assert raw execution is as intended
   ansible.builtin.assert:
@@ -96,7 +96,7 @@
   ansible.builtin.assert:
     that:
       - command_reg['stdout_lines'] == ['hello', 'world']
-  when: not ansible_check_mode
+  when: not check
 
 - name: Assert raw execution is as intended
   ansible.builtin.assert:
@@ -125,10 +125,14 @@
     that:
       - command_reg['raw'] == raw
 
+# The creates case below reads this path, so the removal names check
+# mode for itself: a withheld removal would leave the case asserting
+# against whatever the host happened to be holding
 - name: Ensure dummy file is absent
   o0_o.posix.write:
     dest: /tmp/o0_foo
     state: absent
+  check_mode: false
 
 - name: Run with creates when file is missing (should run or be marked changed)
   o0_o.posix.command:
@@ -207,7 +211,7 @@
       - timing_reg['end'] is defined
       - timing_reg['delta'] is defined
       - timing_reg['delta'] is match('[0-9]+:[0-9]{2}:[0-9]{2}')
-  when: not ansible_check_mode
+  when: not check
 
 - name: Assert raw execution is as intended
   ansible.builtin.assert:

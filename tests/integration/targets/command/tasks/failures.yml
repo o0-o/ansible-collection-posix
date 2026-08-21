@@ -10,7 +10,7 @@
 # This file is part of the o0_o.posix Ansible Collection.
 
 - name: Skip for check_mode
-  when: not ansible_check_mode
+  when: not check
   block:
 
     - name: 'Fail: Exit code 1'
@@ -99,7 +99,11 @@
             'one of the following is required'
             in ansible_failed_result['msg']
 
+# Nothing runs in check mode, so there is no exit code to fail on and
+# no failure for the rescue to catch. The rejections above are refused
+# by argument validation, which happens either way.
 - name: 'Fail: Explicit return code check (false command)'
+  when: not check
   block:
 
     - name: Run test command that should fail

@@ -57,7 +57,7 @@
           - '"HOME" in no_var_exp_builtin_reg["stdout"]'
           - '"My home" in var_exp_builtin_reg["stdout"]'
           - '"My home" in no_var_exp_builtin_reg["stdout"]'
-      when: not ansible_check_mode
+      when: not check
 
 - name: Assert raw execution is as intended
   ansible.builtin.assert:

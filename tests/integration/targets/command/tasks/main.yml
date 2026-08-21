@@ -10,48 +10,31 @@
 #
 # This file is part of the o0_o.posix Ansible Collection.
 
-- name: Run never raw tests
-  ansible.builtin.include_tasks: never_raw.yml
-  loop:
-    - true
-    - false
-  loop_control:
-    loop_var: check_mode_var
-  vars:
-    ansible_check_mode: "{{ check_mode_var }}"
+# Check mode cannot be turned on from here: it is a keyword, and only
+# a block or a task may carry one, which an include is neither. Each
+# loop below turns through a row file whose block holds the row's
+# check mode over every file the row runs.
 
-- name: Run raw tests
-  ansible.builtin.include_tasks: raw.yml
+- name: Run both transports under one row of the check mode loop
+  ansible.builtin.include_tasks: expansion_row.yml
   loop:
     - true
     - false
   loop_control:
-    loop_var: check_mode_var
+    loop_var: check_row
   vars:
-    ansible_check_mode: "{{ check_mode_var }}"
+    check: "{{ check_row }}"
 
 - name: Check mode and raw permutation loop
   vars:
     loop_list: "{{ [true, false] | ansible.builtin.product([true, false]) }}"
   block:
 
-    - name: Run success tests
-      ansible.builtin.include_tasks: successes.yml
+    - name: Run every file under one row of the matrix
+      ansible.builtin.include_tasks: matrix_row.yml
       loop: "{{ loop_list }}"
+      loop_control:
+        loop_var: matrix_row
       vars:
-        ansible_check_mode: "{{ item[0] }}"
-        raw: "{{ item[1] }}"
-
-    - name: Run shell operator tests
-      ansible.builtin.include_tasks: shell_operators.yml
-      loop: "{{ loop_list }}"
-      vars:
-        ansible_check_mode: "{{ item[0] }}"
-        raw: "{{ item[1] }}"
-
-    - name: Run failures tests
-      ansible.builtin.include_tasks: failures.yml
-      loop: "{{ loop_list }}"
-      vars:
-        ansible_check_mode: "{{ item[0] }}"
-        raw: "{{ item[1] }}"
+        check: "{{ matrix_row[0] }}"
+        raw: "{{ matrix_row[1] }}"

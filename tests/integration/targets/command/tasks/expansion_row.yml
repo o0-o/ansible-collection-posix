@@ -1,0 +1,30 @@
+# vim: ts=2:sw=2:sts=2:et:ft=yaml.ansible
+# -*- mode: yaml; yaml-indent-offset: 2; indent-tabs-mode: nil; -*-
+---
+#
+# GNU General Public License v3.0+
+# SPDX-License-Identifier: GPL-3.0-or-later
+# (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
+#
+# Copyright (c) 2025 oØ.o (@o0-o)
+#
+# This file is part of the o0_o.posix Ansible Collection.
+
+# One row of the check mode loop over the two transports. The block's
+# check_mode keyword is what puts the row in check mode: the magic
+# variable ansible_check_mode is Ansible's own, taken from the command
+# line and from nowhere else, so the row's own value travels as 'check'
+# for the assertions to read.
+#
+# Both transports run inside the one row because the raw file compares
+# its output against the interpreted output, and the two are only
+# comparable when the same check mode was in force for both.
+- name: Run both transports with the row's check mode in force
+  check_mode: "{{ check }}"
+  block:
+
+    - name: Run never raw tests
+      ansible.builtin.include_tasks: never_raw.yml
+
+    - name: Run raw tests
+      ansible.builtin.include_tasks: raw.yml
