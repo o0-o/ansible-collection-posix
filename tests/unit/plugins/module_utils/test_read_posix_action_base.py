@@ -319,7 +319,9 @@ class TestGetReadCommands:
             {"content": True, "attributes": True},
         ],
     )
-    def test_content_is_never_read_in_this_batch(self, action, options) -> None:
+    def test_content_is_never_read_in_this_batch(
+        self, action, options
+    ) -> None:
         """Test no content command joins the batch that types a path."""
         commands = action._get_read_commands(["/f"], options)
 

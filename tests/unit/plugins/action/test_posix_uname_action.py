@@ -73,7 +73,9 @@ def plugin(base) -> Generator[ActionModule, None, None]:
 def test_run_returns_what_uname_reported(monkeypatch, plugin) -> None:
     """Test the return is the shape the module documents and its own
     example reads: kernel, architecture and hostname at the top."""
-    monkeypatch.setattr(plugin, "_run", lambda commands, **kw: _answer(UNAME_A))
+    monkeypatch.setattr(
+        plugin, "_run", lambda commands, **kw: _answer(UNAME_A)
+    )
 
     result = plugin.run(task_vars={})
 
@@ -95,7 +97,9 @@ def test_run_answers_like_the_filter(monkeypatch, plugin) -> None:
         FilterModule,
     )
 
-    monkeypatch.setattr(plugin, "_run", lambda commands, **kw: _answer(UNAME_A))
+    monkeypatch.setattr(
+        plugin, "_run", lambda commands, **kw: _answer(UNAME_A)
+    )
 
     result = plugin.run(task_vars={})
 
