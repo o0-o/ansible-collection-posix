@@ -1,0 +1,32 @@
+---
+bugfixes:
+  - >-
+    facts - A namespace holding anything but a mapping was lost, and
+    the subset that produced it went with it. The merge walked every
+    namespace as a mapping, so o0_shells, the list of paths named in
+    /etc/shells, raised inside the merge and cost the whole users
+    subset, and the compliance subset died the same way on its list
+    of missing commands. Both left an empty namespace behind and a
+    warning where a hard error belonged. A namespace that is not a
+    mapping is published whole now, which is what makes the
+    user.shell in o0_shells idiom the users module documents work at
+    all (https://github.com/o0-o/ansible-collection-posix/pull/XXX).
+  - >-
+    facts - A default gather never collected storage. The all group
+    names the storage group, which names mounts and fstab, and
+    expansion did not recurse, so the group name was carried into the
+    selection and silently discarded: o0_storage.mounts and
+    o0_storage.config['/etc/fstab'] were unreachable except by asking
+    for storage by name, and gather_subset ['!dmidecode'] returned
+    strictly more than ['all']. Groups expand until only subsets are
+    left, a group that names itself is expanded once, and negating a
+    group drops the subsets it names
+    (https://github.com/o0-o/ansible-collection-posix/pull/XXX).
+  - >-
+    facts - The fstab and users subsets read their files with
+    ansible.builtin.slurp, the only Python the module asked of a
+    managed host it documents as needing none, so both subsets were
+    lost on a host without an interpreter. They read through the
+    command batch now, one cat per file in a single round trip, the
+    same way the users module reads them
+    (https://github.com/o0-o/ansible-collection-posix/pull/XXX).

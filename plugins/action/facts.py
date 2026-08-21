@@ -116,9 +116,10 @@ def _get_environment_requests() -> list[dict[str, Any]]:
 
     :returns list[dict[str, Any]]: Command requests for run plugin
     """
-    return get_env_command_requests(
-        POSIX_ENV_VARS
-    ) + get_effective_uid_command_requests()
+    return (
+        get_env_command_requests(POSIX_ENV_VARS)
+        + get_effective_uid_command_requests()
+    )
 
 
 def _process_environment_results(
@@ -227,11 +228,19 @@ class ActionModule(PosixActionBase, ActionBase):
     ) -> None:
         """Deep merge subset facts into the accumulator.
 
+        A namespace is not required to hold a mapping.  o0_shells is
+        the list of paths named in /etc/shells, so a namespace whose
+        value is anything but a dict is published whole and the last
+        producer to answer wins.
+
         :param dict[str, Any] all_facts: Accumulator to merge into
         :param dict[str, Any] subset_facts: Facts to merge
         """
         for ns, ns_facts in subset_facts.items():
-            if ns not in all_facts:
+            if not isinstance(ns_facts, dict):
+                all_facts[ns] = ns_facts
+                continue
+            if not isinstance(all_facts.get(ns), dict):
                 all_facts[ns] = {}
             for key, value in ns_facts.items():
                 if (
@@ -243,6 +252,42 @@ class ActionModule(PosixActionBase, ActionBase):
                 else:
                     all_facts[ns][key] = value
 
+    def _read_files(
+        self,
+        paths: list[str],
+        task_vars: Optional[dict[str, Any]] = None,
+    ) -> dict[str, Optional[str]]:
+        """Read the named files in a single round trip.
+
+        The module gathers facts from hosts that have no Python, so a
+        file a fact is read from is read the way every other fact is
+        gathered: a batched command with the raw fallback under it,
+        never slurp.  A file that did not answer reads None, leaving
+        the facts it feeds unpublished rather than guessed at.
+
+        :param list[str] paths: Paths to read
+        :param Optional[dict[str, Any]] task_vars: Task variables
+        :returns dict[str, Optional[str]]: Content per path, None
+            where the read failed
+        """
+        results = self._run(
+            {path: ["cat", path] for path in paths},
+            parallel=True,
+            fail_fast=False,
+            task_vars=task_vars,
+            check_mode=False,
+        )
+
+        contents: dict[str, Optional[str]] = {}
+        for path in paths:
+            result = results.get(path) or {}
+            if result.get("rc") == 0:
+                contents[path] = result.get("stdout") or ""
+            else:
+                contents[path] = None
+
+        return contents
+
     def _gather_fstab(
         self, task_vars: Optional[dict[str, Any]] = None
     ) -> dict[str, Any]:
@@ -251,18 +296,12 @@ class ActionModule(PosixActionBase, ActionBase):
         :param Optional[dict[str, Any]] task_vars: Task variables
         :returns dict[str, Any]: Fstab facts
         """
-        slurp_result = self._execute_module(
-            module_name="ansible.builtin.slurp",
-            module_args={"src": "/etc/fstab"},
-            task_vars=task_vars,
-        )
+        content = self._read_files(["/etc/fstab"], task_vars)["/etc/fstab"]
 
-        if slurp_result.get("failed"):
+        if content is None:
             return {}
 
-        fstab_facts = fstab(slurp_result)
-
-        return {"o0_storage": {"config": {"/etc/fstab": fstab_facts}}}
+        return {"o0_storage": {"config": {"/etc/fstab": fstab(content)}}}
 
     def _gather_users(
         self, task_vars: Optional[dict[str, Any]] = None
@@ -276,37 +315,62 @@ class ActionModule(PosixActionBase, ActionBase):
         :param Optional[dict[str, Any]] task_vars: Task variables
         :returns dict[str, Any]: User/group facts
         """
-        passwd_slurp = self._execute_module(
-            module_name="ansible.builtin.slurp",
-            module_args={"src": "/etc/passwd"},
-            task_vars=task_vars,
+        contents = self._read_files(
+            ["/etc/passwd", "/etc/group", "/etc/shells"], task_vars
         )
-
-        group_slurp = self._execute_module(
-            module_name="ansible.builtin.slurp",
-            module_args={"src": "/etc/group"},
-            task_vars=task_vars,
-        )
-
-        shells_slurp = self._execute_module(
-            module_name="ansible.builtin.slurp",
-            module_args={"src": "/etc/shells"},
-            task_vars=task_vars,
-        )
+        passwd = contents["/etc/passwd"]
+        group = contents["/etc/group"]
+        shells = contents["/etc/shells"]
 
         facts = {}
 
         # The canonical shape cross-references both files, so it needs
         # both reads to have landed.
-        if not passwd_slurp.get("failed") and not group_slurp.get("failed"):
-            users, groups = compose_users_groups(passwd_slurp, group_slurp)
+        if passwd is not None and group is not None:
+            users, groups = compose_users_groups(passwd, group)
             facts["o0_users"] = users
             facts["o0_groups"] = groups
 
-        if not shells_slurp.get("failed"):
-            facts["o0_shells"] = parse_shells(shells_slurp)
+        if shells is not None:
+            facts["o0_shells"] = parse_shells(shells)
 
         return facts
+
+    def _expand_group(self, group: str) -> set[str]:
+        """Expand a subset group into the subsets it names.
+
+        A group may name another group — ``all`` names ``storage`` —
+        so expansion repeats until only subsets are left.  A group
+        that names itself, directly or through another group, is
+        expanded once.
+
+        :param str group: Group name to expand
+        :returns set[str]: The subsets the group resolves to
+        :raises AnsibleActionFail: If a group names something that is
+            neither a group nor a subset
+        """
+        subsets: set[str] = set()
+        expanded: set[str] = set()
+        pending = [group]
+
+        while pending:
+            name = pending.pop()
+            if name in expanded:
+                continue
+            expanded.add(name)
+
+            for member in self.SUBSET_GROUPS[name]:
+                if member in self.SUBSET_GROUPS:
+                    pending.append(member)
+                elif member in self.SUBSET_METHODS:
+                    subsets.add(member)
+                else:
+                    raise AnsibleActionFail(
+                        f"Subset group {name} names {member}, which is"
+                        f" neither a subset nor a group"
+                    )
+
+        return subsets
 
     def _resolve_subsets(self, gather_subset: list[str]) -> set[str]:
         """Resolve gather_subset into individual subsets.
@@ -320,16 +384,14 @@ class ActionModule(PosixActionBase, ActionBase):
             selected = set()
 
         for subset in gather_subset:
-            if subset == "all":
-                selected.update(self.SUBSET_GROUPS["all"])
-            elif subset == "min":
-                selected.update(self.SUBSET_GROUPS["min"])
-            elif subset == "storage":
-                selected.update(self.SUBSET_GROUPS["storage"])
-            elif subset == "!all":
+            if subset == "!all":
                 selected.clear()
+            elif subset.startswith("!") and subset[1:] in self.SUBSET_GROUPS:
+                selected.difference_update(self._expand_group(subset[1:]))
             elif subset.startswith("!"):
                 selected.discard(subset[1:])
+            elif subset in self.SUBSET_GROUPS:
+                selected.update(self._expand_group(subset))
             elif subset in self.SUBSET_METHODS:
                 selected.add(subset)
             else:
