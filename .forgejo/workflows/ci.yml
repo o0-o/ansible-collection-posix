@@ -1,0 +1,38 @@
+# vim: ts=2:sw=2:sts=2:et:ft=yaml
+# -*- mode: yaml; yaml-indent-offset: 2; indent-tabs-mode: nil; -*-
+---
+# Thin trigger for the casa runner: update the resident checkout to the
+# dispatched ref and run the same ci.sh both runners use (Running CI /
+# Standing Up the casa Runner procedures). The full tier is a milestone
+# gate, so distros runs on dispatch and release tags, never per push.
+name: ci
+
+'on':
+  workflow_dispatch:
+    inputs:
+      stage:
+        description: >-
+          ci.sh stage (lint, sanity, units, integration, distros, all)
+        default: distros
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  ci:
+    runs-on: casa-x86_64
+    steps:
+      - name: Run ci.sh against the dispatched ref
+        run: |
+          set -eu
+          col=posix
+          ns=/mnt/fast-a/ci/ansible_collections/o0_o
+          app=/mnt/fast-a/ci/tools-src/o0-o/Inventory/Software
+          tools="$app/o0_o Ansible Collections/_meta/tools"
+          stage="${{ inputs.stage || 'distros' }}"
+          git -C "$ns/$col" fetch -q origin
+          # The resident tree serves local runs too: put dev back
+          # whichever way this exits.
+          trap 'git -C "$ns/$col" checkout -q dev' EXIT
+          git -C "$ns/$col" checkout -q "$GITHUB_SHA"
+          sh "$tools/ci/ci.sh" "$stage" "$col"
