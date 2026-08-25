@@ -202,6 +202,13 @@ class ActionModule(PosixActionBase, ActionBase):
             self.result["module_stderr"] = self.result["stderr"]
             self.result["stderr_lines"] = self.result["stderr"].splitlines()
 
+        # Empty output is still output: the line forms publish either
+        # way, as the native module's do. Cores before 2.21 do not
+        # inject the keys into action results, so a truthy gate alone
+        # left check-mode predictions and silent commands without them.
+        self.result.setdefault("stdout_lines", [])
+        self.result.setdefault("stderr_lines", [])
+
         if self.result["rc"] != 0:
             self.result["msg"] = "non-zero return code"
         else:
