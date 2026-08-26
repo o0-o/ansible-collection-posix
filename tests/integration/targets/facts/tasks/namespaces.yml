@@ -44,11 +44,12 @@
       {{ facts_all_reg['ansible_facts']['o0_os']['compliance'] }}
     supports: >-
       {{ compliance | dict2items
+         | selectattr('value', 'mapping')
          | map(attribute='value.supported', default=none) | list }}
   ansible.builtin.assert:
     that:
-      - compliance.keys() | list | sort == ['posix', 'sus', 'xcu',
-        'xsh', 'xsi']
+      - compliance.keys() | list | sort == ['posix',
+        'sh_posix_compliant', 'sus', 'xcu', 'xsh', 'xsi']
       - compliance['xsh']['name'] == 'System Interfaces'
       - compliance['xsh']['abbreviation'] == 'XSH'
       - compliance['xcu']['abbreviation'] == 'XCU'
@@ -62,6 +63,8 @@
       # asked the host, whether the answer was a version or a miss
       - compliance['xcu']['canaries'] is mapping
       - compliance['xsi']['canaries'] is mapping
+      # The one behavioral probe publishes its verdict beside them
+      - compliance['sh_posix_compliant'] is boolean
     fail_msg: >-
       o0_os.compliance does not name the standards it read, or one of
       them will not say whether it is supported: {{ supports }}

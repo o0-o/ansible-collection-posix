@@ -59,6 +59,8 @@
       - compliance_result_reg['compliance']['xsi']['supported'] is defined
       - compliance_result_reg['compliance']['posix']['supported'] is defined
       - compliance_result_reg['compliance']['sus']['supported'] is defined
+      - compliance_result_reg['compliance']['sh_posix_compliant']
+        is boolean
     fail_msg: 'Support fields missing from compliance standards'
 
 - name: Run in check mode
