@@ -860,6 +860,14 @@ class ActionModule(WritePosixActionBase, ActionBase):
                         self.result["msg"] = "link already points at target"
                         return
                     before["target"] = old_target
+                    # Repointing an existing link is the one mutation
+                    # this branch performs on prior state; force gates
+                    # it exactly as it gates content overwrites
+                    if not args["force"]:
+                        raise AnsibleActionFail(
+                            f"Path {dest} is a link to {old_target}; "
+                            f"refusing to repoint it with force disabled"
+                        )
             elif dest_stat["exists"]:
                 raise AnsibleActionFail(
                     f"Path {dest} exists and is a "

@@ -125,9 +125,13 @@ options:
   force:
     description:
       - Overwrite a destination that already exists. Applies to the
-        C(content), C(src), and C(template) families only.
+        C(content), C(src), and C(template) families, and to
+        repointing an existing link under C(state=link).
       - When C(false), an existing destination is left untouched and
-        the task reports no change.
+        the task reports no change -- except under C(state=link),
+        where a destination linked to a different target fails
+        instead, because reporting no change would leave the path
+        silently pointing elsewhere.
     type: bool
     default: true
   block_start_string:

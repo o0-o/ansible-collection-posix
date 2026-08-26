@@ -197,6 +197,37 @@
           - "'link' in ansible_failed_result['msg']"
           - "'target' in ansible_failed_result['msg']"
 
+- name: 'Fail: Repointing a link with force disabled'
+  block:
+
+    - name: Settle a link on its first target
+      o0_o.posix.write:
+        dest: "{{ fail_dir }}/turncoat"
+        state: link
+        target: "{{ fail_dir }}/first"
+        raw: "{{ raw }}"
+      check_mode: false
+
+    - name: Ask the link to repoint with force disabled
+      o0_o.posix.write:
+        dest: "{{ fail_dir }}/turncoat"
+        state: link
+        target: "{{ fail_dir }}/second"
+        force: false
+        raw: "{{ raw }}"
+
+    - name: Sentinel for the force-disabled repoint task
+      ansible.builtin.fail:
+        msg: 'the write module repointed a link with force disabled'
+
+  rescue:
+
+    - name: Assert the repoint was refused, naming force
+      ansible.builtin.assert:
+        that:
+          - "'refusing to repoint' in ansible_failed_result['msg']"
+          - "'force' in ansible_failed_result['msg']"
+
 - name: 'Fail: A line edit on a file that does not exist'
   block:
 
