@@ -15,6 +15,7 @@ from unittest.mock import MagicMock
 import grp
 import os
 import pwd
+import stat
 
 import pytest
 
@@ -52,6 +53,84 @@ def test_write_file_basic_write(write_base) -> None:
         with open(tmp_path, encoding="utf-8") as f:
             assert f.read().splitlines() == ["hello", "world"]
     finally:
+        cleanup_path(tmp_path)
+
+
+@pytest.mark.parametrize(
+    "content, expected_bytes",
+    [
+        # A string is a whole file: the content, copy, and template
+        # families hand one over and the bytes are not touched
+        ("hello\nworld\n", b"hello\nworld\n"),
+        ("no trailing newline", b"no trailing newline"),
+        ("trailing blank line\n\n", b"trailing blank line\n\n"),
+        # A list is a file's lines: the line and block families hand
+        # one over and every line is terminated, the last included
+        (["hello", "world"], b"hello\nworld\n"),
+        (["only"], b"only\n"),
+    ],
+)
+def test_write_file_terminates_by_family(
+    write_base, content, expected_bytes
+) -> None:
+    """Test the newline split between the two kinds of write."""
+    tmp_path = generate_temp_path()
+    try:
+        result = write_base._write_file(
+            content=content, dest=tmp_path, task_vars={}
+        )
+        assert result["changed"] is True
+        with open(tmp_path, "rb") as f:
+            assert f.read() == expected_bytes
+    finally:
+        cleanup_path(tmp_path)
+
+
+def test_write_file_creates_under_the_umask(write_base) -> None:
+    """Test a created file takes the mode the umask leaves it.
+
+    No mode is chosen on the task's behalf, so the candidate reaches
+    the destination carrying what a new file gets on the remote host.
+    """
+    tmp_path = generate_temp_path()
+    previous_umask = os.umask(0o027)
+    try:
+        result = write_base._write_file(
+            content="umask decides\n", dest=tmp_path, task_vars={}
+        )
+        assert result["changed"] is True
+        assert stat.S_IMODE(os.stat(tmp_path).st_mode) == 0o640
+    finally:
+        os.umask(previous_umask)
+        cleanup_path(tmp_path)
+
+
+def test_write_file_keeps_an_existing_mode(monkeypatch, write_base) -> None:
+    """Test rewriting a file leaves the mode it carries alone.
+
+    The umask governs a file being created, not one being replaced, so
+    a destination already restricted is not widened by a task that
+    named no mode.
+    """
+    tmp_path = generate_temp_path()
+    previous_umask = os.umask(0o022)
+    try:
+        with open(tmp_path, "w") as f:
+            f.write("secret\n")
+        # Neither what the umask above would give a new file nor the
+        # mode this machinery used to force on every candidate
+        os.chmod(tmp_path, 0o640)
+
+        _pin_read(monkeypatch, write_base, tmp_path, "secret\n")
+
+        result = write_base._write_file(
+            content="still secret\n", dest=tmp_path, task_vars={}
+        )
+
+        assert result["changed"] is True
+        assert stat.S_IMODE(os.stat(tmp_path).st_mode) == 0o640
+    finally:
+        os.umask(previous_umask)
         cleanup_path(tmp_path)
 
 

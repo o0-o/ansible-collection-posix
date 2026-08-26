@@ -53,8 +53,17 @@ class _RealCommandMixin:
         check_mode: Optional[bool] = None,
         strip: bool = True,
         raw: Optional[Union[bool, str]] = None,
+        stdin_add_newline: bool = True,
     ) -> dict[str, Any]:
-        """Run cmd through real_cmd instead of the command action."""
+        """Run cmd through real_cmd instead of the command action.
+
+        The command action terminates standard input unless told not
+        to, and real_cmd passes it through untouched, so the stub does
+        that part itself; a caller relying on either behaviour is
+        exercising the same stream here as on a remote host.
+        """
+        if stdin and stdin_add_newline and not stdin.endswith("\n"):
+            stdin += "\n"
         return real_cmd(
             cmd,
             stdin=stdin,

@@ -1,0 +1,20 @@
+# vim: ts=2:sw=2:sts=2:et:ft=yaml.ansible
+# -*- mode: yaml; yaml-indent-offset: 2; indent-tabs-mode: nil; -*-
+---
+bugfixes:
+  - >-
+    write - the trailing newline now splits by family. The C(line)
+    and C(block) families write a POSIX text file, every line
+    terminated including the last; the C(content), C(src), and
+    C(template) families are byte-faithful and a trailing newline is
+    neither appended nor stripped. Every family previously landed on
+    a newline, so content handed over without one grew a byte the
+    task never asked for.
+  - >-
+    write - a task that names no C(mode) no longer forces C(0600) on
+    the destination. The staged candidate carried that mode and C(mv)
+    carried it into place, so a created file ignored the umask and a
+    file being rewritten silently lost the mode it had. The mode is
+    now deferred exactly as the builtin file modules defer it: an
+    existing destination keeps what it carries, and a new one takes
+    what the remote umask gives it.

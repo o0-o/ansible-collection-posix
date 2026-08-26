@@ -41,6 +41,13 @@ description:
   - The C(content), C(src), and C(template) families require
     C(state=present). The C(line) and C(block) families accept
     C(state=present) or C(state=absent).
+  - The C(content), C(src), and C(template) families are byte-faithful
+    by design. The bytes given, copied, or rendered are the bytes
+    written, and a trailing newline is never appended, stripped, or
+    otherwise altered.
+  - The C(line) and C(block) families write a POSIX text file by
+    design. Every line they write is terminated with a newline, the
+    last one included, whatever the destination held before.
   - Every family falls back to raw POSIX shell commands when the target
     has no usable Python interpreter.
   - Ignores C(unsafe_writes) by design.

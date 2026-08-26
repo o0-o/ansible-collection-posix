@@ -18,14 +18,19 @@ import pytest
     "input_str, expected_lines, expected_content",
     [
         ("foo\nbar\n", ["foo", "bar"], "foo\nbar\n"),
-        ("foo\nbar", ["foo", "bar"], "foo\nbar\n"),
-        ("", [], "\n"),
+        # A string is a whole file, so the newline it does not carry is
+        # not invented for it
+        ("foo\nbar", ["foo", "bar"], "foo\nbar"),
+        # Nor is one stripped from a string that carries several
+        ("foo\n\n\n", ["foo", "", ""], "foo\n\n\n"),
+        ("", [], ""),
+        ("\n", [""], "\n"),
     ],
 )
 def test_normalize_content_string(
     write_base, input_str, expected_lines, expected_content
 ) -> None:
-    """Test _normalize_content with string input."""
+    """Test a string is normalized byte for byte."""
     lines, normalized = write_base._normalize_content(input_str)
     assert lines == expected_lines
     assert normalized == expected_content
@@ -36,13 +41,16 @@ def test_normalize_content_string(
     [
         (["foo", "bar"], ["foo", "bar"], "foo\nbar\n"),
         (["foo", 123, 4.56], ["foo", "123", "4.56"], "foo\n123\n4.56\n"),
-        ([], [], "\n"),
+        # A trailing empty line is a line, and it terminates too
+        (["foo", ""], ["foo", ""], "foo\n\n"),
+        # An empty list is an empty file, not a blank line
+        ([], [], ""),
     ],
 )
 def test_normalize_content_list(
     write_base, input_list, expected_lines, expected_content
 ) -> None:
-    """Test _normalize_content with list input."""
+    """Test a list of lines is normalized as POSIX text."""
     lines, normalized = write_base._normalize_content(input_list)
     assert lines == expected_lines
     assert normalized == expected_content

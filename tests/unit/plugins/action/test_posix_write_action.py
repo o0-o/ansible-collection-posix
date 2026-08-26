@@ -314,6 +314,27 @@ def test_content_family_writes_the_literal_content(plugin) -> None:
     assert result["msg"] == "File written successfully"
 
 
+@pytest.mark.parametrize(
+    "content",
+    ["hello\nworld\n", "hello\nworld", "", "\n"],
+)
+def test_content_family_hands_over_the_string_it_was_given(
+    plugin, content
+) -> None:
+    """Test the content family alters no byte on the way through.
+
+    The families that write a whole file pass a string, which the
+    write machinery writes verbatim; the newline the task did or did
+    not end on is the newline the destination gets.
+    """
+
+    plugin._task.args = {"dest": "/etc/foo", "content": content}
+
+    plugin.run(task_vars={})
+
+    assert plugin.writes[0]["content"] == content
+
+
 def test_line_family_writes_the_edited_lines(plugin) -> None:
     """Test the line family edits the lines it read from the dest."""
 

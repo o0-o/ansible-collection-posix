@@ -25,6 +25,9 @@ from ansible_collections.o0_o.posix.plugins.module_utils.read_posix_action_base 
 from ansible_collections.o0_o.posix.plugins.module_utils.command_utils import (
     quote,
 )
+from ansible_collections.o0_o.posix.plugins.module_utils.path_utils import (
+    flags_to_octal_mode,
+)
 
 
 class WritePosixActionBase(ReadPosixActionBase):
@@ -306,34 +309,85 @@ class WritePosixActionBase(ReadPosixActionBase):
                 "group": group,
             }
 
+    def _placement_mode(
+        self,
+        dest: str,
+        perms: Optional[Dict[str, Any]] = None,
+        dest_exists: bool = False,
+        task_vars: Optional[Dict[str, Any]] = None,
+    ) -> Optional[str]:
+        """
+        Decide the mode the candidate carries into place.
+
+        A task that names a mode gets that mode. A task that names
+        none defers, exactly as the builtin file modules do: a
+        destination that already exists keeps the mode it carries, and
+        a destination being created takes whatever the remote host's
+        umask gives a new file, which is what leaving the candidate
+        alone produces.
+
+        :param str dest: The destination the candidate is bound for
+        :param Optional[dict] perms: Desired permissions dict, which
+            may name a mode
+        :param bool dest_exists: Whether the destination exists
+        :param Optional[dict] task_vars: Ansible task variables
+        :returns Optional[str]: The mode to apply, or None to leave the
+            candidate at the host's default
+        :raises RuntimeError: If an existing destination cannot be read
+        """
+        mode = (perms or {}).get("mode")
+        if mode:
+            return mode
+        if not dest_exists:
+            return None
+        # _get_perms trims the type column ls prints, which
+        # flags_to_octal_mode expects to skip, so stand a placeholder
+        # back in front of the permission field it returns
+        old_perms = self._get_perms(dest, task_vars=task_vars)
+        return flags_to_octal_mode(f"-{old_perms['mode']}")
+
     def _write_temp_file(
         self,
-        lines: List[str],
+        content: Union[str, List[str]],
         tmpfile: str,
+        mode: Optional[str] = None,
         task_vars: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         """
-        Write lines to a remote temp file using ``tee`` and stdin.
+        Stage content in a remote temp file using ``tee`` and stdin.
 
-        Writes content to a temporary file on the remote host, then
-        applies ``chmod 0600`` for security.
+        The content is written byte for byte: a string arrives as the
+        whole file it is, a list of lines arrives as POSIX text, and
+        the command action is told not to terminate the stream on its
+        own, so what the caller normalized is what lands.
 
-        :param List[str] lines: Content lines to write
+        A mode is applied here rather than after placement, so the
+        candidate never sits at the destination under permissions the
+        task did not ask for. Without one the candidate keeps whatever
+        the remote host's umask gave it, inside a scratch directory
+        this machinery creates at 0700.
+
+        :param Union[str, List[str]] content: The content to stage,
+            either a whole-file string or a list of lines
         :param str tmpfile: Temporary file path on remote host
+        :param Optional[str] mode: Mode to apply to the candidate, or
+            None to leave it at the host's default
         :param Optional[dict] task_vars: Ansible task variables
         :returns dict: Result from the ``tee`` command
         :raises RuntimeError: If writing or chmod fails
         """
         self._display.vvv(f"Writing to temp file: {tmpfile}")
-        lines_str = "\n".join(lines)
+        if not isinstance(content, str):
+            _lines, content = self._normalize_content(content)
         # The candidate is staged for real even in check mode; it never
         # reaches the destination from here, and a validate command has
         # to be given a file that actually holds the content
         write_result = self._command(
             cmd=["tee", tmpfile],
-            stdin=lines_str,
+            stdin=content,
             task_vars=task_vars,
             check_mode=False,
+            stdin_add_newline=False,
         )
         if write_result.get("rc", 1) != 0:
             raise RuntimeError(
@@ -341,14 +395,18 @@ class WritePosixActionBase(ReadPosixActionBase):
                 f"{write_result.get('stderr', '')}"
             )
 
-        self._display.vvv(f"Setting temp file permissions: {tmpfile}")
-        chmod_result = self._command(
-            ["chmod", "0600", tmpfile], task_vars=task_vars, check_mode=False
-        )
-        if chmod_result.get("rc", 1) != 0:
-            raise RuntimeError(
-                f"Failed to chmod temp file: {chmod_result.get('stderr', '')}"
+        if mode:
+            self._display.vvv(f"Setting temp file permissions: {tmpfile}")
+            chmod_result = self._command(
+                ["chmod", mode, tmpfile],
+                task_vars=task_vars,
+                check_mode=False,
             )
+            if chmod_result.get("rc", 1) != 0:
+                raise RuntimeError(
+                    "Failed to chmod temp file: "
+                    f"{chmod_result.get('stderr', '')}"
+                )
         return write_result
 
     def _convert_octal_mode_to_symbolic(
@@ -585,6 +643,15 @@ class WritePosixActionBase(ReadPosixActionBase):
         support for optional validation, backup creation, and
         permission handling.
 
+        The content carries its own newline policy, in the type it
+        arrives as: a string is a whole file and is written byte for
+        byte, a list is a file's lines and is written as POSIX text
+        with every line terminated. See ``_normalize_content``.
+
+        A mode the task did not name is not invented. The destination
+        keeps the mode it already carries, or takes the one the remote
+        host's umask gives a new file. See ``_placement_mode``.
+
         Check mode withholds placement alone. The scratch directory is
         created, the candidate is staged, and any validate command runs
         against it, so the change reported is a prediction drawn from
@@ -642,8 +709,19 @@ class WritePosixActionBase(ReadPosixActionBase):
             check_mode=False,
         )
 
-        # Write the lines to a temporary file
-        self._write_temp_file(lines, tmpfile, task_vars=task_vars)
+        # Stage the content in a temporary file under the mode it will
+        # carry into place
+        self._write_temp_file(
+            content,
+            tmpfile,
+            mode=self._placement_mode(
+                dest,
+                perms,
+                dest_exists=old_stat["exists"],
+                task_vars=task_vars,
+            ),
+            task_vars=task_vars,
+        )
 
         # Run validation command, if provided
         if validate_cmd:
@@ -811,12 +889,22 @@ class WritePosixActionBase(ReadPosixActionBase):
         self, content: Union[str, List[str]]
     ) -> Tuple[List[str], str]:
         """
-        Normalize input content to a list of lines and string.
+        Normalize input content to a list of lines and a byte stream.
 
-        Accepts either a string or a list of strings/numbers. Ensures
-        the output string ends with a newline character and all list
-        elements are converted to strings. Raises an RuntimeError
-        on unsupported input types.
+        The type the caller hands over selects the newline policy,
+        because it is what distinguishes the two kinds of write this
+        machinery serves.
+
+        A string is a whole file's content, from a literal, a copied
+        source, or a rendered template. It is returned exactly as
+        given: a trailing newline is neither appended nor stripped,
+        because the bytes the caller was handed are the bytes that
+        belong at the destination.
+
+        A list is a file's lines, from an edit that computed them. It
+        is returned as POSIX text, every line terminated with a
+        newline, the last one included. An empty list is an empty
+        file, not a blank line.
 
         :param Union[str, List[Union[str, int, float]]] content: The
             input to normalize
@@ -826,14 +914,14 @@ class WritePosixActionBase(ReadPosixActionBase):
         """
         if isinstance(content, str):
             lines = content.splitlines()
-            normalized = content if content.endswith("\n") else content + "\n"
+            normalized = content
         elif isinstance(content, list):
             if not all(
                 isinstance(line, (str, int, float)) for line in content
             ):
                 raise RuntimeError("_write_file() requires strings or numbers")
             lines = [str(line) for line in content]
-            normalized = "\n".join(lines) + "\n"
+            normalized = "".join(f"{line}\n" for line in lines)
         else:
             raise RuntimeError(
                 "_write_file() requires a string or list of strings"

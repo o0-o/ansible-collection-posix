@@ -71,14 +71,15 @@ class PosixActionBase(CoreActionBase):
         check_mode: Optional[bool] = None,
         strip: bool = True,
         raw: Optional[Union[bool, str]] = None,
+        stdin_add_newline: bool = True,
     ) -> dict[str, Any]:
         """
         Run the fallback-compatible POSIX command action plugin.
 
         Overrides CoreActionBase._command() to use o0_o.posix.command
         which supports raw fallback execution on systems without Python.
-        The parent's parameters keep their names and order; strip and
-        raw are this override's additions.
+        The parent's parameters keep their names and order; strip, raw,
+        and stdin_add_newline are this override's additions.
 
         :param Union[str, list[str]] cmd: Command to execute. Can be a
             shell string or a list of arguments
@@ -93,6 +94,9 @@ class PosixActionBase(CoreActionBase):
         :param bool strip: Strip trailing whitespace from output
         :param Optional[Union[bool, str]] raw: Force raw execution
             (True/False) or auto-detect ("auto")
+        :param bool stdin_add_newline: Terminate the standard input with
+            a newline when it does not carry one. Pinned off by a caller
+            whose input is a byte stream rather than a line
         :returns dict: The result dictionary from the command plugin
         """
         task_vars = task_vars or {}
@@ -101,6 +105,7 @@ class PosixActionBase(CoreActionBase):
             "stdin": stdin,
             "chdir": chdir,
             "strip_empty_ends": strip,
+            "stdin_add_newline": stdin_add_newline,
         }
 
         # Pass raw if explicitly set
