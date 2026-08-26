@@ -70,6 +70,10 @@ from ansible_collections.o0_o.posix.plugins.module_utils.hosts_utils import (
 from ansible_collections.o0_o.posix.plugins.module_utils.passwd_utils import (
     passwd_info,
 )
+from ansible_collections.o0_o.posix.plugins.module_utils.path_utils import (
+    compose_paths,
+    flags_to_octal_mode,
+)
 from ansible_collections.o0_o.posix.plugins.module_utils.mount_utils import (
     MOUNT_FILTER_DEFAULTS,
     compose_mounts,
@@ -180,6 +184,8 @@ __all__ = [
     "group_info",
     "normalize_group_members",
     "passwd_info",
+    "compose_paths",
+    "flags_to_octal_mode",
     "MOUNT_FILTER_DEFAULTS",
     "compose_mounts",
     "get_mount_command_requests",
