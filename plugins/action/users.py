@@ -18,6 +18,7 @@ from ansible.plugins.action import ActionBase
 
 from ansible_collections.o0_o.posix.plugins.module_utils import (
     ReadPosixActionBase,
+    batch_read,
     compose_homes,
     compose_shell_files,
     compose_users_groups,
@@ -92,8 +93,13 @@ class ActionModule(ReadPosixActionBase, ActionBase):
         # Gather SSH keys for users
         self._gather_ssh_keys_for_users(users, task_vars)
 
-        def read(paths: list[str]) -> dict[str, Any]:
+        def read_paths(paths: list[str]) -> dict[str, Any]:
             return self._read(paths=paths, task_vars=task_vars)
+
+        # Homes and shell files are both metadata reads over paths the
+        # passwd entries already named, so they are read together
+        known_shell_files = task_vars.get("o0_shell_files")
+        read = batch_read(users, read_paths, known_shell_files)
 
         result.update(
             {
@@ -102,7 +108,7 @@ class ActionModule(ReadPosixActionBase, ActionBase):
                 "o0_groups": groups,
                 "o0_homes": compose_homes(users, read),
                 "o0_shell_files": compose_shell_files(
-                    users, read, task_vars.get("o0_shell_files")
+                    users, read, known_shell_files
                 ),
             }
         )

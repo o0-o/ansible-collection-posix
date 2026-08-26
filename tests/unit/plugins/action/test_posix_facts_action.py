@@ -672,6 +672,43 @@ class TestGatherUsers:
         }
         assert batches[0]["/etc/passwd"] == ["cat", "/etc/passwd"]
 
+    def test_one_metadata_read(self, monkeypatch, plugin) -> None:
+        """Test the homes and the shell files are read together, in
+        one metadata read over the deduplicated paths."""
+        _no_python(monkeypatch, plugin)
+        asked: list[list[str]] = []
+
+        def mock_read(paths, **kwargs) -> dict[str, Any]:
+            if isinstance(paths, str):
+                paths = [paths]
+            asked.append(list(paths))
+            return {
+                "paths": {
+                    path: {"type": READ_TYPES.get(path, "directory")}
+                    for path in paths
+                }
+            }
+
+        monkeypatch.setattr(plugin, "_read", mock_read)
+        _mock_run(
+            monkeypatch,
+            plugin,
+            {
+                "/etc/passwd": ETC_PASSWD,
+                "/etc/group": ETC_GROUP,
+                "/etc/shells": ETC_SHELLS,
+            },
+        )
+
+        facts = plugin._gather_users(task_vars={})
+
+        assert asked == [["/bin/sh", "/bin/zsh", "/home/o0-o", "/var/root"]]
+        assert facts["o0_homes"]["/home/o0-o"]["residents"] == [1000]
+        assert facts["o0_shell_files"]["/bin/zsh"]["tags"] == [
+            "posix",
+            "shell",
+        ]
+
     def test_needs_both_files(self, monkeypatch, plugin) -> None:
         """Test a failed /etc/group read leaves the cross-referenced
         facts unpublished."""

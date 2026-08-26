@@ -117,6 +117,7 @@ from ansible_collections.o0_o.posix.plugins.module_utils.uname_utils import (
     process_uname_results,
 )
 from ansible_collections.o0_o.posix.plugins.module_utils.user_utils import (
+    batch_read,
     compose_homes,
     compose_shell_files,
     compose_users_groups,
@@ -172,6 +173,7 @@ __all__ = [
     "get_effective_uid_command_requests",
     "id_info",
     "process_effective_uid_results",
+    "batch_read",
     "compose_homes",
     "compose_shell_files",
     "compose_users_groups",

@@ -22,6 +22,7 @@ from ansible_collections.o0_o.posix.plugins.module_utils.passwd_utils import (
     passwd_info,
 )
 from ansible_collections.o0_o.posix.plugins.module_utils.user_utils import (
+    batch_read,
     compose_homes,
     compose_shell_files,
     compose_users_groups,
@@ -392,3 +393,134 @@ def test_composition_is_what_renames_the_util_shapes() -> None:
     assert users["1000"]["uid"] == 1000
     assert groups["101"]["gid"] == 101
     assert groups["101"]["members"] == [1000]
+
+
+# The metadata a batched gather stands to read: two homes, one of
+# them a link, and the two shells those users hold
+BATCH_ANSWERS = {
+    "/var/root": {"type": "directory"},
+    "/home/o0-o": {"type": "link", "target": "/Users/o0-o"},
+    "/Users/o0-o": {"type": "directory"},
+    "/bin/sh": {"type": "regular"},
+    "/bin/zsh": {"type": "regular"},
+}
+
+
+def test_batch_read_reads_homes_and_shells_together() -> None:
+    """Test both compositions are served by one read over the union
+    of the paths they need, deduplicated and in a settled order."""
+    read, asked = _reader(BATCH_ANSWERS)
+
+    batched = batch_read(USERS, read)
+    compose_homes(USERS, batched)
+    compose_shell_files(USERS, batched)
+
+    # The batch, then only the linked home's target
+    assert asked[0] == ["/bin/sh", "/bin/zsh", "/home/o0-o", "/var/root"]
+    assert asked[1] == ["/Users/o0-o"]
+    assert len(asked) == 2
+
+
+def test_batch_read_composes_what_an_unbatched_read_composes() -> None:
+    """Test the facts are identical to the ones the compositions
+    reach when each does its own read."""
+    plain, plain_asked = _reader(BATCH_ANSWERS)
+    plain_homes = compose_homes(USERS, plain)
+    plain_shells = compose_shell_files(USERS, plain)
+
+    read, asked = _reader(BATCH_ANSWERS)
+    batched = batch_read(USERS, read)
+    homes = compose_homes(USERS, batched)
+    shell_files = compose_shell_files(USERS, batched)
+
+    assert homes == plain_homes
+    assert shell_files == plain_shells
+    # Same facts, fewer reads
+    assert len(asked) < len(plain_asked)
+
+
+def test_batch_read_keeps_the_merge_of_a_linked_home() -> None:
+    """Test a link whose target is another user's home still merges
+    into that target rather than reading it again."""
+    users = {
+        "0": {"uid": 0, "home": "/shared", "shell": "/bin/sh"},
+        "1000": {"uid": 1000, "home": "/link", "shell": "/bin/sh"},
+    }
+    read, asked = _reader(
+        {
+            "/shared": {"type": "directory"},
+            "/link": {"type": "link", "target": "/shared"},
+            "/bin/sh": {"type": "regular"},
+        }
+    )
+
+    homes = compose_homes(users, batch_read(users, read))
+
+    assert homes["/shared"]["residents"] == [0, 1000]
+    assert asked == [["/bin/sh", "/link", "/shared"]]
+
+
+def test_batch_read_leaves_known_shells_out_of_the_batch() -> None:
+    """Test a shell a previous gather described is not read, the same
+    way the composition would not have read it."""
+    known = {"/bin/sh": {"type": "regular", "known": True}}
+    read, asked = _reader(BATCH_ANSWERS)
+
+    batched = batch_read(USERS, read, known)
+    shell_files = compose_shell_files(USERS, batched, known)
+
+    assert "/bin/sh" not in asked[0]
+    assert shell_files["/bin/sh"]["known"] is True
+    assert shell_files["/bin/zsh"]["tags"] == ["posix", "shell"]
+
+
+def test_batch_read_reads_nothing_without_paths() -> None:
+    """Test users with neither a home nor a shell cost no read at
+    all, batch included."""
+    read, asked = _reader({})
+
+    batched = batch_read({"0": {"uid": 0}}, read)
+
+    assert compose_homes({"0": {"uid": 0}}, batched) == {}
+    assert compose_shell_files({"0": {"uid": 0}}, batched) == {}
+    assert asked == []
+
+
+def test_batch_read_falls_through_when_the_batch_fails() -> None:
+    """Test a failed batch changes nothing: each composition reads
+    for itself, as it always did."""
+    asked: list[list[str]] = []
+
+    def read(paths: list[str]) -> dict[str, Any]:
+        asked.append(list(paths))
+        if len(asked) == 1:
+            return {"failed": True, "msg": "no"}
+        return {"paths": {path: BATCH_ANSWERS.get(path) for path in paths}}
+
+    batched = batch_read(USERS, read)
+    homes = compose_homes(USERS, batched)
+    shell_files = compose_shell_files(USERS, batched)
+
+    assert asked[1] == ["/var/root", "/home/o0-o"]
+    assert sorted(homes) == ["/Users/o0-o", "/home/o0-o", "/var/root"]
+    assert set(shell_files) == {"/bin/sh", "/bin/zsh"}
+
+
+def test_batch_read_answers_each_composition_its_own_copy() -> None:
+    """Test one path serving as both a home and a shell is tagged
+    twice over rather than once, which sharing the batch's entry
+    between the two compositions would cost."""
+    users = {"0": {"uid": 0, "home": "/opt/box", "shell": "/opt/box"}}
+    answers = {"/opt/box": {"type": "directory"}}
+
+    def read(paths: list[str]) -> dict[str, Any]:
+        return {"paths": {path: dict(answers[path]) for path in paths}}
+
+    batched = batch_read(users, read)
+    homes = compose_homes(users, batched)
+    shell_files = compose_shell_files(users, batched)
+
+    assert homes["/opt/box"]["tags"] == ["posix", "home"]
+    assert homes["/opt/box"]["residents"] == [0]
+    assert shell_files["/opt/box"]["tags"] == ["posix", "shell"]
+    assert "residents" not in shell_files["/opt/box"]

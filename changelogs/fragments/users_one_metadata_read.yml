@@ -1,0 +1,14 @@
+# vim: ts=2:sw=2:sts=2:et:ft=yaml.ansible
+# -*- mode: yaml; yaml-indent-offset: 2; indent-tabs-mode: nil; -*-
+---
+minor_changes:
+  - >-
+    users and facts - o0_homes and o0_shell_files are read in one
+    metadata batch over the union of the home and shell paths
+    rather than one batch apiece, halving the round trips a users
+    gather spends on them. The facts themselves are unchanged.
+  - >-
+    user_utils - new batch_read wraps a producer's read so both
+    compositions answer out of a single batch, falling through to
+    that read for a path the batch does not cover, such as a linked
+    home's target.

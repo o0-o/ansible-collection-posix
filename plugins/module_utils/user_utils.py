@@ -17,13 +17,15 @@ carry that ID as an integer field, and membership is expressed in
 integer IDs on both sides.  ``compose_homes`` and
 ``compose_shell_files`` define the two facts that follow from them,
 the directories users live in and the shells they log in with, each
-taking the caller's own way of reading a path's metadata.  Every
-producer of these facts composes them here so consumers see one
-shape.
+taking the caller's own way of reading a path's metadata.
+``batch_read`` wraps that way of reading so the two compositions
+share one round trip instead of spending one apiece.  Every producer
+of these facts composes them here so consumers see one shape.
 """
 
 from __future__ import annotations
 
+from copy import deepcopy
 from typing import Any, Callable, Optional, Union
 
 from ansible_collections.o0_o.posix.plugins.module_utils.group_utils import (
@@ -129,6 +131,111 @@ def _add_member(groups: dict[str, dict[str, Any]], gid: int, uid: int) -> None:
         entry["members"].append(uid)
 
 
+def _residents_by_home(
+    users: dict[str, dict[str, Any]],
+) -> dict[str, list[int]]:
+    """Map each home path to the UIDs that call it home.
+
+    :param dict[str, dict[str, Any]] users: The o0_users mapping
+    :returns dict[str, list[int]]: Resident UIDs per home path
+    """
+    residents_by_home: dict[str, list[int]] = {}
+    for user in users.values():
+        home = user.get("home")
+        uid = user.get("uid")
+        if isinstance(home, str) and home and isinstance(uid, int):
+            residents_by_home.setdefault(home, []).append(uid)
+    return residents_by_home
+
+
+def _unread_shells(
+    users: dict[str, dict[str, Any]],
+    shell_files: dict[str, dict[str, Any]],
+) -> set[str]:
+    """The shells users hold that no gather has described yet.
+
+    :param dict[str, dict[str, Any]] users: The o0_users mapping
+    :param dict[str, dict[str, Any]] shell_files: Shell files already
+        described
+    :returns set[str]: Shell paths still to read
+    """
+    return {
+        user["shell"]
+        for user in users.values()
+        if isinstance(user.get("shell"), str)
+        and user["shell"]
+        and user["shell"] not in shell_files
+    }
+
+
+def batch_read(
+    users: dict[str, dict[str, Any]],
+    read: ReadPaths,
+    known: Optional[dict[str, dict[str, Any]]] = None,
+) -> ReadPaths:
+    """Read for both compositions at once and serve them from it.
+
+    ``compose_homes`` and ``compose_shell_files`` each read the paths
+    they need, and on a remote host each read is round trips of its
+    own, even though both sets of paths are settled before either
+    composition runs.  This reads their union once, up front, and
+    answers with a read that serves the compositions out of that one
+    batch.
+
+    Nothing else changes: a path the batch does not cover falls
+    through to the caller's own read, as every path does when the
+    batch itself fails, so both compositions see what an unbatched
+    gather would have given them.  A linked home's target is the path
+    that falls through in practice, because a link is only known to
+    have one once it has been read.
+
+    ``known`` has to be the same mapping ``compose_shell_files`` will
+    be given, or the batch reads shells that composition never asks
+    about.
+
+    :param dict[str, dict[str, Any]] users: The o0_users mapping
+    :param ReadPaths read: How to read a path's metadata
+    :param Optional[dict[str, dict[str, Any]]] known: Shell files a
+        previous gather already described
+    :returns ReadPaths: A read answering from the batch, falling
+        through for whatever the batch does not cover
+    """
+    paths = sorted(
+        set(_residents_by_home(users))
+        | _unread_shells(users, dict(known or {}))
+    )
+
+    batch: dict[str, Any] = {}
+    covered: set[str] = set()
+
+    if paths:
+        result = read(paths)
+        if not result.get("failed") and isinstance(result.get("paths"), dict):
+            batch = result["paths"]
+            covered = set(paths)
+
+    def batched(wanted: list[str]) -> dict[str, Any]:
+        """Answer for paths the batch holds, reading the rest.
+
+        :param list[str] wanted: Paths to inspect
+        :returns dict[str, Any]: The read result shape, carrying one
+            entry per known path under its paths key
+        """
+        if not covered.issuperset(wanted):
+            return read(wanted)
+
+        # A composition writes its tags and residents onto what it is
+        # handed, so each answer is its own copy rather than the
+        # batch's entry
+        return {
+            "paths": {
+                path: deepcopy(batch[path]) for path in wanted if path in batch
+            }
+        }
+
+    return batched
+
+
 def _read_paths(read: ReadPaths, paths: list[str]) -> dict[str, Any]:
     """Read metadata for paths, answering with what came back.
 
@@ -159,12 +266,7 @@ def compose_homes(
     :param ReadPaths read: How to read a path's metadata
     :returns dict[str, dict[str, Any]]: The o0_homes mapping
     """
-    residents_by_home: dict[str, list[int]] = {}
-    for user in users.values():
-        home = user.get("home")
-        uid = user.get("uid")
-        if isinstance(home, str) and home and isinstance(uid, int):
-            residents_by_home.setdefault(home, []).append(uid)
+    residents_by_home = _residents_by_home(users)
 
     if not residents_by_home:
         return {}
@@ -223,13 +325,7 @@ def compose_shell_files(
     """
     shell_files: dict[str, dict[str, Any]] = dict(known or {})
 
-    unread = {
-        user["shell"]
-        for user in users.values()
-        if isinstance(user.get("shell"), str)
-        and user["shell"]
-        and user["shell"] not in shell_files
-    }
+    unread = _unread_shells(users, shell_files)
 
     if not unread:
         return shell_files
@@ -299,6 +395,7 @@ def _lookup(
 
 
 __all__ = [
+    "batch_read",
     "compose_homes",
     "compose_shell_files",
     "compose_users_groups",

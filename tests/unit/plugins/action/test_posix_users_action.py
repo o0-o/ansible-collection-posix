@@ -11,7 +11,7 @@
 
 from __future__ import annotations
 
-from typing import Generator
+from typing import Any, Generator
 
 import pytest
 
@@ -207,3 +207,69 @@ def test_users_action_shell_files_extend_prior_gather(
 
     assert "/bin/ksh" in result["o0_shell_files"]
     assert result["o0_shell_files"]["/bin/zsh"]["tags"] == ["posix", "shell"]
+
+
+READ_TYPES = {
+    "/var/root": "directory",
+    "/home/o0-o": "directory",
+    "/bin/sh": "regular",
+    "/bin/zsh": "regular",
+}
+
+
+def _counting_read(monkeypatch, plugin) -> list[list[str]]:
+    """Answer the read action with each path's type, counting reads.
+
+    :param monkeypatch: The pytest monkeypatch fixture
+    :param plugin: Action instance to patch
+    :returns list[list[str]]: The path lists the action asked for
+    """
+    asked: list[list[str]] = []
+
+    def mock_read(**kwargs: Any) -> dict[str, Any]:
+        paths = kwargs["paths"]
+        if isinstance(paths, str):
+            paths = [paths]
+        asked.append(list(paths))
+        return {
+            "paths": {
+                path: {"type": READ_TYPES.get(path, "directory")}
+                for path in paths
+            }
+        }
+
+    monkeypatch.setattr(plugin, "_read", mock_read)
+    return asked
+
+
+def test_users_action_reads_homes_and_shells_in_one_batch(
+    monkeypatch, plugin
+) -> None:
+    """Test one gather spends one metadata read over the deduplicated
+    home and shell paths, not one read for each fact."""
+    asked = _counting_read(monkeypatch, plugin)
+
+    plugin.run(task_vars={})
+
+    assert asked == [["/bin/sh", "/bin/zsh", "/home/o0-o", "/var/root"]]
+
+
+def test_users_action_batch_leaves_the_facts_alone(
+    monkeypatch, plugin
+) -> None:
+    """Test the batched read publishes what the per-fact reads did."""
+    _counting_read(monkeypatch, plugin)
+
+    result = plugin.run(task_vars={})
+
+    assert result["o0_homes"]["/home/o0-o"] == {
+        "type": "directory",
+        "tags": ["posix", "home"],
+        "residents": [1000],
+    }
+    assert result["o0_homes"]["/var/root"]["residents"] == [0]
+    assert result["o0_shell_files"]["/bin/zsh"] == {
+        "type": "regular",
+        "tags": ["posix", "shell"],
+    }
+    assert set(result["o0_shell_files"]) == {"/bin/sh", "/bin/zsh"}
