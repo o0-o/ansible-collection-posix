@@ -148,6 +148,12 @@ class TestProcessAllComplianceCommandResults:
         assert shells["/bin/sh"]["aliases"] == {"ls": "ls --color=auto"}
         assert shells["/bin/sh"]["builtins"] == sorted(BUILTIN_COMMANDS)
 
+    def test_sh_posix_compliant_published(self) -> None:
+        """The sh test's behavioral verdict lands beside the standards."""
+        facts = _process_fabricated_host()
+        compliance = facts["o0_os"]["compliance"]
+        assert compliance["sh_posix_compliant"] is True
+
     def test_paths_and_missing_commands(self) -> None:
         """Test the path map and the missing command list keep their
         own namespaces."""

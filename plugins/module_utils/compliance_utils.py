@@ -364,6 +364,15 @@ def process_all_compliance_command_results(
     else:
         compliance["sus"]["supported"] = False
 
+    # The one behavioral probe in a subsystem of declarations: the
+    # sh test's verdict publishes beside the standards it evidences
+    sh_result = processed_results.get("sh_test")
+    if sh_result is not None:
+        parsed = sh_result["parsed"]
+        if parsed:
+            compliance.update(parsed)
+        errors.extend(sh_result.pop("errors", []) or [])
+
     result["paths"]["/bin/sh"] = {}
 
     # The processor names its own facts, so the two producers that

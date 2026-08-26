@@ -1,0 +1,8 @@
+# vim: ts=2:sw=2:sts=2:et:ft=yaml.ansible
+# -*- mode: yaml; yaml-indent-offset: 2; indent-tabs-mode: nil; -*-
+---
+minor_changes:
+  - >-
+    compliance - the POSIX shell behavioral test's verdict publishes
+    as o0_os.compliance.sh_posix_compliant. It was computed on
+    every run and discarded unread.

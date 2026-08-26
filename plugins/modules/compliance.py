@@ -125,7 +125,9 @@ ansible_facts:
         compliance:
           description: >-
             Compliance data, the same structure as the C(compliance)
-            return value
+            return value, plus C(sh_posix_compliant) - the behavioral
+            verdict of the basic POSIX shell test run against
+            C(/bin/sh)
           type: dict
         shells:
           description: >-

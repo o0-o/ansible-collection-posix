@@ -186,7 +186,10 @@ ansible_facts:
             C(xsh), C(xcu) and C(xsi). Each entry carries the
             standard's name, abbreviation and description, whether it
             is C(supported), the C(version) detected, and the
-            C(canaries) that decided the answer.
+            C(canaries) that decided the answer. Beside the standards,
+            C(sh_posix_compliant) records the one behavioral probe:
+            whether C(/bin/sh) actually passed a basic POSIX shell
+            test, rather than merely declaring a version.
             M(o0_o.posix.compliance) builds this fact and documents
             every field of it.
           returned: when the compliance subset is gathered
