@@ -109,9 +109,7 @@ class ActionModule(PosixActionBase, ActionBase):
             {
                 "changed": False,
                 "env": env_data,
-                "msg": (
-                    f"Collected {len(env_vars)}" f" environment variable(s)"
-                ),
+                "msg": (f"Collected {len(env_vars)} environment variable(s)"),
             }
         )
 

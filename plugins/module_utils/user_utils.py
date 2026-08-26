@@ -111,9 +111,7 @@ def compose_users_groups(
     return users, groups
 
 
-def _add_member(
-    groups: dict[str, dict[str, Any]], gid: int, uid: int
-) -> None:
+def _add_member(groups: dict[str, dict[str, Any]], gid: int, uid: int) -> None:
     """Record a UID as a member of a GID, creating the group entry.
 
     A primary group that /etc/group never named still exists as far
@@ -142,9 +140,7 @@ def _read_paths(read: ReadPaths, paths: list[str]) -> dict[str, Any]:
     result = read(paths)
     if result.get("failed") or "paths" not in result:
         return {}
-    return {
-        path: data for path, data in result["paths"].items() if data
-    }
+    return {path: data for path, data in result["paths"].items() if data}
 
 
 def compose_homes(

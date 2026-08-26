@@ -241,11 +241,7 @@ def _reader(
 
     def read(paths: list[str]) -> dict[str, Any]:
         asked.append(list(paths))
-        return {
-            "paths": {
-                path: answers.get(path) for path in paths
-            }
-        }
+        return {"paths": {path: answers.get(path) for path in paths}}
 
     return read, asked
 

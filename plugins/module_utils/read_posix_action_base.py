@@ -781,9 +781,9 @@ class ReadPosixActionBase(PosixActionBase):
             # either way the representation is base64
             attributes["encoding"] = "base64"
             if want_content:
-                attributes["content"] = base64.b64encode(
-                    content_bytes
-                ).decode("ascii")
+                attributes["content"] = base64.b64encode(content_bytes).decode(
+                    "ascii"
+                )
         else:
             # Text encoding: try to decode with specified encoding
             try:
@@ -1766,7 +1766,7 @@ class ReadPosixActionBase(PosixActionBase):
             # A default: prefix shifts every field one to the right
             is_default = line.startswith("default:")
             if is_default:
-                line = line[len("default:"):]
+                line = line[len("default:") :]
 
             # Parse ACL entry: type:name:perms or type::perms
             parts = line.split(":")

@@ -213,8 +213,7 @@ def process_command_lookups(
             else:
                 errors.append(
                     RuntimeError(
-                        f"Unexpected 'command -v {cmd}' output: "
-                        f"{repr(parsed)}"
+                        f"Unexpected 'command -v {cmd}' output: {repr(parsed)}"
                     )
                 )
 

@@ -452,7 +452,7 @@ class ActionModule(ReadPosixActionBase, ActionBase):
         selected_subsets = self._resolve_subsets(new_args["gather_subset"])
 
         self._display.vvv(
-            "Gathering fact subsets: " f"{', '.join(sorted(selected_subsets))}"
+            f"Gathering fact subsets: {', '.join(sorted(selected_subsets))}"
         )
 
         all_facts = {}
@@ -465,7 +465,7 @@ class ActionModule(ReadPosixActionBase, ActionBase):
                 spec = self.BATCHED_SUBSETS[subset]
                 requests = spec["requests"]()
                 self._display.vvv(
-                    f"Batched {subset}: " f"{len(requests)} command(s)"
+                    f"Batched {subset}: {len(requests)} command(s)"
                 )
                 all_requests.extend(requests)
 
@@ -489,7 +489,7 @@ class ActionModule(ReadPosixActionBase, ActionBase):
                     facts, errors = spec["processor"](run_results)
                     for err in errors:
                         self._display.warning(
-                            f"[{self.inventory_hostname}] " f"{err}"
+                            f"[{self.inventory_hostname}] {err}"
                         )
 
                     # User-scoped subsets nest under o0_users, which

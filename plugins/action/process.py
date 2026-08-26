@@ -258,8 +258,7 @@ class ActionModule(PosixActionBase, ActionBase):
                         break
                 if not matched:
                     self._display.vvv(
-                        f"    No match: none of {executables} found "
-                        f"in command"
+                        f"    No match: none of {executables} found in command"
                     )
             elif executables:
                 self._display.vvv(

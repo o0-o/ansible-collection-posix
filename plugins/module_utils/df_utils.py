@@ -270,9 +270,7 @@ def df(config: Union[str, dict[str, Any]]) -> list[dict[str, Any]]:
         elif "content" in config:
             content = config["content"]
             # A read or slurp result declares an encoded content
-            declared = decode_declared_content(
-                content, config.get("encoding")
-            )
+            declared = decode_declared_content(content, config.get("encoding"))
             if declared is not None:
                 content = declared
         else:

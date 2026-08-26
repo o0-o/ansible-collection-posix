@@ -696,9 +696,7 @@ class TestParseNfs4Acl:
     ) -> None:
         """Test watch entries are skipped and warned, not modeled."""
         text = (
-            "A::OWNER@:r\n"
-            f"{ace_type}::alice@example.com:w\n"
-            "D::EVERYONE@:w\n"
+            f"A::OWNER@:r\n{ace_type}::alice@example.com:w\nD::EVERYONE@:w\n"
         )
 
         acl = action._parse_nfs4_acl(text)

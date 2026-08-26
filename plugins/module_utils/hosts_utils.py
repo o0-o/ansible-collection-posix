@@ -133,9 +133,7 @@ def hosts(
             content = config["content"]
             # A read or slurp result declares an encoded content;
             # stdout never carries a declaration
-            declared = decode_declared_content(
-                content, config.get("encoding")
-            )
+            declared = decode_declared_content(content, config.get("encoding"))
             if declared is not None:
                 content = declared
         elif "stdout" in config:

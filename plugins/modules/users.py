@@ -66,9 +66,13 @@ seealso:
     description: Parse id command output
   - ref: o0_o.posix.group filter <ansible_collections.o0_o.posix.group_filter>
     description: Parse /etc/group content
-  - ref: o0_o.posix.passwd filter <ansible_collections.o0_o.posix.passwd_filter>  # noqa: E501
+  - ref: >-
+      o0_o.posix.passwd filter
+      <ansible_collections.o0_o.posix.passwd_filter>
     description: Parse /etc/passwd content
-  - ref: o0_o.posix.authorized_keys filter <ansible_collections.o0_o.posix.authorized_keys_filter>  # noqa: E501
+  - ref: >-
+      o0_o.posix.authorized_keys filter
+      <ansible_collections.o0_o.posix.authorized_keys_filter>
     description: Parse SSH authorized_keys content
 """
 

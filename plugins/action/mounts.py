@@ -148,9 +148,7 @@ class ActionModule(PosixActionBase, ActionBase):
 
         return mounts
 
-    def _get_df_list(
-        self, task_vars: dict[str, Any]
-    ) -> list[dict[str, Any]]:
+    def _get_df_list(self, task_vars: dict[str, Any]) -> list[dict[str, Any]]:
         """Get df output as a list.
 
         :param task_vars: Task variables dictionary

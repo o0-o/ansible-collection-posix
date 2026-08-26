@@ -965,7 +965,7 @@ class WritePosixActionBase(ReadPosixActionBase):
                         {
                             "rc": 256,
                             "msg": (
-                                f"Error creating {dir_path} " f"({to_text(e)})"
+                                f"Error creating {dir_path} ({to_text(e)})"
                             ),
                             "failed": True,
                         }

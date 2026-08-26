@@ -239,8 +239,7 @@ class ActionModule(WritePosixActionBase, ActionBase):
             if family in ("content", "src", "template"):
                 if state != "present":
                     raise AnsibleActionFail(
-                        f"{family} requires state=present, got "
-                        f"state={state}"
+                        f"{family} requires state=present, got state={state}"
                     )
             elif state not in ("present", "absent"):
                 raise AnsibleActionFail(
@@ -773,8 +772,7 @@ class ActionModule(WritePosixActionBase, ActionBase):
             rm_result = self._command(rm_args + [dest], task_vars=task_vars)
             if rm_result["rc"] != 0:
                 raise AnsibleActionFail(
-                    f"Failed to remove {dest}: "
-                    f"{rm_result.get('stderr', '')}"
+                    f"Failed to remove {dest}: {rm_result.get('stderr', '')}"
                 )
             self.result["msg"] = "path removed"
             return

@@ -258,8 +258,7 @@ def parse_mount_entry(entry: dict[str, Any]) -> dict[str, Any]:
         for opt in entry["options"]:
             if not isinstance(opt, str):
                 raise TypeError(
-                    f"Expected string option, got "
-                    f"{type(opt).__name__}: {opt}"
+                    f"Expected string option, got {type(opt).__name__}: {opt}"
                 )
             # Skip empty strings
             if not opt:
@@ -362,9 +361,7 @@ def mount(config: Union[str, dict[str, Any]]) -> list[dict[str, Any]]:
         elif "content" in config:
             content = config["content"]
             # A read or slurp result declares an encoded content
-            declared = decode_declared_content(
-                content, config.get("encoding")
-            )
+            declared = decode_declared_content(content, config.get("encoding"))
             config = content if declared is None else declared
         else:
             config = ""
