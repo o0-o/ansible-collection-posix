@@ -401,6 +401,11 @@ class ActionModule(ReadPosixActionBase, ActionBase):
             elif subset.startswith("!") and subset[1:] in self.SUBSET_GROUPS:
                 selected.difference_update(self._expand_group(subset[1:]))
             elif subset.startswith("!"):
+                # A typo'd exclusion silently gathering what it meant
+                # to exclude is worse than a typo'd selection: unknown
+                # names fail in both polarities
+                if subset[1:] not in self.SUBSET_METHODS:
+                    raise AnsibleActionFail(f"Invalid gather_subset: {subset}")
                 selected.discard(subset[1:])
             elif subset in self.SUBSET_GROUPS:
                 selected.update(self._expand_group(subset))

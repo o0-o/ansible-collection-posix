@@ -258,6 +258,11 @@ class TestResolveSubsets:
         with pytest.raises(AnsibleActionFail, match="Invalid gather_subset"):
             plugin._resolve_subsets(["invalid_subset"])
 
+    def test_invalid_negation(self, plugin) -> None:
+        """A typo'd exclusion fails like a typo'd selection."""
+        with pytest.raises(AnsibleActionFail, match="Invalid gather_subset"):
+            plugin._resolve_subsets(["!invalid_subset"])
+
     def test_locale_not_a_subset(self, plugin) -> None:
         """Test that locale is not a standalone subset."""
         with pytest.raises(AnsibleActionFail):
