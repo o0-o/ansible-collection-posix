@@ -3,12 +3,12 @@ bugfixes:
   - >-
     compliance, facts - The compliance payload had two sets of names
     and only one producer used the right ones. The processor both
-    producers share answered with bare compliance, shells, paths and
-    missing_commands keys; the compliance module renamed them on the
-    way out to o0_os.compliance, o0_os.shells, o0_paths and
-    o0_missing.commands, while the facts module, which reads a
-    top-level key as a namespace, published the bare four straight
-    into the host's facts. The processor names its own facts now, so
-    the two producers cannot disagree about where a fact lands. The
-    compliance module's own returns are unchanged
+    producers share answered with bare compliance and paths keys; the
+    compliance module renamed them on the way out to
+    o0_os.compliance and o0_paths, while the facts module, which
+    reads a top-level key as a namespace, published the bare keys
+    straight into the host's facts. The processor names its own facts
+    now, so the two producers cannot disagree about where a fact
+    lands. The compliance module's own returns are the same values
+    unwrapped
     (https://github.com/o0-o/ansible-collection-posix/pull/XXX).

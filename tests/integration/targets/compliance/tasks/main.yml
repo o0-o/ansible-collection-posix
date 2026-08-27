@@ -22,13 +22,70 @@
       - compliance_result_reg['msg'] is string
       - compliance_result_reg['compliance'] is defined
       - compliance_result_reg['compliance'] is mapping
-      - compliance_result_reg['shells'] is defined
-      - compliance_result_reg['shells'] is mapping
       - compliance_result_reg['paths'] is defined
       - compliance_result_reg['paths'] is mapping
       - compliance_result_reg['missing_commands'] is defined
       - compliance_result_reg['missing_commands'] is sequence
+      # What the shell says about itself is on the shell's own entry
+      - compliance_result_reg['shells'] is not defined
     fail_msg: 'Compliance module did not return expected structure'
+
+# A command that resolved is a fact about the file it resolved to; a
+# command that did not is a null at its name in each directory the
+# resolutions show were searched; and the aliases and builtins the
+# shell answered with are fields on that shell's own entry.
+- name: Verify the path store holds what the probes observed
+  vars:
+    paths: "{{ compliance_result_reg['paths'] }}"
+    resolved: >-
+      {{ paths | dict2items | selectattr('value', 'mapping')
+         | selectattr('value.executable', 'defined') | list }}
+  ansible.builtin.assert:
+    that:
+      - paths.keys() | reject('match', '^/') | list | length == 0
+      - paths['/bin/sh'] is mapping
+      - paths['/bin/sh']['aliases'] is mapping
+      - paths['/bin/sh']['builtins'] is sequence
+      - paths['/bin/sh']['builtins'] is not string
+      - resolved | length > 0
+      - resolved | map(attribute='value.executable_evidence')
+        | reject('in', ['probed', 'inferred']) | list | length == 0
+    fail_msg: 'the path store is not what the probes observed'
+
+# The commands a host lacks are read back out of the canaries the
+# standards record them in, rather than stored a second time.
+- name: Verify the missing list is the canaries it derives from
+  vars:
+    canaries: >-
+      {{ (compliance_result_reg['compliance']['xcu']['canaries']['missing']
+          + compliance_result_reg['compliance']['xsi']['canaries']['missing'])
+         | unique | sort }}
+  ansible.builtin.assert:
+    that:
+      - compliance_result_reg['missing_commands'] == canaries
+    fail_msg: >-
+      missing_commands does not derive from the canaries:
+      {{ compliance_result_reg['missing_commands'] }} vs {{ canaries }}
+
+# A name that cannot be a file names no candidate path, so only a
+# miss of something a directory could hold has a null to file.
+- name: Verify a miss files a null at each candidate path
+  when: >-
+    compliance_result_reg['missing_commands']
+    | reject('in', ['.', '..']) | list | length > 0
+  vars:
+    absent: >-
+      {{ compliance_result_reg['paths'] | dict2items
+         | selectattr('value', 'none') | map(attribute='key') | list }}
+    names: >-
+      {{ absent | map('basename') | unique | sort }}
+  ansible.builtin.assert:
+    that:
+      - absent | length > 0
+      - names | reject('in', compliance_result_reg['missing_commands'])
+        | list | length == 0
+    fail_msg: >-
+      a miss did not file a confirmed absence at a path: {{ absent }}
 
 - name: Verify compliance dict contains all standards
   ansible.builtin.assert:
@@ -74,7 +131,6 @@
       - compliance_check_reg is defined
       - compliance_check_reg['changed'] == false
       - compliance_check_reg['compliance'] is defined
-      - compliance_check_reg['shells'] is defined
       - compliance_check_reg['paths'] is defined
       - compliance_check_reg['missing_commands'] is defined
     fail_msg: 'Compliance module did not work in check mode'
@@ -103,7 +159,7 @@
 - name: Display command inventory
   ansible.builtin.debug:
     msg:
-      shells: "{{ compliance_result_reg['shells'] }}"
+      shell: "{{ compliance_result_reg['paths']['/bin/sh'] }}"
       paths_count: "{{ compliance_result_reg['paths'] | length }}"
       missing: "{{ compliance_result_reg['missing_commands'] }}"
     verbosity: 1
@@ -122,10 +178,10 @@
       - facts_var is mapping
       - facts_var['o0_os'] is defined
       - facts_var['o0_os']['compliance'] is defined
-      - facts_var['o0_os']['shells'] is defined
+      - facts_var['o0_os']['shells'] is not defined
       - facts_var['o0_paths'] is defined
-      - facts_var['o0_missing'] is defined
-      - facts_var['o0_missing']['commands'] is defined
+      - facts_var['o0_paths']['/bin/sh'] is defined
+      - facts_var['o0_missing'] is not defined
     fail_msg: 'gather option did not set ansible_facts correctly'
 
 - name: Verify gathered facts match direct results
@@ -135,23 +191,16 @@
         compliance_gather_reg['ansible_facts']['o0_os']['compliance']
         == compliance_gather_reg['compliance']
       - >-
-        compliance_gather_reg['ansible_facts']['o0_os']['shells']
-        == compliance_gather_reg['shells']
-      - >-
         compliance_gather_reg['ansible_facts']['o0_paths']
         == compliance_gather_reg['paths']
-      - >-
-        compliance_gather_reg['ansible_facts']['o0_missing']['commands']
-        == compliance_gather_reg['missing_commands']
     fail_msg: 'Gathered facts do not match direct return values'
 
 - name: Verify facts are accessible after gather
   ansible.builtin.assert:
     that:
       - o0_os['compliance'] is defined
-      - o0_os['shells'] is defined
       - o0_paths is defined
-      - o0_missing['commands'] is defined
+      - o0_paths['/bin/sh'] is defined
     fail_msg: 'Facts not accessible in hostvars after gather'
 
 - name: Run without gather (default)

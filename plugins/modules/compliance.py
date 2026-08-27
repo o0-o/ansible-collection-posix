@@ -29,14 +29,16 @@ description:
 options:
   gather:
     description:
-      - When true, also publishes everything this module answers with as
-        facts - C(o0_os.compliance), C(o0_os.shells), C(o0_paths) and
-        C(o0_missing.commands).
+      - When true, also publishes what this module observed as facts -
+        C(o0_os.compliance) and C(o0_paths).
       - This allows the compliance data to be used by subsequent tasks via
         ansible_facts without needing to register the result.
       - The facts are the same values this module returns, under the
         names M(o0_o.posix.facts) publishes them by, because both
-        producers share the processor that names them.
+        producers share the processor that names them. The
+        C(missing_commands) return is the one value derived rather
+        than published - it reads back out of the canaries the
+        standards already record it in.
     type: bool
     default: false
     version_added: "2.0.0"
@@ -112,9 +114,9 @@ EXAMPLES = r"""
 RETURN = r"""
 ansible_facts:
   description: >-
-    The facts published when C(gather=true) - every value this module
-    returns, under the names the shared processor gives them. Nothing
-    here is un-prefixed, and nothing this module returns is left out.
+    The facts published when C(gather=true) - what this module
+    observed, under the names the shared processor gives them.
+    Nothing here is un-prefixed.
   returned: when gather=true
   type: dict
   contains:
@@ -129,22 +131,9 @@ ansible_facts:
             verdict of the basic POSIX shell test run against
             C(/bin/sh)
           type: dict
-        shells:
-          description: >-
-            The same structure as the C(shells) return value
-          type: dict
     o0_paths:
       description: The same structure as the C(paths) return value
       type: dict
-    o0_missing:
-      description: What the host was asked for and did not have
-      type: dict
-      contains:
-        commands:
-          description: >-
-            The same list as the C(missing_commands) return value
-          type: list
-          elements: str
 compliance:
   description: >-
     Dictionary of compliance standards detected. Contains top-level keys for
@@ -353,26 +342,38 @@ compliance:
               description: Human-readable version string
               type: str
               sample: "v4"
-shells:
+paths:
   description: >-
-    What the host's C(/bin/sh) is, keyed by its path. Describes the one
-    shell the probes ran in, not the login shells C(/etc/shells) names -
-    M(o0_o.posix.users) and M(o0_o.posix.facts) answer that under
-    C(o0_shells).
+    What the probes observed about the paths they touched, keyed by
+    the canonical absolute path. A command that resolved is an entry
+    at the file it resolved to; a command that did not is a C(null) -
+    confirmed absent - at its name in each directory the resolutions
+    show were searched; and the aliases and builtins the shell
+    answered with are fields on that shell's own entry, because they
+    describe the shell and not the names it was asked about.
   returned: always
   type: dict
   contains:
+    executable:
+      description: Whether the path is executable
+      type: bool
+    executable_evidence:
+      description: >-
+        How C(executable) was arrived at - C(inferred) from a command
+        resolution here, C(probed) where a producer read a permission
+      type: str
+      sample: inferred
     aliases:
       description: >-
-        The aliases the shell reported, mapping the alias name to what
-        it expands to
+        For the shell that answered the probes, the aliases it
+        reported, mapping the alias name to what it expands to
       type: dict
       sample:
         ls: ls --color=auto
     builtins:
       description: >-
-        The probed commands the shell answers itself rather than by
-        running a file, sorted
+        For the shell that answered the probes, the probed commands it
+        answers itself rather than by running a file, sorted
       type: list
       elements: str
       sample:
@@ -386,22 +387,16 @@ shells:
         - "["
         - command
         - test
-paths:
-  description: >-
-    The paths the probed commands resolve to, keyed by path. Each value
-    is an empty dict, left as room for metadata another producer may
-    fill.
-  returned: always
-  type: dict
-  sample:
-    /bin/cat: {}
-    /usr/bin/grep: {}
-    /bin/sh: {}
+    /usr/bin/grep:
+      executable: true
+      executable_evidence: inferred
+    /usr/bin/pax: null
 missing_commands:
   description: >-
-    The probed commands C(command -v) could not find, sorted. Names
-    C(command) alone when C(command) itself is missing, since no other
-    lookup can be trusted then.
+    The probed commands C(command -v) could not find, sorted, derived
+    from the C(canaries.missing) each standard records its own misses
+    in. Names C(command) alone when C(command) itself is missing,
+    since no other lookup can be trusted then.
   returned: always
   type: list
   elements: str

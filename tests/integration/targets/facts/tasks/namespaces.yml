@@ -69,21 +69,48 @@
       o0_os.compliance does not name the standards it read, or one of
       them will not say whether it is supported: {{ supports }}
 
+# What a shell answers about itself is a fact about the shell, so it
+# is filed on that shell's own entry in the path store rather than in
+# a namespace of its own.
 - name: Assert the aliases and builtins /bin/sh answers with
   vars:
-    shells: "{{ facts_all_reg['ansible_facts']['o0_os']['shells'] }}"
+    shell: "{{ facts_all_reg['ansible_facts']['o0_paths']['/bin/sh'] }}"
   ansible.builtin.assert:
     that:
-      - shells['/bin/sh'] is mapping
-      - shells['/bin/sh']['aliases'] is mapping
-      - shells['/bin/sh']['builtins'] is sequence
-      - shells['/bin/sh']['builtins'] is not string
-    fail_msg: 'o0_os.shells does not describe /bin/sh: {{ shells }}'
+      - shell is mapping
+      - shell['aliases'] is mapping
+      - shell['builtins'] is sequence
+      - shell['builtins'] is not string
+    fail_msg: 'o0_paths does not describe /bin/sh: {{ shell }}'
+
+# A command the sweep found is a fact about the file it found, and
+# the executable claim says where it came from: a lookup names an
+# executable it would run without ever reading a permission.
+- name: Assert a resolved command is filed under the path it resolved to
+  vars:
+    paths: "{{ facts_all_reg['ansible_facts']['o0_paths'] }}"
+    resolved: >-
+      {{ paths | dict2items | selectattr('value', 'mapping')
+         | selectattr('value.executable', 'defined') | list }}
+    evidence: >-
+      {{ resolved | map(attribute='value.executable_evidence')
+         | unique | list }}
+  ansible.builtin.assert:
+    that:
+      - resolved | length > 0
+      - resolved | rejectattr('value.executable') | list | length == 0
+      - evidence | reject('in', ['probed', 'inferred'])
+        | list | length == 0
+    fail_msg: >-
+      no command resolved into the path store, or one did without
+      saying how it knows the file is executable: {{ evidence }}
 
 # The processor that builds the compliance payload names its own
 # facts. A bare name here is that payload published straight into the
 # host's facts, which is what the o0_ census above forbids in general
-# and these four forbid by name.
+# and these forbid by name. The two namespaces the path store
+# absorbed are gone with them: a second copy of an answer is a copy
+# that can drift from the first.
 - name: Assert the compliance payload arrived under its o0_ names
   vars:
     gathered: "{{ facts_all_reg['ansible_facts'] }}"
@@ -93,12 +120,33 @@
       - gathered['shells'] is not defined
       - gathered['paths'] is not defined
       - gathered['missing_commands'] is not defined
+      - gathered['o0_missing'] is not defined
+      - gathered['o0_shells'] is not defined
+      - gathered['o0_os']['shells'] is not defined
       - gathered['o0_paths'] | length > 0
       - gathered['o0_paths'].keys() | reject('match', '^/')
         | list | length == 0
-      - gathered['o0_missing']['commands'] is sequence
-      - gathered['o0_missing']['commands'] is not string
     fail_msg: 'the compliance payload is not under its o0_ names'
+
+# A miss is confirmed absence at the paths it was looked for, and a
+# null is how the store says a path does not exist. A host that has
+# every utility it was asked for files no nulls, so the case only
+# holds where there was a miss to file.
+- name: Name the paths the gather filed as confirmed absent
+  ansible.builtin.set_fact:
+    facts_absent: >-
+      {{ facts_all_reg['ansible_facts']['o0_paths'] | dict2items
+         | selectattr('value', 'none') | map(attribute='key')
+         | list }}
+
+- name: Assert a miss files a null at a path, not a name in a list
+  when: facts_absent | length > 0
+  ansible.builtin.assert:
+    that:
+      - facts_absent | reject('match', '^/') | list | length == 0
+    fail_msg: >-
+      a confirmed absence is filed under something that is not a
+      path: {{ facts_absent }}
 
 - name: Assert the host is named as a hostname, not a string
   vars:

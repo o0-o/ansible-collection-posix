@@ -2,6 +2,11 @@
 # -*- mode: yaml; yaml-indent-offset: 2; indent-tabs-mode: nil; -*-
 ---
 minor_changes:
-  - 'facts - Added ``o0_os.shells`` with the list of login shells parsed from ``/etc/shells`` using the new utils comment stripping helper.'
+  - >-
+    facts - The users subset reads ``/etc/shells`` and files it at its
+    own path in ``o0_paths``: the bytes under ``content``, the login
+    shells they name under ``config``, parsed with the new utils
+    comment stripping helper
+    (https://github.com/o0-o/ansible-collection-posix/pull/XXX).
   - 'shells filter - New filter for parsing ``/etc/shells`` content into a list of valid login shell paths with automatic comment and blank line stripping.'
   - 'shells_utils - New module_utils providing ``parse_shells()`` function for shared ``/etc/shells`` parsing logic.'

@@ -7,8 +7,9 @@ breaking_changes:
     groups for the
     inventory group map, so a bare groups fact could never be read
     back; the namespace keeps every name the collection publishes out
-    of reach of a reserved one. The o0_shells fact, which lists the
-    paths named in /etc/shells, is untouched and keeps its meaning
+    of reach of a reserved one. The login shells /etc/shells names are
+    not a fact of their own at all: they are the config of that path
+    in o0_paths
     (https://github.com/o0-o/ansible-collection-posix/pull/XXX).
   - >-
     users - The key option is removed. The module published two

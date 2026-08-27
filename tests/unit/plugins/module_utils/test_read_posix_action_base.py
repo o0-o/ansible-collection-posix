@@ -804,6 +804,39 @@ class TestProcessReadResults:
         assert file_data["/d"]["children"] == ["/d/one", "/d/two"]
         assert "type" not in file_data["/d"]
 
+    def test_an_empty_directory_lists_nothing(self, action) -> None:
+        """Test a directory that holds nothing says so with an empty
+        list, which is a typed answer and not a silence."""
+        results = {
+            "/d_ls": _ls_result("drwxr-xr-x", "/d"),
+            "/d_contents": {"rc": 0, "stdout": "\n"},
+        }
+
+        file_data, _facts = action._process_read_results(
+            results, ["/d"], {"attributes": False}
+        )
+
+        assert file_data["/d"]["children"] == []
+
+    def test_an_unlistable_directory_omits_its_children(self, action) -> None:
+        """Test a directory that would not list leaves children out.
+
+        An empty list is the answer for a directory that holds
+        nothing; a listing that was refused is a question that never
+        got asked, and filing the one as the other is how a permission
+        denial comes back as an empty directory.
+        """
+        results = {
+            "/d_ls": _ls_result("drwx------", "/d"),
+            "/d_contents": {"rc": 1, "stdout": "", "stderr": "denied"},
+        }
+
+        file_data, _facts = action._process_read_results(
+            results, ["/d"], {"attributes": False}
+        )
+
+        assert "children" not in file_data["/d"]
+
     def test_hash_skipped_for_a_directory(self, action) -> None:
         """Test only a regular file is hashed, published type or not."""
         results = {

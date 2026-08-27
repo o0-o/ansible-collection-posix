@@ -20,6 +20,7 @@ from ansible_collections.o0_o.posix.plugins.module_utils import (
     ReadPosixActionBase,
     batch_read,
     compose_homes,
+    compose_paths,
     compose_shell_files,
     compose_users_groups,
     parse_shells,
@@ -58,7 +59,7 @@ class ActionModule(ReadPosixActionBase, ActionBase):
         :param Optional[dict[str, Any]] task_vars: Available Ansible
             variables
         :returns dict[str, Any]: Result dictionary with o0_users,
-            o0_groups, o0_shells, o0_homes, and o0_shell_files data
+            o0_groups, o0_homes, o0_shell_files, and o0_paths data
         """
         task_vars = task_vars or {}
         self._def_inventory_hostname(task_vars)
@@ -113,11 +114,23 @@ class ActionModule(ReadPosixActionBase, ActionBase):
             }
         )
 
-        # Not every host names its login shells, and an empty list
-        # would read as a host that has none
+        # A single file parsed on its own lands at its own path: the
+        # bytes under content, the login shells they name under
+        # config. Not every host names its login shells, and a host
+        # whose file could not be read leaves the path unmentioned
+        # rather than empty, which would read as a host that names
+        # none.
         shells = self._read_text_file(shells_path, task_vars, required=False)
         if shells is not None:
-            result["o0_shells"] = parse_shells(shells)
+            result["o0_paths"] = compose_paths(
+                None,
+                {
+                    shells_path: {
+                        "content": shells,
+                        "config": parse_shells(shells),
+                    }
+                },
+            )
 
         return result
 

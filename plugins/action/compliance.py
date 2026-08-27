@@ -22,6 +22,7 @@ from ansible_collections.o0_o.utils.plugins.module_utils.typeguard_compat import
 from ansible_collections.o0_o.posix.plugins.module_utils import (
     PosixActionBase,
     get_compliance_command_requests,
+    missing_commands,
     process_all_compliance_command_results,
 )
 
@@ -133,14 +134,15 @@ class ActionModule(PosixActionBase, ActionBase):
 
         # Process results into compliance structure. The processor
         # names the facts; the module's own returns are the same
-        # values unwrapped.
+        # values unwrapped, plus the missing list derived from the
+        # canaries that already record it.
         facts, errors = process_all_compliance_command_results(commands_result)
+        compliance = facts["o0_os"]["compliance"]
         result.update(
             {
-                "compliance": facts["o0_os"]["compliance"],
-                "shells": facts["o0_os"]["shells"],
+                "compliance": compliance,
                 "paths": facts["o0_paths"],
-                "missing_commands": facts["o0_missing"]["commands"],
+                "missing_commands": missing_commands(compliance),
             }
         )
 

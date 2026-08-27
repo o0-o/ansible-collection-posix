@@ -4,15 +4,15 @@ bugfixes:
     facts - The RETURN block described a namespace layout the module
     had not published since March. It promised o0_os.time with an
     epoch and a zone config, an o0_os.locale from a subset that does
-    not exist, o0_os.users, o0_os.groups and o0_os.shells that are
-    top-level names, an o0_os.compliance the gather never reached, and
-    a hardware subset renamed to dmidecode. It is written from what a
-    gather publishes now: all eleven namespaces, o0_homes,
-    o0_shell_files, o0_paths and o0_missing among them, each key named
-    for the producer that fills it. The storage group was missing from
-    the choices list, so ansible-doc hid a spelling the module accepts,
-    and the two descriptions of min called it uname only when it is
-    uname, environment, timezone and compliance
+    not exist, o0_os.users and o0_os.groups that are top-level names,
+    an o0_os.compliance the gather never reached, and a hardware
+    subset renamed to dmidecode. It is written from what a gather
+    publishes now: every namespace, o0_homes, o0_shell_files and
+    o0_paths among them, each key named for the producer that fills
+    it. The storage group was missing from the choices list, so
+    ansible-doc hid a spelling the module accepts, and the two
+    descriptions of min called it uname only when it is uname,
+    environment, timezone and compliance
     (https://github.com/o0-o/ansible-collection-posix/pull/XXX).
   - >-
     mounts - The RETURN block named a device and a filesystem where
@@ -27,11 +27,11 @@ bugfixes:
     (https://github.com/o0-o/ansible-collection-posix/pull/XXX).
   - >-
     compliance - The ansible_facts contains block documented
-    o0_os.compliance alone, omitting the o0_os.shells, o0_paths and
-    o0_missing.commands the module publishes beside it. The XSI and
-    SUS issue numbers were typed float and produced int. XCU, XSI and
-    SUS supported were typed bool and answer partial as well, and the
-    shells return documented its builtins without its aliases
+    o0_os.compliance alone, omitting the o0_paths the module
+    publishes beside it. The XSI and SUS issue numbers were typed
+    float and produced int. XCU, XSI and SUS supported were typed
+    bool and answer partial as well, and the shell entry documented
+    its builtins without its aliases
     (https://github.com/o0-o/ansible-collection-posix/pull/XXX).
   - >-
     compliance, facts - Both modules told playbooks to read a posix

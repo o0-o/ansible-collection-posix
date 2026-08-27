@@ -14,7 +14,10 @@ from typing import Any, Optional
 
 from ansible.plugins.action import ActionBase
 
-from ansible_collections.o0_o.posix.plugins.module_utils import PosixActionBase
+from ansible_collections.o0_o.posix.plugins.module_utils import (
+    PosixActionBase,
+    compose_paths,
+)
 
 
 class ActionModule(PosixActionBase, ActionBase):
@@ -22,6 +25,10 @@ class ActionModule(PosixActionBase, ActionBase):
 
     Clears aliases, prefers ``command -v`` and falls back to ``which``.
     Always executes in a POSIX shell to support ``unalias -a``.
+
+    A resolution is a fact about the file it landed on, so it is also
+    answered as an o0_paths observation keyed by that path, the same
+    store a compliance sweep fills.
     """
 
     TRANSFERS_FILES = False
@@ -53,4 +60,20 @@ class ActionModule(PosixActionBase, ActionBase):
         path = self._which(command, task_vars=task_vars)
 
         result.update({"changed": False, "path": path or None})
+
+        # A builtin answers with its own name and names no file, and a
+        # single lookup that missed names no path it was not at, so
+        # both leave the store unmentioned rather than guessed at.
+        if path and path.startswith("/"):
+            observation = {
+                path: {
+                    "executable": True,
+                    "executable_evidence": "inferred",
+                }
+            }
+            try:
+                result["o0_paths"] = compose_paths(None, observation)
+            except ValueError as exc:
+                self._display.warning(f"[{self.inventory_hostname}] {exc}")
+
         return result

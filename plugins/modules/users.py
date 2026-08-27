@@ -24,8 +24,8 @@ description:
   - Returns the canonical C(o0_users) and C(o0_groups) mappings, keyed
     by stringified UID and GID and cross-referenced by numeric ID.
     The C(o0_o.posix.facts) module publishes the same shape under the
-    same names, along with C(o0_shells), C(o0_homes) and
-    C(o0_shell_files).
+    same names, along with C(o0_homes), C(o0_shell_files) and the
+    C(o0_paths) entry for the login shells file.
 options:
   passwd_path:
     description:
@@ -40,7 +40,9 @@ options:
   shells_path:
     description:
       - Path to the C(/etc/shells) file.
-      - A host that does not have this file returns no C(o0_shells).
+      - A host that does not have this file leaves the path out of
+        C(o0_paths) rather than filing it as a file that names no
+        login shells.
     type: str
     default: /etc/shells
 author:
@@ -52,9 +54,10 @@ notes:
     user's C(groups) lists GIDs and a group's C(members) lists UIDs -
     and every user counts as a member of their primary group.
   - Whether a user's shell is a known login shell is not stored. The
-    C(o0_shells) return lists the paths named in C(/etc/shells), so
-    C(user.shell in o0_shells) answers the question wherever it is
-    asked and leaves no copy to go stale.
+    login shells C(/etc/shells) names are the C(config) of that path
+    in C(o0_paths), so
+    C(user.shell in o0_paths['/etc/shells']['config']) answers the
+    question wherever it is asked and leaves no copy to go stale.
   - SSH keys are only gathered if the user's C(.ssh) directory is
     readable.
   - Both C(authorized_keys) and C(authorized_keys2) files are checked
@@ -216,8 +219,9 @@ o0_homes:
 o0_shell_files:
   description: >-
     Mapping of the login shell paths users actually hold to their file
-    metadata. Distinct from C(o0_shells), which lists the paths named
-    in C(/etc/shells) whether anyone holds them or not.
+    metadata. Distinct from the login shells C(/etc/shells) names,
+    which are the C(config) of that path in C(o0_paths) whether anyone
+    holds them or not.
   returned: always
   type: dict
   sample:
@@ -228,15 +232,32 @@ o0_shell_files:
       tags:
         - posix
         - shell
-o0_shells:
+o0_paths:
   description: >-
-    The login shells C(/etc/shells) names, in the order it names them.
+    What the module observed about the paths it read, keyed by the
+    canonical absolute path. A single file parsed on its own lands at
+    its own path - the bytes under C(content), the meaning parsed out
+    of them under C(config) - so the login shells the host names are
+    C(o0_paths[shells_path]['config']). A host whose shells file could
+    not be read leaves that path out rather than filing it as a file
+    that names none.
   returned: when the shells file is readable
-  type: list
-  elements: str
+  type: dict
+  contains:
+    content:
+      description: The bytes read from the path
+      type: str
+    config:
+      description: >-
+        The meaning parsed out of the file - for C(/etc/shells), the
+        login shells it names, in the order it names them
+      type: raw
   sample:
-    - /bin/sh
-    - /bin/zsh
+    /etc/shells:
+      content: "/bin/sh\n/bin/zsh\n"
+      config:
+        - /bin/sh
+        - /bin/zsh
 """
 from ansible.module_utils.basic import AnsibleModule
 

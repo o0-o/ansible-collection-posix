@@ -51,6 +51,27 @@ def test_which_finds_command(monkeypatch, plugin) -> None:
     assert result["path"] == "/bin/date"
 
 
+def test_which_files_the_resolution_under_its_path(
+    monkeypatch, plugin
+) -> None:
+    """Test a resolution is a fact about the file it landed on, filed
+    in the same store a compliance sweep fills, and marked as inferred
+    because a lookup is not a permission probe."""
+
+    monkeypatch.setattr(
+        plugin, "_which", lambda cmd, task_vars=None: "/bin/date"
+    )
+    plugin._task.args = {"command": "date"}
+    result = plugin.run(task_vars={})
+
+    assert result["o0_paths"] == {
+        "/bin/date": {
+            "executable": True,
+            "executable_evidence": "inferred",
+        }
+    }
+
+
 def test_which_not_found(monkeypatch, plugin) -> None:
     """Test that a missing command resolves to a null path."""
 
@@ -61,6 +82,17 @@ def test_which_not_found(monkeypatch, plugin) -> None:
     assert result["path"] is None
 
 
+def test_which_not_found_names_no_path(monkeypatch, plugin) -> None:
+    """Test one lookup that missed names no path it was not at, so it
+    files no confirmed absence it cannot evidence."""
+
+    monkeypatch.setattr(plugin, "_which", lambda cmd, task_vars=None: None)
+    plugin._task.args = {"command": "no-such-command"}
+    result = plugin.run(task_vars={})
+
+    assert "o0_paths" not in result
+
+
 def test_which_builtin(monkeypatch, plugin) -> None:
     """Test that a shell built-in resolves to its bare name."""
 
@@ -69,3 +101,32 @@ def test_which_builtin(monkeypatch, plugin) -> None:
     result = plugin.run(task_vars={})
     assert result["changed"] is False
     assert result["path"] == "echo"
+
+
+def test_which_builtin_files_no_path(monkeypatch, plugin) -> None:
+    """Test a builtin is not a file, so it leaves the path store
+    alone rather than filing an entry keyed by a bare name."""
+
+    monkeypatch.setattr(plugin, "_which", lambda cmd, task_vars=None: "echo")
+    plugin._task.args = {"command": "echo"}
+    result = plugin.run(task_vars={})
+
+    assert "o0_paths" not in result
+
+
+def test_which_refuses_a_path_the_store_cannot_key(
+    monkeypatch, plugin
+) -> None:
+    """Test a host that answers with a path the store will not key
+    warns and still answers, rather than failing the task over the
+    shape of a fact."""
+
+    monkeypatch.setattr(
+        plugin, "_which", lambda cmd, task_vars=None: "/usr/bin//date"
+    )
+    plugin._task.args = {"command": "date"}
+    result = plugin.run(task_vars={})
+
+    assert result["path"] == "/usr/bin//date"
+    assert "o0_paths" not in result
+    plugin._display.warning.assert_called_once()

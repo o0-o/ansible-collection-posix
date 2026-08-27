@@ -1336,9 +1336,12 @@ class ReadPosixActionBase(PosixActionBase):
                             else:
                                 # Empty directory
                                 attributes["children"] = []
-                        else:
-                            # Could not list directory (e.g., no permission)
-                            attributes["children"] = []
+                        # A directory that would not list (no
+                        # permission, most often) leaves children
+                        # unmentioned. An empty list is the answer for
+                        # a directory that holds nothing, and a
+                        # question that could not be asked is not that
+                        # answer.
 
                 # Add hash checksums if requested
                 # Only process for regular files

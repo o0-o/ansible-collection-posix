@@ -82,7 +82,7 @@ def test_users_action_returns_canonical_fact_names(plugin) -> None:
     assert set(result) >= {
         "o0_users",
         "o0_groups",
-        "o0_shells",
+        "o0_paths",
         "o0_homes",
         "o0_shell_files",
     }
@@ -90,20 +90,51 @@ def test_users_action_returns_canonical_fact_names(plugin) -> None:
     assert "groups" not in result
     assert "homes" not in result
     assert "shells" not in result
+    assert "o0_shells" not in result
 
 
-def test_users_action_returns_the_named_shells(plugin) -> None:
-    """Test the module answers with the /etc/shells list the facts
-    module publishes, which is what its own docs tell playbooks to
-    read a user's shell against."""
+def test_users_action_files_the_shells_file_at_its_path(plugin) -> None:
+    """Test the login shells a host names are the parsed meaning of
+    /etc/shells, filed at that path beside the bytes they came from,
+    which is where the facts module publishes them too."""
     result = plugin.run(task_vars={})
 
-    assert result["o0_shells"] == ["/bin/sh", "/bin/zsh"]
+    assert result["o0_paths"]["/etc/shells"] == {
+        "content": SHELLS,
+        "config": ["/bin/sh", "/bin/zsh"],
+    }
+
+
+def test_users_action_files_a_named_shells_path(monkeypatch, plugin) -> None:
+    """Test the file the option names is the path the parse lands at,
+    so a host that keeps its login shells elsewhere is not filed as
+    having answered for /etc/shells."""
+
+    def mock_cmd(cmd, task_vars=None, **kwargs):
+        if cmd == ["cat", "/etc/passwd"]:
+            return {"rc": 0, "stdout": PASSWD}
+        if cmd == ["cat", "/etc/group"]:
+            return {"rc": 0, "stdout": GROUP}
+        if cmd == ["cat", "/usr/local/etc/shells"]:
+            return {"rc": 0, "stdout": SHELLS}
+        return {"rc": 1}
+
+    monkeypatch.setattr(plugin, "_command", mock_cmd)
+    plugin._task.args = {"shells_path": "/usr/local/etc/shells"}
+
+    result = plugin.run(task_vars={})
+
+    assert result["o0_paths"]["/usr/local/etc/shells"]["config"] == [
+        "/bin/sh",
+        "/bin/zsh",
+    ]
+    assert "/etc/shells" not in result["o0_paths"]
 
 
 def test_users_action_without_a_shells_file(monkeypatch, plugin) -> None:
-    """Test a host that names no login shells returns no o0_shells,
-    rather than an empty list that reads as a host with none."""
+    """Test a host that names no login shells leaves the path
+    unmentioned, rather than filed as a file that exists and names
+    none."""
 
     def mock_cmd(cmd, task_vars=None, **kwargs):
         if cmd == ["cat", "/etc/passwd"]:
@@ -116,7 +147,7 @@ def test_users_action_without_a_shells_file(monkeypatch, plugin) -> None:
 
     result = plugin.run(task_vars={})
 
-    assert "o0_shells" not in result
+    assert "o0_paths" not in result
     assert result["o0_users"]["1000"]["shell"] == "/bin/zsh"
 
 

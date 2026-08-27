@@ -110,10 +110,13 @@ EXAMPLES = r"""
       - '!storage'
 
 - name: Read a user's shell against the login shells the host names
+  vars:
+    login_shells: >-
+      {{ ansible_facts.o0_paths['/etc/shells']['config'] }}
   ansible.builtin.debug:
     msg: >-
       {{ ansible_facts.o0_users['0'].shell }} is a login shell:
-      {{ ansible_facts.o0_users['0'].shell in ansible_facts.o0_shells }}
+      {{ ansible_facts.o0_users['0'].shell in login_shells }}
 
 - name: Display compliance status
   ansible.builtin.debug:
@@ -194,22 +197,6 @@ ansible_facts:
             every field of it.
           returned: when the compliance subset is gathered
           type: dict
-        shells:
-          description: >-
-            What the host's C(/bin/sh) is, keyed by its path - the
-            C(aliases) it defines and the commands it answers as
-            C(builtins) rather than as files. Read from the compliance
-            probes, so it describes one shell; C(o0_shells) is the
-            unrelated list of login shells C(/etc/shells) names.
-          returned: when the compliance subset is gathered
-          type: dict
-          sample:
-            /bin/sh:
-              aliases: {}
-              builtins:
-                - '['
-                - command
-                - test
     o0_network:
       description: Facts about the host's names.
       returned: when the uname subset is gathered
@@ -605,9 +592,9 @@ ansible_facts:
     o0_shell_files:
       description: >-
         The login shells users actually hold, keyed by path, each with
-        the file metadata of the shell. Distinct from C(o0_shells),
-        which names what C(/etc/shells) lists whether anyone holds it
-        or not.
+        the file metadata of the shell. Distinct from the login shells
+        C(/etc/shells) names, which are the C(config) of that path in
+        C(o0_paths) whether anyone holds them or not.
       returned: when the users subset is gathered
       type: dict
       sample:
@@ -618,42 +605,68 @@ ansible_facts:
           tags:
             - posix
             - shell
-    o0_shells:
-      description: >-
-        The login shells C(/etc/shells) names, in the order it names
-        them. A host without that file answers with no C(o0_shells)
-        rather than an empty list, which would read as a host that
-        names no login shells at all.
-      returned: >-
-        when the users subset is gathered and the shells file was read
-      type: list
-      elements: str
-      sample:
-        - /bin/sh
-        - /bin/zsh
     o0_paths:
       description: >-
-        The paths the commands the compliance probes looked for resolve
-        to, keyed by path. Each value is the empty dict the probe left
-        room in for metadata another producer may fill.
-      returned: when the compliance subset is gathered
-      type: dict
-      sample:
-        /bin/cat: {}
-        /bin/sh: {}
-        /usr/bin/grep: {}
-    o0_missing:
-      description: What the host was asked for and did not have.
-      returned: when the compliance subset is gathered
+        What the gather observed about the paths it touched, keyed by
+        the canonical absolute path. The store is flat - a path is a
+        key of its own and nothing about a path is filed under another
+        path - and every producer composes into it, so a path reached
+        two ways is one entry. Three answers are kept apart - a path
+        that is absent from the store was never asked about, a path
+        whose entry is C(null) was asked about and does not exist, and
+        a typed empty exists and is empty.
+      returned: >-
+        when the compliance subset is gathered, or the users subset is
+        and the shells file was read
       type: dict
       contains:
-        commands:
+        executable:
           description: >-
-            The commands the compliance probes looked for and did not
-            find, sorted
+            Whether the path is executable
+          type: bool
+        executable_evidence:
+          description: >-
+            How C(executable) was arrived at - C(probed) where a
+            permission was read, C(inferred) where a command
+            resolution implied it
+          type: str
+          sample: inferred
+        aliases:
+          description: >-
+            For a shell that answered the probes, the aliases it
+            reported, mapping the alias name to what it expands to
+          type: dict
+        builtins:
+          description: >-
+            For a shell that answered the probes, the probed commands
+            it answers itself rather than by running a file, sorted
           type: list
           elements: str
-          sample: []
+        content:
+          description: The bytes read from the path
+          type: str
+        config:
+          description: >-
+            The meaning parsed out of a single file that was read -
+            for C(/etc/shells), the login shells it names, in the
+            order it names them
+          type: raw
+      sample:
+        /bin/sh:
+          aliases: {}
+          builtins:
+            - '['
+            - command
+            - test
+        /usr/bin/grep:
+          executable: true
+          executable_evidence: inferred
+        /usr/bin/pax: null
+        /etc/shells:
+          content: "/bin/sh\n/bin/zsh\n"
+          config:
+            - /bin/sh
+            - /bin/zsh
 """
 
 from ansible.module_utils.basic import AnsibleModule

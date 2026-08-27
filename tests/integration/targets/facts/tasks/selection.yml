@@ -51,9 +51,12 @@
       - entry['shell'] is not defined
       - gathered['o0_storage'] is not defined
       - gathered['o0_groups'] is not defined
-      - gathered['o0_shells'] is not defined
       - gathered['o0_homes'] is not defined
       - gathered['o0_shell_files'] is not defined
+      # The compliance sweep fills the path store, so the store is
+      # here; the file only the users subset reads is not
+      - gathered['o0_paths'] is mapping
+      - gathered['o0_paths']['/etc/shells'] is not defined
     fail_msg: >-
       min did not select uname, environment, timezone and compliance
       alone: {{ gathered.keys() | list | sort }}
@@ -125,15 +128,16 @@
   register: facts_users_reg
 
 # One subset, five facts: the users and groups it composes, the homes
-# and shells they hold, and the shells the host names as login
-# shells. A gather that published fewer than all five was what made
-# the idiom the users module documents unanswerable.
+# and shells they hold, and the file the host names its login shells
+# in, which lands at its own path in the store. A gather that
+# published fewer than all five was what made the idiom the users
+# module documents unanswerable.
 - name: Assert the users subset publishes all five of its facts
   vars:
     gathered: "{{ facts_users_reg['ansible_facts'] }}"
     expected: >-
       {{ ['o0_groups', 'o0_homes', 'o0_shell_files', 'o0_users']
-         + (['o0_shells'] if facts_has_shells | bool else []) }}
+         + (['o0_paths'] if facts_has_shells | bool else []) }}
   ansible.builtin.assert:
     that:
       - gathered.keys() | list | sort == expected | sort
@@ -147,26 +151,45 @@
       the users subset did not publish its five facts:
       {{ gathered.keys() | list | sort }}
 
+# The subset reads one file on its own, so the store it publishes
+# holds that one path and nothing the compliance sweep would have
+# filled in beside it.
+- name: Assert the users subset files the shells file at its own path
+  when: facts_has_shells | bool
+  vars:
+    gathered: "{{ facts_users_reg['ansible_facts'] }}"
+    entry: "{{ gathered['o0_paths']['/etc/shells'] }}"
+  ansible.builtin.assert:
+    that:
+      - gathered['o0_paths'].keys() | list == ['/etc/shells']
+      - entry['content'] is string
+      - entry['config'] is sequence
+      - entry['config'] is not string
+    fail_msg: >-
+      the users subset did not file /etc/shells at its own path:
+      {{ gathered['o0_paths'] }}
+
 - name: Gather the compliance of the host alone
   o0_o.posix.facts:
     gather_subset: [compliance]
   register: facts_compliance_reg
 
-- name: Assert compliance publishes three namespaces and no bare name
+- name: Assert compliance publishes two namespaces and no bare name
   vars:
     gathered: "{{ facts_compliance_reg['ansible_facts'] }}"
   ansible.builtin.assert:
     that:
-      - gathered.keys() | list | sort
-        == ['o0_missing', 'o0_os', 'o0_paths']
-      - gathered['o0_os'].keys() | list | sort
-        == ['compliance', 'shells']
-      - gathered['o0_paths']['/bin/sh'] is defined
-      - gathered['o0_missing']['commands'] is sequence
+      - gathered.keys() | list | sort == ['o0_os', 'o0_paths']
+      - gathered['o0_os'].keys() | list == ['compliance']
+      # The shell that answered the probes, carrying what it said
+      # about itself rather than a namespace of its own
+      - gathered['o0_paths']['/bin/sh']['builtins'] is sequence
+      - gathered['o0_paths']['/bin/sh']['aliases'] is mapping
       - gathered['compliance'] is not defined
       - gathered['shells'] is not defined
       - gathered['paths'] is not defined
       - gathered['missing_commands'] is not defined
+      - gathered['o0_missing'] is not defined
     fail_msg: >-
       the compliance subset is not published under its o0_ names:
       {{ gathered.keys() | list | sort }}
@@ -304,7 +327,7 @@
       - gathered['o0_groups'] is not defined
       - gathered['o0_homes'] is not defined
       - gathered['o0_shell_files'] is not defined
-      - gathered['o0_shells'] is not defined
+      - gathered['o0_paths']['/etc/shells'] is not defined
       # environment is still selected, and it is what keys o0_users
       - gathered['o0_users'].keys() | list == [facts_uid]
     fail_msg: >-

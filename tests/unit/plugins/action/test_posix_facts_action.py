@@ -87,14 +87,14 @@ PRODUCER_FACTS = {
         },
     },
     "compliance": {
-        "o0_os": {
-            "compliance": {"posix": {"supported": True}},
-            "shells": {
-                "/bin/sh": {"aliases": {}, "builtins": ["cd", "exec"]},
+        "o0_os": {"compliance": {"posix": {"supported": True}}},
+        "o0_paths": {
+            "/bin/sh": {"aliases": {}, "builtins": ["cd", "exec"]},
+            "/usr/bin/awk": {
+                "executable": True,
+                "executable_evidence": "inferred",
             },
         },
-        "o0_paths": {"/bin/sh": {}},
-        "o0_missing": {"commands": []},
     },
     # The environment processor answers with the raw variables; run()
     # is what keys them under the effective uid.
@@ -357,8 +357,8 @@ class TestMergeFacts:
         cost the whole payload: iterating it raised, and the caller
         turned the exception into a warning."""
         acc = {}
-        plugin._merge_facts(acc, {"o0_shells": ["/bin/sh", "/bin/zsh"]})
-        assert acc == {"o0_shells": ["/bin/sh", "/bin/zsh"]}
+        plugin._merge_facts(acc, {"o0_kernel_args": ["quiet", "ro"]})
+        assert acc == {"o0_kernel_args": ["quiet", "ro"]}
 
     def test_merge_list_namespace_beside_dicts(self, plugin) -> None:
         """Test a list namespace lands without disturbing the dict
@@ -368,19 +368,48 @@ class TestMergeFacts:
             acc,
             {
                 "o0_users": {"0": {"uid": 0}},
-                "o0_shells": ["/bin/sh"],
+                "o0_kernel_args": ["quiet"],
             },
         )
         assert acc["o0_os"] == {"kernel": {"name": "linux"}}
         assert acc["o0_users"] == {"0": {"uid": 0}}
-        assert acc["o0_shells"] == ["/bin/sh"]
+        assert acc["o0_kernel_args"] == ["quiet"]
 
     def test_merge_replaces_a_list_namespace(self, plugin) -> None:
         """Test a dict namespace arriving where a list stands replaces
         it rather than trying to update the list."""
-        acc = {"o0_shells": ["/bin/sh"]}
-        plugin._merge_facts(acc, {"o0_shells": {"count": 1}})
-        assert acc == {"o0_shells": {"count": 1}}
+        acc = {"o0_kernel_args": ["quiet"]}
+        plugin._merge_facts(acc, {"o0_kernel_args": {"count": 1}})
+        assert acc == {"o0_kernel_args": {"count": 1}}
+
+    def test_merge_composes_the_path_store(self, plugin) -> None:
+        """Test o0_paths merges through its own composer: a path one
+        subset observed stands beside a path another one did, and both
+        keep the whole of what was seen."""
+        acc = {"o0_paths": {"/bin/sh": {"builtins": ["cd"]}}}
+        plugin._merge_facts(
+            acc,
+            {"o0_paths": {"/etc/shells": {"config": ["/bin/sh"]}}},
+        )
+        assert acc["o0_paths"] == {
+            "/bin/sh": {"builtins": ["cd"]},
+            "/etc/shells": {"config": ["/bin/sh"]},
+        }
+
+    def test_merge_replaces_a_path_entry_whole(self, plugin) -> None:
+        """Test a second observation of a path replaces the first
+        rather than blending into it. A mode read before a chmod and a
+        size read after it would describe a file that never existed."""
+        acc = {"o0_paths": {"/bin/sh": {"mode": "0755", "size": 100}}}
+        plugin._merge_facts(acc, {"o0_paths": {"/bin/sh": {"size": 200}}})
+        assert acc["o0_paths"]["/bin/sh"] == {"size": 200}
+
+    def test_merge_keeps_a_confirmed_absence(self, plugin) -> None:
+        """Test a path observed as absent is published as null, not as
+        an entry with nothing in it."""
+        acc = {}
+        plugin._merge_facts(acc, {"o0_paths": {"/usr/bin/pax": None}})
+        assert acc["o0_paths"] == {"/usr/bin/pax": None}
 
     def test_merge_keeps_a_list_value(self, plugin) -> None:
         """Test a list inside a namespace is a value like any other."""
@@ -590,7 +619,10 @@ class TestGatherUsers:
             "gid": 101,
             "members": [1000],
         }
-        assert facts["o0_shells"] == ["/bin/sh", "/bin/zsh"]
+        assert facts["o0_paths"]["/etc/shells"]["config"] == [
+            "/bin/sh",
+            "/bin/zsh",
+        ]
 
     def test_publishes_every_user_fact(self, monkeypatch, plugin) -> None:
         """Test the subset publishes the whole set the users module
@@ -612,7 +644,7 @@ class TestGatherUsers:
         assert set(facts) == {
             "o0_users",
             "o0_groups",
-            "o0_shells",
+            "o0_paths",
             "o0_homes",
             "o0_shell_files",
         }
@@ -728,12 +760,40 @@ class TestGatherUsers:
 
         assert "o0_users" not in facts
         assert "o0_groups" not in facts
-        assert facts["o0_shells"] == ["/bin/sh", "/bin/zsh"]
+        assert facts["o0_paths"]["/etc/shells"]["config"] == [
+            "/bin/sh",
+            "/bin/zsh",
+        ]
+
+    def test_shells_file_lands_at_its_own_path(
+        self, monkeypatch, plugin
+    ) -> None:
+        """Test the bytes read from a file and the meaning parsed out
+        of them are two fields of the one path the file is: raw under
+        content, parsed under config."""
+        _no_python(monkeypatch, plugin)
+        _mock_read(monkeypatch, plugin)
+        _mock_run(
+            monkeypatch,
+            plugin,
+            {
+                "/etc/passwd": ETC_PASSWD,
+                "/etc/group": ETC_GROUP,
+                "/etc/shells": ETC_SHELLS,
+            },
+        )
+
+        facts = plugin._gather_users(task_vars={})
+
+        assert facts["o0_paths"]["/etc/shells"] == {
+            "content": ETC_SHELLS,
+            "config": ["/bin/sh", "/bin/zsh"],
+        }
 
     def test_missing_shells_file(self, monkeypatch, plugin) -> None:
-        """Test an unreadable /etc/shells leaves o0_shells absent
-        rather than empty, since an empty list reads as a host with no
-        login shells."""
+        """Test an unreadable /etc/shells leaves the path unmentioned
+        rather than filed as a file that names no shells, which is a
+        different answer."""
         _no_python(monkeypatch, plugin)
         _mock_read(monkeypatch, plugin)
         _mock_run(
@@ -748,7 +808,7 @@ class TestGatherUsers:
 
         facts = plugin._gather_users(task_vars={})
 
-        assert "o0_shells" not in facts
+        assert "o0_paths" not in facts
         assert facts["o0_users"]["1000"]["shell"] == "/bin/zsh"
 
 
@@ -845,17 +905,31 @@ class TestDefaultGather:
         assert isinstance(mounts["/"]["capacity"]["total"]["bytes"], int)
         assert "mount" not in mounts["/"]
 
-    def test_shells_is_a_list_of_paths(self, gathered) -> None:
-        """Test o0_shells is the list of shells /etc/shells names,
-        which is what the users module tells playbooks to read."""
-        assert gathered["o0_shells"] == ["/bin/sh", "/bin/zsh"]
+    def test_shells_are_the_config_of_the_file_that_names_them(
+        self, gathered
+    ) -> None:
+        """Test the login shells a host names are the parsed meaning of
+        the one file they are named in, filed at that file's path."""
+        assert gathered["o0_paths"]["/etc/shells"]["config"] == [
+            "/bin/sh",
+            "/bin/zsh",
+        ]
 
-    def test_compliance_keeps_its_own_namespaces(self, gathered) -> None:
-        """Test the compliance payload lands under the names the
-        standalone action publishes."""
-        assert gathered["o0_paths"] == {"/bin/sh": {}}
-        assert gathered["o0_missing"] == {"commands": []}
-        assert "/bin/sh" in gathered["o0_os"]["shells"]
+    def test_two_subsets_share_one_path_store(self, gathered) -> None:
+        """Test the compliance sweep and the users read compose into
+        one store rather than each replacing the other's paths."""
+        paths = gathered["o0_paths"]
+        assert paths["/bin/sh"]["builtins"] == ["cd", "exec"]
+        assert paths["/usr/bin/awk"]["executable"] is True
+        assert paths["/etc/shells"]["content"] == ETC_SHELLS
+
+    def test_the_retired_namespaces_are_gone(self, gathered) -> None:
+        """Test the two namespaces the path store absorbed are not
+        published beside it. A second copy of an answer is a copy that
+        can drift from the first."""
+        assert "o0_missing" not in gathered
+        assert "o0_shells" not in gathered
+        assert "shells" not in gathered["o0_os"]
 
     def test_two_producers_share_one_user(self, gathered) -> None:
         """Test the environment subset and /etc/passwd meet in one
@@ -957,7 +1031,7 @@ class TestUsersProducersAgree:
         assert set(gathered) == {
             "o0_users",
             "o0_groups",
-            "o0_shells",
+            "o0_paths",
             "o0_homes",
             "o0_shell_files",
         }
@@ -981,11 +1055,18 @@ def test_no_action_plugin_reads_the_raw_identity_utils() -> None:
 
     from ansible_collections.o0_o.posix.plugins import action as action_pkg
 
-    directory = Path(action_pkg.__file__).parent
+    # An Ansible plugin directory carries no __init__, so the package
+    # is a namespace package and has no __file__ to take a parent of.
+    # The guard read that None and raised, which is a guard that never
+    # once looked at an action plugin.
+    directories = [Path(entry) for entry in action_pkg.__path__]
+    assert directories
+
     raw = re.compile(r"\b(passwd_info|group_info|id_info)\b")
 
     offenders = sorted(
         path.name
+        for directory in directories
         for path in directory.glob("*.py")
         if raw.search(path.read_text())
     )

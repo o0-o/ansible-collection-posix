@@ -3,14 +3,11 @@ bugfixes:
   - >-
     facts - A namespace holding anything but a mapping was lost, and
     the subset that produced it went with it. The merge walked every
-    namespace as a mapping, so o0_shells, the list of paths named in
-    /etc/shells, raised inside the merge and cost the whole users
-    subset, and the compliance subset died the same way on its list
-    of missing commands. Both left an empty namespace behind and a
-    warning where a hard error belonged. A namespace that is not a
-    mapping is published whole now, which is what makes the
-    user.shell in o0_shells idiom the users module documents work at
-    all (https://github.com/o0-o/ansible-collection-posix/pull/XXX).
+    namespace as a mapping, so a namespace holding a list raised
+    inside the merge and cost its whole subset, leaving an empty
+    namespace behind and a warning where a hard error belonged. A
+    namespace that is not a mapping is published whole now
+    (https://github.com/o0-o/ansible-collection-posix/pull/XXX).
   - >-
     facts - A default gather never collected storage. The all group
     names the storage group, which names mounts and fstab, and

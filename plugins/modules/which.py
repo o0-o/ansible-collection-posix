@@ -21,6 +21,9 @@ description:
     C(command -v) with a fallback to C(which).
   - Returns command as-is for shell built-ins
   - Always executes in a POSIX shell to guarantee alias removal.
+  - A resolution is a fact about the file it landed on, so it is also
+    answered as an C(o0_paths) observation keyed by that path, the
+    same store M(o0_o.posix.compliance) and M(o0_o.posix.facts) fill.
 options:
   command:
     description:
@@ -50,6 +53,28 @@ path:
   type: str
   returned: always
   sample: /bin/date
+o0_paths:
+  description: >-
+    The resolution as an observation of the file it resolved to.
+    A built-in names no file and a lookup that missed names no path
+    it was not at, so both leave the store unmentioned.
+  returned: when the command resolved to a path
+  type: dict
+  contains:
+    executable:
+      description: Whether the path is executable
+      type: bool
+    executable_evidence:
+      description: >-
+        How C(executable) was arrived at - C(inferred) here, because
+        a lookup names an executable it would run without reading a
+        permission; a producer that read one files C(probed)
+      type: str
+      sample: inferred
+  sample:
+    /bin/date:
+      executable: true
+      executable_evidence: inferred
 """
 from ansible.module_utils.basic import AnsibleModule
 

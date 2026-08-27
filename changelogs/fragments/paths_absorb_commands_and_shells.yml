@@ -1,0 +1,59 @@
+# vim: ts=2:sw=2:sts=2:et:ft=yaml.ansible
+# -*- mode: yaml; yaml-indent-offset: 2; indent-tabs-mode: nil; -*-
+---
+breaking_changes:
+  - >-
+    compliance, facts - What the command probes learned is filed as
+    facts about paths, in o0_paths, rather than as three shapes beside
+    it. A command that resolved is an entry at the file it resolved
+    to, carrying executable and an executable_evidence of inferred,
+    since a lookup names an executable it would run without ever
+    reading a permission; a producer that reads one files probed, and
+    the two never blend. A command that did not resolve files a null -
+    confirmed absent - at its name in each directory the resolutions
+    show were searched. The aliases and builtins the answering shell
+    reported are fields on that shell's own entry, because they
+    describe the shell and not the names it was asked about
+    (https://github.com/o0-o/ansible-collection-posix/pull/XXX).
+  - >-
+    compliance, facts - o0_os.shells retires. It described one shell -
+    the /bin/sh the probes ran in - keyed by its path, which is a path
+    store with one entry in it; that entry is now the /bin/sh entry of
+    o0_paths. The compliance module's shells return goes with it, for
+    the same reason and to the same place
+    (https://github.com/o0-o/ansible-collection-posix/pull/XXX).
+  - >-
+    compliance, facts - o0_missing retires. A namespace of absences is
+    a second copy of an answer the evidence already holds: every
+    command the sweep probes belongs to XCU or to XSI, and each
+    standard records its own misses under canaries.missing. The
+    compliance module still returns missing_commands, derived from
+    those two lists rather than stored beside them
+    (https://github.com/o0-o/ansible-collection-posix/pull/XXX).
+  - >-
+    facts, users - The login shells a host names are no longer a fact
+    of their own. /etc/shells is a single file parsed on its own, so
+    it lands at its own path in o0_paths, the bytes under content and
+    the shells they name under config, and the o0_shells fact retires.
+    Read user.shell in o0_paths['/etc/shells']['config'] where
+    user.shell in o0_shells was read. A host whose shells file could
+    not be read leaves that path out of the store rather than filing
+    it as a file that exists and names none
+    (https://github.com/o0-o/ansible-collection-posix/pull/XXX).
+minor_changes:
+  - >-
+    which - The module answers with an o0_paths observation of the
+    file it resolved to, keyed by that path and carrying executable
+    with an executable_evidence of inferred, so a resolution feeds the
+    same store a compliance sweep fills. A built-in names no file and
+    a lookup that missed names no path it was not at, so both leave
+    the store unmentioned
+    (https://github.com/o0-o/ansible-collection-posix/pull/XXX).
+  - >-
+    facts - The o0_paths namespace merges through compose_paths rather
+    than through the field-by-field update every other namespace
+    takes. An entry is one observation of one path, so a later
+    observation replaces an earlier one whole: a mode read before a
+    chmod blended with a size read after it would describe a file that
+    never existed
+    (https://github.com/o0-o/ansible-collection-posix/pull/XXX).

@@ -20,6 +20,7 @@ from ansible_collections.o0_o.posix.plugins.module_utils import (
     ReadPosixActionBase,
     batch_read,
     compose_homes,
+    compose_paths,
     compose_shell_files,
     compose_users_groups,
     fstab,
@@ -224,6 +225,9 @@ class ActionModule(ReadPosixActionBase, ActionBase):
         **LEGACY_METHODS,
     }
 
+    # The namespace that has a composer of its own
+    PATHS_NAMESPACE = "o0_paths"
+
     def _merge_facts(
         self,
         all_facts: dict[str, Any],
@@ -231,15 +235,25 @@ class ActionModule(ReadPosixActionBase, ActionBase):
     ) -> None:
         """Deep merge subset facts into the accumulator.
 
-        A namespace is not required to hold a mapping.  o0_shells is
-        the list of paths named in /etc/shells, so a namespace whose
-        value is anything but a dict is published whole and the last
-        producer to answer wins.
+        o0_paths merges through ``compose_paths``, the one composer
+        that owns it: the store is flat absolute-path keys, and an
+        entry is one observation of one path, so a later observation
+        replaces an earlier one whole rather than blending its fields
+        into it.  Blending is what this merge does everywhere else,
+        and a path entry blended across two observations would
+        describe a file that never existed.
+
+        A namespace is not required to hold a mapping.  A namespace
+        whose value is anything but a dict is published whole and the
+        last producer to answer wins.
 
         :param dict[str, Any] all_facts: Accumulator to merge into
         :param dict[str, Any] subset_facts: Facts to merge
         """
         for ns, ns_facts in subset_facts.items():
+            if ns == self.PATHS_NAMESPACE:
+                all_facts[ns] = compose_paths(all_facts.get(ns), ns_facts)
+                continue
             if not isinstance(ns_facts, dict):
                 all_facts[ns] = ns_facts
                 continue
@@ -317,6 +331,10 @@ class ActionModule(ReadPosixActionBase, ActionBase):
         keys into their o0_users entry; a gather does not, because the
         cost is per user and the answer is not what a gather is for.
 
+        /etc/shells is a single file parsed on its own, so it lands at
+        its own path: the bytes read under ``content``, the login
+        shells they name under ``config``.
+
         :param Optional[dict[str, Any]] task_vars: Task variables
         :returns dict[str, Any]: User, group, shell and home facts
         """
@@ -351,7 +369,15 @@ class ActionModule(ReadPosixActionBase, ActionBase):
             )
 
         if shells is not None:
-            facts["o0_shells"] = parse_shells(shells)
+            facts["o0_paths"] = compose_paths(
+                None,
+                {
+                    "/etc/shells": {
+                        "content": shells,
+                        "config": parse_shells(shells),
+                    }
+                },
+            )
 
         return facts
 

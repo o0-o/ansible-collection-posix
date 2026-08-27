@@ -22,6 +22,7 @@ from ansible_collections.o0_o.posix.plugins.module_utils.compliance_utils import
     XCU,
     XSI,
     get_compliance_command_requests,
+    missing_commands,
     process_all_compliance_command_results,
 )
 
@@ -131,12 +132,12 @@ class TestProcessAllComplianceCommandResults:
         facts aggregator merging its return cannot leak a bare key."""
         facts = _process_fabricated_host()
 
-        assert set(facts) == {"o0_os", "o0_paths", "o0_missing"}
+        assert set(facts) == {"o0_os", "o0_paths"}
         assert all(ns.startswith("o0_") for ns in facts)
 
-    def test_compliance_and_shells_under_o0_os(self) -> None:
-        """Test compliance and shells land where the standalone
-        action has published them since 2026-01-13."""
+    def test_compliance_under_o0_os(self) -> None:
+        """Test compliance lands where the standalone action has
+        published it since 2026-01-13."""
         facts = _process_fabricated_host()
 
         compliance = facts["o0_os"]["compliance"]
@@ -144,24 +145,64 @@ class TestProcessAllComplianceCommandResults:
         assert compliance["xsh"]["version"]["name"] == "POSIX.1-2008"
         assert compliance["xsi"]["version"]["issue"] == 7
 
-        shells = facts["o0_os"]["shells"]
-        assert shells["/bin/sh"]["aliases"] == {"ls": "ls --color=auto"}
-        assert shells["/bin/sh"]["builtins"] == sorted(BUILTIN_COMMANDS)
-
     def test_sh_posix_compliant_published(self) -> None:
         """The sh test's behavioral verdict lands beside the standards."""
         facts = _process_fabricated_host()
         compliance = facts["o0_os"]["compliance"]
         assert compliance["sh_posix_compliant"] is True
 
-    def test_paths_and_missing_commands(self) -> None:
-        """Test the path map and the missing command list keep their
-        own namespaces."""
+    def test_a_resolved_command_files_under_its_path(self) -> None:
+        """Test a command the sweep found is a fact about the file it
+        found, recorded as executable on the strength of the lookup
+        rather than of a permission probe."""
         facts = _process_fabricated_host()
 
-        assert facts["o0_paths"]["/bin/sh"] == {}
-        assert facts["o0_paths"]["/usr/bin/awk"] == {}
-        assert facts["o0_missing"]["commands"] == sorted(MISSING_COMMANDS)
+        assert facts["o0_paths"]["/usr/bin/awk"] == {
+            "executable": True,
+            "executable_evidence": "inferred",
+        }
+
+    def test_builtins_and_aliases_file_on_the_answering_shell(self) -> None:
+        """Test what the shell answers about itself lands on the
+        shell's own entry, which is where the store keeps facts about
+        a file."""
+        facts = _process_fabricated_host()
+
+        shell = facts["o0_paths"]["/bin/sh"]
+        assert shell["aliases"] == {"ls": "ls --color=auto"}
+        assert shell["builtins"] == sorted(BUILTIN_COMMANDS)
+
+    def test_a_missing_command_files_null_at_each_candidate(self) -> None:
+        """Test a miss is confirmed absence at the paths it was looked
+        for, which are the directories the sweep's own resolutions
+        name, rather than a list of names kept somewhere else."""
+        facts = _process_fabricated_host()
+
+        for cmd in MISSING_COMMANDS:
+            assert facts["o0_paths"][f"/usr/bin/{cmd}"] is None
+
+    def test_each_path_carries_one_whole_observation(self) -> None:
+        """Test the shell that answered and the file sh resolved to are
+        two paths with two observations, neither of them a fragment the
+        other has to be blended with. The store replaces an entry
+        whole, so a producer that filed half of one would lose the
+        other half to the next producer along."""
+        facts = _process_fabricated_host()
+
+        assert facts["o0_paths"]["/usr/bin/sh"] == {
+            "executable": True,
+            "executable_evidence": "inferred",
+        }
+        assert set(facts["o0_paths"]["/bin/sh"]) == {"aliases", "builtins"}
+
+    def test_the_missing_list_derives_from_the_canaries(self) -> None:
+        """Test the commands a host lacks are read back out of the
+        evidence, so nothing has to store them a second time."""
+        facts = _process_fabricated_host()
+
+        assert missing_commands(facts["o0_os"]["compliance"]) == sorted(
+            MISSING_COMMANDS
+        )
 
     def test_a_missing_command_downgrades_its_standard(self) -> None:
         """Test a missing XSI command is recorded as a canary and

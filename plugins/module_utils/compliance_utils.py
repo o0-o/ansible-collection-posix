@@ -207,6 +207,27 @@ def get_compliance_command_requests() -> list[dict[str, Any]]:
 
 
 @typechecked
+def missing_commands(compliance: dict[str, Any]) -> list[str]:
+    """Derive the utilities a host was asked for and did not have.
+
+    Every command the sweep probes belongs to XCU or to XSI, and a
+    standard records each of its own misses as a canary, so the two
+    canary lists already hold the whole answer.  Deriving it here is
+    what lets a fact namespace of absences retire: an absence stored
+    beside the evidence for it is a second copy waiting to drift from
+    the first.
+
+    :param dict[str, Any] compliance: The o0_os.compliance fact
+    :returns list[str]: The commands that did not resolve, sorted
+    """
+    missing: set[str] = set()
+    for standard in ("xcu", "xsi"):
+        canaries = compliance.get(standard, {}).get("canaries", {})
+        missing.update(canaries.get("missing") or [])
+    return sorted(missing)
+
+
+@typechecked
 def _record_canary(
     standard: dict[str, Any],
     canary: dict[str, Any],
@@ -238,15 +259,23 @@ def process_all_compliance_command_results(
 
     Takes command results from run plugin, calls the appropriate
     parser for each command type, and merges the partial results into
-    the facts both compliance producers publish: ``o0_os.compliance``,
-    ``o0_os.shells``, ``o0_paths``, and ``o0_missing.commands``.
+    the two facts both compliance producers publish:
+    ``o0_os.compliance`` and ``o0_paths``.
+
+    What the sweep learned about the commands it looked for is a set
+    of facts about paths, so it lands in the path store: an executable
+    under the path it resolved to, a miss as a null at each path it
+    was not at, and the builtins and aliases the probes answered with
+    on the entry of the shell that answered them.  A command the host
+    does not have is recorded once, as a canary of the standard that
+    requires it, and ``missing_commands`` derives the list back out.
 
     :param list[dict[str, Any]] cmds_completed: List of command result
         dicts, each containing 'type', 'implementation', 'rc', 'stdout',
         and optionally 'parser' from the command spec
     :returns tuple[dict[str, Any], list[Exception]]: Tuple of
-        (facts, errors) where facts holds the o0_os, o0_paths, and
-        o0_missing namespaces
+        (facts, errors) where facts holds the o0_os and o0_paths
+        namespaces
     """
     # Initialize compliance dict with standard metadata
     compliance = {
@@ -266,8 +295,7 @@ def process_all_compliance_command_results(
 
     # Process command lookups
     lookup_results = processed_results["lookup_command"]
-    result, errors = process_command_lookups(lookup_results)
-    missing = result["missing_commands"]
+    paths, missing, errors = process_command_lookups(lookup_results)
 
     # Only process getconf results if getconf is available
     if "getconf" in missing:
@@ -373,17 +401,11 @@ def process_all_compliance_command_results(
             compliance.update(parsed)
         errors.extend(sh_result.pop("errors", []) or [])
 
-    result["paths"]["/bin/sh"] = {}
-
     # The processor names its own facts, so the two producers that
     # share it cannot disagree about where they land.
     facts = {
-        "o0_os": {
-            "compliance": compliance,
-            "shells": result["shells"],
-        },
-        "o0_paths": result["paths"],
-        "o0_missing": {"commands": result["missing_commands"]},
+        "o0_os": {"compliance": compliance},
+        "o0_paths": paths,
     }
 
     return facts, errors

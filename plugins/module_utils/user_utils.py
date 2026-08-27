@@ -313,9 +313,9 @@ def compose_shell_files(
     kept as it stands rather than read again, so a run adds to what an
     earlier gather published instead of replacing it.
 
-    Distinct from ``o0_shells``, which is the list of paths named in
-    /etc/shells: this fact describes the shells users actually hold,
-    named or not.
+    Distinct from the login shells /etc/shells names, which are the
+    ``config`` of that path in ``o0_paths``: this fact describes the
+    shells users actually hold, named or not.
 
     :param dict[str, dict[str, Any]] users: The o0_users mapping
     :param ReadPaths read: How to read a path's metadata

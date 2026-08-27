@@ -19,6 +19,7 @@ classes.
 
 from __future__ import annotations
 
+import posixpath
 import shlex
 from typing import Any, Optional, Union
 
@@ -27,6 +28,16 @@ from ansible.module_utils.common.text.converters import to_native
 from ansible_collections.o0_o.utils.plugins.module_utils import (
     typechecked,
 )
+
+from ansible_collections.o0_o.posix.plugins.module_utils.path_utils import (
+    compose_paths,
+)
+
+# The shell the lookups answer in.  Every probe runs through the
+# target's ``/bin/sh``, so a builtin it answers with and an alias it
+# expands are facts about that file rather than about the command
+# name, and they file under its entry.
+ANSWERING_SHELL = "/bin/sh"
 
 
 def format_command(cmd: Union[str, list[str]]) -> str:
@@ -148,21 +159,41 @@ def quote(s: str, shell: Optional[Any] = None) -> str:
 @typechecked
 def process_command_lookups(
     lookup_results_list: list[dict],
-) -> tuple[dict[str, Any], list[Exception]]:
-    """Process command lookup results into categorized output.
+) -> tuple[dict[str, Any], list[str], list[Exception]]:
+    """Compose command lookups into one o0_paths observation.
 
-    Takes a list of lookup_command results from process_all_command_results,
-    extracts command paths, aliases, builtins, and missing commands.
+    A command that resolved is a fact about the file it resolved to,
+    so it files under that path rather than under the name it was
+    asked for.  ``command -v`` only names an executable it would run,
+    which is a strong claim about the file and still not a permission
+    probe, so the entry records ``executable`` as true and
+    ``executable_evidence`` as ``inferred``; a producer that actually
+    read the mode files ``probed`` instead, and the two never blend.
+
+    A command that did not resolve was not found in any directory the
+    lookups searched, and the resolutions themselves name those
+    directories, so the miss files a null - confirmed absent - at that
+    command's name in each of them.  A name that cannot be a file, a
+    dot or a path of its own, names no candidate and files nothing.
+
+    Builtins and aliases are what the answering shell says about
+    itself, not about any file the command name might also have, so
+    they file on that shell's own entry.
+
+    Each path is observed once and composed whole, because the store
+    replaces an entry rather than blending fields into it.  A path the
+    host answered with that cannot key the store is refused as an
+    error rather than taking the sweep down with it.
 
     :param list[dict] lookup_results_list: List of lookup_command result
         dicts, each containing 'args' with 'cmd' key and 'parsed' output
-    :returns tuple[dict[str, Any], list[Exception]]: (result, errors) where
-        result contains 'paths', 'shells' (with aliases/builtins), and
-        'missing_commands'
+    :returns tuple[dict[str, Any], list[str], list[Exception]]: The
+        o0_paths observation, the commands that did not resolve
+        (sorted), and the errors the lookups raised
     """
-    paths: dict[str, dict] = {}
     aliases: dict[str, str] = {}
     builtins: list[str] = []
+    resolved: set[str] = set()
     missing: list[str] = []
     errors: list[Exception] = []
 
@@ -171,27 +202,23 @@ def process_command_lookups(
         cmd = lookup["args"]["cmd"]
         lookup_results[cmd] = lookup
 
-    # First check if `command` itself is missing
-    if "command" in lookup_results:
-        cmd_result = lookup_results["command"]
-        if cmd_result.get("parsed") is None:
-            # If `command` is missing, can't trust other lookups
-            missing.append("command")
-            result = {
-                "paths": paths,
-                "shells": {
-                    "/bin/sh": {"aliases": aliases, "builtins": builtins}
-                },
-                "missing_commands": missing,
-            }
-            return result, errors
+    # If `command` itself is missing, no other lookup can be trusted
+    command_missing = (
+        "command" in lookup_results
+        and lookup_results["command"].get("parsed") is None
+    )
 
-    # Process all lookup results
-    for cmd, cmd_result in lookup_results.items():
-        parsed = cmd_result.get("parsed")
+    if command_missing:
+        missing.append("command")
+    else:
+        for cmd, cmd_result in lookup_results.items():
+            parsed = cmd_result.get("parsed")
 
-        # Command found
-        if parsed is not None:
+            # Command not found
+            if parsed is None:
+                missing.append(cmd)
+                continue
+
             # Alias
             alias_declaration = f"alias {cmd}="
             if parsed.startswith(alias_declaration):
@@ -203,7 +230,7 @@ def process_command_lookups(
 
             # Path
             elif parsed.startswith("/"):
-                paths[parsed] = {}
+                resolved.add(parsed)
 
             # Builtin (output equals command name)
             elif parsed.startswith(cmd):
@@ -217,19 +244,30 @@ def process_command_lookups(
                     )
                 )
 
-        # Command not found
-        else:
-            missing.append(cmd)
-
-    result = {
-        "paths": paths,
-        "shells": {
-            "/bin/sh": {
-                "aliases": aliases,
-                "builtins": sorted(builtins),
-            },
-        },
-        "missing_commands": sorted(missing),
+    entries: dict[str, Optional[dict[str, Any]]] = {
+        path: {"executable": True, "executable_evidence": "inferred"}
+        for path in resolved
     }
 
-    return result, errors
+    # The shell answered, whatever it said about itself, so its entry
+    # is written before the misses and is not one of them
+    shell = dict(entries.get(ANSWERING_SHELL) or {})
+    shell["aliases"] = aliases
+    shell["builtins"] = sorted(builtins)
+    entries[ANSWERING_SHELL] = shell
+
+    searched = sorted({posixpath.dirname(path) for path in resolved})
+    for cmd in missing:
+        if "/" in cmd or cmd in (".", ".."):
+            continue
+        for directory in searched:
+            entries.setdefault(posixpath.join(directory, cmd), None)
+
+    paths: dict[str, Any] = {}
+    for path in sorted(entries):
+        try:
+            paths = compose_paths(paths, {path: entries[path]})
+        except ValueError as exc:
+            errors.append(exc)
+
+    return paths, sorted(missing), errors

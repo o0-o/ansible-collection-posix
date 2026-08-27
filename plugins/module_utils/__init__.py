@@ -136,6 +136,7 @@ from ansible_collections.o0_o.posix.plugins.module_utils.write_posix_action_base
 )
 from ansible_collections.o0_o.posix.plugins.module_utils.compliance_utils import (  # noqa: E501
     get_compliance_command_requests,
+    missing_commands,
     process_all_compliance_command_results,
 )
 from ansible_collections.o0_o.posix.plugins.module_utils.command_utils import (
@@ -148,6 +149,7 @@ __all__ = [
     "ReadPosixActionBase",
     "WritePosixActionBase",
     "get_compliance_command_requests",
+    "missing_commands",
     "process_all_compliance_command_results",
     "format_command",
     "process_command_lookups",

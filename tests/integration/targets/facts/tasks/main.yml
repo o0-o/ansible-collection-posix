@@ -108,32 +108,39 @@
       - gathered['o0_homes'] is mapping
       - gathered['o0_shell_files'] is mapping
       - gathered['o0_paths'] is mapping
-      - gathered['o0_missing'] is mapping
     fail_msg: >-
       a default gather is missing a namespace:
       {{ gathered.keys() | list | sort }}
 
-- name: Assert the shells a host names are published as a list
+# A single file parsed on its own lands at its own path: the bytes
+# under content, the meaning parsed out of them under config.
+- name: Assert the shells a host names are the config of the file
   when: facts_has_shells | bool
   vars:
-    shells: "{{ facts_all_reg['ansible_facts']['o0_shells'] }}"
+    entry: >-
+      {{ facts_all_reg['ansible_facts']['o0_paths']['/etc/shells'] }}
+    shells: "{{ entry['config'] }}"
   ansible.builtin.assert:
     that:
+      - entry['content'] is string
       - shells is sequence
       - shells is not mapping
       - shells is not string
       - shells | reject('match', '^/') | list | length == 0
     fail_msg: >-
-      o0_shells is not a list of absolute paths: {{ shells }}
+      /etc/shells does not carry its bytes and the paths they name:
+      {{ entry }}
 
-# /etc/shells is what o0_shells is read from, so a host without the
-# file names no login shells and the fact is absent rather than empty.
-- name: Assert a host with no /etc/shells names no shells
+# /etc/shells is what the login shells are read from, so a host
+# without the file leaves that path unmentioned rather than filed as
+# a file that exists and names none.
+- name: Assert a host with no /etc/shells leaves the path unmentioned
   when: not facts_has_shells | bool
   ansible.builtin.assert:
     that:
-      - facts_all_reg['ansible_facts']['o0_shells'] is not defined
-    fail_msg: 'o0_shells was published without /etc/shells to read'
+      - facts_all_reg['ansible_facts']['o0_paths']['/etc/shells']
+        is not defined
+    fail_msg: '/etc/shells was filed without /etc/shells to read'
 
 - name: Assert the shape of each namespace the gather published
   ansible.builtin.include_tasks: namespaces.yml

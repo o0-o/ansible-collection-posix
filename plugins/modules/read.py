@@ -429,11 +429,16 @@ paths:
           returned: when I(lines=true), the path is a regular file, and the
             content decodes to text
         children:
-          description: List of child paths for directories
+          description:
+            - List of child paths for directories.
+            - An empty list is a directory that holds nothing. A
+              directory that would not list, for want of permission
+              most often, omits this key instead - a question that
+              could not be asked is not an answer of none.
           type: list
           elements: str
-          returned: when the path is a directory and I(list) or I(children)
-            is enabled
+          returned: when the path is a directory that listed and I(list)
+            or I(children) is enabled
           sample: ['/etc/ssh/ssh_config', '/etc/ssh/sshd_config']
 changed:
   description: Always false as this is a read-only module
