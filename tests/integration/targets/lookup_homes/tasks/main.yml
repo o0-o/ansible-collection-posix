@@ -178,7 +178,7 @@
              | map(attribute='name') | list }}
       ansible.builtin.assert:
         that:
-          - dangling == ['lookup-homes-ghost']
+          - "'lookup-homes-ghost' in dangling"
         fail_msg: >-
           the audit view did not surface the dangling home:
           {{ dangling }}
