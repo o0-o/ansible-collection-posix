@@ -1,0 +1,166 @@
+# vim: ts=2:sw=2:sts=2:et:ft=yaml.ansible
+# -*- mode: yaml; yaml-indent-offset: 2; indent-tabs-mode: nil; -*-
+---
+# GNU General Public License v3.0+
+# SPDX-License-Identifier: GPL-3.0-or-later
+# (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
+#
+# Copyright (c) 2025 oØ.o (@o0-o)
+#
+# This file is part of the o0_o.posix Ansible Collection.
+
+- name: Test the shells lookup plugin
+  block:
+
+    # A store nothing has filled was never asked anything, so the
+    # lookup says so rather than reading it as a host that names no
+    # login shells. This runs before the gather for that reason.
+    - name: Ask before anything has been gathered
+      ansible.builtin.set_fact:
+        shells_ungathered_reg: "{{ lookup('o0_o.posix.shells') }}"
+
+    - name: Assert an ungathered store cannot say
+      ansible.builtin.assert:
+        that:
+          - shells_ungathered_reg['path'] == '/etc/shells'
+          - shells_ungathered_reg['state'] == 'unknown'
+          - shells_ungathered_reg['shells'] is not defined
+        fail_msg: >-
+          a store nobody filled answered as a host that names none:
+          {{ shells_ungathered_reg }}
+
+    - name: Gather user information and the paths it reads
+      o0_o.posix.users:
+      register: shells_users_reg
+
+    # The lookup reads the o0_paths fact; the module returns the data
+    # rather than setting facts, so the play sets it.
+    - name: Expose the path store for the lookup
+      ansible.builtin.set_fact:
+        o0_users: "{{ shells_users_reg['o0_users'] }}"
+        o0_paths: "{{ shells_users_reg['o0_paths'] }}"
+
+    - name: Name whether this host has a shells file to read
+      ansible.builtin.set_fact:
+        shells_has_file: >-
+          {{ o0_paths['/etc/shells'] is defined }}
+
+    - name: Ask what the host names
+      ansible.builtin.set_fact:
+        shells_answer_reg: "{{ lookup('o0_o.posix.shells') }}"
+
+    - name: Assert the answer is about the file it was asked about
+      ansible.builtin.assert:
+        that:
+          - shells_answer_reg['path'] == '/etc/shells'
+          - shells_answer_reg['state'] in ['named', 'unknown']
+        fail_msg: >-
+          the lookup answered for something other than /etc/shells:
+          {{ shells_answer_reg }}
+
+    # The three answers are told apart by the shells key, following
+    # the collection's absence contract: a list is what the file
+    # names, and no key at all is a path nothing ever parsed.
+    - name: Assert a host with a shells file names the shells in it
+      when: shells_has_file | bool
+      vars:
+        named: "{{ o0_paths['/etc/shells']['config'] }}"
+      ansible.builtin.assert:
+        that:
+          - shells_answer_reg['state'] == 'named'
+          - shells_answer_reg['shells'] is defined
+          - shells_answer_reg['shells'] is sequence
+          - shells_answer_reg['shells'] is not string
+          - shells_answer_reg['shells'] == named
+          - shells_answer_reg['shells']
+            | reject('match', '^/') | list | length == 0
+        fail_msg: >-
+          the lookup did not surface the shells the store holds:
+          {{ shells_answer_reg }}
+
+    - name: Assert a host with no shells file to read cannot say
+      when: not shells_has_file | bool
+      ansible.builtin.assert:
+        that:
+          - shells_answer_reg['state'] == 'unknown'
+          - shells_answer_reg['shells'] is not defined
+        fail_msg: >-
+          a host whose shells file was never read answered as one
+          that names none: {{ shells_answer_reg }}
+
+    # The idiom the users module documents, answered through the
+    # lookup so a host nobody asked is not read as a host that names
+    # no login shell for anyone.
+    - name: Assert root's shell can be tested against what is named
+      when: shells_answer_reg['state'] == 'named'
+      vars:
+        root_shell: "{{ o0_users['0']['shell'] }}"
+      ansible.builtin.assert:
+        that:
+          - (root_shell in shells_answer_reg['shells']) is boolean
+        fail_msg: >-
+          the login shells could not be asked about a user's shell
+
+    - name: Ask about a file the host does not have
+      ansible.builtin.set_fact:
+        shells_elsewhere_reg: >-
+          {{ lookup('o0_o.posix.shells',
+                    path='/etc/o0-o-no-such-shells-file') }}
+
+    - name: Assert a path nothing parsed is unknown, not empty
+      ansible.builtin.assert:
+        that:
+          - shells_elsewhere_reg['path'] == '/etc/o0-o-no-such-shells-file'
+          - shells_elsewhere_reg['state'] == 'unknown'
+          - shells_elsewhere_reg['shells'] is not defined
+        fail_msg: >-
+          a path nothing ever read answered with a list:
+          {{ shells_elsewhere_reg }}
+
+    - name: Assert a path is keyed by what it is, not how it is spelled
+      vars:
+        spelled: >-
+          {{ lookup('o0_o.posix.shells', path='/etc/./shells') }}
+      ansible.builtin.assert:
+        that:
+          - spelled == shells_answer_reg
+        fail_msg: >-
+          two spellings of one path gave two answers: {{ spelled }}
+
+    - name: 'Fail: Ask with a term the lookup takes none of'
+      block:
+
+        - name: Pass a term to a lookup that asks about one file
+          ansible.builtin.set_fact:
+            shells_termed_reg: >-
+              {{ lookup('o0_o.posix.shells', '/etc/shells') }}
+
+      rescue:
+
+        - name: Assert the error names the option that was meant
+          ansible.builtin.assert:
+            that:
+              - "'takes no terms' in ansible_failed_result['msg']"
+            fail_msg: >-
+              a term was refused without naming the path option:
+              {{ ansible_failed_result['msg'] }}
+
+    - name: 'Fail: Ask about a path no store can key'
+      block:
+
+        - name: Ask about a relative path
+          ansible.builtin.set_fact:
+            shells_relative_reg: >-
+              {{ lookup('o0_o.posix.shells', path='etc/shells') }}
+
+      rescue:
+
+        - name: Assert the error says a path must be absolute
+          ansible.builtin.assert:
+            that:
+              - >-
+                'must be an absolute path' in
+                ansible_failed_result['msg']
+            fail_msg: >-
+              a relative path was refused for the wrong reason:
+              {{ ansible_failed_result['msg'] }}

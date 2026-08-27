@@ -1,0 +1,23 @@
+# vim: ts=2:sw=2:sts=2:et:ft=yaml.ansible
+# -*- mode: yaml; yaml-indent-offset: 2; indent-tabs-mode: nil; -*-
+---
+minor_changes:
+  - >-
+    shells lookup - New lookup answering with the login shells a host
+    names, read from o0_paths['/etc/shells']['config'] rather than
+    from the host. It keeps the three answers a bare read of the store
+    collapses: a list is what the file names, an empty list is a file
+    that names none, a null is a file confirmed not to be there, and
+    no shells key at all is a path nothing ever parsed. Since a host
+    whose shells file could not be read leaves that path out of the
+    store, the idiom the users module documents - is this user's shell
+    a login shell - now has an answer that does not read a host nobody
+    asked as a host that names none. It takes no terms; which file is
+    the path option
+    (https://github.com/o0-o/ansible-collection-posix/pull/XXX).
+  - >-
+    facts, users - The documented way to read a user's shell against
+    the login shells the host names goes through the new shells
+    lookup rather than through the store directly, for the answer it
+    gives where nothing was gathered
+    (https://github.com/o0-o/ansible-collection-posix/pull/XXX).

@@ -111,12 +111,12 @@ EXAMPLES = r"""
 
 - name: Read a user's shell against the login shells the host names
   vars:
-    login_shells: >-
-      {{ ansible_facts.o0_paths['/etc/shells']['config'] }}
+    answer: "{{ lookup('o0_o.posix.shells') }}"
   ansible.builtin.debug:
     msg: >-
       {{ ansible_facts.o0_users['0'].shell }} is a login shell:
-      {{ ansible_facts.o0_users['0'].shell in login_shells }}
+      {{ ansible_facts.o0_users['0'].shell in answer['shells'] }}
+  when: answer['state'] == 'named'
 
 - name: Display compliance status
   ansible.builtin.debug:

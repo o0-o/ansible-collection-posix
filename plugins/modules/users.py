@@ -55,9 +55,12 @@ notes:
     and every user counts as a member of their primary group.
   - Whether a user's shell is a known login shell is not stored. The
     login shells C(/etc/shells) names are the C(config) of that path
-    in C(o0_paths), so
-    C(user.shell in o0_paths['/etc/shells']['config']) answers the
-    question wherever it is asked and leaves no copy to go stale.
+    in C(o0_paths), and the C(o0_o.posix.shells) lookup surfaces them,
+    so C(user.shell in lookup('o0_o.posix.shells').shells) answers the
+    question wherever it is asked and leaves no copy to go stale. The
+    lookup is worth going through rather than reading the store
+    directly, because it tells a host that names no login shells from
+    one nothing ever asked.
   - SSH keys are only gathered if the user's C(.ssh) directory is
     readable.
   - Both C(authorized_keys) and C(authorized_keys2) files are checked
@@ -65,6 +68,9 @@ notes:
   - If one authorized_keys file is readable but the other is not, a
     warning is issued indicating incomplete key information.
 seealso:
+  - plugin: o0_o.posix.shells
+    plugin_type: lookup
+    description: The login shells a host names
   - ref: o0_o.posix.id filter <ansible_collections.o0_o.posix.id_filter>
     description: Parse id command output
   - ref: o0_o.posix.group filter <ansible_collections.o0_o.posix.group_filter>
@@ -233,9 +239,11 @@ o0_paths:
     - A single file parsed on its own lands at its own path - the
       bytes under C(content), the meaning parsed out of them under
       C(config) - so the login shells the host names are
-      C(o0_paths[shells_path]['config']). A host whose shells file
-      could not be read leaves that path out rather than filing it as
-      a file that names none.
+      C(o0_paths[shells_path]['config']), surfaced by the
+      C(o0_o.posix.shells) lookup. A host whose shells file could not
+      be read leaves that path out rather than filing it as a file
+      that names none, which is why the lookup answers unknown there
+      rather than empty.
   returned: when the module observed a path
   type: dict
   contains:
