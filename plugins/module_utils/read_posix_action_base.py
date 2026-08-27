@@ -923,7 +923,11 @@ class ReadPosixActionBase(PosixActionBase):
                     if "group" in entry:
                         attributes["gid"] = int(entry["group"])
 
-                    # Calculate permission flags
+                    # Calculate permission flags. An executable claim
+                    # says where it came from wherever it is made: this
+                    # one read the permission itself, which is the
+                    # strongest evidence there is, and saying so keeps
+                    # it honest beside the one a lookup infers.
                     if flags and len(flags) >= 10:
                         perms = self._stat_permission_booleans(flags)
                         attributes["readable"] = perms.get("readable", False)
@@ -931,6 +935,7 @@ class ReadPosixActionBase(PosixActionBase):
                         attributes["executable"] = perms.get(
                             "executable", False
                         )
+                        attributes["executable_evidence"] = "probed"
 
                 # Add content/hardlinks field based on file type
                 if file_type == "link" and include_attributes:

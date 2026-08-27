@@ -860,6 +860,29 @@ class TestProcessReadResults:
 
         assert file_data["/f"]["type"] == "regular"
 
+    @pytest.mark.parametrize(
+        "flags,executable",
+        [("-rwxr-xr-x", True), ("-rw-r--r--", False)],
+    )
+    def test_an_executable_claim_names_its_evidence(
+        self, action, flags, executable
+    ) -> None:
+        """Test a read permission files itself as probed evidence.
+
+        This path reads the execute bit rather than inferring it from
+        a name resolving, and says so, so a consumer can tell the two
+        apart.  A claim that arrived without its evidence would read
+        as a resolution's guess.
+        """
+        results = {"/f_ls": _ls_result(flags)}
+
+        file_data, _facts = action._process_read_results(
+            results, ["/f"], {"attributes": True}
+        )
+
+        assert file_data["/f"]["executable"] is executable
+        assert file_data["/f"]["executable_evidence"] == "probed"
+
     def test_type_returned_without_being_published(self, action) -> None:
         """Test the caller is told the type the result withholds.
 

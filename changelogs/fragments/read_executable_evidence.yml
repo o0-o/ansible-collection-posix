@@ -1,0 +1,19 @@
+# vim: ts=2:sw=2:sts=2:et:ft=yaml.ansible
+# -*- mode: yaml; yaml-indent-offset: 2; indent-tabs-mode: nil; -*-
+---
+bugfixes:
+  - >-
+    read - An executable claim names its evidence wherever it is
+    made. This path reads the permission itself, which is the
+    strongest evidence there is, but published the claim bare, so a
+    consumer could not tell it from the one a resolution infers
+    without reading anything. It now files C(executable_evidence) of
+    C(probed) beside it, as the store's other producer already filed
+    C(inferred) beside its own
+    (https://github.com/o0-o/ansible-collection-posix/pull/XXX).
+minor_changes:
+  - >-
+    read - C(executable) and C(executable_evidence) are documented in
+    the module's return values. The permission was published and
+    never described
+    (https://github.com/o0-o/ansible-collection-posix/pull/XXX).
