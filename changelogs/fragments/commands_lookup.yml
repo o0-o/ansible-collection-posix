@@ -1,0 +1,25 @@
+# vim: ts=2:sw=2:sts=2:et:ft=yaml.ansible
+# -*- mode: yaml; yaml-indent-offset: 2; indent-tabs-mode: nil; -*-
+---
+minor_changes:
+  - >-
+    commands lookup - A new lookup answers where a command name
+    resolves, reading the path store the probes fill rather than
+    asking the host again. The answer is tri-state, because a fact
+    store knows three things and not two: a name is resolved where
+    the search path holds it, missing where every candidate is
+    gathered as absent, and unknown where a candidate was never
+    asked about. An unknown carries no path at all, so a caller
+    cannot read a silence as an absence
+    (https://github.com/o0-o/ansible-collection-posix/pull/XXX).
+  - >-
+    commands lookup - The search follows the gathered per-user PATH
+    unless one is given. An entry that names a directory only in
+    relation to a working directory - a relative entry, an
+    unexpanded C(~), or the empty entry a stray C(:) writes - is an
+    error, since a fact store has no working directory to resolve it
+    against, softened by a C(path_errors) option of strict, warn, or
+    ignore. A C(cwd) option resolves those entries the way the
+    running process would, for hosts whose PATH leans on semantics
+    better left unused
+    (https://github.com/o0-o/ansible-collection-posix/pull/XXX).
