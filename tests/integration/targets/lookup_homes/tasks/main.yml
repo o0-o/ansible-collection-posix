@@ -1,0 +1,230 @@
+# vim: ts=2:sw=2:sts=2:et:ft=yaml.ansible
+# -*- mode: yaml; yaml-indent-offset: 2; indent-tabs-mode: nil; -*-
+---
+# GNU General Public License v3.0+
+# SPDX-License-Identifier: GPL-3.0-or-later
+# (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
+#
+# Copyright (c) 2025 oØ.o (@o0-o)
+#
+# This file is part of the o0_o.posix Ansible Collection.
+
+- name: Test the homes lookup plugin
+  block:
+
+    # A host with no users gathered has nobody to audit, which is not
+    # a host whose every home is in order. This runs before the gather
+    # for that reason.
+    - name: Audit before anything has been gathered
+      ansible.builtin.set_fact:
+        homes_ungathered_reg: >-
+          {{ lookup('o0_o.posix.homes', wantlist=True) }}
+
+    - name: Assert an ungathered namespace audits to nothing
+      ansible.builtin.assert:
+        that:
+          - homes_ungathered_reg == []
+        fail_msg: >-
+          a namespace with no users answered for some:
+          {{ homes_ungathered_reg }}
+
+    - name: Gather user information and the paths it reads
+      o0_o.posix.users:
+      register: homes_users_reg
+
+    # The lookup reads the o0_users and o0_paths facts; the module
+    # returns the data rather than setting facts, so the play sets
+    # them.
+    - name: Expose the canonical facts for the lookup
+      ansible.builtin.set_fact:
+        o0_users: "{{ homes_users_reg['o0_users'] }}"
+        o0_paths: "{{ homes_users_reg['o0_paths'] }}"
+
+    - name: Audit every user's home
+      ansible.builtin.set_fact:
+        homes_audit_reg: >-
+          {{ lookup('o0_o.posix.homes', wantlist=True) }}
+
+    - name: Assert the audit answers for every user, once each
+      ansible.builtin.assert:
+        that:
+          - homes_audit_reg is sequence
+          - homes_audit_reg | length == o0_users | length
+          - homes_audit_reg | map(attribute='uid') | sort
+            == o0_users | dict2items | map(attribute='value.uid')
+            | sort
+          # The audit reads in numeric UID order, not in the order
+          # the stringified keys sort in
+          - homes_audit_reg | map(attribute='uid') | list
+            == homes_audit_reg | map(attribute='uid') | sort
+        fail_msg: >-
+          the audit did not answer once for each user:
+          {{ homes_audit_reg | map(attribute='uid') | list }}
+
+    - name: Assert every answer is one of the four states
+      vars:
+        states: >-
+          {{ homes_audit_reg | map(attribute='state') | unique | list }}
+      ansible.builtin.assert:
+        that:
+          - states | reject('in', ['present', 'dangling', 'unknown',
+            'unnamed']) | list | length == 0
+        fail_msg: 'the audit answered a state it does not have: {{ states }}'
+
+    # The absence contract, read off the entry key. A mapping is what
+    # the store observed, a null is a home confirmed gone, and no
+    # entry key at all is a home nothing ever asked about.
+    - name: Assert each state carries the keys that state carries
+      vars:
+        present: >-
+          {{ homes_audit_reg
+             | selectattr('state', 'equalto', 'present') | list }}
+        dangling: >-
+          {{ homes_audit_reg
+             | selectattr('state', 'equalto', 'dangling') | list }}
+        unknown: >-
+          {{ homes_audit_reg
+             | selectattr('state', 'equalto', 'unknown') | list }}
+      ansible.builtin.assert:
+        that:
+          - present | rejectattr('entry', 'mapping') | list | length == 0
+          - present | selectattr('entry', 'none') | list | length == 0
+          - present | rejectattr('path', 'string') | list | length == 0
+          - dangling | rejectattr('entry', 'none') | list | length == 0
+          - unknown | selectattr('entry', 'defined') | list | length == 0
+          - unknown | rejectattr('path', 'string') | list | length == 0
+        fail_msg: >-
+          an answer carried keys its state does not carry:
+          {{ homes_audit_reg }}
+
+    # A gather reads every home its users name, so nothing it audits
+    # is unknown. An unknown here would mean the store lost a path
+    # the producer was asked for.
+    - name: Assert a gathered host has no home nobody asked about
+      vars:
+        unknown: >-
+          {{ homes_audit_reg
+             | selectattr('state', 'equalto', 'unknown')
+             | map(attribute='home') | list }}
+      ansible.builtin.assert:
+        that:
+          - unknown | length == 0
+        fail_msg: >-
+          the users module left homes out of the store it filled:
+          {{ unknown }}
+
+    - name: Assert root's home is present and root lives in it
+      vars:
+        root: >-
+          {{ homes_audit_reg | selectattr('uid', 'equalto', 0)
+             | first }}
+      ansible.builtin.assert:
+        that:
+          - root['name'] == 'root'
+          - root['state'] == 'present'
+          - root['path'] is string
+          - root['path'] is match('^/')
+          - root['entry']['tags'] is contains('home')
+          - 0 in root['entry']['residents']
+        fail_msg: "root's home did not audit as a home root lives in"
+
+    - name: Answer for one user by name and by UID
+      ansible.builtin.set_fact:
+        homes_by_name_reg: "{{ lookup('o0_o.posix.homes', 'root') }}"
+        homes_by_uid_reg: "{{ lookup('o0_o.posix.homes', 0) }}"
+
+    - name: Assert both ways of naming a user answer the same
+      ansible.builtin.assert:
+        that:
+          - homes_by_name_reg['uid'] == 0
+          - homes_by_name_reg == homes_by_uid_reg
+        fail_msg: >-
+          naming root by name and by UID gave two answers:
+          {{ homes_by_name_reg }} / {{ homes_by_uid_reg }}
+
+    # A dangling home is a home the host was asked about and does not
+    # have, and it is what the lookup exists to surface. Make one and
+    # prove it reads as dangling rather than as unknown.
+    - name: Invent a user whose home was read and is not there
+      ansible.builtin.set_fact:
+        o0_users: >-
+          {{ o0_users | combine({'4242': {'name': 'lookup-homes-ghost',
+                                          'uid': 4242,
+                                          'home': '/home/o0-o-ghost'}}) }}
+        o0_paths: >-
+          {{ o0_paths | combine({'/home/o0-o-ghost': none}) }}
+
+    - name: Ask about the home that is not there
+      ansible.builtin.set_fact:
+        homes_dangling_reg: >-
+          {{ lookup('o0_o.posix.homes', 'lookup-homes-ghost') }}
+
+    - name: Assert a home confirmed gone is dangling, carrying a null
+      ansible.builtin.assert:
+        that:
+          - homes_dangling_reg['state'] == 'dangling'
+          - homes_dangling_reg['path'] == '/home/o0-o-ghost'
+          - homes_dangling_reg['entry'] is defined
+          - homes_dangling_reg['entry'] is none
+        fail_msg: >-
+          a home read and found gone did not audit as dangling:
+          {{ homes_dangling_reg }}
+
+    - name: Assert the audit surfaces the dangling home among the rest
+      vars:
+        dangling: >-
+          {{ lookup('o0_o.posix.homes', wantlist=True)
+             | selectattr('state', 'equalto', 'dangling')
+             | map(attribute='name') | list }}
+      ansible.builtin.assert:
+        that:
+          - dangling == ['lookup-homes-ghost']
+        fail_msg: >-
+          the audit view did not surface the dangling home:
+          {{ dangling }}
+
+    # A home nobody looked for is not a dangling home, and an audit
+    # that read the two the same way would call an ungathered host
+    # clean.
+    - name: Invent a user whose home nothing ever read
+      ansible.builtin.set_fact:
+        o0_users: >-
+          {{ o0_users | combine({'4243': {'name': 'lookup-homes-unasked',
+                                          'uid': 4243,
+                                          'home': '/home/o0-o-unasked'}}) }}
+
+    - name: Ask about the home nothing read
+      ansible.builtin.set_fact:
+        homes_unknown_reg: >-
+          {{ lookup('o0_o.posix.homes', 'lookup-homes-unasked') }}
+
+    - name: Assert a home nobody asked about carries no entry at all
+      ansible.builtin.assert:
+        that:
+          - homes_unknown_reg['state'] == 'unknown'
+          - homes_unknown_reg['path'] == '/home/o0-o-unasked'
+          - homes_unknown_reg['entry'] is not defined
+          - homes_unknown_reg != homes_dangling_reg
+        fail_msg: >-
+          a home nothing read was not told from one confirmed gone:
+          {{ homes_unknown_reg }}
+
+    - name: 'Fail: Ask about a name that is not a user'
+      block:
+
+        - name: Name a user the host does not have
+          ansible.builtin.set_fact:
+            homes_stranger_reg: >-
+              {{ lookup('o0_o.posix.homes', 'o0-o-no-such-user') }}
+
+      rescue:
+
+        - name: Assert the error names the user it could not find
+          ansible.builtin.assert:
+            that:
+              - >-
+                "No user 'o0-o-no-such-user'" in
+                ansible_failed_result['msg']
+            fail_msg: >-
+              a name that is not a user was refused for the wrong
+              reason: {{ ansible_failed_result['msg'] }}

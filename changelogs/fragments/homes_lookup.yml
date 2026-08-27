@@ -1,0 +1,18 @@
+# vim: ts=2:sw=2:sts=2:et:ft=yaml.ansible
+# -*- mode: yaml; yaml-indent-offset: 2; indent-tabs-mode: nil; -*-
+---
+minor_changes:
+  - >-
+    homes lookup - New lookup joining o0_users against o0_paths and
+    answering, per user, the home their passwd entry names and what
+    the store knows about that path. It is the audit view no single
+    fact holds - with no terms it answers for every user, in UID
+    order - and its stated purpose is dangling homes, a home the host
+    was read for and does not have. Those file null in the store, so
+    the answer carries a null entry and a state of dangling; a home
+    nothing ever read carries no entry key at all and a state of
+    unknown, so an audit cannot read a host nobody asked as a host
+    whose homes are all in order. A passwd entry naming no home a
+    store could key is unnamed, which is a fact about the user rather
+    than an absence in the store
+    (https://github.com/o0-o/ansible-collection-posix/pull/XXX).

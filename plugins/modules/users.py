@@ -68,6 +68,9 @@ notes:
   - If one authorized_keys file is readable but the other is not, a
     warning is issued indicating incomplete key information.
 seealso:
+  - plugin: o0_o.posix.homes
+    plugin_type: lookup
+    description: Where each user lives, and whether it is there
   - plugin: o0_o.posix.shells
     plugin_type: lookup
     description: The login shells a host names
@@ -233,9 +236,10 @@ o0_paths:
       symlink the target gets an entry of its own carrying the same
       residents, because that is where their files are.
     - A home the module read and found is not there is C(null), a
-      dangling home. A home no read reached is left out entirely,
-      because a store reports what it asked rather than what it
-      assumed.
+      dangling home, which the C(o0_o.posix.homes) lookup surfaces by
+      reading C(o0_users) back against this store. A home no read
+      reached is left out entirely, because a store reports what it
+      asked rather than what it assumed.
     - A single file parsed on its own lands at its own path - the
       bytes under C(content), the meaning parsed out of them under
       C(config) - so the login shells the host names are

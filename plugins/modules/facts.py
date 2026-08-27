@@ -603,7 +603,9 @@ ansible_facts:
           where a home is a symlink the target gets an entry of its
           own carrying the same residents, because that is where their
           files are. A home the gather read and found is not there is
-          C(null), a dangling home.
+          C(null), a dangling home, which the C(o0_o.posix.homes)
+          lookup surfaces by reading C(o0_users) back against the
+          store.
       returned: when the compliance or the users subset is gathered
       type: dict
       contains:
