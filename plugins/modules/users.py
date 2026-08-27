@@ -24,8 +24,8 @@ description:
   - Returns the canonical C(o0_users) and C(o0_groups) mappings, keyed
     by stringified UID and GID and cross-referenced by numeric ID.
     The C(o0_o.posix.facts) module publishes the same shape under the
-    same names, along with C(o0_homes), C(o0_shell_files) and the
-    C(o0_paths) entry for the login shells file.
+    same names, along with C(o0_shell_files) and the C(o0_paths)
+    entries for the homes users live in and the login shells file.
 options:
   passwd_path:
     description:
@@ -200,22 +200,6 @@ o0_groups:
       members:
         - 0
         - 1000
-o0_homes:
-  description: >-
-    Mapping of home directory paths to their file metadata, each with
-    a C(residents) list of the UIDs that call the path home.
-  returned: always
-  type: dict
-  sample:
-    /home/o0-o:
-      type: directory
-      uid: 1000
-      gid: 20
-      tags:
-        - posix
-        - home
-      residents:
-        - 1000
 o0_shell_files:
   description: >-
     Mapping of the login shell paths users actually hold to their file
@@ -233,17 +217,39 @@ o0_shell_files:
         - posix
         - shell
 o0_paths:
-  description: >-
-    What the module observed about the paths it read, keyed by the
-    canonical absolute path. A single file parsed on its own lands at
-    its own path - the bytes under C(content), the meaning parsed out
-    of them under C(config) - so the login shells the host names are
-    C(o0_paths[shells_path]['config']). A host whose shells file could
-    not be read leaves that path out rather than filing it as a file
-    that names none.
-  returned: when the shells file is readable
+  description:
+    - What the module observed about the paths it read, keyed by the
+      canonical absolute path. The store is flat - a path is a key of
+      its own and nothing about a path is filed under another path.
+    - The homes users live in are entries here, tagged C(home) and
+      carrying C(residents), the UIDs that call the path home. Two
+      users sharing a home share one entry, and where a home is a
+      symlink the target gets an entry of its own carrying the same
+      residents, because that is where their files are.
+    - A home the module read and found is not there is C(null), a
+      dangling home. A home no read reached is left out entirely,
+      because a store reports what it asked rather than what it
+      assumed.
+    - A single file parsed on its own lands at its own path - the
+      bytes under C(content), the meaning parsed out of them under
+      C(config) - so the login shells the host names are
+      C(o0_paths[shells_path]['config']). A host whose shells file
+      could not be read leaves that path out rather than filing it as
+      a file that names none.
+  returned: when the module observed a path
   type: dict
   contains:
+    tags:
+      description: >-
+        What the path is to the collection - C(home) for a directory
+        a user lives in
+      type: list
+      elements: str
+    residents:
+      description: >-
+        For a home, the UIDs that call the path home
+      type: list
+      elements: int
     content:
       description: The bytes read from the path
       type: str
@@ -253,6 +259,15 @@ o0_paths:
         login shells it names, in the order it names them
       type: raw
   sample:
+    /home/o0-o:
+      type: directory
+      uid: 1000
+      gid: 20
+      tags:
+        - posix
+        - home
+      residents:
+        - 1000
     /etc/shells:
       content: "/bin/sh\n/bin/zsh\n"
       config:

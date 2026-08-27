@@ -29,6 +29,11 @@
   vars:
     gathered: "{{ facts_min_reg['ansible_facts'] }}"
     entry: "{{ gathered['o0_users'][facts_uid] }}"
+    homes: >-
+      {{ gathered['o0_paths'] | dict2items
+         | rejectattr('value', 'none')
+         | selectattr('value.tags', 'defined')
+         | selectattr('value.tags', 'contains', 'home') | list }}
   ansible.builtin.assert:
     that:
       - gathered['o0_os']['kernel'] is mapping
@@ -51,12 +56,13 @@
       - entry['shell'] is not defined
       - gathered['o0_storage'] is not defined
       - gathered['o0_groups'] is not defined
-      - gathered['o0_homes'] is not defined
       - gathered['o0_shell_files'] is not defined
       # The compliance sweep fills the path store, so the store is
-      # here; the file only the users subset reads is not
+      # here; the homes and the file only the users subset reads are
+      # not
       - gathered['o0_paths'] is mapping
       - gathered['o0_paths']['/etc/shells'] is not defined
+      - homes | length == 0
     fail_msg: >-
       min did not select uname, environment, timezone and compliance
       alone: {{ gathered.keys() | list | sort }}
@@ -127,17 +133,16 @@
     gather_subset: [users]
   register: facts_users_reg
 
-# One subset, five facts: the users and groups it composes, the homes
-# and shells they hold, and the file the host names its login shells
-# in, which lands at its own path in the store. A gather that
-# published fewer than all five was what made the idiom the users
+# One subset, four facts: the users and groups it composes, the
+# shells they hold, and the path store carrying the homes they live
+# in and the file the host names its login shells in. A gather that
+# published fewer than all four was what made the idiom the users
 # module documents unanswerable.
-- name: Assert the users subset publishes all five of its facts
+- name: Assert the users subset publishes all four of its facts
   vars:
     gathered: "{{ facts_users_reg['ansible_facts'] }}"
     expected: >-
-      {{ ['o0_groups', 'o0_homes', 'o0_shell_files', 'o0_users']
-         + (['o0_paths'] if facts_has_shells | bool else []) }}
+      {{ ['o0_groups', 'o0_paths', 'o0_shell_files', 'o0_users'] }}
   ansible.builtin.assert:
     that:
       - gathered.keys() | list | sort == expected | sort
@@ -148,26 +153,46 @@
         ]['members'] is sequence
       - gathered['o0_os'] is not defined
     fail_msg: >-
-      the users subset did not publish its five facts:
+      the users subset did not publish its four facts:
       {{ gathered.keys() | list | sort }}
 
-# The subset reads one file on its own, so the store it publishes
-# holds that one path and nothing the compliance sweep would have
-# filled in beside it.
+# The subset reads the homes its users name and one file of its own,
+# so the store it publishes holds those paths and nothing the
+# compliance sweep would have filled in beside them.
+- name: Assert the users subset files the paths it read and no others
+  vars:
+    gathered: "{{ facts_users_reg['ansible_facts'] }}"
+    paths: "{{ gathered['o0_paths'] }}"
+    homes: >-
+      {{ gathered['o0_users'] | dict2items
+         | map(attribute='value.home') | select('string') | list }}
+    strangers: >-
+      {{ paths.keys() | reject('in', homes)
+         | reject('equalto', '/etc/shells') | list }}
+  ansible.builtin.assert:
+    that:
+      # Every home a user names is a key of the store, and a home
+      # that is not there is a null rather than a silence
+      - homes | reject('in', paths.keys() | list) | list | length == 0
+      # A linked home files its target too, so the only keys that are
+      # neither a home nor the shells file are the targets of links
+      - strangers | reject('match', '^/') | list | length == 0
+    fail_msg: >-
+      the users subset filed paths it never read: {{ strangers }}
+
 - name: Assert the users subset files the shells file at its own path
   when: facts_has_shells | bool
   vars:
-    gathered: "{{ facts_users_reg['ansible_facts'] }}"
-    entry: "{{ gathered['o0_paths']['/etc/shells'] }}"
+    entry: >-
+      {{ facts_users_reg['ansible_facts']['o0_paths']['/etc/shells'] }}
   ansible.builtin.assert:
     that:
-      - gathered['o0_paths'].keys() | list == ['/etc/shells']
       - entry['content'] is string
       - entry['config'] is sequence
       - entry['config'] is not string
     fail_msg: >-
       the users subset did not file /etc/shells at its own path:
-      {{ gathered['o0_paths'] }}
+      {{ entry }}
 
 - name: Gather the compliance of the host alone
   o0_o.posix.facts:
@@ -321,13 +346,18 @@
 - name: Assert a subset named after all is taken out of all
   vars:
     gathered: "{{ facts_no_users_reg['ansible_facts'] }}"
+    homes: >-
+      {{ gathered['o0_paths'] | dict2items
+         | rejectattr('value', 'none')
+         | selectattr('value.tags', 'defined')
+         | selectattr('value.tags', 'contains', 'home') | list }}
   ansible.builtin.assert:
     that:
       - gathered['o0_storage']['mounts'] is mapping
       - gathered['o0_groups'] is not defined
-      - gathered['o0_homes'] is not defined
       - gathered['o0_shell_files'] is not defined
       - gathered['o0_paths']['/etc/shells'] is not defined
+      - homes | length == 0
       # environment is still selected, and it is what keys o0_users
       - gathered['o0_users'].keys() | list == [facts_uid]
     fail_msg: >-

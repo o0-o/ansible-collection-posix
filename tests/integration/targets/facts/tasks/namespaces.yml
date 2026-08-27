@@ -316,9 +316,18 @@
         | flatten | reject('integer') | list | length == 0
     fail_msg: 'o0_groups is not keyed by a stringified gid'
 
+# A home is a path, so it is an entry of the flat path store rather
+# than a namespace of its own: tagged home, carrying the UIDs that
+# live there, and keyed by the path it is.
 - name: Assert homes and shell files are keyed by the path they are
   vars:
-    homes: "{{ facts_all_reg['ansible_facts']['o0_homes'] }}"
+    paths: "{{ facts_all_reg['ansible_facts']['o0_paths'] }}"
+    homes: >-
+      {{ paths | dict2items
+         | rejectattr('value', 'none')
+         | selectattr('value.tags', 'defined')
+         | selectattr('value.tags', 'contains', 'home')
+         | items2dict }}
     shell_files: >-
       {{ facts_all_reg['ansible_facts']['o0_shell_files'] }}
   ansible.builtin.assert:
@@ -327,11 +336,17 @@
       - homes.keys() | reject('match', '^/') | list | length == 0
       - homes | dict2items | map(attribute='value.residents')
         | flatten | reject('integer') | list | length == 0
-      - homes | dict2items | rejectattr('value.tags', 'contains',
-        'home') | list | length == 0
+      - homes | dict2items | rejectattr('value.residents', 'defined')
+        | list | length == 0
+      # The home every user names is a key of the store
+      - facts_all_reg['ansible_facts']['o0_users'] | dict2items
+        | map(attribute='value.home') | select('string')
+        | reject('in', paths.keys() | list) | list | length == 0
+      - facts_all_reg['ansible_facts']['o0_homes'] is not defined
       - shell_files | length > 0
       - shell_files.keys() | reject('match', '^/')
         | list | length == 0
       - shell_files | dict2items | rejectattr('value.tags',
         'contains', 'shell') | list | length == 0
-    fail_msg: 'o0_homes or o0_shell_files is not keyed by path'
+    fail_msg: >-
+      the homes in o0_paths or o0_shell_files is not keyed by path

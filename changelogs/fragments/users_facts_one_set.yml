@@ -1,11 +1,11 @@
 ---
 minor_changes:
   - >-
-    facts - The users subset publishes o0_homes and o0_shell_files
-    alongside o0_users, o0_groups and the o0_paths entry for the login
-    shells file, so a gather and the users module name the same five
-    facts. The two new facts are composed by the same functions the
-    module uses
+    facts - The users subset publishes o0_shell_files and the o0_paths
+    entries for the homes users live in and the login shells file
+    alongside o0_users and o0_groups, so a gather and the users module
+    name the same four facts. What it added is composed by the same
+    functions the module uses
     (https://github.com/o0-o/ansible-collection-posix/pull/XXX).
   - >-
     users - The module files the login shells file at its own path in

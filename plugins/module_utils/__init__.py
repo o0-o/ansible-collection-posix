@@ -71,6 +71,7 @@ from ansible_collections.o0_o.posix.plugins.module_utils.passwd_utils import (
     passwd_info,
 )
 from ansible_collections.o0_o.posix.plugins.module_utils.path_utils import (
+    canonicalize,
     compose_paths,
     flags_to_octal_mode,
 )
@@ -186,6 +187,7 @@ __all__ = [
     "group_info",
     "normalize_group_members",
     "passwd_info",
+    "canonicalize",
     "compose_paths",
     "flags_to_octal_mode",
     "MOUNT_FILTER_DEFAULTS",

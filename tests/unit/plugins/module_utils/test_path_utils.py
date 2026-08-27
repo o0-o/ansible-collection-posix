@@ -18,6 +18,7 @@ from typing import Any
 import pytest
 
 from ansible_collections.o0_o.posix.plugins.module_utils.path_utils import (
+    canonicalize,
     compose_paths,
 )
 
@@ -347,4 +348,72 @@ def test_compose_paths_accumulates_across_producers() -> None:
         "/bin/sh": SH,
         "/etc/shells": {"type": "regular"},
         "/bin/cat": None,
+    }
+
+
+@pytest.mark.parametrize(
+    "path, canonical",
+    [
+        ("/", "/"),
+        ("//", "/"),
+        ("///usr/bin", "/usr/bin"),
+        ("/usr/bin", "/usr/bin"),
+        ("/usr/bin/", "/usr/bin"),
+        ("/usr//bin", "/usr/bin"),
+        ("/usr/./bin", "/usr/bin"),
+        ("/usr/local/../bin", "/usr/bin"),
+        ("/usr/bin/..", "/usr"),
+        ("/..", "/"),
+        ("/srv/~/bin", "/srv/~/bin"),
+        ("/srv/Application Support", "/srv/Application Support"),
+    ],
+)
+def test_canonicalize_reduces_a_path_to_the_key_the_store_uses(
+    path: str, canonical: str
+) -> None:
+    """Test that a path keys the store by what it is rather than by
+    how it was written."""
+
+    assert canonicalize(path) == canonical
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "/",
+        "/usr/bin",
+        "/srv/~/bin",
+    ],
+)
+def test_canonicalize_leaves_a_key_the_store_takes_alone(
+    path: str,
+) -> None:
+    """Test that canonicalizing what is already a key changes
+    nothing, so a producer may canonicalize whatever it holds."""
+
+    assert canonicalize(canonicalize(path)) == canonicalize(path)
+    assert compose_paths(None, {canonicalize(path): None}) == {path: None}
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "/usr/bin/",
+        "/usr//bin",
+        "/usr/./bin",
+        "/usr/local/../bin",
+        "//usr/bin",
+    ],
+)
+def test_canonicalize_repairs_what_the_store_refuses(path: str) -> None:
+    """Test that every spelling compose_paths refuses is a spelling
+    canonicalize turns into one it takes.  The two are meant to be
+    used that way round: a producer canonicalizes, the store never
+    guesses."""
+
+    with pytest.raises(ValueError):
+        compose_paths(None, {path: None})
+
+    assert compose_paths(None, {canonicalize(path): None}) == {
+        "/usr/bin": None
     }

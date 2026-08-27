@@ -25,13 +25,41 @@ is null was asked about and does not exist; a typed empty (``''``,
 ``[]``, ``{}``) exists and is empty.  Nothing here converts one of
 those answers into another.
 
-``flags_to_octal_mode`` parses the permission flags an ``ls`` line
-carries, for the producers that fill an entry in.
+``canonicalize`` reduces an absolute path to the one form the store
+keys it by, for the producers and consumers that have to write a key
+rather than read one, and ``flags_to_octal_mode`` parses the
+permission flags an ``ls`` line carries, for the producers that fill
+an entry in.
 """
 
 from __future__ import annotations
 
+import posixpath
+
 from typing import Any, Optional
+
+
+def canonicalize(path: str) -> str:
+    """Reduce an absolute path to the one form the store keys it by.
+
+    The store keys a path by what it is rather than by how it was
+    written, so a trailing slash, a doubled separator, and a ``.`` or
+    ``..`` component all collapse into the same key here.  A leading
+    ``//`` is the one form ``posixpath`` keeps and the store refuses,
+    so it collapses too.
+
+    This repairs what ``_validate_path`` refuses, and the two are
+    meant to be used that way round: a caller holding a path a host
+    wrote canonicalizes it before it becomes a key, and the store
+    itself never guesses which of two spellings was meant.
+
+    :param str path: An absolute path as it was written
+    :returns str: The path in the form the o0_paths store keys
+    """
+    canonical = posixpath.normpath(path)
+    while canonical.startswith("//"):
+        canonical = canonical[1:]
+    return canonical
 
 
 def flags_to_octal_mode(flags: str) -> str:
@@ -268,6 +296,7 @@ def compose_paths(
 
 
 __all__ = [
+    "canonicalize",
     "compose_paths",
     "flags_to_octal_mode",
 ]

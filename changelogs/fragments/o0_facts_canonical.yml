@@ -2,14 +2,14 @@
 breaking_changes:
   - >-
     users - The returned fact names take the collection's o0 prefix:
-    users becomes o0_users, groups becomes o0_groups, homes becomes
-    o0_homes, and shells becomes o0_shell_files. Ansible reserves
-    groups for the
+    users becomes o0_users, groups becomes o0_groups, and shells
+    becomes o0_shell_files. Ansible reserves groups for the
     inventory group map, so a bare groups fact could never be read
     back; the namespace keeps every name the collection publishes out
-    of reach of a reserved one. The login shells /etc/shells names are
-    not a fact of their own at all: they are the config of that path
-    in o0_paths
+    of reach of a reserved one. Two of the old facts are not facts of
+    their own at all: the homes users live in are entries of o0_paths,
+    and the login shells /etc/shells names are the config of that path
+    in the same store
     (https://github.com/o0-o/ansible-collection-posix/pull/XXX).
   - >-
     users - The key option is removed. The module published two

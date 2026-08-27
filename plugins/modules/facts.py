@@ -571,24 +571,6 @@ ansible_facts:
           members:
             - 0
             - 1000
-    o0_homes:
-      description: >-
-        The directories users call home, keyed by path, each with the
-        file metadata of the path and a C(residents) list of the UIDs
-        that live there. A home two users share is one entry with two
-        residents.
-      returned: when the users subset is gathered
-      type: dict
-      sample:
-        /home/o0-o:
-          type: directory
-          uid: 1000
-          gid: 20
-          tags:
-            - posix
-            - home
-          residents:
-            - 1000
     o0_shell_files:
       description: >-
         The login shells users actually hold, keyed by path, each with
@@ -606,20 +588,36 @@ ansible_facts:
             - posix
             - shell
     o0_paths:
-      description: >-
-        What the gather observed about the paths it touched, keyed by
-        the canonical absolute path. The store is flat - a path is a
-        key of its own and nothing about a path is filed under another
-        path - and every producer composes into it, so a path reached
-        two ways is one entry. Three answers are kept apart - a path
-        that is absent from the store was never asked about, a path
-        whose entry is C(null) was asked about and does not exist, and
-        a typed empty exists and is empty.
-      returned: >-
-        when the compliance subset is gathered, or the users subset is
-        and the shells file was read
+      description:
+        - What the gather observed about the paths it touched, keyed
+          by the canonical absolute path. The store is flat - a path
+          is a key of its own and nothing about a path is filed under
+          another path - and every producer composes into it, so a
+          path reached two ways is one entry. Three answers are kept
+          apart - a path that is absent from the store was never asked
+          about, a path whose entry is C(null) was asked about and
+          does not exist, and a typed empty exists and is empty.
+        - The directories users call home are entries here, tagged
+          C(home) and carrying C(residents), the UIDs that live there.
+          A home two users share is one entry with two residents, and
+          where a home is a symlink the target gets an entry of its
+          own carrying the same residents, because that is where their
+          files are. A home the gather read and found is not there is
+          C(null), a dangling home.
+      returned: when the compliance or the users subset is gathered
       type: dict
       contains:
+        tags:
+          description: >-
+            What the path is to the collection - C(home) for a
+            directory a user lives in
+          type: list
+          elements: str
+        residents:
+          description: >-
+            For a home, the UIDs that call the path home
+          type: list
+          elements: int
         executable:
           description: >-
             Whether the path is executable
@@ -662,6 +660,15 @@ ansible_facts:
           executable: true
           executable_evidence: inferred
         /usr/bin/pax: null
+        /home/o0-o:
+          type: directory
+          uid: 1000
+          gid: 20
+          tags:
+            - posix
+            - home
+          residents:
+            - 1000
         /etc/shells:
           content: "/bin/sh\n/bin/zsh\n"
           config:

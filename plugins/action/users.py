@@ -59,7 +59,7 @@ class ActionModule(ReadPosixActionBase, ActionBase):
         :param Optional[dict[str, Any]] task_vars: Available Ansible
             variables
         :returns dict[str, Any]: Result dictionary with o0_users,
-            o0_groups, o0_homes, o0_shell_files, and o0_paths data
+            o0_groups, o0_shell_files, and o0_paths data
         """
         task_vars = task_vars or {}
         self._def_inventory_hostname(task_vars)
@@ -107,12 +107,17 @@ class ActionModule(ReadPosixActionBase, ActionBase):
                 "changed": False,
                 "o0_users": users,
                 "o0_groups": groups,
-                "o0_homes": compose_homes(users, read),
                 "o0_shell_files": compose_shell_files(
                     users, read, known_shell_files
                 ),
             }
         )
+
+        # A home is a path, so it is an entry of the one flat path
+        # store: tagged home, carrying the UIDs that live there, and
+        # composed in beside everything else the module observed
+        # rather than published as a namespace of its own.
+        paths = compose_paths(None, compose_homes(users, read))
 
         # A single file parsed on its own lands at its own path: the
         # bytes under content, the login shells they name under
@@ -122,8 +127,8 @@ class ActionModule(ReadPosixActionBase, ActionBase):
         # none.
         shells = self._read_text_file(shells_path, task_vars, required=False)
         if shells is not None:
-            result["o0_paths"] = compose_paths(
-                None,
+            paths = compose_paths(
+                paths,
                 {
                     shells_path: {
                         "content": shells,
@@ -131,6 +136,9 @@ class ActionModule(ReadPosixActionBase, ActionBase):
                     }
                 },
             )
+
+        if paths:
+            result["o0_paths"] = paths
 
         return result
 

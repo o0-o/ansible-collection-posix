@@ -83,7 +83,6 @@ def test_users_action_returns_canonical_fact_names(plugin) -> None:
         "o0_users",
         "o0_groups",
         "o0_paths",
-        "o0_homes",
         "o0_shell_files",
     }
     assert "users" not in result
@@ -91,6 +90,9 @@ def test_users_action_returns_canonical_fact_names(plugin) -> None:
     assert "homes" not in result
     assert "shells" not in result
     assert "o0_shells" not in result
+    # A home is a path, so it is an entry of the path store rather
+    # than a fact of its own
+    assert "o0_homes" not in result
 
 
 def test_users_action_files_the_shells_file_at_its_path(plugin) -> None:
@@ -191,7 +193,8 @@ def test_users_action_rejects_key_option(plugin) -> None:
 
 
 def test_users_action_homes_resident_uids(monkeypatch, plugin) -> None:
-    """Test home residents are recorded as UIDs."""
+    """Test home residents are recorded as UIDs, at the home's own key
+    in the path store."""
     monkeypatch.setattr(
         plugin,
         "_read",
@@ -209,8 +212,14 @@ def test_users_action_homes_resident_uids(monkeypatch, plugin) -> None:
 
     result = plugin.run(task_vars={})
 
-    assert result["o0_homes"]["/home/o0-o"]["residents"] == [1000]
-    assert result["o0_homes"]["/var/root"]["residents"] == [0]
+    assert result["o0_paths"]["/home/o0-o"]["residents"] == [1000]
+    assert result["o0_paths"]["/var/root"]["residents"] == [0]
+    # The homes and the shells file accumulate in the one store
+    # rather than either replacing the other
+    assert result["o0_paths"]["/etc/shells"]["config"] == [
+        "/bin/sh",
+        "/bin/zsh",
+    ]
 
 
 def test_users_action_shell_files_extend_prior_gather(
@@ -293,12 +302,12 @@ def test_users_action_batch_leaves_the_facts_alone(
 
     result = plugin.run(task_vars={})
 
-    assert result["o0_homes"]["/home/o0-o"] == {
+    assert result["o0_paths"]["/home/o0-o"] == {
         "type": "directory",
         "tags": ["posix", "home"],
         "residents": [1000],
     }
-    assert result["o0_homes"]["/var/root"]["residents"] == [0]
+    assert result["o0_paths"]["/var/root"]["residents"] == [0]
     assert result["o0_shell_files"]["/bin/zsh"] == {
         "type": "regular",
         "tags": ["posix", "shell"],

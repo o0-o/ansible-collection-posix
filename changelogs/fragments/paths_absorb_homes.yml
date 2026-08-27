@@ -1,0 +1,25 @@
+# vim: ts=2:sw=2:sts=2:et:ft=yaml.ansible
+# -*- mode: yaml; yaml-indent-offset: 2; indent-tabs-mode: nil; -*-
+---
+breaking_changes:
+  - >-
+    facts, users - o0_homes retires. A home is a path, and a namespace
+    keyed by path is a path store with one kind of path in it, so the
+    homes users live in are entries of o0_paths, tagged home and
+    carrying residents, the UIDs that call the path home. Read
+    o0_paths[home] where o0_homes[home] was read. Two users sharing a
+    home still share one entry, however each of them spelled it, since
+    the store keys a path by what it is; and where a home is a symlink
+    the target still gets an entry of its own carrying the same
+    residents, a relative target resolved against the directory the
+    link lives in
+    (https://github.com/o0-o/ansible-collection-posix/pull/XXX).
+minor_changes:
+  - >-
+    facts, users - A home the producers read and found is not there is
+    filed null rather than left out, which is the store's own answer
+    for a path confirmed absent. A dangling home is therefore a thing
+    a playbook can ask about, where before it was indistinguishable
+    from a home nobody looked for; a home no read reached is still
+    left out, because a store reports what it asked
+    (https://github.com/o0-o/ansible-collection-posix/pull/XXX).

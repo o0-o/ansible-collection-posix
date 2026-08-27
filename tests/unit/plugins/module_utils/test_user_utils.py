@@ -21,6 +21,9 @@ from ansible_collections.o0_o.posix.plugins.module_utils.group_utils import (
 from ansible_collections.o0_o.posix.plugins.module_utils.passwd_utils import (
     passwd_info,
 )
+from ansible_collections.o0_o.posix.plugins.module_utils.path_utils import (
+    compose_paths,
+)
 from ansible_collections.o0_o.posix.plugins.module_utils.user_utils import (
     batch_read,
     compose_homes,
@@ -324,6 +327,160 @@ def test_compose_homes_without_homes() -> None:
 
     assert compose_homes({"0": {"uid": 0}}, read) == {}
     assert asked == []
+
+
+def test_compose_homes_keys_a_home_the_way_the_store_does() -> None:
+    """Test a home is filed under what it is rather than under how
+    /etc/passwd wrote it, since the entry is a key of the path
+    store."""
+    users = {"1000": {"uid": 1000, "home": "/home/o0-o/"}}
+    read, _asked = _reader({"/home/o0-o/": {"type": "directory"}})
+
+    homes = compose_homes(users, read)
+
+    assert list(homes) == ["/home/o0-o"]
+    assert homes["/home/o0-o"]["residents"] == [1000]
+
+
+def test_compose_homes_two_spellings_are_one_home() -> None:
+    """Test two users who wrote one home two ways live in one entry,
+    because the store keys the path once."""
+    users = {
+        "0": {"uid": 0, "home": "/shared"},
+        "1": {"uid": 1, "home": "/shared/"},
+    }
+    read, _asked = _reader(
+        {
+            "/shared": {"type": "directory"},
+            "/shared/": {"type": "directory"},
+        }
+    )
+
+    homes = compose_homes(users, read)
+
+    assert list(homes) == ["/shared"]
+    assert homes["/shared"]["residents"] == [0, 1]
+
+
+def test_compose_homes_drops_a_home_the_store_cannot_key() -> None:
+    """Test a passwd field that names no path is left out rather than
+    filed under a key the store would refuse."""
+    users = {"1000": {"uid": 1000, "home": "nonexistent"}}
+    read, _asked = _reader({"nonexistent": {"type": "directory"}})
+
+    assert compose_homes(users, read) == {}
+
+
+def test_compose_homes_resolves_a_relative_link_target() -> None:
+    """Test a relative symlink target is resolved against the
+    directory the link lives in, the way the kernel resolves it, so
+    the target keys the store as the path it is."""
+    users = {"1000": {"uid": 1000, "home": "/home/o0-o"}}
+    read, _asked = _reader(
+        {
+            "/home/o0-o": {"type": "link", "target": "../Users/o0-o"},
+            "/Users/o0-o": {"type": "directory"},
+        }
+    )
+
+    homes = compose_homes(users, read)
+
+    assert set(homes) == {"/home/o0-o", "/Users/o0-o"}
+    assert homes["/Users/o0-o"]["residents"] == [1000]
+
+
+def test_compose_homes_relative_link_to_a_known_home() -> None:
+    """Test a relative target that resolves onto another home adds to
+    that home's residents rather than making a second entry."""
+    users = {
+        "0": {"uid": 0, "home": "/home/shared"},
+        "1000": {"uid": 1000, "home": "/home/o0-o"},
+    }
+    read, _asked = _reader(
+        {
+            "/home/shared": {"type": "directory"},
+            "/home/o0-o": {"type": "link", "target": "shared"},
+        }
+    )
+
+    homes = compose_homes(users, read)
+
+    assert set(homes) == {"/home/shared", "/home/o0-o"}
+    assert homes["/home/shared"]["residents"] == [0, 1000]
+
+
+def test_compose_homes_drops_a_target_that_keys_nothing() -> None:
+    """Test a link whose target the store cannot key leaves the link
+    itself intact and adds nothing beside it."""
+    users = {"1000": {"uid": 1000, "home": "/home/o0-o"}}
+    read, _asked = _reader({"/home/o0-o": {"type": "link", "target": ""}})
+
+    homes = compose_homes(users, read)
+
+    assert list(homes) == ["/home/o0-o"]
+
+
+def test_compose_homes_answers_in_the_shape_the_store_takes() -> None:
+    """Test the composition is an observation compose_paths accepts as
+    it stands, which is what makes a home an entry of the path store
+    rather than a namespace of its own."""
+    users = {"1000": {"uid": 1000, "home": "/home/o0-o"}}
+    read, _asked = _reader({"/home/o0-o": {"type": "directory"}})
+
+    homes = compose_homes(users, read)
+
+    assert compose_paths(None, homes) == homes
+
+
+def test_compose_homes_files_a_home_that_is_not_there_as_a_null() -> None:
+    """Test a home the read confirmed is not there is filed null, so a
+    user whose home was never made keeps saying so."""
+    users = {"1000": {"uid": 1000, "home": "/home/ghost"}}
+    read, _asked = _reader({})
+
+    homes = compose_homes(users, read)
+
+    assert homes == {"/home/ghost": None}
+    assert compose_paths(None, homes) == homes
+
+
+def test_compose_homes_leaves_out_a_home_no_read_reached() -> None:
+    """Test a read that failed teaches nothing, so the homes it would
+    have described are left out rather than called absent."""
+    users = {"1000": {"uid": 1000, "home": "/home/o0-o"}}
+
+    def read(paths: list[str]) -> dict[str, Any]:
+        return {"failed": True, "msg": "no"}
+
+    assert compose_homes(users, read) == {}
+
+
+def test_compose_homes_null_never_covers_a_home_that_is_there() -> None:
+    """Test one spelling read as absent does not bury the entry the
+    other spelling described, since both name one path."""
+    users = {
+        "0": {"uid": 0, "home": "/shared/"},
+        "1": {"uid": 1, "home": "/shared"},
+    }
+    read, _asked = _reader({"/shared": {"type": "directory"}})
+
+    homes = compose_homes(users, read)
+
+    assert homes["/shared"]["residents"] == [1]
+
+
+def test_compose_homes_files_a_dangling_link_target_as_a_null() -> None:
+    """Test a home that links somewhere nothing is files the target as
+    a null, because that is where the residents' files are not."""
+    users = {"1000": {"uid": 1000, "home": "/home/o0-o"}}
+    read, _asked = _reader(
+        {"/home/o0-o": {"type": "link", "target": "/Users/o0-o"}}
+    )
+
+    homes = compose_homes(users, read)
+
+    assert homes["/Users/o0-o"] is None
+    assert homes["/home/o0-o"]["residents"] == [1000]
 
 
 def test_compose_shell_files_describes_held_shells() -> None:

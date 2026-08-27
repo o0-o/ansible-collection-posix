@@ -7,9 +7,8 @@ bugfixes:
     not exist, o0_os.users and o0_os.groups that are top-level names,
     an o0_os.compliance the gather never reached, and a hardware
     subset renamed to dmidecode. It is written from what a gather
-    publishes now: every namespace, o0_homes, o0_shell_files and
-    o0_paths among them, each key named for the producer that fills
-    it. The storage group was missing from the choices list, so
+    publishes now: every namespace, o0_shell_files and o0_paths among
+    them, each key named for the producer that fills it. The storage group was missing from the choices list, so
     ansible-doc hid a spelling the module accepts, and the two
     descriptions of min called it uname only when it is uname,
     environment, timezone and compliance

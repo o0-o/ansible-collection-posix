@@ -645,11 +645,18 @@ class TestGatherUsers:
             "o0_users",
             "o0_groups",
             "o0_paths",
-            "o0_homes",
             "o0_shell_files",
         }
-        assert facts["o0_homes"]["/home/o0-o"]["residents"] == [1000]
-        assert facts["o0_homes"]["/var/root"]["residents"] == [0]
+        # A home is a path, so it is an entry of the path store rather
+        # than a namespace of its own, and it accumulates there beside
+        # the shells file rather than replacing it
+        assert facts["o0_paths"]["/home/o0-o"]["residents"] == [1000]
+        assert facts["o0_paths"]["/var/root"]["residents"] == [0]
+        assert facts["o0_paths"]["/home/o0-o"]["tags"] == ["posix", "home"]
+        assert facts["o0_paths"]["/etc/shells"]["config"] == [
+            "/bin/sh",
+            "/bin/zsh",
+        ]
         assert facts["o0_shell_files"]["/bin/zsh"]["tags"] == [
             "posix",
             "shell",
@@ -735,7 +742,7 @@ class TestGatherUsers:
         facts = plugin._gather_users(task_vars={})
 
         assert asked == [["/bin/sh", "/bin/zsh", "/home/o0-o", "/var/root"]]
-        assert facts["o0_homes"]["/home/o0-o"]["residents"] == [1000]
+        assert facts["o0_paths"]["/home/o0-o"]["residents"] == [1000]
         assert facts["o0_shell_files"]["/bin/zsh"]["tags"] == [
             "posix",
             "shell",
@@ -808,7 +815,10 @@ class TestGatherUsers:
 
         facts = plugin._gather_users(task_vars={})
 
-        assert "o0_paths" not in facts
+        # The homes the same gather read are still in the store; the
+        # file it could not read is the one path missing from it
+        assert "/etc/shells" not in facts["o0_paths"]
+        assert facts["o0_paths"]["/home/o0-o"]["tags"] == ["posix", "home"]
         assert facts["o0_users"]["1000"]["shell"] == "/bin/zsh"
 
 
@@ -1019,8 +1029,8 @@ class TestUsersProducersAgree:
         self, monkeypatch, plugin, standalone
     ) -> None:
         """Test every user fact means the same thing from either
-        producer. The gather used to publish three of the five and the
-        module the other four, disagreeing on which names existed.
+        producer. The gather used to publish three of the four and the
+        module the other three, disagreeing on which names existed.
         """
         _no_python(monkeypatch, plugin)
         _mock_read(monkeypatch, plugin)
@@ -1032,7 +1042,6 @@ class TestUsersProducersAgree:
             "o0_users",
             "o0_groups",
             "o0_paths",
-            "o0_homes",
             "o0_shell_files",
         }
         for fact, value in gathered.items():

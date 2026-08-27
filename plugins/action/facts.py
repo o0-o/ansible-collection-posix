@@ -331,9 +331,12 @@ class ActionModule(ReadPosixActionBase, ActionBase):
         keys into their o0_users entry; a gather does not, because the
         cost is per user and the answer is not what a gather is for.
 
-        /etc/shells is a single file parsed on its own, so it lands at
-        its own path: the bytes read under ``content``, the login
-        shells they name under ``config``.
+        Homes are paths, so they are entries of ``o0_paths`` rather
+        than a namespace of their own, and /etc/shells is a single
+        file parsed on its own, so it lands at its own path there too:
+        the bytes read under ``content``, the login shells they name
+        under ``config``.  Both compose into the one store, so a
+        gather that observed both reports both.
 
         :param Optional[dict[str, Any]] task_vars: Task variables
         :returns dict[str, Any]: User, group, shell and home facts
@@ -345,7 +348,8 @@ class ActionModule(ReadPosixActionBase, ActionBase):
         group = contents["/etc/group"]
         shells = contents["/etc/shells"]
 
-        facts = {}
+        facts: dict[str, Any] = {}
+        paths: dict[str, Any] = {}
 
         # The canonical shape cross-references both files, so it needs
         # both reads to have landed.
@@ -363,14 +367,14 @@ class ActionModule(ReadPosixActionBase, ActionBase):
 
             facts["o0_users"] = users
             facts["o0_groups"] = groups
-            facts["o0_homes"] = compose_homes(users, read)
             facts["o0_shell_files"] = compose_shell_files(
                 users, read, known_shell_files
             )
+            paths = compose_paths(paths, compose_homes(users, read))
 
         if shells is not None:
-            facts["o0_paths"] = compose_paths(
-                None,
+            paths = compose_paths(
+                paths,
                 {
                     "/etc/shells": {
                         "content": shells,
@@ -378,6 +382,9 @@ class ActionModule(ReadPosixActionBase, ActionBase):
                     }
                 },
             )
+
+        if paths:
+            facts["o0_paths"] = paths
 
         return facts
 

@@ -271,7 +271,10 @@ from ansible.plugins.lookup import LookupBase
 from ansible_collections.o0_o.utils.plugins.module_utils import (
     VarsLookupBase,
 )
-from ansible_collections.o0_o.posix.plugins.module_utils import lookup_user
+from ansible_collections.o0_o.posix.plugins.module_utils import (
+    canonicalize,
+    lookup_user,
+)
 
 # The three answers a name can get.  They are the absence contract in
 # a word: a value found, a null gathered, or a store never asked.
@@ -283,23 +286,7 @@ UNKNOWN = "unknown"
 # the errors keyword a lookup call takes
 PATH_ERRORS = ("strict", "warn", "ignore")
 
-
-def canonicalize(path: str) -> str:
-    """Reduce an absolute path to the one form the store keys it by.
-
-    The store keys a path by what it is rather than by how it was
-    written, so a trailing slash, a doubled separator, and a ``.`` or
-    ``..`` component all collapse into the same key here.  A leading
-    ``//`` is the one form ``posixpath`` keeps and the store refuses,
-    so it collapses too.
-
-    :param str path: An absolute path as it was written
-    :returns str: The path in the form the o0_paths store keys
-    """
-    canonical = posixpath.normpath(path)
-    while canonical.startswith("//"):
-        canonical = canonical[1:]
-    return canonical
+__all__ = ["LookupModule", "canonicalize"]
 
 
 class LookupModule(LookupBase, VarsLookupBase):
