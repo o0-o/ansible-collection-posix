@@ -50,7 +50,9 @@ def test_the_executable_claim_names_where_it_came_from() -> None:
     """Test a lookup's claim is marked as inferred, leaving a probe of
     the mode free to say something else without the two blending."""
 
-    paths, _, _ = process_command_lookups([_lookup("awk", "/usr/bin/awk")])
+    paths, _missing, _errors = process_command_lookups(
+        [_lookup("awk", "/usr/bin/awk")]
+    )
 
     assert paths["/usr/bin/awk"]["executable_evidence"] == "inferred"
 
@@ -60,7 +62,7 @@ def test_a_miss_files_null_at_each_candidate_path() -> None:
     its name in every directory they searched, which the resolutions
     themselves are the evidence for."""
 
-    paths, missing, _ = process_command_lookups(
+    paths, missing, _errors = process_command_lookups(
         [
             _lookup("awk", "/usr/bin/awk"),
             _lookup("tar", "/bin/tar"),
@@ -77,7 +79,7 @@ def test_a_miss_names_no_candidate_without_a_resolution() -> None:
     """Test a sweep that resolved nothing searched no directory it can
     name, so its misses file nothing rather than a guess."""
 
-    paths, missing, _ = process_command_lookups([_lookup("pax", None)])
+    paths, missing, _errors = process_command_lookups([_lookup("pax", None)])
 
     assert set(paths) == {ANSWERING_SHELL}
     assert missing == ["pax"]
@@ -100,7 +102,7 @@ def test_builtins_and_aliases_file_on_the_shell_that_answered() -> None:
     """Test the shell's own entry carries what the shell said about
     itself, sorted, rather than a namespace of its own."""
 
-    paths, _, _ = process_command_lookups(
+    paths, _missing, _errors = process_command_lookups(
         [
             _lookup("cd", "cd"),
             _lookup("[", "["),
@@ -118,7 +120,7 @@ def test_the_shell_entry_is_whole_where_sh_resolved_to_it() -> None:
     """Test one path observed twice by one producer is composed once,
     since the store replaces an entry rather than blending fields."""
 
-    paths, _, _ = process_command_lookups(
+    paths, _missing, _errors = process_command_lookups(
         [_lookup("sh", ANSWERING_SHELL), _lookup("cd", "cd")]
     )
 
@@ -134,7 +136,7 @@ def test_the_shell_answered_even_where_sh_did_not_resolve() -> None:
     """Test the shell that ran the probes is not filed as absent by
     the miss of the name it happens to share."""
 
-    paths, missing, _ = process_command_lookups(
+    paths, missing, _errors = process_command_lookups(
         [_lookup("cat", "/bin/cat"), _lookup("sh", None)]
     )
 
@@ -174,7 +176,7 @@ def test_a_path_the_store_refuses_does_not_take_the_sweep_down() -> None:
     to an error, not the whole observation. The store keys a path one
     way, and repairing the answer here would key it two."""
 
-    paths, _, errors = process_command_lookups(
+    paths, _missing, errors = process_command_lookups(
         [_lookup("awk", "/usr/bin//awk"), _lookup("cat", "/bin/cat")]
     )
 
