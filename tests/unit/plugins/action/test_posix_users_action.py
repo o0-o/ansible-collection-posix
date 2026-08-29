@@ -153,6 +153,30 @@ def test_users_action_without_a_shells_file(monkeypatch, plugin) -> None:
     assert result["o0_users"]["1000"]["shell"] == "/bin/zsh"
 
 
+def test_users_action_gathers_no_ssh_keys(monkeypatch, plugin) -> None:
+    """Test no entry carries keys. Reading them cost four to six round
+    trips per user, and what an SSH key means is the ssh collection's
+    to say, so the gather leaves both to it."""
+    monkeypatch.setattr(
+        plugin,
+        "_read",
+        lambda **kwargs: {
+            "paths": {
+                path: {"type": "directory"}
+                for path in (
+                    kwargs["paths"]
+                    if isinstance(kwargs["paths"], list)
+                    else [kwargs["paths"]]
+                )
+            }
+        },
+    )
+
+    result = plugin.run(task_vars={})
+
+    assert all("keys" not in user for user in result["o0_users"].values())
+
+
 def test_users_action_composes_canonical_users(plugin) -> None:
     """Test users are keyed by UID and carry the canonical fields."""
     result = plugin.run(task_vars={})

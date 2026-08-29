@@ -19,8 +19,6 @@ version_added: "2.0.0"
 description:
   - Collects user and group information from C(/etc/passwd) and
     C(/etc/group) on POSIX hosts.
-  - Gathers SSH keys from user home directories including authorized
-    keys and public key files.
   - Returns the canonical C(o0_users) and C(o0_groups) mappings, keyed
     by stringified UID and GID and cross-referenced by numeric ID.
     The C(o0_o.posix.facts) module publishes the same shape under the
@@ -61,12 +59,8 @@ notes:
     lookup is worth going through rather than reading the store
     directly, because it tells a host that names no login shells from
     one nothing ever asked.
-  - SSH keys are only gathered if the user's C(.ssh) directory is
-    readable.
-  - Both C(authorized_keys) and C(authorized_keys2) files are checked
-    per SSH daemon defaults.
-  - If one authorized_keys file is readable but the other is not, a
-    warning is issued indicating incomplete key information.
+  - The module does not read SSH keys. A key is a fact about SSH, and
+    the collection that knows what one means is where it is gathered.
 seealso:
   - plugin: o0_o.posix.homes
     plugin_type: lookup
@@ -82,10 +76,6 @@ seealso:
       o0_o.posix.passwd filter
       <ansible_collections.o0_o.posix.passwd_filter>
     description: Parse /etc/passwd content
-  - ref: >-
-      o0_o.posix.authorized_keys filter
-      <ansible_collections.o0_o.posix.authorized_keys_filter>
-    description: Parse SSH authorized_keys content
 """
 
 EXAMPLES = r"""
@@ -98,28 +88,11 @@ EXAMPLES = r"""
     o0_users: "{{ system_users['o0_users'] }}"
     o0_groups: "{{ system_users['o0_groups'] }}"
 
-- name: Display SSH keys for a specific user
+- name: Name the users who log in with a shell the host names
   ansible.builtin.debug:
-    msg: "{{ system_users['o0_users']['1000']['keys'] }}"
-  when: "'keys' in system_users['o0_users']['1000']"
-
-- name: Check authorized keys for all users
-  ansible.builtin.debug:
-    msg: >-
-      User {{ item.value.name }} has
-      {{ item.value.keys.authorized | length }} authorized keys
+    msg: "{{ item.value.name }}"
   loop: "{{ system_users['o0_users'] | dict2items }}"
-  when: item.value.keys is defined and item.value.keys.authorized is defined
-
-- name: Find keys that exist in authorized_keys2
-  ansible.builtin.debug:
-    msg: "Key {{ item.key[:20] }}... is in authorized_keys2"
-  loop: >-
-    {{ system_users['o0_users']['1000']['keys']['authorized'] | dict2items }}
-  when:
-    - system_users['o0_users']['1000']['keys'] is defined
-    - item.value.authorized_keys2 is defined
-    - item.value.authorized_keys2
+  when: item.value.shell in lookup('o0_o.posix.shells').shells
 
 - name: List the members of a group by GID
   ansible.builtin.debug:
@@ -163,39 +136,6 @@ o0_users:
       type: list
       elements: int
       sample: [20, 101]
-    keys:
-      description: SSH key information for the user
-      returned: when user's .ssh directory is readable
-      type: dict
-      contains:
-        authorized:
-          description: >-
-            Authorized keys from C(~/.ssh/authorized_keys) and
-            C(~/.ssh/authorized_keys2) files, keyed by SSH key data
-          returned: when authorized_keys files are readable
-          type: dict
-          sample:
-            'AAAAB3NzaC1yc2EAAAADAQABAAABAQ...':
-              type: ssh-rsa
-              comment: user@example.com
-            'AAAAC3NzaC1lZDI1NTE5AAAAIFq...':
-              type: ssh-ed25519
-              authorized_keys2: true
-        public:
-          description: >-
-            Public key files from C(~/.ssh/*.pub), keyed by SSH key
-            data. Only the first line of each .pub file is used.
-          returned: when .ssh directory is readable
-          type: dict
-          sample:
-            'AAAAB3NzaC1yc2EAAAADAQABAAABAQ...':
-              type: ssh-rsa
-              comment: user@host
-              file: id_rsa.pub
-            'AAAAC3NzaC1lZDI1NTE5AAAAIFq...':
-              type: ssh-ed25519
-              comment: personal-key
-              file: id_ed25519.pub
 o0_groups:
   description: >-
     Mapping of groups keyed by stringified GID. Each entry includes the

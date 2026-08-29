@@ -1,0 +1,15 @@
+# vim: ts=2:sw=2:sts=2:et:ft=yaml.ansible
+# -*- mode: yaml; yaml-indent-offset: 2; indent-tabs-mode: nil; -*-
+---
+breaking_changes:
+  - >-
+    users - The keys field leaves o0_users. SSH key gathering is the
+    o0_o.ssh collection's, which is where the parsing already lived -
+    posix imported authorized_keys from it and treated the whole
+    collection as an optional dependency to do so. It cost four to six
+    round trips per user besides, probing each home's .ssh directory
+    and each key file in reads of its own, which on a host past a
+    handful of accounts was the largest thing the module did. Nothing
+    else about o0_users changes; entries that carried keys now carry
+    the passwd fields alone
+    (https://github.com/o0-o/ansible-collection-posix/pull/XXX).
