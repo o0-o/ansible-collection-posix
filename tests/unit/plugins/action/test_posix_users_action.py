@@ -11,7 +11,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Generator
+from typing import Any, Generator, Optional
 
 import pytest
 
@@ -41,6 +41,49 @@ SHELLS = "\n".join(
     ]
 )
 
+FILES = {
+    "/etc/passwd": PASSWD,
+    "/etc/group": GROUP,
+    "/etc/shells": SHELLS,
+}
+
+
+def _mock_run(
+    monkeypatch,
+    plugin: ActionModule,
+    files: dict[str, Optional[str]],
+) -> list[list[dict[str, Any]]]:
+    """Answer the module's one batch of file reads.
+
+    The module reads every file it needs in a single batch, so the
+    mock answers a list of requests rather than one command at a
+    time. A path mapped to None answers as a file that is not there.
+
+    :param monkeypatch: The pytest monkeypatch fixture
+    :param ActionModule plugin: Action instance to patch
+    :param dict[str, Optional[str]] files: Content per path
+    :returns list[list[dict[str, Any]]]: The batches the module issued
+    """
+    batches: list[list[dict[str, Any]]] = []
+
+    def mock_run(commands, **kwargs) -> list[dict[str, Any]]:
+        batches.append(commands)
+        answered = []
+        for request in commands:
+            content = files.get(request["args"]["path"])
+            if content is None:
+                answered.append(
+                    {**request, "rc": 1, "stdout": "", "stderr": "no file"}
+                )
+            else:
+                answered.append(
+                    {**request, "rc": 0, "stdout": content, "stderr": ""}
+                )
+        return answered
+
+    monkeypatch.setattr(plugin, "_run", mock_run)
+    return batches
+
 
 @pytest.fixture
 def plugin(monkeypatch, base) -> Generator[ActionModule, None, None]:
@@ -59,16 +102,7 @@ def plugin(monkeypatch, base) -> Generator[ActionModule, None, None]:
     plugin._display = base._display
     plugin.inventory_hostname = "localhost"
 
-    def mock_cmd(cmd, task_vars=None, **kwargs):
-        if cmd == ["cat", "/etc/passwd"]:
-            return {"rc": 0, "stdout": PASSWD}
-        if cmd == ["cat", "/etc/group"]:
-            return {"rc": 0, "stdout": GROUP}
-        if cmd == ["cat", "/etc/shells"]:
-            return {"rc": 0, "stdout": SHELLS}
-        return {"rc": 1}
-
-    monkeypatch.setattr(plugin, "_command", mock_cmd)
+    _mock_run(monkeypatch, plugin, FILES)
     # Home and shell metadata come from the read action plugin, which
     # is exercised by its own tests.
     monkeypatch.setattr(plugin, "_read", lambda **kwargs: {"paths": {}})
@@ -112,16 +146,15 @@ def test_users_action_files_a_named_shells_path(monkeypatch, plugin) -> None:
     so a host that keeps its login shells elsewhere is not filed as
     having answered for /etc/shells."""
 
-    def mock_cmd(cmd, task_vars=None, **kwargs):
-        if cmd == ["cat", "/etc/passwd"]:
-            return {"rc": 0, "stdout": PASSWD}
-        if cmd == ["cat", "/etc/group"]:
-            return {"rc": 0, "stdout": GROUP}
-        if cmd == ["cat", "/usr/local/etc/shells"]:
-            return {"rc": 0, "stdout": SHELLS}
-        return {"rc": 1}
-
-    monkeypatch.setattr(plugin, "_command", mock_cmd)
+    _mock_run(
+        monkeypatch,
+        plugin,
+        {
+            "/etc/passwd": PASSWD,
+            "/etc/group": GROUP,
+            "/usr/local/etc/shells": SHELLS,
+        },
+    )
     plugin._task.args = {"shells_path": "/usr/local/etc/shells"}
 
     result = plugin.run(task_vars={})
@@ -138,19 +171,50 @@ def test_users_action_without_a_shells_file(monkeypatch, plugin) -> None:
     unmentioned, rather than filed as a file that exists and names
     none."""
 
-    def mock_cmd(cmd, task_vars=None, **kwargs):
-        if cmd == ["cat", "/etc/passwd"]:
-            return {"rc": 0, "stdout": PASSWD}
-        if cmd == ["cat", "/etc/group"]:
-            return {"rc": 0, "stdout": GROUP}
-        return {"rc": 1, "stderr": "no such file"}
-
-    monkeypatch.setattr(plugin, "_command", mock_cmd)
+    _mock_run(
+        monkeypatch,
+        plugin,
+        {"/etc/passwd": PASSWD, "/etc/group": GROUP, "/etc/shells": None},
+    )
 
     result = plugin.run(task_vars={})
 
     assert "o0_paths" not in result
     assert result["o0_users"]["1000"]["shell"] == "/bin/zsh"
+
+
+def test_users_action_reads_its_files_in_one_batch(
+    monkeypatch, plugin
+) -> None:
+    """Test the three files ride one round trip. The module spent one
+    cat apiece, which is three round trips for facts a single batch
+    answers, and the same three the facts module already batched."""
+    batches = _mock_run(monkeypatch, plugin, FILES)
+
+    plugin.run(task_vars={})
+
+    assert len(batches) == 1
+    assert [request["command"] for request in batches[0]] == [
+        ("cat", "/etc/passwd"),
+        ("cat", "/etc/group"),
+        ("cat", "/etc/shells"),
+    ]
+
+
+def test_users_action_fails_on_an_unreadable_passwd(
+    monkeypatch, plugin
+) -> None:
+    """Test a file the composition cannot do without fails the task,
+    naming the path and what the host said about it, rather than
+    publishing a shape composed from half a host."""
+    _mock_run(
+        monkeypatch,
+        plugin,
+        {"/etc/passwd": None, "/etc/group": GROUP, "/etc/shells": SHELLS},
+    )
+
+    with pytest.raises(AnsibleActionFail, match="/etc/passwd"):
+        plugin.run(task_vars={})
 
 
 def test_users_action_gathers_no_ssh_keys(monkeypatch, plugin) -> None:

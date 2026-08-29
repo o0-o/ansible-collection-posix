@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from typing import Any, Optional
 
-from ansible.errors import AnsibleActionFail, AnsibleConnectionFailure
+from ansible.errors import AnsibleActionFail
 from ansible.plugins.action import ActionBase
 
 from ansible_collections.o0_o.posix.plugins.module_utils import (
@@ -28,6 +28,7 @@ from ansible_collections.o0_o.posix.plugins.module_utils import (
     get_dmidecode_command_requests,
     get_effective_uid_command_requests,
     get_env_command_requests,
+    get_file_command_requests,
     get_mount_command_requests,
     get_timezone_command_requests,
     parse_shells,
@@ -35,6 +36,7 @@ from ansible_collections.o0_o.posix.plugins.module_utils import (
     process_dmidecode_command_results,
     process_effective_uid_results,
     process_env_command_results,
+    process_file_command_results,
     process_mount_command_results,
     process_timezone_command_results,
 )
@@ -111,6 +113,13 @@ POSIX_ENV_VARS = [
     "EXINIT",
 ]
 
+# The files a gather reads.  A gather reads the canonical paths; the
+# modules that take a path option are where another one is named.
+FSTAB_PATH = "/etc/fstab"
+GROUP_PATH = "/etc/group"
+PASSWD_PATH = "/etc/passwd"
+SHELLS_PATH = "/etc/shells"
+
 
 def _get_environment_requests() -> list[dict[str, Any]]:
     """Build command requests for POSIX environment collection.
@@ -144,6 +153,106 @@ def _process_environment_results(
     return env_data, []
 
 
+def _get_fstab_requests() -> list[dict[str, Any]]:
+    """Build command requests for the filesystem table.
+
+    :returns list[dict[str, Any]]: Command requests for run plugin
+    """
+    return get_file_command_requests([FSTAB_PATH])
+
+
+def _process_fstab_results(
+    cmds_completed: list[dict[str, Any]],
+) -> tuple[dict[str, Any], list[Exception]]:
+    """Process the fstab read into the path store.
+
+    What a file configures is a fact about that file, so it lands at
+    the file's own path in the one flat store - the bytes under
+    ``content``, the filesystems they name under ``config`` - the way
+    /etc/shells lands the login shells it names.  Live state is a
+    different fact and keeps its own namespace: what is mounted now
+    is ``o0_storage.mounts``, and what the host is configured to
+    mount is this.
+
+    A host with no /etc/fstab leaves the path out of the store
+    rather than filing a null there, because a ``cat`` that failed
+    does not tell a file that is not there from one that could not
+    be read, and a null is the store's word for confirmed absent.
+
+    :param list[dict[str, Any]] cmds_completed: Command results
+    :returns tuple[dict[str, Any], list[Exception]]: Tuple of
+        (facts_dict, errors) where facts_dict has the o0_paths
+        namespace key
+    """
+    content = (
+        process_file_command_results(cmds_completed).get(FSTAB_PATH) or {}
+    ).get("parsed")
+
+    if content is None:
+        return {}, []
+
+    return {
+        "o0_paths": {
+            FSTAB_PATH: {"content": content, "config": fstab(content)}
+        }
+    }, []
+
+
+def _get_users_requests() -> list[dict[str, Any]]:
+    """Build command requests for the files users are named in.
+
+    :returns list[dict[str, Any]]: Command requests for run plugin
+    """
+    return get_file_command_requests([PASSWD_PATH, GROUP_PATH, SHELLS_PATH])
+
+
+def _process_users_results(
+    cmds_completed: list[dict[str, Any]],
+) -> tuple[dict[str, Any], list[Exception]]:
+    """Process the user files into the facts they compose.
+
+    Every fact here comes from the same composition the users module
+    publishes, so both producers emit one shape under one set of
+    names.  The module additionally reads each user's SSH keys into
+    their o0_users entry; a gather does not, because the cost is per
+    user and the answer is not what a gather is for.
+
+    /etc/shells is a single file parsed on its own, so it lands at
+    its own path in the store: the bytes under ``content``, the login
+    shells they name under ``config``.  The homes and shell files the
+    passwd entries name are read after this batch, because a path is
+    only known to be there once it has been read.
+
+    :param list[dict[str, Any]] cmds_completed: Command results
+    :returns tuple[dict[str, Any], list[Exception]]: Tuple of
+        (facts_dict, errors) where facts_dict has the o0_users,
+        o0_groups and o0_paths namespace keys
+    """
+    files = process_file_command_results(cmds_completed)
+    passwd = (files.get(PASSWD_PATH) or {}).get("parsed")
+    group = (files.get(GROUP_PATH) or {}).get("parsed")
+    shells = (files.get(SHELLS_PATH) or {}).get("parsed")
+
+    facts: dict[str, Any] = {}
+
+    # The canonical shape cross-references both files, so it needs
+    # both reads to have landed.
+    if passwd is not None and group is not None:
+        users, groups = compose_users_groups(passwd, group)
+        facts["o0_users"] = users
+        facts["o0_groups"] = groups
+
+    if shells is not None:
+        facts["o0_paths"] = {
+            SHELLS_PATH: {
+                "content": shells,
+                "config": parse_shells(shells),
+            }
+        }
+
+    return facts, []
+
+
 class ActionModule(ReadPosixActionBase, ActionBase):
     """Gather comprehensive POSIX facts from the managed host.
 
@@ -151,9 +260,11 @@ class ActionModule(ReadPosixActionBase, ActionBase):
     organized into logical namespaces: o0_os, o0_hardware,
     o0_storage, o0_network, and o0_users.
 
-    Subsets with COMMAND_SPEC support are batched into a single
-    parallel ``_run()`` call.  Remaining subsets use individual
-    gather methods.
+    Every subset is a set of command requests and a processor that
+    reads their results, so a gather of any size is one parallel
+    ``_run()`` call.  The files a subset reads travel in that batch
+    beside the probes, which is why reading four of them costs
+    nothing over reading none.
     """
 
     TRANSFERS_FILES = False
@@ -182,8 +293,9 @@ class ActionModule(ReadPosixActionBase, ActionBase):
         "storage": {"mounts", "fstab"},
     }
 
-    # Subsets that use the COMMAND_SPEC batched path
-    BATCHED_SUBSETS = {
+    # Every subset, each naming the requests it puts in the batch and
+    # the processor that reads their results back out
+    SUBSETS = {
         "uname": {
             "requests": get_uname_command_requests,
             "processor": process_uname_command_results,
@@ -208,22 +320,18 @@ class ActionModule(ReadPosixActionBase, ActionBase):
             "requests": _get_environment_requests,
             "processor": _process_environment_results,
         },
+        "fstab": {
+            "requests": _get_fstab_requests,
+            "processor": _process_fstab_results,
+        },
+        "users": {
+            "requests": _get_users_requests,
+            "processor": _process_users_results,
+        },
     }
 
     # Subsets whose results go under o0_users[effective_uid]
     USER_SCOPED_SUBSETS = {"environment"}
-
-    # Subsets that use individual gather methods (legacy path)
-    LEGACY_METHODS = {
-        "fstab": "_gather_fstab",
-        "users": "_gather_users",
-    }
-
-    # All valid subsets (union of both)
-    SUBSET_METHODS = {
-        **{k: None for k in BATCHED_SUBSETS},
-        **LEGACY_METHODS,
-    }
 
     # The namespace that has a composer of its own
     PATHS_NAMESPACE = "o0_paths"
@@ -269,122 +377,46 @@ class ActionModule(ReadPosixActionBase, ActionBase):
                 else:
                     all_facts[ns][key] = value
 
-    def _read_files(
+    def _read_user_paths(
         self,
-        paths: list[str],
+        users: dict[str, Any],
         task_vars: Optional[dict[str, Any]] = None,
-    ) -> dict[str, Optional[str]]:
-        """Read the named files in a single round trip.
-
-        The module gathers facts from hosts that have no Python, so a
-        file a fact is read from is read the way every other fact is
-        gathered: a batched command with the raw fallback under it,
-        never slurp.  A file that did not answer reads None, leaving
-        the facts it feeds unpublished rather than guessed at.
-
-        :param list[str] paths: Paths to read
-        :param Optional[dict[str, Any]] task_vars: Task variables
-        :returns dict[str, Optional[str]]: Content per path, None
-            where the read failed
-        """
-        results = self._run(
-            {path: ["cat", path] for path in paths},
-            parallel=True,
-            fail_fast=False,
-            task_vars=task_vars,
-            check_mode=False,
-        )
-
-        contents: dict[str, Optional[str]] = {}
-        for path in paths:
-            result = results.get(path) or {}
-            if result.get("rc") == 0:
-                contents[path] = result.get("stdout") or ""
-            else:
-                contents[path] = None
-
-        return contents
-
-    def _gather_fstab(
-        self, task_vars: Optional[dict[str, Any]] = None
     ) -> dict[str, Any]:
-        """Gather /etc/fstab configuration.
+        """Read the paths the passwd entries named.
 
+        Homes and shell files are both metadata reads over paths a
+        passwd line already named, so they are read together, in one
+        batch.  That batch cannot join the batch that read
+        /etc/passwd: the paths are not known until that read has been
+        parsed, and a path is only known to be there once it has been
+        read.
+
+        A home is a path, so it is an entry of ``o0_paths`` rather
+        than a namespace of its own, tagged home and carrying the UIDs
+        that live there.
+
+        :param dict[str, Any] users: The o0_users mapping the batch
+            composed
         :param Optional[dict[str, Any]] task_vars: Task variables
-        :returns dict[str, Any]: Fstab facts
+        :returns dict[str, Any]: The shell files, and the home entries
+            of the path store
         """
-        content = self._read_files(["/etc/fstab"], task_vars)["/etc/fstab"]
 
-        if content is None:
-            return {}
+        def read_paths(paths: list[str]) -> dict[str, Any]:
+            return self._read(paths=paths, task_vars=task_vars)
 
-        return {"o0_storage": {"config": {"/etc/fstab": fstab(content)}}}
+        known_shell_files = (task_vars or {}).get("o0_shell_files")
+        read = batch_read(users, read_paths, known_shell_files)
 
-    def _gather_users(
-        self, task_vars: Optional[dict[str, Any]] = None
-    ) -> dict[str, Any]:
-        """Gather user, group, home and shell information.
-
-        Every fact here comes from the same composition the users
-        module publishes, so both producers emit one shape under one
-        set of names.  The module additionally reads each user's SSH
-        keys into their o0_users entry; a gather does not, because the
-        cost is per user and the answer is not what a gather is for.
-
-        Homes are paths, so they are entries of ``o0_paths`` rather
-        than a namespace of their own, and /etc/shells is a single
-        file parsed on its own, so it lands at its own path there too:
-        the bytes read under ``content``, the login shells they name
-        under ``config``.  Both compose into the one store, so a
-        gather that observed both reports both.
-
-        :param Optional[dict[str, Any]] task_vars: Task variables
-        :returns dict[str, Any]: User, group, shell and home facts
-        """
-        contents = self._read_files(
-            ["/etc/passwd", "/etc/group", "/etc/shells"], task_vars
-        )
-        passwd = contents["/etc/passwd"]
-        group = contents["/etc/group"]
-        shells = contents["/etc/shells"]
-
-        facts: dict[str, Any] = {}
-        paths: dict[str, Any] = {}
-
-        # The canonical shape cross-references both files, so it needs
-        # both reads to have landed.
-        if passwd is not None and group is not None:
-            users, groups = compose_users_groups(passwd, group)
-
-            def read_paths(paths: list[str]) -> dict[str, Any]:
-                return self._read(paths=paths, task_vars=task_vars)
-
-            # Homes and shell files are both metadata reads over paths
-            # the passwd entries already named, so they are read
-            # together
-            known_shell_files = (task_vars or {}).get("o0_shell_files")
-            read = batch_read(users, read_paths, known_shell_files)
-
-            facts["o0_users"] = users
-            facts["o0_groups"] = groups
-            facts["o0_shell_files"] = compose_shell_files(
+        facts: dict[str, Any] = {
+            "o0_shell_files": compose_shell_files(
                 users, read, known_shell_files
             )
-            paths = compose_paths(paths, compose_homes(users, read))
+        }
 
-        if shells is not None:
-            paths = compose_paths(
-                paths,
-                {
-                    "/etc/shells": {
-                        "content": shells,
-                        "config": parse_shells(shells),
-                    }
-                },
-            )
-
-        if paths:
-            facts["o0_paths"] = paths
+        homes = compose_paths(None, compose_homes(users, read))
+        if homes:
+            facts["o0_paths"] = homes
 
         return facts
 
@@ -414,7 +446,7 @@ class ActionModule(ReadPosixActionBase, ActionBase):
             for member in self.SUBSET_GROUPS[name]:
                 if member in self.SUBSET_GROUPS:
                     pending.append(member)
-                elif member in self.SUBSET_METHODS:
+                elif member in self.SUBSETS:
                     subsets.add(member)
                 else:
                     raise AnsibleActionFail(
@@ -431,7 +463,7 @@ class ActionModule(ReadPosixActionBase, ActionBase):
         :returns set[str]: Set of individual subsets to gather
         """
         if all(s.startswith("!") for s in gather_subset):
-            selected = set(self.SUBSET_METHODS.keys())
+            selected = set(self.SUBSETS.keys())
         else:
             selected = set()
 
@@ -444,12 +476,12 @@ class ActionModule(ReadPosixActionBase, ActionBase):
                 # A typo'd exclusion silently gathering what it meant
                 # to exclude is worse than a typo'd selection: unknown
                 # names fail in both polarities
-                if subset[1:] not in self.SUBSET_METHODS:
+                if subset[1:] not in self.SUBSETS:
                     raise AnsibleActionFail(f"Invalid gather_subset: {subset}")
                 selected.discard(subset[1:])
             elif subset in self.SUBSET_GROUPS:
                 selected.update(self._expand_group(subset))
-            elif subset in self.SUBSET_METHODS:
+            elif subset in self.SUBSETS:
                 selected.add(subset)
             else:
                 raise AnsibleActionFail(f"Invalid gather_subset: {subset}")
@@ -463,8 +495,11 @@ class ActionModule(ReadPosixActionBase, ActionBase):
     ) -> dict[str, Any]:
         """Execute fact gathering for selected subsets.
 
-        Batched subsets are aggregated and executed in a single
-        parallel ``_run()`` call.  Legacy subsets run individually.
+        Every selected subset's requests are aggregated and executed
+        in a single parallel ``_run()`` call, the files they read
+        included.  The homes and shell files the users subset
+        publishes are read after it, because the paths are what that
+        batch answered with.
 
         The ``environment`` subset collects POSIX env vars and
         places them under ``o0_users[<effective uid>]['environment']``.
@@ -501,13 +536,13 @@ class ActionModule(ReadPosixActionBase, ActionBase):
         )
 
         all_facts = {}
+        user_facts: dict[str, Any] = {}
 
-        # Phase 1: Aggregate and execute batched subsets
-        batched_selected = selected_subsets & self.BATCHED_SUBSETS.keys()
-        if batched_selected:
+        # Phase 1: Aggregate and execute every selected subset
+        if selected_subsets:
             all_requests = []
-            for subset in batched_selected:
-                spec = self.BATCHED_SUBSETS[subset]
+            for subset in selected_subsets:
+                spec = self.SUBSETS[subset]
                 requests = spec["requests"]()
                 self._display.vvv(
                     f"Batched {subset}: {len(requests)} command(s)"
@@ -517,7 +552,7 @@ class ActionModule(ReadPosixActionBase, ActionBase):
             self._display.vvv(
                 f"Executing {len(all_requests)} batched "
                 f"command(s) for "
-                f"{', '.join(sorted(batched_selected))}"
+                f"{', '.join(sorted(selected_subsets))}"
             )
 
             run_results = self._run(
@@ -528,14 +563,18 @@ class ActionModule(ReadPosixActionBase, ActionBase):
                 check_mode=False,
             )
 
-            for subset in batched_selected:
-                spec = self.BATCHED_SUBSETS[subset]
+            for subset in selected_subsets:
+                spec = self.SUBSETS[subset]
                 try:
                     facts, errors = spec["processor"](run_results)
                     for err in errors:
                         self._display.warning(
                             f"[{self.inventory_hostname}] {err}"
                         )
+
+                    # Kept for the read that follows the batch
+                    if subset == "users":
+                        user_facts = facts
 
                     # User-scoped subsets nest under o0_users, which
                     # keys on the UID
@@ -584,22 +623,13 @@ class ActionModule(ReadPosixActionBase, ActionBase):
                         f"Failed to process {subset}: {e}"
                     )
 
-        # Phase 2: Execute legacy subsets individually
-        legacy_selected = selected_subsets & self.LEGACY_METHODS.keys()
-        for subset in legacy_selected:
-            method_name = self.LEGACY_METHODS[subset]
-            gather_method = getattr(self, method_name)
-
-            try:
-                subset_facts = gather_method(task_vars=task_vars)
-                self._merge_facts(all_facts, subset_facts)
-            except AnsibleConnectionFailure:
-                raise
-            except Exception as e:
-                self._display.warning(
-                    f"[{self.inventory_hostname}] "
-                    f"Failed to gather {subset} facts: {e}"
-                )
+        # Phase 2: Read the paths the passwd entries named, which the
+        # batch had to answer before they could be asked about
+        if user_facts.get("o0_users"):
+            self._merge_facts(
+                all_facts,
+                self._read_user_paths(user_facts["o0_users"], task_vars),
+            )
 
         result["ansible_facts"] = all_facts
         result["changed"] = False

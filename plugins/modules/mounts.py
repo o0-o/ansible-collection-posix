@@ -280,7 +280,8 @@ fstab:
     where the file could not be read. Every key is present on every
     entry, null where the file omitted the field.
     M(o0_o.posix.facts) publishes the same list under
-    C(o0_storage.config['/etc/fstab']).
+    C(o0_paths['/etc/fstab']['config']), where what a file configures
+    is a fact about that file.
   returned: always
   type: list
   elements: dict

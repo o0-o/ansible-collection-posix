@@ -25,7 +25,7 @@ from ansible_collections.o0_o.posix.plugins.action.users import (
     ActionModule as UsersActionModule,
 )
 
-# The files the legacy subsets read, as a host answers them
+# The files the users and fstab subsets read, as a host answers them
 ETC_PASSWD = (
     "root:*:0:0:System Administrator:/var/root:/bin/sh\n"
     "o0-o:*:1000:20:o0-o:/home/o0-o:/bin/zsh"
@@ -111,17 +111,46 @@ def _mock_effective_uid(monkeypatch, uid) -> None:
     )
 
 
+def _answer_files(
+    commands: list[dict[str, Any]],
+    files: dict[str, Optional[str]],
+) -> list[dict[str, Any]]:
+    """Answer the file reads a batch carries, as a host would.
+
+    Every subset hands ``_run`` one list of command requests, the
+    ``cat`` of each file a subset reads among them. A file the mapping
+    holds answers with its content, and one mapped to None answers as
+    a file that is not there.
+
+    :param list[dict[str, Any]] commands: The batch's requests
+    :param dict[str, Optional[str]] files: Content per path
+    :returns list[dict[str, Any]]: The file requests, answered
+    """
+    answered = []
+    for request in commands:
+        if request.get("type") != "file":
+            continue
+        content = files.get(request["args"]["path"])
+        if content is None:
+            answered.append(
+                {**request, "rc": 1, "stdout": "", "stderr": "no file"}
+            )
+        else:
+            answered.append(
+                {**request, "rc": 0, "stdout": content, "stderr": ""}
+            )
+    return answered
+
+
 def _mock_run(
     monkeypatch,
     plugin: ActionModule,
     files: Optional[dict[str, Optional[str]]] = None,
 ) -> None:
-    """Answer both shapes of ``_run`` the action issues.
+    """Answer the one batch the action issues.
 
-    The batched subsets hand ``_run`` a list of command requests and
-    read their results through their processors; the legacy subsets
-    hand it a mapping of path to ``cat``, so the mapping answers with
-    file content and a path mapped to None answers as unreadable.
+    The probes the other subsets contribute go unanswered, because a
+    test that wants them patches their processor instead.
 
     :param monkeypatch: The pytest monkeypatch fixture
     :param ActionModule plugin: Action instance to patch
@@ -130,18 +159,28 @@ def _mock_run(
     files = files or {}
 
     def mock_run(commands, **kwargs) -> Any:
-        if not isinstance(commands, dict):
+        if not isinstance(commands, list):
             return []
-        answers = {}
-        for path in commands:
-            content = files.get(path)
-            if content is None:
-                answers[path] = {"rc": 1, "stdout": "", "stderr": "no file"}
-            else:
-                answers[path] = {"rc": 0, "stdout": content}
-        return answers
+        return _answer_files(commands, files)
 
     monkeypatch.setattr(plugin, "_run", mock_run)
+
+
+def _gather(
+    plugin: ActionModule,
+    subset: str,
+    task_vars: Optional[dict[str, Any]] = None,
+) -> dict[str, Any]:
+    """Gather one subset and return the facts it published.
+
+    :param ActionModule plugin: Action instance to run
+    :param str subset: The subset to gather
+    :param Optional[dict[str, Any]] task_vars: Task variables
+    :returns dict[str, Any]: The published ansible_facts
+    """
+    plugin._task.args = {"gather_subset": [subset]}
+    result = plugin.run(tmp=None, task_vars=task_vars or {})
+    return result["ansible_facts"]
 
 
 def _mock_read(monkeypatch, plugin: Any) -> None:
@@ -281,7 +320,7 @@ class TestResolveSubsets:
     def test_all_is_every_subset(self, plugin) -> None:
         """Test 'all' resolves to every subset there is, which it can
         only do by expanding the groups it names."""
-        assert plugin._resolve_subsets(["all"]) == set(plugin.SUBSET_METHODS)
+        assert plugin._resolve_subsets(["all"]) == set(plugin.SUBSETS)
 
     def test_all_contains_the_storage_group(self, plugin) -> None:
         """Test the members of a group named inside 'all' are
@@ -296,7 +335,7 @@ class TestResolveSubsets:
         for group in plugin.SUBSET_GROUPS:
             expanded = plugin._expand_group(group)
             assert expanded
-            assert expanded <= set(plugin.SUBSET_METHODS)
+            assert expanded <= set(plugin.SUBSETS)
 
     def test_exclusion_gathers_less_than_all(self, plugin) -> None:
         """Test an exclusion is a strict subset of 'all'. It once
@@ -427,16 +466,27 @@ class TestBatchedExecution:
 
     def test_environment_in_batched(self, plugin) -> None:
         """Test environment is a batched subset."""
-        assert "environment" in plugin.BATCHED_SUBSETS
+        assert "environment" in plugin.SUBSETS
+
+    def test_every_subset_is_batched(self, plugin) -> None:
+        """Test one table names every subset, so no subset gathers
+        outside the batch. fstab and users were the last two, each
+        spending round trips of their own for reads the batch could
+        have carried."""
+        assert {"fstab", "users"} <= set(plugin.SUBSETS)
+        assert all(
+            callable(spec["requests"]) and callable(spec["processor"])
+            for spec in plugin.SUBSETS.values()
+        )
+        assert not hasattr(plugin, "LEGACY_METHODS")
 
     def test_locale_derived_from_env(self, plugin) -> None:
         """Test locale is not a separate subset."""
-        assert "locale" not in plugin.BATCHED_SUBSETS
-        assert "locale" not in plugin.LEGACY_METHODS
+        assert "locale" not in plugin.SUBSETS
 
     def test_timezone_in_batched_system_scoped(self, plugin) -> None:
         """Test timezone is batched and system-scoped."""
-        assert "timezone" in plugin.BATCHED_SUBSETS
+        assert "timezone" in plugin.SUBSETS
         assert "timezone" not in plugin.USER_SCOPED_SUBSETS
 
     def test_run_environment_keys_by_uid(self, monkeypatch, plugin) -> None:
@@ -460,7 +510,7 @@ class TestBatchedExecution:
             )
 
         monkeypatch.setitem(
-            plugin.BATCHED_SUBSETS["environment"],
+            plugin.SUBSETS["environment"],
             "processor",
             mock_processor,
         )
@@ -526,7 +576,7 @@ class TestBatchedExecution:
 
         monkeypatch.setattr(plugin, "_run", lambda commands, **kwargs: [])
         monkeypatch.setitem(
-            plugin.BATCHED_SUBSETS["environment"],
+            plugin.SUBSETS["environment"],
             "processor",
             lambda results: ({"LANG": "C"}, []),
         )
@@ -550,7 +600,7 @@ class TestBatchedExecution:
             return ({"HOME": "/home/testuser"}, [])
 
         monkeypatch.setitem(
-            plugin.BATCHED_SUBSETS["environment"],
+            plugin.SUBSETS["environment"],
             "processor",
             mock_processor,
         )
@@ -574,7 +624,7 @@ class TestBatchedExecution:
             return ({"LANG": "C"}, [])
 
         monkeypatch.setitem(
-            plugin.BATCHED_SUBSETS["environment"],
+            plugin.SUBSETS["environment"],
             "processor",
             mock_processor,
         )
@@ -603,7 +653,7 @@ class TestGatherUsers:
             },
         )
 
-        facts = plugin._gather_users(task_vars={})
+        facts = _gather(plugin, "users")
 
         assert facts["o0_users"]["1000"] == {
             "name": "o0-o",
@@ -639,7 +689,7 @@ class TestGatherUsers:
             },
         )
 
-        facts = plugin._gather_users(task_vars={})
+        facts = _gather(plugin, "users")
 
         assert set(facts) == {
             "o0_users",
@@ -679,8 +729,10 @@ class TestGatherUsers:
             },
         )
 
-        facts = plugin._gather_users(
-            task_vars={"o0_shell_files": {"/bin/ksh": {"type": "regular"}}}
+        facts = _gather(
+            plugin,
+            "users",
+            task_vars={"o0_shell_files": {"/bin/ksh": {"type": "regular"}}},
         )
 
         assert set(facts["o0_shell_files"]) == {
@@ -690,26 +742,26 @@ class TestGatherUsers:
         }
 
     def test_one_round_trip(self, monkeypatch, plugin) -> None:
-        """Test all three files are read in a single batch."""
+        """Test all three files are read in a single batch, the one
+        batch the gather issues rather than a batch of its own."""
         _no_python(monkeypatch, plugin)
         _mock_read(monkeypatch, plugin)
         batches = []
 
         def mock_run(commands, **kwargs):
             batches.append(commands)
-            return {path: {"rc": 0, "stdout": ""} for path in commands}
+            return _answer_files(commands, {})
 
         monkeypatch.setattr(plugin, "_run", mock_run)
 
-        plugin._gather_users(task_vars={})
+        _gather(plugin, "users")
 
         assert len(batches) == 1
-        assert set(batches[0]) == {
-            "/etc/passwd",
-            "/etc/group",
-            "/etc/shells",
-        }
-        assert batches[0]["/etc/passwd"] == ["cat", "/etc/passwd"]
+        assert [request["command"] for request in batches[0]] == [
+            ("cat", "/etc/passwd"),
+            ("cat", "/etc/group"),
+            ("cat", "/etc/shells"),
+        ]
 
     def test_one_metadata_read(self, monkeypatch, plugin) -> None:
         """Test the homes and the shell files are read together, in
@@ -739,7 +791,7 @@ class TestGatherUsers:
             },
         )
 
-        facts = plugin._gather_users(task_vars={})
+        facts = _gather(plugin, "users")
 
         assert asked == [["/bin/sh", "/bin/zsh", "/home/o0-o", "/var/root"]]
         assert facts["o0_paths"]["/home/o0-o"]["residents"] == [1000]
@@ -763,7 +815,7 @@ class TestGatherUsers:
             },
         )
 
-        facts = plugin._gather_users(task_vars={})
+        facts = _gather(plugin, "users")
 
         assert "o0_users" not in facts
         assert "o0_groups" not in facts
@@ -790,7 +842,7 @@ class TestGatherUsers:
             },
         )
 
-        facts = plugin._gather_users(task_vars={})
+        facts = _gather(plugin, "users")
 
         assert facts["o0_paths"]["/etc/shells"] == {
             "content": ETC_SHELLS,
@@ -813,7 +865,7 @@ class TestGatherUsers:
             },
         )
 
-        facts = plugin._gather_users(task_vars={})
+        facts = _gather(plugin, "users")
 
         # The homes the same gather read are still in the store; the
         # file it could not read is the one path missing from it
@@ -825,23 +877,44 @@ class TestGatherUsers:
 class TestGatherFstab:
     """Tests for the /etc/fstab configuration fact."""
 
-    def test_parsed_under_storage_config(self, monkeypatch, plugin) -> None:
-        """Test fstab lands under o0_storage.config keyed by path."""
+    def test_parsed_at_the_path_of_the_file(self, monkeypatch, plugin) -> None:
+        """Test what a file configures is a fact about that file: the
+        bytes under content and the filesystems they name under
+        config, at the file's own key in the flat path store, the way
+        /etc/shells lands the login shells it names."""
         _no_python(monkeypatch, plugin)
         _mock_run(monkeypatch, plugin, {"/etc/fstab": ETC_FSTAB})
 
-        facts = plugin._gather_fstab(task_vars={})
+        facts = _gather(plugin, "fstab")
 
-        entries = facts["o0_storage"]["config"]["/etc/fstab"]
-        assert entries[0]["mount"] == "/"
-        assert entries[0]["type"] == "ffs"
+        entry = facts["o0_paths"]["/etc/fstab"]
+        assert entry["content"] == ETC_FSTAB
+        assert entry["config"][0]["mount"] == "/"
+        assert entry["config"][0]["type"] == "ffs"
+
+    def test_live_state_keeps_its_own_namespace(
+        self, monkeypatch, plugin
+    ) -> None:
+        """Test the fstab subset writes nothing under o0_storage,
+        which holds what is mounted now rather than what the host is
+        configured to mount."""
+        _no_python(monkeypatch, plugin)
+        _mock_run(monkeypatch, plugin, {"/etc/fstab": ETC_FSTAB})
+
+        facts = _gather(plugin, "fstab")
+
+        assert set(facts) == {"o0_paths"}
+        assert set(facts["o0_paths"]) == {"/etc/fstab"}
 
     def test_absent_file_publishes_nothing(self, monkeypatch, plugin) -> None:
-        """Test a host without /etc/fstab publishes no config fact."""
+        """Test a host without /etc/fstab leaves the path out of the
+        store rather than filing a null there, which is the store's
+        word for a path confirmed absent - and a cat that failed does
+        not tell an absent file from an unreadable one."""
         _no_python(monkeypatch, plugin)
         _mock_run(monkeypatch, plugin, {"/etc/fstab": None})
 
-        assert plugin._gather_fstab(task_vars={}) == {}
+        assert _gather(plugin, "fstab") == {}
 
 
 class TestDefaultGather:
@@ -851,10 +924,10 @@ class TestDefaultGather:
     def gathered(self, monkeypatch, plugin) -> dict[str, Any]:
         """Run a default gather with every real producer's shape.
 
-        Each batched processor answers with the facts that subset
-        really emits and the legacy pair reads fabricated files, so
-        the merge that publishes them runs exactly as it does on a
-        host.
+        The probing subsets' processors answer with the facts they
+        really emit, and the two that read files read fabricated ones
+        out of the same batch, so the merge that publishes them runs
+        exactly as it does on a host.
 
         :returns dict[str, Any]: The published ansible_facts
         """
@@ -875,7 +948,7 @@ class TestDefaultGather:
 
         for subset, facts in PRODUCER_FACTS.items():
             monkeypatch.setitem(
-                plugin.BATCHED_SUBSETS[subset],
+                plugin.SUBSETS[subset],
                 "processor",
                 lambda results, facts=facts: (facts, []),
             )
@@ -899,7 +972,7 @@ class TestDefaultGather:
         assert gathered["o0_os"]["compliance"]["posix"]["supported"] is True
         assert gathered["o0_hardware"]["baseboard"]["make"] == "Apple Inc."
         assert gathered["o0_storage"]["mounts"]["/"]["type"] == "apfs"
-        assert gathered["o0_storage"]["config"]["/etc/fstab"][0]["type"] == (
+        assert gathered["o0_paths"]["/etc/fstab"]["config"][0]["type"] == (
             "ffs"
         )
         assert gathered["o0_users"]["1000"]["name"] == "o0-o"
@@ -925,21 +998,27 @@ class TestDefaultGather:
             "/bin/zsh",
         ]
 
-    def test_two_subsets_share_one_path_store(self, gathered) -> None:
-        """Test the compliance sweep and the users read compose into
-        one store rather than each replacing the other's paths."""
+    def test_three_subsets_share_one_path_store(self, gathered) -> None:
+        """Test the compliance sweep, the users read and the fstab
+        read compose into one store rather than each replacing the
+        others' paths."""
         paths = gathered["o0_paths"]
         assert paths["/bin/sh"]["builtins"] == ["cd", "exec"]
         assert paths["/usr/bin/awk"]["executable"] is True
         assert paths["/etc/shells"]["content"] == ETC_SHELLS
+        assert paths["/etc/fstab"]["content"] == ETC_FSTAB
+        assert paths["/home/o0-o"]["tags"] == ["posix", "home"]
 
     def test_the_retired_namespaces_are_gone(self, gathered) -> None:
-        """Test the two namespaces the path store absorbed are not
+        """Test the namespaces the path store absorbed are not
         published beside it. A second copy of an answer is a copy that
         can drift from the first."""
         assert "o0_missing" not in gathered
         assert "o0_shells" not in gathered
         assert "shells" not in gathered["o0_os"]
+        # What the host is configured to mount is a fact about the
+        # file that configures it; o0_storage holds live state
+        assert set(gathered["o0_storage"]) == {"mounts"}
 
     def test_two_producers_share_one_user(self, gathered) -> None:
         """Test the environment subset and /etc/passwd meet in one
@@ -1013,14 +1092,13 @@ class TestUsersProducersAgree:
         module._display = base._display
         module.inventory_hostname = "localhost"
 
-        def mock_cmd(cmd, task_vars=None, **kwargs):
-            if isinstance(cmd, list) and cmd[:1] == ["cat"]:
-                content = self.ETC_FILES.get(cmd[1])
-                if content is not None:
-                    return {"rc": 0, "stdout": content}
-            return {"rc": 1}
-
-        monkeypatch.setattr(module, "_command", mock_cmd)
+        monkeypatch.setattr(
+            module,
+            "_run",
+            lambda commands, **kwargs: _answer_files(
+                commands, self.ETC_FILES
+            ),
+        )
         _mock_read(monkeypatch, module)
 
         return module.run(task_vars={})
@@ -1036,7 +1114,7 @@ class TestUsersProducersAgree:
         _mock_read(monkeypatch, plugin)
         _mock_run(monkeypatch, plugin, self.ETC_FILES)
 
-        gathered = plugin._gather_users(task_vars={})
+        gathered = _gather(plugin, "users")
 
         assert set(gathered) == {
             "o0_users",

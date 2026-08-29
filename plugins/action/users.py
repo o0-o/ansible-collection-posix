@@ -23,12 +23,18 @@ from ansible_collections.o0_o.posix.plugins.module_utils import (
     compose_paths,
     compose_shell_files,
     compose_users_groups,
+    get_file_command_requests,
     parse_shells,
+    process_file_command_results,
 )
 
 
 class ActionModule(ReadPosixActionBase, ActionBase):
-    """Gather user and group information from POSIX hosts."""
+    """Gather user and group information from POSIX hosts.
+
+    Two round trips: one batch reads the files users are named in,
+    and one metadata read describes the paths those files named.
+    """
 
     TRANSFERS_FILES = False
     _requires_connection = True
@@ -74,9 +80,15 @@ class ActionModule(ReadPosixActionBase, ActionBase):
         group_path = module_args["group_path"]
         shells_path = module_args["shells_path"]
 
+        # Three files, one round trip: a read is a command like any
+        # other, so the reads travel together the way a gather's do
+        files = self._read_files(
+            [passwd_path, group_path, shells_path], task_vars
+        )
+
         users, groups = compose_users_groups(
-            self._read_text_file(passwd_path, task_vars),
-            self._read_text_file(group_path, task_vars),
+            self._content(files, passwd_path),
+            self._content(files, group_path),
         )
 
         def read_paths(paths: list[str]) -> dict[str, Any]:
@@ -110,7 +122,7 @@ class ActionModule(ReadPosixActionBase, ActionBase):
         # whose file could not be read leaves the path unmentioned
         # rather than empty, which would read as a host that names
         # none.
-        shells = self._read_text_file(shells_path, task_vars, required=False)
+        shells = self._content(files, shells_path, required=False)
         if shells is not None:
             paths = compose_paths(
                 paths,
@@ -127,18 +139,59 @@ class ActionModule(ReadPosixActionBase, ActionBase):
 
         return result
 
-    def _read_text_file(
+    def _read_files(
         self,
-        path: str,
+        paths: list[str],
         task_vars: dict[str, Any],
+    ) -> dict[str, dict[str, Any]]:
+        """Read the named files in a single round trip.
+
+        The module gathers facts from hosts that have no Python, so a
+        file a fact is read from is read the way every other fact is
+        gathered: a batched command with the raw fallback under it,
+        never slurp.
+
+        :param list[str] paths: Paths to read
+        :param dict[str, Any] task_vars: Task variables
+        :returns dict[str, dict[str, Any]]: What the batch learned
+            about each path, keyed by path
+        """
+        return process_file_command_results(
+            self._run(
+                get_file_command_requests(paths),
+                parallel=True,
+                fail_fast=False,
+                task_vars=task_vars,
+                check_mode=False,
+            )
+        )
+
+    def _content(
+        self,
+        files: dict[str, dict[str, Any]],
+        path: str,
         required: bool = True,
     ) -> Optional[str]:
-        cmd_result = self._command(
-            ["cat", path], task_vars=task_vars, check_mode=False
-        )
-        if cmd_result.get("rc") != 0:
-            if not required:
-                return None
-            error_msg = cmd_result.get("stderr") or cmd_result.get("stdout")
-            raise AnsibleActionFail(f"Failed to read {path}: {error_msg}")
-        return cmd_result.get("stdout", "")
+        """The bytes one of the batched reads answered with.
+
+        A file the module cannot compose a fact without is required,
+        and a read of it that failed fails the task rather than
+        publishing a shape short a half.  A file the host need not
+        have is not, and reads None so the fact it feeds is left
+        unmentioned.
+
+        :param dict[str, dict[str, Any]] files: What the batch learned
+        :param str path: The path whose content is wanted
+        :param bool required: Whether a failed read fails the task
+        :returns Optional[str]: The content, or None where a file that
+            was not required did not answer
+        :raises AnsibleActionFail: If a required file did not answer
+        """
+        result = files.get(path) or {}
+        content = result.get("parsed")
+
+        if content is None and required:
+            error = result.get("stderr") or result.get("stdout")
+            raise AnsibleActionFail(f"Failed to read {path}: {error}")
+
+        return content

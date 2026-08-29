@@ -58,6 +58,17 @@ ENV_COMMAND_SPEC = {
     },
 }
 
+# Reading a file's bytes. No parser: the bytes are the answer, and
+# what they mean is the reader's to parse. One request per path, so a
+# producer's file reads ride the batch its probes ride.
+FILE_COMMAND_SPEC = {
+    "posix": {
+        "file": {
+            "command": ("cat", "{path}"),
+        },
+    },
+}
+
 # Effective user id spec — the key the canonical user facts nest under
 ID_COMMAND_SPEC = {
     "posix": {

@@ -364,8 +364,11 @@ ansible_facts:
           type: str
           sample: No errors detected
     o0_storage:
-      description: Facts about filesystems.
-      returned: when the mounts or fstab subset is gathered
+      description: >-
+        What is mounted on the host now. Live state only - what the
+        host is configured to mount is a fact about the file that
+        configures it, C(o0_paths['/etc/fstab']).
+      returned: when the mounts subset is gathered
       type: dict
       contains:
         mounts:
@@ -440,63 +443,14 @@ ansible_facts:
                         the byte counts rather than taken from C(df)
                       type: float
                       sample: 50.0
-        config:
-          description: The files that configure what gets mounted.
-          returned: when the fstab subset is gathered and the file was read
-          type: dict
-          contains:
-            '/etc/fstab':
-              description: >-
-                The entries C(/etc/fstab) names, in file order. Every
-                key is present on every entry, null where the file
-                omitted the field. M(o0_o.posix.mounts) returns the
-                same list under C(fstab).
-              type: list
-              elements: dict
-              contains:
-                source:
-                  description: >-
-                    What to mount, as the file spells it - a device
-                    path, or a C(UUID=) or C(LABEL=) form, unparsed
-                  type: str
-                  sample: UUID=abc-123
-                mount:
-                  description: Where to mount it, null for swap
-                  type: str
-                  sample: /
-                type:
-                  description: >-
-                    Filesystem type, or the list of them where the
-                    field named more than one
-                  type: raw
-                  sample: ext4
-                options:
-                  description: >-
-                    Mount options in file order, one single-key dict
-                    each, the value C(true) for a flag and the string
-                    for an option carrying one
-                  type: list
-                  elements: dict
-                  sample:
-                    - defaults: true
-                    - noatime: true
-                dump:
-                  description: Dump frequency, null if the file omitted it
-                  type: int
-                  sample: 0
-                pass:
-                  description: Fsck pass number, null if the file omitted it
-                  type: int
-                  sample: 1
     o0_users:
       description: >-
         Users keyed by stringified UID. Two subsets write here and a
         run that gathers both meets in one entry per UID: C(users)
         describes every account C(/etc/passwd) names, and
         C(environment) adds the environment and locale of the one user
-        the play connects as. A gather does not read SSH keys, so no
-        entry carries the C(keys) that M(o0_o.posix.users) returns -
-        that cost is per user and it is not what a gather is for.
+        the play connects as. M(o0_o.posix.users) publishes the same
+        entries under the same names.
       returned: when the users or environment subset is gathered
       type: dict
       contains:
@@ -606,7 +560,18 @@ ansible_facts:
           C(null), a dangling home, which the C(o0_o.posix.homes)
           lookup surfaces by reading C(o0_users) back against the
           store.
-      returned: when the compliance or the users subset is gathered
+        - A single file parsed on its own is an entry too - the bytes
+          under C(content), the meaning parsed out of them under
+          C(config) - because what a file configures is a fact about
+          that file. The login shells the host names are
+          C(o0_paths['/etc/shells']['config']) and the filesystems it
+          is configured to mount are
+          C(o0_paths['/etc/fstab']['config']). A host whose file could
+          not be read leaves that path out of the store rather than
+          filing it as a file that configures nothing, which is a
+          different answer.
+      returned: >-
+        when the compliance, fstab or users subset is gathered
       type: dict
       contains:
         tags:
@@ -649,7 +614,11 @@ ansible_facts:
           description: >-
             The meaning parsed out of a single file that was read -
             for C(/etc/shells), the login shells it names, in the
-            order it names them
+            order it names them; for C(/etc/fstab), the entries it
+            names, in file order, every key present on every entry and
+            null where the file omitted the field.
+            M(o0_o.posix.mounts) returns that same list under
+            C(fstab).
           type: raw
       sample:
         /bin/sh:
@@ -676,6 +645,17 @@ ansible_facts:
           config:
             - /bin/sh
             - /bin/zsh
+        /etc/fstab:
+          content: "UUID=abc-123 / ext4 defaults,noatime 0 1\n"
+          config:
+            - source: UUID=abc-123
+              mount: /
+              type: ext4
+              options:
+                - defaults: true
+                - noatime: true
+              dump: 0
+              pass: 1
 """
 
 from ansible.module_utils.basic import AnsibleModule

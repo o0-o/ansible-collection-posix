@@ -58,10 +58,11 @@
       - gathered['o0_groups'] is not defined
       - gathered['o0_shell_files'] is not defined
       # The compliance sweep fills the path store, so the store is
-      # here; the homes and the file only the users subset reads are
+      # here; the homes and the files only the other subsets read are
       # not
       - gathered['o0_paths'] is mapping
       - gathered['o0_paths']['/etc/shells'] is not defined
+      - gathered['o0_paths']['/etc/fstab'] is not defined
       - homes | length == 0
     fail_msg: >-
       min did not select uname, environment, timezone and compliance
@@ -242,20 +243,24 @@
 
 # storage names mounts and fstab, and all names storage: a group that
 # names a group is expanded until only subsets are left, which is why
-# a default gather reaches the mounts of a host at all.
+# a default gather reaches the mounts of a host at all. The two
+# subsets answer in two namespaces now, because what is mounted and
+# what the host is configured to mount are two facts.
 - name: Assert the storage group expands to the subsets it names
   vars:
     gathered: "{{ facts_storage_reg['ansible_facts'] }}"
     expected: >-
-      {{ ['mounts'] + (['config'] if facts_has_fstab | bool else []) }}
+      {{ ['o0_storage'] + (['o0_paths'] if facts_has_fstab | bool
+         else []) }}
   ansible.builtin.assert:
     that:
-      - gathered.keys() | list == ['o0_storage']
-      - gathered['o0_storage'].keys() | list | sort
-        == expected | sort
+      - gathered.keys() | list | sort == expected | sort
+      - gathered['o0_storage'].keys() | list == ['mounts']
+      - not facts_has_fstab | bool or
+        gathered['o0_paths']['/etc/fstab']['config'] is sequence
     fail_msg: >-
       the storage group did not expand to mounts and fstab:
-      {{ gathered['o0_storage'].keys() | list | sort }}
+      {{ gathered.keys() | list | sort }}
 
 - name: Gather the filesystem table alone
   o0_o.posix.facts:
@@ -266,11 +271,13 @@
   when: facts_has_fstab | bool
   vars:
     gathered: "{{ facts_fstab_reg['ansible_facts'] }}"
+    table: "{{ gathered['o0_paths']['/etc/fstab'] }}"
   ansible.builtin.assert:
     that:
-      - gathered.keys() | list == ['o0_storage']
-      - gathered['o0_storage'].keys() | list == ['config']
-      - gathered['o0_storage']['config']['/etc/fstab'] is sequence
+      - gathered.keys() | list == ['o0_paths']
+      - gathered['o0_paths'].keys() | list == ['/etc/fstab']
+      - table['content'] is string
+      - table['config'] is sequence
     fail_msg: >-
       the fstab subset did not read /etc/fstab: {{ gathered }}
 

@@ -234,16 +234,21 @@
       - root['options'] is not defined or root['options'] is mapping
     fail_msg: 'the root filesystem has no capacity: {{ root }}'
 
-# fstab_utils fills a field it cannot read with null, so every entry
-# carries all six names whatever the line said.
+# What a file configures is a fact about that file, so the table lands
+# at its own path in the one flat store, the bytes under content and
+# the filesystems they name under config - the way /etc/shells lands
+# the login shells it names. fstab_utils fills a field it cannot read
+# with null, so every entry carries all six names whatever the line
+# said.
 - name: Assert the filesystems the host is configured to mount
   when: facts_has_fstab | bool
   vars:
-    config: >-
-      {{ facts_all_reg['ansible_facts']['o0_storage']['config'] }}
-    entries: "{{ config['/etc/fstab'] }}"
+    table: >-
+      {{ facts_all_reg['ansible_facts']['o0_paths']['/etc/fstab'] }}
+    entries: "{{ table['config'] }}"
   ansible.builtin.assert:
     that:
+      - table['content'] is string
       - entries is sequence
       - entries is not mapping
       - entries is not string
@@ -255,15 +260,29 @@
         | selectattr('pass', 'defined')
         | list | length == entries | length
     fail_msg: >-
-      o0_storage.config['/etc/fstab'] does not carry all six fields
+      o0_paths['/etc/fstab'] does not carry all six fields
 
-- name: Assert a host with no /etc/fstab publishes no config for one
+- name: Assert a host with no /etc/fstab leaves the path unmentioned
   when: not facts_has_fstab | bool
   ansible.builtin.assert:
     that:
-      - facts_all_reg['ansible_facts']['o0_storage']['config']
-        is not defined
-    fail_msg: 'o0_storage.config was published without an fstab to read'
+      - "'/etc/fstab' not in
+         facts_all_reg['ansible_facts']['o0_paths']"
+    fail_msg: >-
+      o0_paths carries an /etc/fstab entry on a host with no fstab to
+      read
+
+# Live state and configuration are two facts. o0_storage holds what is
+# mounted now; what the host is configured to mount is the config of
+# the file that configures it.
+- name: Assert the storage namespace holds live state alone
+  ansible.builtin.assert:
+    that:
+      - facts_all_reg['ansible_facts']['o0_storage'].keys() | list
+        == ['mounts']
+    fail_msg: >-
+      o0_storage carries something besides what is mounted:
+      {{ facts_all_reg['ansible_facts']['o0_storage'].keys() | list }}
 
 # Two subsets answer under o0_users and the merge keys both on the
 # uid. The environment subset knows an identity by the uid it ran as,
@@ -347,8 +366,12 @@
         | flatten | reject('integer') | list | length == 0
       - homes | dict2items | rejectattr('value.residents', 'defined')
         | list | length == 0
-      # The home every user names is a key of the store
+      # The home every user names is a key of the store. Only the
+      # entries a passwd line described name one: the environment
+      # subset keys its entry on the uid the gather ran as, and
+      # /etc/passwd need not describe that user at all.
       - facts_all_reg['ansible_facts']['o0_users'] | dict2items
+        | selectattr('value.home', 'defined')
         | map(attribute='value.home') | select('string')
         | reject('in', paths.keys() | list) | list | length == 0
       - facts_all_reg['ansible_facts']['o0_homes'] is not defined

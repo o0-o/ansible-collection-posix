@@ -1,0 +1,44 @@
+# vim: ts=2:sw=2:sts=2:et:ft=yaml.ansible
+# -*- mode: yaml; yaml-indent-offset: 2; indent-tabs-mode: nil; -*-
+---
+breaking_changes:
+  - >-
+    facts - o0_storage.config retires. What a file configures is a
+    fact about that file, so the filesystem table lands at its own
+    path in the one flat store - the bytes under content, the entries
+    they name under config - the way /etc/shells lands the login
+    shells it names. Read o0_paths['/etc/fstab']['config'] where
+    o0_storage.config['/etc/fstab'] was read. o0_storage holds live
+    state alone now, which is mounts: what is mounted and what the
+    host is configured to mount are two facts, and only one of them
+    describes the host as it stands. A host with no /etc/fstab still
+    leaves the path unmentioned rather than filing a null there, since
+    a cat that failed does not tell a file that is not there from one
+    that could not be read
+    (https://github.com/o0-o/ansible-collection-posix/pull/XXX).
+minor_changes:
+  - >-
+    facts - The fstab and users subsets join the batch every other
+    subset rides. They were the last two gathering outside it, each
+    spending a round trip of its own on reads the batch could carry,
+    and the dispatch that ran them one at a time is gone with them: a
+    subset is a set of command requests and a processor now, whatever
+    it reads. A default gather spends two round trips where it spent
+    four, and the facts are unchanged
+    (https://github.com/o0-o/ansible-collection-posix/pull/XXX).
+  - >-
+    users - The module reads /etc/passwd, /etc/group and /etc/shells
+    in one batch rather than one cat apiece, which is what the facts
+    module already did with the same three files. With the SSH-key
+    gather gone the module is two round trips on any host, however
+    many accounts it has
+    (https://github.com/o0-o/ansible-collection-posix/pull/XXX).
+  - >-
+    file_utils - new get_file_command_requests and
+    process_file_command_results read files through the COMMAND_SPEC
+    pattern, so a producer's file reads travel in the batch its probes
+    travel in and come back keyed by the path each one read. A file
+    that answered carries its bytes, empty string included; one that
+    did not carries null and says why, which is the caller's to raise
+    on or to pass over
+    (https://github.com/o0-o/ansible-collection-posix/pull/XXX).

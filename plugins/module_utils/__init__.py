@@ -26,6 +26,10 @@ from ansible_collections.o0_o.posix.plugins.module_utils.dmidecode_utils import 
     get_dmidecode_command_requests,
     process_dmidecode_command_results,
 )
+from ansible_collections.o0_o.posix.plugins.module_utils.file_utils import (
+    get_file_command_requests,
+    process_file_command_results,
+)
 from ansible_collections.o0_o.posix.plugins.module_utils.filter_utils import (
     normalize_source,
     process_registered_result,
@@ -162,6 +166,8 @@ __all__ = [
     "parse_df_entry",
     "get_dmidecode_command_requests",
     "process_dmidecode_command_results",
+    "get_file_command_requests",
+    "process_file_command_results",
     "fstab",
     "parse_fstab",
     "parse_fstab_entry",
