@@ -1095,9 +1095,7 @@ class TestUsersProducersAgree:
         monkeypatch.setattr(
             module,
             "_run",
-            lambda commands, **kwargs: _answer_files(
-                commands, self.ETC_FILES
-            ),
+            lambda commands, **kwargs: _answer_files(commands, self.ETC_FILES),
         )
         _mock_read(monkeypatch, module)
 

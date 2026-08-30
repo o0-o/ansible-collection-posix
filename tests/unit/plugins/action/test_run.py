@@ -568,8 +568,7 @@ def test_parse_batch_output_request_strip_can_ask_for_stripping(
     """Test a request may strip while the action does not."""
     plugin.strip = False
     output = (
-        "0\n1735689600\n1735689601\n7 /tmp/0.stdout\nanswer\n"
-        "0 /tmp/0.stderr\n"
+        "0\n1735689600\n1735689601\n7 /tmp/0.stdout\nanswer\n0 /tmp/0.stderr\n"
     )
     command_requests = [{"command": "echo answer", "strip": True}]
 
@@ -582,8 +581,7 @@ def test_parse_batch_output_request_strip_governs_stderr(plugin) -> None:
     """Test a request's strip covers its stderr as well as its stdout."""
     plugin.strip = True
     output = (
-        "0\n1735689600\n1735689601\n0 /tmp/0.stdout\n"
-        "6 /tmp/0.stderr\nnoise\n"
+        "0\n1735689600\n1735689601\n0 /tmp/0.stdout\n6 /tmp/0.stderr\nnoise\n"
     )
     command_requests = [{"command": ["cat", "/f"], "strip": False}]
 
