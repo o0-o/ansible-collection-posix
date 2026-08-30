@@ -24,16 +24,19 @@ from ansible_collections.o0_o.posix.plugins.module_utils import (
     compose_shell_files,
     compose_users_groups,
     get_file_command_requests,
+    get_getent_command_requests,
     parse_shells,
     process_file_command_results,
+    process_getent_command_results,
 )
 
 
 class ActionModule(ReadPosixActionBase, ActionBase):
     """Gather user and group information from POSIX hosts.
 
-    Two round trips: one batch reads the files users are named in,
-    and one metadata read describes the paths those files named.
+    Two round trips: one batch reads the files users are named in and
+    asks the host for its own resolved view of them, and one metadata
+    read describes the paths those files named.
     """
 
     TRANSFERS_FILES = False
@@ -80,15 +83,26 @@ class ActionModule(ReadPosixActionBase, ActionBase):
         group_path = module_args["group_path"]
         shells_path = module_args["shells_path"]
 
-        # Three files, one round trip: a read is a command like any
-        # other, so the reads travel together the way a gather's do
-        files = self._read_files(
-            [passwd_path, group_path, shells_path], task_vars
+        # Three files and the host's own resolved view of the users
+        # they name, one round trip: a read is a command like any
+        # other, so the reads travel together the way a gather's do,
+        # and getent travels with them
+        batch = self._run(
+            get_file_command_requests([passwd_path, group_path, shells_path])
+            + get_getent_command_requests(),
+            parallel=True,
+            fail_fast=False,
+            task_vars=task_vars,
+            check_mode=False,
         )
+        files = process_file_command_results(batch)
+        resolved = process_getent_command_results(batch)
 
         users, groups = compose_users_groups(
             self._content(files, passwd_path),
             self._content(files, group_path),
+            resolved.get("passwd"),
+            resolved.get("group"),
         )
 
         def read_paths(paths: list[str]) -> dict[str, Any]:
@@ -138,33 +152,6 @@ class ActionModule(ReadPosixActionBase, ActionBase):
             result["o0_paths"] = paths
 
         return result
-
-    def _read_files(
-        self,
-        paths: list[str],
-        task_vars: dict[str, Any],
-    ) -> dict[str, dict[str, Any]]:
-        """Read the named files in a single round trip.
-
-        The module gathers facts from hosts that have no Python, so a
-        file a fact is read from is read the way every other fact is
-        gathered: a batched command with the raw fallback under it,
-        never slurp.
-
-        :param list[str] paths: Paths to read
-        :param dict[str, Any] task_vars: Task variables
-        :returns dict[str, dict[str, Any]]: What the batch learned
-            about each path, keyed by path
-        """
-        return process_file_command_results(
-            self._run(
-                get_file_command_requests(paths),
-                parallel=True,
-                fail_fast=False,
-                task_vars=task_vars,
-                check_mode=False,
-            )
-        )
 
     def _content(
         self,

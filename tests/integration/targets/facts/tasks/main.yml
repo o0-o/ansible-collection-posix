@@ -50,9 +50,34 @@
   check_mode: false
   register: facts_id_reg
 
+# Whether a host has a getent worth believing is not a question about
+# a binary being installed: something answering to the name may be a
+# shell function that greps the flat files with no idea the name
+# service switch exists. The target asks what the gather asks - for an
+# enumeration, which a real getent answers and a grep shim cannot -
+# so the two agree about what this host is. macOS answers 127 here,
+# and that is the absent branch under test rather than a failure.
+- name: Ask the host for its own resolved view of its users
+  o0_o.posix.run:
+    commands:
+      - command:
+          - getent
+          - passwd
+        non_error_codes:
+          - 0
+          - 1
+          - 2
+          - 126
+          - 127
+  check_mode: false
+  register: facts_getent_reg
+
 - name: Name what this host can be asked about
   ansible.builtin.set_fact:
     facts_uid: "{{ facts_id_reg['stdout'] | trim }}"
+    facts_has_getent: >-
+      {{ facts_getent_reg['commands'][0]['rc'] == 0
+         and facts_getent_reg['commands'][0]['stdout'] | trim != '' }}
     facts_has_fstab: >-
       {{ facts_files_reg['paths']['/etc/fstab'] is not none }}
     facts_has_shells: >-

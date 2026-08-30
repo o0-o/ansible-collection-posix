@@ -1,0 +1,33 @@
+# vim: ts=2:sw=2:sts=2:et:ft=yaml.ansible
+# -*- mode: yaml; yaml-indent-offset: 2; indent-tabs-mode: nil; -*-
+---
+minor_changes:
+  - >-
+    users, facts - the host's own resolved view of its users overlays
+    the flat files, and every entry names where it came from. The
+    files stay the base of the composition and ``getent`` overlays
+    them keyed by uid and gid, so a host that resolves names beyond
+    ``/etc/passwd`` gains the users it resolves and a host that does
+    not composes exactly what it composed before. Every ``o0_users``
+    and ``o0_groups`` entry carries ``sources``, always present and
+    never empty, naming the flat file, the resolved view, or both.
+    Both producers publish it, because the overlay lives in the one
+    composition they share
+    (https://github.com/o0-o/ansible-collection-posix/pull/XXX).
+  - >-
+    users, facts - a ``getent`` is believed only once it has behaved
+    like one. Something answering to the name may be a shell function
+    that greps the flat files with no idea the name service switch
+    exists - zsh's ``compaudit`` defines exactly such a function on
+    hosts that have no such binary - and publishing its answer as the
+    resolved view would claim a resolution that never happened. So the
+    gather asks for an enumeration, which a real ``getent`` prints and
+    a grep shim cannot, and believes the answer only if it got one.
+    The probe costs no command of its own: what proves the candidate
+    is the same output the composition overlays. ``getent -V`` is not
+    consulted, being a glibc marker rather than a getent one - musl's
+    real ``getent`` rejects it exactly as the shim does - and a
+    candidate that fails the probe is treated as absent, which is
+    never an error. macOS has no ``getent`` at all and is gathered
+    from its files, correctly and stated
+    (https://github.com/o0-o/ansible-collection-posix/pull/XXX).

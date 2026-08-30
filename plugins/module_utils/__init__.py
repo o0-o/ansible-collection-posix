@@ -62,6 +62,10 @@ from ansible_collections.o0_o.posix.plugins.module_utils.id_utils import (
     id_info,
     process_effective_uid_results,
 )
+from ansible_collections.o0_o.posix.plugins.module_utils.getent_utils import (
+    get_getent_command_requests,
+    process_getent_command_results,
+)
 from ansible_collections.o0_o.posix.plugins.module_utils.group_utils import (
     group_info,
     normalize_group_members,
@@ -191,6 +195,8 @@ __all__ = [
     "compose_homes",
     "compose_shell_files",
     "compose_users_groups",
+    "get_getent_command_requests",
+    "process_getent_command_results",
     "group_info",
     "normalize_group_members",
     "passwd_info",

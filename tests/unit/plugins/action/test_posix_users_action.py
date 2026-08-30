@@ -52,16 +52,22 @@ def _mock_run(
     monkeypatch,
     plugin: ActionModule,
     files: dict[str, Optional[str]],
+    getent: Optional[dict[str, str]] = None,
 ) -> list[list[dict[str, Any]]]:
-    """Answer the module's one batch of file reads.
+    """Answer the module's one batch of file reads and probes.
 
-    The module reads every file it needs in a single batch, so the
-    mock answers a list of requests rather than one command at a
-    time. A path mapped to None answers as a file that is not there.
+    The module reads every file it needs in a single batch and asks
+    the host for its own resolved view of the users in the same one,
+    so the mock answers a list of requests rather than one command at
+    a time. A path mapped to None answers as a file that is not
+    there, and a host given no ``getent`` answers as one that has no
+    getent at all - which is the macOS case, and the default here.
 
     :param monkeypatch: The pytest monkeypatch fixture
     :param ActionModule plugin: Action instance to patch
     :param dict[str, Optional[str]] files: Content per path
+    :param Optional[dict[str, str]] getent: Enumeration per database,
+        or None for a host with no getent
     :returns list[list[dict[str, Any]]]: The batches the module issued
     """
     batches: list[list[dict[str, Any]]] = []
@@ -70,6 +76,24 @@ def _mock_run(
         batches.append(commands)
         answered = []
         for request in commands:
+            if request["type"].startswith("getent_"):
+                database = request["type"].split("_", 1)[1]
+                output = (getent or {}).get(database)
+                if output is None:
+                    answered.append(
+                        {
+                            **request,
+                            "rc": 127,
+                            "stdout": "",
+                            "stderr": "sh: getent: not found",
+                        }
+                    )
+                else:
+                    answered.append(
+                        {**request, "rc": 0, "stdout": output, "stderr": ""}
+                    )
+                continue
+
             content = files.get(request["args"]["path"])
             if content is None:
                 answered.append(
@@ -186,9 +210,11 @@ def test_users_action_without_a_shells_file(monkeypatch, plugin) -> None:
 def test_users_action_reads_its_files_in_one_batch(
     monkeypatch, plugin
 ) -> None:
-    """Test the three files ride one round trip. The module spent one
-    cat apiece, which is three round trips for facts a single batch
-    answers, and the same three the facts module already batched."""
+    """Test the three files and both probes ride one round trip. The
+    module spent one cat apiece, which is three round trips for facts
+    a single batch answers, and the same three the facts module
+    already batched. getent joins them for free: it is a command like
+    any other, and the batch was already being spent."""
     batches = _mock_run(monkeypatch, plugin, FILES)
 
     plugin.run(task_vars={})
@@ -198,6 +224,8 @@ def test_users_action_reads_its_files_in_one_batch(
         ("cat", "/etc/passwd"),
         ("cat", "/etc/group"),
         ("cat", "/etc/shells"),
+        ("getent", "passwd"),
+        ("getent", "group"),
     ]
 
 
@@ -253,6 +281,7 @@ def test_users_action_composes_canonical_users(plugin) -> None:
         "home",
         "shell",
         "groups",
+        "sources",
     }
     assert result["o0_users"]["1000"]["name"] == "o0-o"
     assert result["o0_users"]["1000"]["uid"] == 1000
@@ -264,7 +293,12 @@ def test_users_action_composes_canonical_groups(plugin) -> None:
     """Test groups are keyed by GID and count members as UIDs."""
     result = plugin.run(task_vars={})
 
-    assert set(result["o0_groups"]["20"]) == {"name", "gid", "members"}
+    assert set(result["o0_groups"]["20"]) == {
+        "name",
+        "gid",
+        "members",
+        "sources",
+    }
     assert result["o0_groups"]["20"]["name"] == "staff"
     assert result["o0_groups"]["20"]["gid"] == 20
     assert result["o0_groups"]["20"]["members"] == [1000]

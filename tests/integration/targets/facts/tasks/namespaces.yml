@@ -344,6 +344,64 @@
         | flatten | reject('integer') | list | length == 0
     fail_msg: 'o0_groups is not keyed by a stringified gid'
 
+# Every entry a passwd or group line composed names where it came
+# from. The environment subset's entries are not composed from either,
+# so they carry no sources and are not asked for any - which is why
+# the users below are the ones a name describes.
+- name: Assert every composed entry names its sources, legally
+  vars:
+    users: >-
+      {{ facts_all_reg['ansible_facts']['o0_users'] | dict2items
+         | selectattr('value.name', 'defined')
+         | map(attribute='value') | list }}
+    host_groups: >-
+      {{ facts_all_reg['ansible_facts']['o0_groups'].values() | list }}
+    composed: "{{ users + host_groups }}"
+  ansible.builtin.assert:
+    that:
+      - composed | length > 0
+      # Always there, and never empty: a host says where an entry came
+      # from rather than leaving it to be inferred from a missing field
+      - composed | rejectattr('sources', 'defined')
+        | list | length == 0
+      - composed | selectattr('sources', 'falsy') | list | length == 0
+      # Only the two names exist, and they are laid down base first
+      - composed | map(attribute='sources') | flatten
+        | reject('in', ['files', 'getent']) | list | length == 0
+      - composed | map(attribute='sources')
+        | reject('eq', ['files'])
+        | reject('eq', ['getent'])
+        | reject('eq', ['files', 'getent'])
+        | list | length == 0
+    fail_msg: >-
+      an entry of o0_users or o0_groups does not name its sources
+
+# The probe the target ran and the probe the gather ran asked the same
+# host the same question, so their answers have to agree. A host with
+# no getent - macOS has none - composes from its files alone and says
+# so, which is a correct gather rather than a degraded one.
+- name: Assert the sources match what this host can actually resolve
+  vars:
+    users: "{{ facts_all_reg['ansible_facts']['o0_users'] }}"
+    described: >-
+      {{ users | dict2items | selectattr('value.name', 'defined')
+         | map(attribute='value') | list }}
+    resolved: >-
+      {{ described | selectattr('sources', 'contains', 'getent')
+         | list }}
+  ansible.builtin.assert:
+    that:
+      - facts_has_getent | bool
+        or resolved | length == 0
+      # root is in the flat file on every POSIX host, so a host that
+      # resolves at all resolves root, and both sources named it
+      - not facts_has_getent | bool
+        or users['0']['sources'] == ['files', 'getent']
+    fail_msg: >-
+      o0_users names getent as a source on a host that has none, or
+      omits it on a host that has one: has_getent
+      {{ facts_has_getent }}, resolved {{ resolved | length }}
+
 # A home is a path, so it is an entry of the flat path store rather
 # than a namespace of its own: tagged home, carrying the UIDs that
 # live there, and keyed by the path it is.

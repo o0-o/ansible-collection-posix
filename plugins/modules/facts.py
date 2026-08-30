@@ -447,10 +447,12 @@ ansible_facts:
       description: >-
         Users keyed by stringified UID. Two subsets write here and a
         run that gathers both meets in one entry per UID: C(users)
-        describes every account C(/etc/passwd) names, and
-        C(environment) adds the environment and locale of the one user
-        the play connects as. M(o0_o.posix.users) publishes the same
-        entries under the same names.
+        describes every account C(/etc/passwd) names - overlaid with
+        the host's own resolved view of them where the host has a
+        C(getent) to ask - and C(environment) adds the environment and
+        locale of the one user the play connects as.
+        M(o0_o.posix.users) publishes the same entries under the same
+        names.
       returned: when the users or environment subset is gathered
       type: dict
       contains:
@@ -491,6 +493,27 @@ ansible_facts:
           type: list
           elements: int
           sample: [20, 101]
+        sources:
+          description:
+            - Where the entry's own record came from, base first -
+              C(files) for the flat file that named the user,
+              C(getent) for the host's resolved view of them, both
+              where both did.
+            - Always present and never empty. A host with no
+              C(getent) - macOS has none, and C(o0_o.posix) does not
+              speak Darwin's Directory Services - says C(["files"]),
+              which is a correct gather rather than a degraded one.
+            - Where C(getent) is present, what it enumerates is what
+              the host's name service switch resolves, which is not
+              always everything it can resolve. An SSSD-backed host
+              disables enumeration by default, so its directory users
+              may be absent from C(o0_users) even though the host
+              resolves them by name. This field names what answered,
+              not what exists.
+          returned: when the users subset is gathered
+          type: list
+          elements: str
+          sample: ["files", "getent"]
         environment:
           description: >-
             The environment variables IEEE Std 1003.1 names, as the
@@ -513,9 +536,14 @@ ansible_facts:
     o0_groups:
       description: >-
         Groups keyed by stringified GID, each with its C(name), its
-        integer C(gid), and the UIDs of every C(members) entry.
-        M(o0_o.posix.users) publishes the same shape under the same
-        name.
+        integer C(gid), the UIDs of every C(members) entry, and the
+        C(sources) its own record came from. Membership does not enter
+        into C(sources) - a group's sources are where its record came
+        from, not where its members' did - except for a group no group
+        source named at all, which exists only because a passwd entry
+        claimed it as a primary and so carries the sources of the
+        users claiming it. M(o0_o.posix.users) publishes the same
+        shape under the same name.
       returned: when the users subset is gathered
       type: dict
       sample:
@@ -525,6 +553,9 @@ ansible_facts:
           members:
             - 0
             - 1000
+          sources:
+            - files
+            - getent
     o0_shell_files:
       description: >-
         The login shells users actually hold, keyed by path, each with

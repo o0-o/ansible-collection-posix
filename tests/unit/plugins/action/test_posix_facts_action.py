@@ -34,6 +34,19 @@ ETC_GROUP = "wheel:*:0:root\nstaff:*:20:\naccess_bpf:*:101:o0-o"
 ETC_SHELLS = "# comment\n/bin/sh\n/bin/zsh"
 ETC_FSTAB = "/dev/sd0a / ffs rw 1 1"
 
+ETC = {
+    "/etc/passwd": ETC_PASSWD,
+    "/etc/group": ETC_GROUP,
+    "/etc/shells": ETC_SHELLS,
+}
+
+# The same host's own resolved view of those users, knowing one the
+# files do not
+GETENT = {
+    "passwd": ETC_PASSWD + "\nldap:*:4000:20:LDAP User:/home/ldap:/bin/sh",
+    "group": ETC_GROUP,
+}
+
 # What the read action answers for the paths those files name
 READ_TYPES = {
     "/var/root": "directory",
@@ -142,10 +155,46 @@ def _answer_files(
     return answered
 
 
+def _answer_getent(
+    commands: list[dict[str, Any]],
+    getent: Optional[dict[str, str]],
+) -> list[dict[str, Any]]:
+    """Answer the resolved-view probes a batch carries.
+
+    A host given no ``getent`` answers as one that has no getent at
+    all, the way macOS does.
+
+    :param list[dict[str, Any]] commands: The batch's requests
+    :param Optional[dict[str, str]] getent: Enumeration per database
+    :returns list[dict[str, Any]]: The probe requests, answered
+    """
+    answered = []
+    for request in commands:
+        cmd_type = request.get("type", "")
+        if not cmd_type.startswith("getent_"):
+            continue
+        output = (getent or {}).get(cmd_type.split("_", 1)[1])
+        if output is None:
+            answered.append(
+                {
+                    **request,
+                    "rc": 127,
+                    "stdout": "",
+                    "stderr": "sh: getent: not found",
+                }
+            )
+        else:
+            answered.append(
+                {**request, "rc": 0, "stdout": output, "stderr": ""}
+            )
+    return answered
+
+
 def _mock_run(
     monkeypatch,
     plugin: ActionModule,
     files: Optional[dict[str, Optional[str]]] = None,
+    getent: Optional[dict[str, str]] = None,
 ) -> None:
     """Answer the one batch the action issues.
 
@@ -155,13 +204,17 @@ def _mock_run(
     :param monkeypatch: The pytest monkeypatch fixture
     :param ActionModule plugin: Action instance to patch
     :param Optional[dict[str, Optional[str]]] files: Content per path
+    :param Optional[dict[str, str]] getent: Enumeration per database,
+        or None for a host with no getent
     """
     files = files or {}
 
     def mock_run(commands, **kwargs) -> Any:
         if not isinstance(commands, list):
             return []
-        return _answer_files(commands, files)
+        return _answer_files(commands, files) + _answer_getent(
+            commands, getent
+        )
 
     monkeypatch.setattr(plugin, "_run", mock_run)
 
@@ -663,11 +716,13 @@ class TestGatherUsers:
             "home": "/home/o0-o",
             "shell": "/bin/zsh",
             "groups": [20, 101],
+            "sources": ["files"],
         }
         assert facts["o0_groups"]["101"] == {
             "name": "access_bpf",
             "gid": 101,
             "members": [1000],
+            "sources": ["files"],
         }
         assert facts["o0_paths"]["/etc/shells"]["config"] == [
             "/bin/sh",
@@ -743,7 +798,9 @@ class TestGatherUsers:
 
     def test_one_round_trip(self, monkeypatch, plugin) -> None:
         """Test all three files are read in a single batch, the one
-        batch the gather issues rather than a batch of its own."""
+        batch the gather issues rather than a batch of its own, and
+        that asking the host for its own resolved view of the users
+        costs no round trip beyond it."""
         _no_python(monkeypatch, plugin)
         _mock_read(monkeypatch, plugin)
         batches = []
@@ -761,7 +818,84 @@ class TestGatherUsers:
             ("cat", "/etc/passwd"),
             ("cat", "/etc/group"),
             ("cat", "/etc/shells"),
+            ("getent", "passwd"),
+            ("getent", "group"),
         ]
+
+    def test_a_host_without_getent_gathers_from_its_files(
+        self, monkeypatch, plugin
+    ) -> None:
+        """Test the absent branch is a gather, not a failure.
+
+        macOS has no getent and posix will not learn Directory
+        Services, so the probe finds nothing there and the files-only
+        facts are published, saying so.
+        """
+        _no_python(monkeypatch, plugin)
+        _mock_read(monkeypatch, plugin)
+
+        def mock_run(commands, **kwargs):
+            answered = _answer_files(commands, ETC)
+            answered.extend(
+                {
+                    **request,
+                    "rc": 127,
+                    "stdout": "",
+                    "stderr": "sh: getent: not found",
+                }
+                for request in commands
+                if request.get("type", "").startswith("getent_")
+            )
+            return answered
+
+        monkeypatch.setattr(plugin, "_run", mock_run)
+
+        facts = _gather(plugin, "users")
+
+        assert facts["o0_users"]["1000"]["sources"] == ["files"]
+        assert facts["o0_groups"]["101"]["sources"] == ["files"]
+        plugin._display.warning.assert_not_called()
+
+    def test_a_resolved_view_overlays_and_says_so(
+        self, monkeypatch, plugin
+    ) -> None:
+        """Test a host whose getent knows more than its files."""
+        _no_python(monkeypatch, plugin)
+        _mock_read(monkeypatch, plugin)
+        _mock_run(monkeypatch, plugin, ETC, getent=GETENT)
+
+        facts = _gather(plugin, "users")
+
+        assert facts["o0_users"]["1000"]["sources"] == ["files", "getent"]
+        assert facts["o0_users"]["4000"]["name"] == "ldap"
+        assert facts["o0_users"]["4000"]["sources"] == ["getent"]
+
+    def test_both_producers_compose_one_shape(
+        self, monkeypatch, plugin
+    ) -> None:
+        """Test a gather and the users module answer identically.
+
+        One composition builds both, so the same host answers give the
+        same o0_users and o0_groups either way - the resolved view and
+        its provenance included, which is the whole point of the
+        overlay living in the composition rather than in a producer.
+        """
+        from ansible_collections.o0_o.posix.plugins.module_utils import (
+            compose_users_groups,
+        )
+
+        _no_python(monkeypatch, plugin)
+        _mock_read(monkeypatch, plugin)
+        _mock_run(monkeypatch, plugin, ETC, getent=GETENT)
+
+        gathered = _gather(plugin, "users")
+
+        users, groups = compose_users_groups(
+            ETC_PASSWD, ETC_GROUP, GETENT["passwd"], GETENT["group"]
+        )
+
+        assert gathered["o0_users"] == users
+        assert gathered["o0_groups"] == groups
 
     def test_one_metadata_read(self, monkeypatch, plugin) -> None:
         """Test the homes and the shell files are read together, in

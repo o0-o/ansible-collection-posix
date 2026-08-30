@@ -18,12 +18,16 @@ short_description: Gather POSIX user and group information
 version_added: "2.0.0"
 description:
   - Collects user and group information from C(/etc/passwd) and
-    C(/etc/group) on POSIX hosts.
+    C(/etc/group) on POSIX hosts, overlaid with the host's own
+    resolved view of those users where the host has a C(getent) to
+    ask.
   - Returns the canonical C(o0_users) and C(o0_groups) mappings, keyed
     by stringified UID and GID and cross-referenced by numeric ID.
     The C(o0_o.posix.facts) module publishes the same shape under the
     same names, along with C(o0_shell_files) and the C(o0_paths)
     entries for the homes users live in and the login shells file.
+  - Every entry names where it came from in C(sources), so a consumer
+    reads provenance rather than guessing at it.
 options:
   passwd_path:
     description:
@@ -51,6 +55,26 @@ notes:
   - Group membership is reported in numeric IDs on both sides - a
     user's C(groups) lists GIDs and a group's C(members) lists UIDs -
     and every user counts as a member of their primary group.
+  - The flat files are the base of the composition and C(getent) is an
+    overlay on it. A host with no C(getent) - macOS has none, and
+    C(o0_o.posix) does not speak Darwin's Directory Services - is
+    gathered from its files alone. That is a correct gather, not a
+    degraded one, and C(sources) states it rather than leaving it to
+    be inferred.
+  - Where C(getent) is present, what it enumerates is what the host's
+    name service switch resolves, which is not always everything it
+    can resolve. An SSSD-backed host disables enumeration by default,
+    so its directory users may be absent from C(o0_users) even though
+    the host resolves them by name. C(sources) is what keeps that
+    honest - it names what answered, not what exists.
+  - A C(getent) is believed only once it has behaved like one.
+    Something answering to the name may be a shell function that greps
+    the flat files with no idea the name service switch exists, so the
+    module asks for an enumeration and believes the answer only if it
+    got one. A candidate that fails that is treated as absent, which
+    is never an error. C(getent -V) is not consulted - it is a glibc
+    marker rather than a getent one, and musl's real C(getent) rejects
+    it.
   - Whether a user's shell is a known login shell is not stored. The
     login shells C(/etc/shells) names are the C(config) of that path
     in C(o0_paths), and the C(o0_o.posix.shells) lookup surfaces them,
@@ -136,10 +160,26 @@ o0_users:
       type: list
       elements: int
       sample: [20, 101]
+    sources:
+      description:
+        - Where the entry's own record came from, base first -
+          C(files) for the flat file that named the user, C(getent)
+          for the host's resolved view of them, both where both did.
+        - Always present and never empty. A host with no C(getent)
+          says C(["files"]) rather than leaving the field off.
+      type: list
+      elements: str
+      sample: ["files", "getent"]
 o0_groups:
   description: >-
     Mapping of groups keyed by stringified GID. Each entry includes the
-    group name when available, the GID, and the UIDs of every member.
+    group name when available, the GID, the UIDs of every member, and
+    the sources the group's own record came from. Membership does not
+    enter into C(sources) - a group's sources are where its record came
+    from, not where its members' did - except for a group no group
+    source named at all, which exists only because a passwd entry
+    claimed it as a primary and so carries the sources of the users
+    claiming it.
   returned: always
   type: dict
   sample:
@@ -149,6 +189,9 @@ o0_groups:
       members:
         - 0
         - 1000
+      sources:
+        - files
+        - getent
 o0_shell_files:
   description: >-
     Mapping of the login shell paths users actually hold to their file

@@ -13,8 +13,13 @@
 
 ``compose_users_groups`` is the one definition of ``o0_users`` and
 ``o0_groups``: both are keyed by the stringified numeric ID, both
-carry that ID as an integer field, and membership is expressed in
-integer IDs on both sides.  ``compose_homes`` and
+carry that ID as an integer field, membership is expressed in
+integer IDs on both sides, and both name their provenance.  The flat
+files are the base of that composition and the host's own resolved
+view - what ``getent`` answers, where the host has a getent worth
+believing - overlays them, so a host that resolves names beyond its
+files says so and a host that does not composes what it always did.
+``compose_homes`` and
 ``compose_shell_files`` define what follows from them, the
 directories users live in and the shells they log in with, each
 taking the caller's own way of reading a path's metadata.  Homes are
@@ -50,33 +55,117 @@ Source = Union[str, dict[str, Any], list[dict[str, Any]]]
 ReadPaths = Callable[[list[str]], dict[str, Any]]
 
 
+def _overlay(
+    files: dict[str, dict[str, Any]],
+    resolved: dict[str, dict[str, Any]],
+) -> tuple[dict[str, dict[str, Any]], dict[str, list[str]]]:
+    """Lay the resolved view over the files parse, keeping provenance.
+
+    The flat files are the base and getent is the overlay, so a host
+    that resolves names nowhere but its own files composes exactly
+    what it composed before getent was ever asked, and a host that
+    resolves them elsewhere gains what its files never said.
+
+    An entry both described is the resolved one where the two
+    disagree, because getent is the host's own answer about itself and
+    the file is only where part of that answer is written down.  An
+    empty field is part of that answer and wins like any other: getent
+    reported the field, and what it reported is that there is nothing
+    in it.  A null is not - it is the parse having failed to read the
+    field at all, which is no answer to prefer - so the base keeps
+    what it had rather than losing it to a null.
+
+    :param dict[str, dict[str, Any]] files: Entries the flat file
+        named, keyed by stringified numeric ID
+    :param dict[str, dict[str, Any]] resolved: Entries getent named,
+        keyed the same, empty where the host has no getent
+    :returns tuple[dict[str, dict[str, Any]], dict[str, list[str]]]:
+        The merged entries, and the sources each of them came from
+    """
+    merged = {key: dict(entry) for key, entry in files.items()}
+    sources = {key: ["files"] for key in files}
+
+    for key, entry in resolved.items():
+        if key in merged:
+            merged[key].update(
+                {
+                    field: value
+                    for field, value in entry.items()
+                    if value is not None
+                }
+            )
+            sources[key] = ["files", "getent"]
+        else:
+            merged[key] = dict(entry)
+            sources[key] = ["getent"]
+
+    return merged, sources
+
+
 def compose_users_groups(
     passwd: Source,
     group: Source,
+    getent_passwd: Optional[Source] = None,
+    getent_group: Optional[Source] = None,
 ) -> tuple[dict[str, dict[str, Any]], dict[str, dict[str, Any]]]:
     """Compose the canonical o0_users and o0_groups facts.
 
     Users are keyed by stringified UID and carry ``name``, ``uid``,
-    ``gid`` (the primary group), ``gecos``, ``home``, ``shell``, and
+    ``gid`` (the primary group), ``gecos``, ``home``, ``shell``,
     ``groups`` (every GID the user belongs to, primary group
-    included).  Groups are keyed by stringified GID and carry
-    ``name``, ``gid``, and ``members`` (the UIDs of every member,
-    including those who hold the group as their primary).
+    included), and ``sources``.  Groups are keyed by stringified GID
+    and carry ``name``, ``gid``, ``members`` (the UIDs of every
+    member, including those who hold the group as their primary), and
+    ``sources``.
+
+    ``sources`` names where the entry's own record came from, in the
+    order it was laid down: ``files`` for the flat file that named it,
+    ``getent`` for the host's resolved view of it, both where both
+    did.  It is always there and never empty, so a consumer reads
+    provenance rather than inferring it from a field's absence - and
+    a host with no getent says ``["files"]`` rather than saying
+    nothing.  Membership does not enter into it: a group's sources are
+    where its own record came from, not where its members' did.  The
+    exception is a group no group source named at all, which exists
+    only because a passwd entry claimed it as a primary; that one
+    borrows the sources of the users claiming it, because they are the
+    whole of why it is here.
+
+    getent is optional, and a host without one is not a host with a
+    problem: passing nothing for it composes the files-only facts,
+    which is what every producer did before there was a resolved view
+    to ask for.
 
     :param Source passwd: ``/etc/passwd`` content or a read/slurp
         result holding it
     :param Source group: ``/etc/group`` content or a read/slurp
         result holding it
+    :param Optional[Source] getent_passwd: ``getent passwd``
+        enumeration, or None where the host has none
+    :param Optional[Source] getent_group: ``getent group``
+        enumeration, or None where the host has none
     :returns tuple[dict[str, dict[str, Any]], dict[str, dict[str,
         Any]]]: The o0_users and o0_groups mappings
     """
-    parsed_groups = group_info(group, key="id")
+    parsed_groups, group_sources = _overlay(
+        group_info(group, key="id"),
+        {} if getent_group is None else group_info(getent_group, key="id"),
+    )
+    parsed_users, user_sources = _overlay(
+        passwd_info(passwd, key="id"),
+        {} if getent_passwd is None else passwd_info(getent_passwd, key="id"),
+    )
+
+    # A group a group source named owns its own provenance; one only a
+    # passwd entry implies borrows the provenance of whoever implies it
+    named = set(parsed_groups)
 
     groups: dict[str, dict[str, Any]] = {
         gid_str: {
             "name": entry.get("name"),
             "gid": int(gid_str),
             "members": [],
+            "sources": list(group_sources[gid_str]),
         }
         for gid_str, entry in parsed_groups.items()
     }
@@ -84,10 +173,11 @@ def compose_users_groups(
     users: dict[str, dict[str, Any]] = {}
     uid_by_name: dict[str, int] = {}
 
-    for uid_str, entry in passwd_info(passwd, key="id").items():
+    for uid_str, entry in parsed_users.items():
         uid = int(uid_str)
         gid = entry.get("gid")
         name = entry.get("name")
+        sources = list(user_sources[uid_str])
 
         users[uid_str] = {
             "name": name,
@@ -97,13 +187,14 @@ def compose_users_groups(
             "home": entry.get("home"),
             "shell": entry.get("shell"),
             "groups": [] if gid is None else [gid],
+            "sources": sources,
         }
 
         if isinstance(name, str) and name:
             uid_by_name[name] = uid
 
         if gid is not None:
-            _add_member(groups, gid, uid)
+            _add_member(groups, gid, uid, sources, named)
 
     # /etc/group names its members; the canonical fact counts them
     # in UIDs, and a member with no passwd entry has no UID to count.
@@ -116,27 +207,47 @@ def compose_users_groups(
             user_groups = users[str(uid)]["groups"]
             if gid not in user_groups:
                 user_groups.append(gid)
-            _add_member(groups, gid, uid)
+            _add_member(groups, gid, uid, users[str(uid)]["sources"], named)
 
     return users, groups
 
 
-def _add_member(groups: dict[str, dict[str, Any]], gid: int, uid: int) -> None:
+def _add_member(
+    groups: dict[str, dict[str, Any]],
+    gid: int,
+    uid: int,
+    sources: list[str],
+    named: set[str],
+) -> None:
     """Record a UID as a member of a GID, creating the group entry.
 
-    A primary group that /etc/group never named still exists as far
-    as its members are concerned, so it gets an entry with a null
-    name rather than being dropped.
+    A primary group that no group source named still exists as far as
+    its members are concerned, so it gets an entry with a null name
+    rather than being dropped.  Such an entry is here only because a
+    user claimed it, so it is that user's sources it carries, unioned
+    with every other claimant's.  A group that was named carries its
+    own provenance and is left alone.
 
     :param dict[str, dict[str, Any]] groups: Group mapping to augment
     :param int gid: Group ID gaining the member
     :param int uid: User ID to record
+    :param list[str] sources: Where the record of the user came from
+    :param set[str] named: The GIDs a group source named, as
+        stringified keys
     """
+    gid_str = str(gid)
     entry = groups.setdefault(
-        str(gid), {"name": None, "gid": gid, "members": []}
+        gid_str, {"name": None, "gid": gid, "members": [], "sources": []}
     )
     if uid not in entry["members"]:
         entry["members"].append(uid)
+
+    if gid_str not in named:
+        entry["sources"] = [
+            source
+            for source in ("files", "getent")
+            if source in set(entry["sources"]) | set(sources)
+        ]
 
 
 def _residents_by_home(

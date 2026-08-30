@@ -29,6 +29,7 @@ from ansible_collections.o0_o.posix.plugins.module_utils import (
     get_effective_uid_command_requests,
     get_env_command_requests,
     get_file_command_requests,
+    get_getent_command_requests,
     get_mount_command_requests,
     get_timezone_command_requests,
     parse_shells,
@@ -37,6 +38,7 @@ from ansible_collections.o0_o.posix.plugins.module_utils import (
     process_effective_uid_results,
     process_env_command_results,
     process_file_command_results,
+    process_getent_command_results,
     process_mount_command_results,
     process_timezone_command_results,
 )
@@ -201,9 +203,16 @@ def _process_fstab_results(
 def _get_users_requests() -> list[dict[str, Any]]:
     """Build command requests for the files users are named in.
 
+    The host's own resolved view of those users travels in the same
+    batch: getent is a command like any other, and asking for it costs
+    a gather nothing it was not already spending.
+
     :returns list[dict[str, Any]]: Command requests for run plugin
     """
-    return get_file_command_requests([PASSWD_PATH, GROUP_PATH, SHELLS_PATH])
+    return (
+        get_file_command_requests([PASSWD_PATH, GROUP_PATH, SHELLS_PATH])
+        + get_getent_command_requests()
+    )
 
 
 def _process_users_results(
@@ -232,13 +241,21 @@ def _process_users_results(
     passwd = (files.get(PASSWD_PATH) or {}).get("parsed")
     group = (files.get(GROUP_PATH) or {}).get("parsed")
     shells = (files.get(SHELLS_PATH) or {}).get("parsed")
+    resolved = process_getent_command_results(cmds_completed)
 
     facts: dict[str, Any] = {}
 
     # The canonical shape cross-references both files, so it needs
-    # both reads to have landed.
+    # both reads to have landed.  The resolved view is what the host
+    # says about itself over that base, and a host with no getent
+    # answers None for it, which composes the files-only facts.
     if passwd is not None and group is not None:
-        users, groups = compose_users_groups(passwd, group)
+        users, groups = compose_users_groups(
+            passwd,
+            group,
+            resolved.get("passwd"),
+            resolved.get("group"),
+        )
         facts["o0_users"] = users
         facts["o0_groups"] = groups
 

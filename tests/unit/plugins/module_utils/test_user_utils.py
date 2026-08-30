@@ -13,6 +13,8 @@
 
 from __future__ import annotations
 
+import os
+
 from typing import Any
 
 from ansible_collections.o0_o.posix.plugins.module_utils.group_utils import (
@@ -49,6 +51,24 @@ SAMPLE_GROUP = "\n".join(
     ]
 )
 
+# A host that resolves its users nowhere but those files, as getent
+# would answer it and as the samples above compose without one
+SAMPLE_GETENT_PASSWD = SAMPLE_PASSWD
+SAMPLE_GETENT_GROUP = SAMPLE_GROUP
+
+FILES = os.path.join(os.path.dirname(__file__), "files")
+
+
+def _corpus(name: str) -> str:
+    """Read a captured enumeration verbatim.
+
+    :param str name: File name under ``files/``
+    :returns str: The file's contents
+    """
+    with open(os.path.join(FILES, name), encoding="utf-8") as handle:
+        return handle.read()
+
+
 # The canonical shape, as composed from the samples above
 USERS = {
     "0": {
@@ -59,6 +79,7 @@ USERS = {
         "home": "/var/root",
         "shell": "/bin/sh",
         "groups": [0],
+        "sources": ["files"],
     },
     "1000": {
         "name": "o0-o",
@@ -68,13 +89,29 @@ USERS = {
         "home": "/home/o0-o",
         "shell": "/bin/zsh",
         "groups": [20, 0, 101],
+        "sources": ["files"],
     },
 }
 
 GROUPS = {
-    "0": {"name": "wheel", "gid": 0, "members": [0, 1000]},
-    "20": {"name": "staff", "gid": 20, "members": [1000]},
-    "101": {"name": "access_bpf", "gid": 101, "members": [1000]},
+    "0": {
+        "name": "wheel",
+        "gid": 0,
+        "members": [0, 1000],
+        "sources": ["files"],
+    },
+    "20": {
+        "name": "staff",
+        "gid": 20,
+        "members": [1000],
+        "sources": ["files"],
+    },
+    "101": {
+        "name": "access_bpf",
+        "gid": 101,
+        "members": [1000],
+        "sources": ["files"],
+    },
 }
 
 
@@ -91,8 +128,9 @@ def test_compose_users_groups_field_census() -> None:
         "home",
         "shell",
         "groups",
+        "sources",
     }
-    assert set(groups["20"]) == {"name", "gid", "members"}
+    assert set(groups["20"]) == {"name", "gid", "members", "sources"}
 
 
 def test_compose_users_groups_keys_by_uid_and_gid() -> None:
@@ -156,12 +194,253 @@ def test_compose_users_groups_invents_unnamed_primary_group() -> None:
     )
 
     assert users["1002"]["gid"] == 600
-    assert groups["600"] == {"name": None, "gid": 600, "members": [1002]}
+    assert groups["600"] == {
+        "name": None,
+        "gid": 600,
+        "members": [1002],
+        "sources": ["files"],
+    }
 
 
 def test_compose_users_groups_handles_empty_input() -> None:
     """Test empty content composes empty mappings."""
     assert compose_users_groups("", "") == ({}, {})
+
+
+def test_a_host_without_getent_composes_what_it_always_did() -> None:
+    """Test files-only gathering is unchanged by the overlay existing.
+
+    Passing nothing for the resolved view is the macOS case and the
+    case of every host that has no getent, and it has to compose the
+    facts the files alone say - saying so in sources rather than by
+    leaving the field off.
+    """
+    users, groups = compose_users_groups(SAMPLE_PASSWD, SAMPLE_GROUP)
+    without = compose_users_groups(SAMPLE_PASSWD, SAMPLE_GROUP, None, None)
+
+    assert users == without[0]
+    assert groups == without[1]
+    assert users["1000"]["sources"] == ["files"]
+    assert groups["20"]["sources"] == ["files"]
+
+
+def test_a_resolved_view_that_only_repeats_the_files_says_both() -> None:
+    """Test agreement is still two sources, not one.
+
+    A files-only host with a real getent gets the same bytes twice.
+    Both answered, so both are named: sources reports what was asked
+    and answered, not whether the answers differed.
+    """
+    users, groups = compose_users_groups(
+        SAMPLE_PASSWD,
+        SAMPLE_GROUP,
+        SAMPLE_GETENT_PASSWD,
+        SAMPLE_GETENT_GROUP,
+    )
+
+    assert users["1000"]["sources"] == ["files", "getent"]
+    assert groups["20"]["sources"] == ["files", "getent"]
+
+    # And the facts themselves are what the files alone composed
+    files_only = compose_users_groups(SAMPLE_PASSWD, SAMPLE_GROUP)[0]
+    assert {
+        uid: {k: v for k, v in user.items() if k != "sources"}
+        for uid, user in users.items()
+    } == {
+        uid: {k: v for k, v in user.items() if k != "sources"}
+        for uid, user in files_only.items()
+    }
+
+
+def test_the_resolved_view_wins_a_field_the_files_disagree_on() -> None:
+    """Test getent is the host's own answer about itself."""
+    users = compose_users_groups(
+        SAMPLE_PASSWD,
+        SAMPLE_GROUP,
+        SAMPLE_PASSWD.replace("/bin/zsh", "/usr/local/bin/fish"),
+        SAMPLE_GROUP,
+    )[0]
+
+    assert users["1000"]["shell"] == "/usr/local/bin/fish"
+    assert users["1000"]["sources"] == ["files", "getent"]
+
+
+def test_an_empty_field_the_resolved_view_reported_wins() -> None:
+    """Test emptiness is an answer, and the resolved answer wins.
+
+    getent returned the whole entry, so an empty gecos in it is the
+    host saying the gecos is empty - not the host declining to say.
+    """
+    users = compose_users_groups(
+        SAMPLE_PASSWD,
+        SAMPLE_GROUP,
+        "o0-o:*:1000:20::/home/o0-o:/bin/zsh",
+        SAMPLE_GROUP,
+    )[0]
+
+    assert users["1000"]["gecos"] == ""
+
+
+def test_a_field_the_resolved_parse_could_not_read_keeps_the_base() -> None:
+    """Test a null is the parse failing, which is no answer to prefer.
+
+    A gid the parse could make nothing of comes back null, and a null
+    is not a disagreement the resolved view gets to win - the files
+    keep what they said rather than losing it.
+    """
+    users = compose_users_groups(
+        SAMPLE_PASSWD,
+        SAMPLE_GROUP,
+        "o0-o:*:1000::o0-o:/home/o0-o:/bin/zsh",
+        SAMPLE_GROUP,
+    )[0]
+
+    assert users["1000"]["gid"] == 20
+
+
+def test_a_user_only_getent_knows_is_added_and_says_so() -> None:
+    """Test the overlay covers keys the base never had.
+
+    A directory-resolved user is in no file on the host, so the files
+    parse cannot mention them and the resolved view is the whole of
+    why they are in the facts at all.
+    """
+    users, groups = compose_users_groups(
+        SAMPLE_PASSWD,
+        SAMPLE_GROUP,
+        SAMPLE_PASSWD + "\nldap:*:4000:4000:LDAP User:/home/ldap:/bin/sh",
+        SAMPLE_GROUP + "\nldapgrp:*:4000:",
+    )
+
+    assert users["4000"]["name"] == "ldap"
+    assert users["4000"]["sources"] == ["getent"]
+    assert groups["4000"]["sources"] == ["getent"]
+
+
+def test_a_group_only_a_resolved_user_implies_borrows_their_sources() -> None:
+    """Test an unnamed primary group's provenance is its claimants'.
+
+    Such a group is in no group source at all - it exists because a
+    passwd entry claimed it as a primary - so the only honest thing
+    to say about where it came from is where they came from.
+    """
+    groups = compose_users_groups(
+        SAMPLE_PASSWD,
+        SAMPLE_GROUP,
+        SAMPLE_PASSWD + "\nldap:*:4000:900:LDAP User:/home/ldap:/bin/sh",
+        SAMPLE_GROUP,
+    )[1]
+
+    assert groups["900"]["name"] is None
+    assert groups["900"]["members"] == [4000]
+    assert groups["900"]["sources"] == ["getent"]
+
+
+def test_membership_does_not_change_a_named_group_s_sources() -> None:
+    """Test a group's sources are its own record's, not its members'.
+
+    staff is named in the files and nowhere else; that a
+    getent-resolved user holds it as a primary says nothing about
+    where staff's own record came from.
+    """
+    groups = compose_users_groups(
+        SAMPLE_PASSWD,
+        SAMPLE_GROUP,
+        SAMPLE_PASSWD + "\nldap:*:4000:20:LDAP User:/home/ldap:/bin/sh",
+        None,
+    )[1]
+
+    assert 4000 in groups["20"]["members"]
+    assert groups["20"]["sources"] == ["files"]
+
+
+def test_sources_is_always_present_and_never_empty() -> None:
+    """Test the field holds to the absence discipline everywhere."""
+    users, groups = compose_users_groups(
+        SAMPLE_PASSWD,
+        SAMPLE_GROUP,
+        SAMPLE_PASSWD + "\nldap:*:4000:900:LDAP User:/home/ldap:/bin/sh",
+        SAMPLE_GROUP + "\nldapgrp:*:4000:",
+    )
+
+    for entry in list(users.values()) + list(groups.values()):
+        assert entry["sources"]
+        assert set(entry["sources"]) <= {"files", "getent"}
+        # Named in the order they are laid down, base first
+        assert entry["sources"] == [
+            source
+            for source in ("files", "getent")
+            if source in entry["sources"]
+        ]
+
+
+def test_one_half_of_the_resolved_view_overlays_alone() -> None:
+    """Test a getent that answered for one database only is honored.
+
+    Each database is its own probe, so a host whose passwd enumerated
+    and whose group did not overlays the half it has rather than
+    discarding both.
+    """
+    users, groups = compose_users_groups(
+        SAMPLE_PASSWD, SAMPLE_GROUP, SAMPLE_GETENT_PASSWD, None
+    )
+
+    assert users["1000"]["sources"] == ["files", "getent"]
+    assert groups["20"]["sources"] == ["files"]
+
+
+def test_the_captured_platforms_compose_the_same_shape() -> None:
+    """Test every captured enumeration overlays identically.
+
+    Both libcs and both BSDs differ in what they answer about
+    themselves - only glibc's getent takes -V - and the BSDs differ
+    in format too, dropping the empty members field a Linux group
+    line ends with. None of it reaches the fact: one composition
+    takes all four, keyed the same and provenanced the same.
+    """
+    for platform in (
+        "linux_glibc",
+        "linux_musl",
+        "freebsd14",
+        "openbsd79",
+    ):
+        passwd = _corpus(f"getent_passwd_{platform}.txt")
+        group = _corpus(f"getent_group_{platform}.txt")
+        users, groups = compose_users_groups(passwd, group, passwd, group)
+
+        assert users["0"]["uid"] == 0
+        assert users["0"]["sources"] == ["files", "getent"]
+        assert groups["0"]["sources"] == ["files", "getent"]
+        assert all(user["uid"] == int(uid) for uid, user in users.items())
+        assert all(group["gid"] == int(gid) for gid, group in groups.items())
+        # A group nobody is a secondary member of is a group with no
+        # members, however the platform spelled the line
+        assert all(
+            isinstance(group["members"], list) for group in groups.values()
+        )
+
+
+def test_a_bsd_group_line_with_no_members_still_composes() -> None:
+    """Test the shape the BSD captures turned up composes.
+
+    ``bin:*:7`` is what both BSDs' getent prints for a group nobody
+    is a secondary member of, and the group is real - it just has
+    nobody in it.
+    """
+    users, groups = compose_users_groups(
+        "root:*:0:0:Charlie &:/root:/bin/ksh",
+        "wheel:*:0:root",
+        "root:*:0:0:Charlie &:/root:/bin/ksh",
+        "wheel:*:0:root\nbin:*:7",
+    )
+
+    assert groups["7"] == {
+        "name": "bin",
+        "gid": 7,
+        "members": [],
+        "sources": ["getent"],
+    }
+    assert users["0"]["sources"] == ["files", "getent"]
 
 
 def test_lookup_user_by_uid() -> None:
