@@ -162,7 +162,7 @@ def _split_limit_line(line: str) -> Optional[tuple[str, Optional[str], str]]:
     if not stripped:
         return None
 
-    head, _, value = stripped.rpartition(" ")
+    head, _space, value = stripped.rpartition(" ")
     if not head:
         return None
 
