@@ -20,6 +20,7 @@ import pytest
 from ansible_collections.o0_o.posix.plugins.module_utils.path_utils import (
     canonicalize,
     compose_paths,
+    normalize_mode,
 )
 
 # One observation's worth of facts about a path, as a producer that
@@ -417,3 +418,69 @@ def test_canonicalize_repairs_what_the_store_refuses(path: str) -> None:
     assert compose_paths(None, {canonicalize(path): None}) == {
         "/usr/bin": None
     }
+
+
+# A mode is a mode, and zero is one of them
+
+
+@pytest.mark.parametrize(
+    "written,applied",
+    [
+        # An unquoted mode is an integer by the time a task sees it,
+        # and an integer is the mode's numeric value, as the builtin
+        # file modules read one
+        (0, "0000"),
+        (420, "0644"),
+        (0o755, "0755"),
+        # YAML reads a leading zero as octal, so 0644 arrives as 420
+        # and is the mode it looks like; 644 is decimal and is not
+        (644, "01204"),
+        # A quoted mode is left exactly as it was written
+        ("0", "0"),
+        ("0644", "0644"),
+        ("644", "644"),
+    ],
+)
+def test_normalize_mode_renders_a_written_mode_for_chmod(
+    written: Any, applied: str
+) -> None:
+    """Test every mode a task can write arrives as the octal string a
+    command takes, and that an integer keeps the numeric value the
+    builtin file modules give it."""
+
+    assert normalize_mode(written) == applied
+
+
+def test_normalize_mode_leaves_an_unset_mode_unset() -> None:
+    """Test only an unset mode is unset.  Mode 0 is a mode, so the
+    guards downstream ask whether the mode is None."""
+
+    assert normalize_mode(None) is None
+    assert normalize_mode(0) is not None
+
+
+def test_normalize_mode_refuses_an_empty_mode() -> None:
+    """Test an empty string is not an unset mode and is not a mode,
+    so it is named rather than passed to a command that would fail on
+    it obscurely.  The builtin file modules refuse it too."""
+
+    with pytest.raises(ValueError, match="must not be empty"):
+        normalize_mode("")
+
+
+@pytest.mark.parametrize("mode", [-1, -0o755])
+def test_normalize_mode_refuses_a_negative_mode(mode: int) -> None:
+    """Test a negative mode is refused by name rather than composed
+    into a command that would fail obscurely."""
+
+    with pytest.raises(ValueError, match="negative"):
+        normalize_mode(mode)
+
+
+@pytest.mark.parametrize("mode", [["0644"], {"mode": "0644"}, 0.644])
+def test_normalize_mode_refuses_what_is_not_a_mode(mode: Any) -> None:
+    """Test a mode that is neither a string nor an integer is named
+    as such, since raw accepts anything the task wrote."""
+
+    with pytest.raises(ValueError, match="octal string or an integer"):
+        normalize_mode(mode)

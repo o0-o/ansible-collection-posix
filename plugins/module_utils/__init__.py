@@ -78,6 +78,7 @@ from ansible_collections.o0_o.posix.plugins.module_utils.path_utils import (
     canonicalize,
     compose_paths,
     flags_to_octal_mode,
+    normalize_mode,
 )
 from ansible_collections.o0_o.posix.plugins.module_utils.mount_utils import (
     MOUNT_FILTER_DEFAULTS,
@@ -196,6 +197,7 @@ __all__ = [
     "canonicalize",
     "compose_paths",
     "flags_to_octal_mode",
+    "normalize_mode",
     "MOUNT_FILTER_DEFAULTS",
     "compose_mounts",
     "get_mount_command_requests",

@@ -88,6 +88,24 @@ def test_write_temp_file_applies_the_mode_it_is_given(
     ]
 
 
+def test_write_temp_file_applies_mode_zero(monkeypatch, write_base) -> None:
+    """Test mode 0 is a mode the candidate carries into place.
+
+    It is the one mode a truthy guard cannot tell from a mode that
+    was never asked for, so the chmod was skipped and the candidate
+    landed under whatever the host's umask gave it.
+    """
+    tmpfile = os.path.join(write_base._connection._shell.tmpdir, "file.txt")
+    issued = _record_commands(monkeypatch, write_base)
+
+    write_base._write_temp_file(["one"], tmpfile, mode="0000", task_vars={})
+
+    assert [entry["cmd"] for entry in issued] == [
+        ["tee", tmpfile],
+        ["chmod", "0000", tmpfile],
+    ]
+
+
 def test_write_temp_file_failure(monkeypatch, write_base) -> None:
     """Test _write_temp_file raises error when tee command fails."""
 

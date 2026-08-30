@@ -1,0 +1,17 @@
+# vim: ts=2:sw=2:sts=2:et:ft=yaml.ansible
+# -*- mode: yaml; yaml-indent-offset: 2; indent-tabs-mode: nil; -*-
+---
+bugfixes:
+  - >-
+    write - a mode written without quotes is applied. ``mode`` is a
+    raw argument, so an unquoted one reaches the task as an integer,
+    and seven guards asked whether that integer was true rather than
+    whether a mode had been named: ``mode: 0`` was dropped in silence,
+    and any other integer got as far as a command that cannot take
+    one. The mode settles into its octal string at the one boundary it
+    enters through, and the guards ask whether it is None. An integer
+    is read as the mode's numeric value, which is how the builtin file
+    modules read one, so ``mode: 0644`` is the mode meant - YAML reads
+    that leading zero as octal - and ``mode: 644`` is decimal and
+    arrives as ``01204``, as it does everywhere else in ansible
+    (https://github.com/o0-o/ansible-collection-posix/pull/XXX).

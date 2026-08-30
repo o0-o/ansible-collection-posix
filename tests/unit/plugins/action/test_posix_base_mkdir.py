@@ -104,3 +104,33 @@ def test_mkdir_invalid_mode(write_base) -> None:
         assert "Failed to create directory" in str(excinfo.value)
     finally:
         cleanup_path(path)
+
+
+def test_mkdir_composes_mode_zero_as_a_string(monkeypatch, write_base) -> None:
+    """Test mode 0 reaches ``-m`` as the string mkdir takes.
+
+    A truthy guard read mode 0 as no mode at all and dropped the flag,
+    which hid a second fault behind it: the value the flag carries has
+    to be a string, and nothing coerced it to one.
+    """
+    issued = []
+
+    def mock_command(cmd, task_vars=None, **kwargs):
+        issued.append(cmd)
+        return {"rc": 0}
+
+    monkeypatch.setattr(
+        write_base,
+        "_pseudo_stat",
+        lambda target_path, task_vars=None: {
+            "exists": False,
+            "type": None,
+            "raw": False,
+        },
+    )
+    monkeypatch.setattr(write_base, "_command", mock_command)
+
+    write_base._mkdir("/tmp/o0o-mode-zero", mode="0000", task_vars={})
+
+    assert issued == [["mkdir", "-p", "-m", "0000", "/tmp/o0o-mode-zero"]]
+    assert all(isinstance(arg, str) for arg in issued[0])

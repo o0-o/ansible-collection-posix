@@ -315,6 +315,65 @@ def test_content_family_writes_the_literal_content(plugin) -> None:
 
 
 @pytest.mark.parametrize(
+    "written, applied",
+    [
+        # Mode 0 is a mode. It is also the one mode a truthy guard
+        # cannot tell from a mode that was never named, so it went
+        # unapplied in silence
+        (0, "0000"),
+        # YAML reads the leading zero of 0644 as octal, so the task
+        # writes 0644 and the plugin receives 420
+        (420, "0644"),
+        # A quoted mode is carried through exactly as written
+        ("0644", "0644"),
+        ("755", "755"),
+    ],
+)
+def test_a_mode_reaches_the_write_machinery_as_written(
+    plugin, written, applied
+) -> None:
+    """Test every shape a mode arrives in settles into the octal
+    string the commands downstream take.
+
+    ``mode`` is a raw argument, so an unquoted one reaches the plugin
+    as an integer, and an integer is the mode's numeric value, as the
+    builtin file modules read one.
+    """
+
+    plugin._task.args = {
+        "dest": "/etc/foo",
+        "content": "hi\n",
+        "mode": written,
+    }
+
+    plugin.run(task_vars={})
+
+    assert plugin.writes[0]["perms"] == dict(NO_PERMS, mode=applied)
+
+
+def test_a_mode_never_named_stays_unnamed(plugin) -> None:
+    """Test absence is still absence. Nothing is chosen on the task's
+    behalf, so the machinery is told no mode rather than mode 0."""
+
+    plugin._task.args = {"dest": "/etc/foo", "content": "hi\n"}
+
+    plugin.run(task_vars={})
+
+    assert plugin.writes[0]["perms"]["mode"] is None
+
+
+@pytest.mark.parametrize("mode", [-1, ["0644"]])
+def test_a_mode_that_is_not_a_mode_is_refused_by_name(plugin, mode) -> None:
+    """Test a mode raw accepted but no command can take fails at the
+    boundary, rather than composing into an obscure failure later."""
+
+    plugin._task.args = {"dest": "/etc/foo", "content": "hi\n", "mode": mode}
+
+    with pytest.raises(AnsibleActionFail, match="[Mm]ode"):
+        plugin.run(task_vars={})
+
+
+@pytest.mark.parametrize(
     "content",
     ["hello\nworld\n", "hello\nworld", "", "\n"],
 )

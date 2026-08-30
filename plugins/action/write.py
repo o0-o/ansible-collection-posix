@@ -41,6 +41,7 @@ from ansible_collections.o0_o.posix.plugins.module_utils import (
     WritePosixActionBase,
     ensure_block,
     ensure_line,
+    normalize_mode,
     remove_block,
     remove_lines,
 )
@@ -219,6 +220,17 @@ class ActionModule(WritePosixActionBase, ActionBase):
             mutually_exclusive=mutually_exclusive,
             required_if=required_if,
         )
+
+        # A mode is raw, so an unquoted one arrives as an integer.
+        # Settle it into the octal string every command downstream
+        # takes here, at the one boundary it enters through, so
+        # nothing further in asks what shape it is.
+        try:
+            new_module_args["mode"] = normalize_mode(
+                new_module_args.get("mode")
+            )
+        except ValueError as e:
+            raise AnsibleActionFail(str(e)) from e
 
         return new_module_args
 
@@ -934,7 +946,7 @@ class ActionModule(WritePosixActionBase, ActionBase):
                 perms_changed = True
                 before[key] = old_perms.get(key)
                 after[key] = perms[key]
-        if perms.get("mode"):
+        if perms.get("mode") is not None:
             try:
                 symbolic = self._convert_octal_mode_to_symbolic(perms["mode"])
                 if symbolic != old_perms.get("mode"):

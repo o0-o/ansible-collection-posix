@@ -25,6 +25,12 @@ class ModuleDocFragment:
         description:
           - Mode to set on the file, in octal notation (e.g., C(0644)).
           - Symbolic modes (e.g., C(u+rwx)) are not supported.
+          - An unquoted mode reaches the task as an integer, and an
+            integer is read as the mode's numeric value, the way the
+            builtin file modules read one. YAML reads the leading zero
+            of C(0644) as octal, so that mode arrives as the mode
+            meant; C(644) is decimal and arrives as C(01204). Quote a
+            mode to be sure of it.
           - Left unset, no mode is chosen on the task's behalf, matching
             the builtin file modules. A destination being created takes
             the mode the remote host's umask gives a new file, and a

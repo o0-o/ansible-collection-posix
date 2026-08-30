@@ -139,7 +139,7 @@ class WritePosixActionBase(ReadPosixActionBase):
         args = ["mkdir"]
         if parents:
             args.append("-p")
-        if mode:
+        if mode is not None:
             args.extend(["-m", mode])
         args.append(target_path)
 
@@ -336,7 +336,7 @@ class WritePosixActionBase(ReadPosixActionBase):
         :raises RuntimeError: If an existing destination cannot be read
         """
         mode = (perms or {}).get("mode")
-        if mode:
+        if mode is not None:
             return mode
         if not dest_exists:
             return None
@@ -395,7 +395,7 @@ class WritePosixActionBase(ReadPosixActionBase):
                 f"{write_result.get('stderr', '')}"
             )
 
-        if mode:
+        if mode is not None:
             self._display.vvv(f"Setting temp file permissions: {tmpfile}")
             chmod_result = self._command(
                 ["chmod", mode, tmpfile],
@@ -523,7 +523,7 @@ class WritePosixActionBase(ReadPosixActionBase):
                     )
                     changed = True
 
-            if perms.get("mode"):
+            if perms.get("mode") is not None:
                 try:
                     symbol_perms = self._convert_octal_mode_to_symbolic(
                         perms["mode"]
@@ -589,7 +589,7 @@ class WritePosixActionBase(ReadPosixActionBase):
                         f"{chgrp_result.get('stderr', '')}"
                     )
 
-            if perms.get("mode"):
+            if perms.get("mode") is not None:
                 chmod_result = cmd(
                     ["chmod", perms["mode"], dest], task_vars=task_vars
                 )
@@ -622,7 +622,7 @@ class WritePosixActionBase(ReadPosixActionBase):
                         f"{perms[key]}, got {final_perms.get(key)}"
                     )
 
-            if perms.get("mode"):
+            if perms.get("mode") is not None:
                 try:
                     expected_mode = self._convert_octal_mode_to_symbolic(
                         perms["mode"]

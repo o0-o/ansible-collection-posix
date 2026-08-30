@@ -29,7 +29,8 @@ those answers into another.
 keys it by, for the producers and consumers that have to write a key
 rather than read one, and ``flags_to_octal_mode`` parses the
 permission flags an ``ls`` line carries, for the producers that fill
-an entry in.
+an entry in.  ``normalize_mode`` reads a mode the other way, from the
+raw argument a task wrote to the octal string a command takes.
 """
 
 from __future__ import annotations
@@ -109,6 +110,48 @@ def flags_to_octal_mode(flags: str) -> str:
         octal += 0o1000  # sticky bit
 
     return f"{octal:04o}"
+
+
+def normalize_mode(mode: Any) -> Optional[str]:
+    """Render a requested mode in the octal string form chmod reads.
+
+    A mode is a raw argument, so an unquoted YAML scalar reaches a
+    task as an integer: ``mode: 0`` arrives as int 0, and ``mode:
+    0644`` as int 420, YAML having read the leading zero as octal
+    already.  An integer is a mode's numeric value, which is how the
+    builtin file modules read one -- ``set_mode_if_different`` hands
+    an int straight to ``chmod(2)`` and renders it back with
+    ``'0%03o'`` -- so that same rendering is what this returns, and a
+    quoted mode is left exactly as it was written.
+
+    Mode 0 is a mode.  Only an unset mode is unset, so ``None`` passes
+    through unchanged and the callers downstream ask whether the mode
+    is None rather than whether it is true.
+
+    :param Any mode: A mode as the argument spec received it
+    :returns Optional[str]: The mode in octal string form, or None
+    :raises ValueError: If the mode is negative or is neither a string
+        nor an integer
+    """
+    if mode is None:
+        return None
+
+    if isinstance(mode, str):
+        # An empty string is not an unset mode, and it is not a mode
+        # either; the builtin file modules refuse it the same way
+        if not mode:
+            raise ValueError("Mode must not be empty")
+        return mode
+
+    if isinstance(mode, int):
+        if mode < 0:
+            raise ValueError(f"Mode must not be negative, got {mode}")
+        return "0%03o" % mode
+
+    raise ValueError(
+        "Mode must be an octal string or an integer, got "
+        f"{type(mode).__name__}: {mode!r}"
+    )
 
 
 def _validate_path(path: Any, role: str) -> None:
