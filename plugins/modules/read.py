@@ -60,6 +60,11 @@ options:
     description:
       - Include file content with encoding detection.
       - The content is the file's bytes, trailing newline included.
+      - Text content is POSIX text, which the standard defines as lines
+        terminated by newline alone. Carriage returns are normalized
+        away, C(\r\n) and lone C(\r) alike, on every transport. A file
+        whose exact bytes matter is read with C(encoding) set to
+        C(base64), which answers byte for byte.
       - Binary content is returned base64 encoded. A file the C(file)
         command calls binary for want of magic to match, which is any
         file of a few bytes and the empty file, is still read as text

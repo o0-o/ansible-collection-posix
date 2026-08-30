@@ -48,6 +48,11 @@ description:
   - Idempotence is decided on the destination's bytes, so a file that
     differs from the content in its final newline alone is a change
     and is corrected.
+  - The one byte outside that promise is the carriage return. Text is
+    POSIX text, and both sides of the comparison normalize C(\r) away
+    identically, so CRLF content neither round-trips nor churns; it
+    settles as newline-terminated text. Exact bytes belong to the
+    C(content) family fed from base64, not to text.
   - The C(line) and C(block) families write a POSIX text file by
     design. Every line they write is terminated with a newline, the
     last one included, whatever the destination held before.
