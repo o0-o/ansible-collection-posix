@@ -729,6 +729,31 @@ class ReadPosixActionBase(PosixActionBase):
             # Default to UTF-8 for any text file we can't identify
             return "utf-8"
 
+    def _probe_is_text(self, content_bytes: bytes) -> bool:
+        """Say whether bytes the probes called binary are text after all.
+
+        file answers from magic, and a file too short to carry any is
+        reported binary on that ground alone: a one-byte file holding
+        a newline, and an empty file, which has no bytes to look at.
+        Taking that verdict at its word turned a text file's content
+        into base64 for no reason but its length, and refused to split
+        it into lines at all.
+
+        The bytes settle it. Content that decodes as UTF-8 and carries
+        nothing but printable characters and ordinary whitespace is
+        text; anything else keeps the verdict it was given, so a file
+        of null bytes stays binary however short it is.
+
+        :param bytes content_bytes: The file's bytes
+        :returns bool: True when the bytes read as text
+        """
+        try:
+            decoded = content_bytes.decode("utf-8")
+        except UnicodeDecodeError:
+            return False
+
+        return not self._is_binary_value(decoded)
+
     def _add_content_with_encoding(
         self,
         attributes: dict[str, Any],
@@ -744,6 +769,9 @@ class ReadPosixActionBase(PosixActionBase):
         Handles special encodings (hex, base64) and text encodings.
         Falls back to base64 if auto-detected encoding fails.
         Fails if text decode fails with forced encoding.
+
+        A verdict of binary the probes reached without reading the
+        bytes is put to the bytes themselves. See ``_probe_is_text``.
 
         :param dict attributes: Metadata dict to update
         :param str raw_content: Raw content from cat command
@@ -763,6 +791,14 @@ class ReadPosixActionBase(PosixActionBase):
         encoding_lower = encoding.lower()
         want_content = options.get("content", False)
         want_lines = options.get("lines", False)
+
+        # A verdict the probes reached without reading the bytes gets
+        # put to the bytes. A forced encoding is the caller's ruling
+        # and is left alone.
+        if not forced and encoding_lower in {"binary", "unknown"}:
+            if self._probe_is_text(content_bytes):
+                encoding = "utf-8"
+                encoding_lower = "utf-8"
 
         # Fail if lines requested with non-text encoding
         if want_lines and encoding_lower in {

@@ -1,0 +1,121 @@
+# vim: ts=2:sw=2:sts=2:et:ft=yaml.ansible
+# -*- mode: yaml; yaml-indent-offset: 2; indent-tabs-mode: nil; -*-
+---
+# GNU General Public License v3.0+
+# SPDX-License-Identifier: GPL-3.0-or-later
+# (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
+#
+# Copyright (c) 2025 oØ.o (@o0-o)
+#
+# This file is part of the o0_o.posix Ansible Collection.
+
+# One content of the symmetry matrix, held to both halves of the law
+# symmetry.yml states. The file exists because a loop needs one, and
+# because the row it runs is worth reading on its own.
+#
+# Every task that establishes a file names check_mode: false and runs
+# either way; the two writes the law is actually about take the row's
+# check mode, so a prediction is held to the same standard as a
+# placement. That is the point of running under the matrix: a write
+# that would report a change it does not need is as wrong in check
+# mode as it is out of it.
+
+- name: Name the file this case rides
+  ansible.builtin.set_fact:
+    symmetry_dest: "{{ symmetry_dir }}/{{ symmetry_case['name'] }}"
+
+# 1. write C, read it back, and write what came back
+
+- name: Write the case's bytes
+  o0_o.posix.write:
+    dest: "{{ symmetry_dest }}"
+    content: "{{ symmetry_case['b64'] | b64decode }}"
+    mode: '0644'
+    raw: "{{ raw }}"
+  check_mode: false
+  register: symmetry_write_reg
+
+- name: Read back what the write landed
+  o0_o.posix.read:
+    path: "{{ symmetry_dest }}"
+    content: true
+    sha256: true
+  check_mode: false
+  register: symmetry_read_reg
+
+- name: Assert the read returns the bytes the write was handed
+  ansible.builtin.assert:
+    that:
+      - symmetry_write_reg is changed
+      - symmetry_write_reg['raw'] == raw
+      - symmetry_read['content'] | b64encode == symmetry_case['b64']
+  vars:
+    symmetry_read: "{{ symmetry_read_reg['paths'][symmetry_dest] }}"
+
+- name: Write back exactly what the read returned
+  o0_o.posix.write:
+    dest: "{{ symmetry_dest }}"
+    content: "{{ symmetry_read_back }}"
+    mode: '0644'
+    raw: "{{ raw }}"
+  vars:
+    symmetry_read_back: >-
+      {{ symmetry_read_reg['paths'][symmetry_dest]['content'] }}
+  register: symmetry_return_reg
+
+- name: Assert writing back what was read changes nothing
+  ansible.builtin.assert:
+    that:
+      - symmetry_return_reg is not changed
+      - symmetry_return_reg['raw'] == raw
+
+# 2. the same law over bytes this collection did not lay down
+
+- name: Lay the ground truth down with printf, byte for byte
+  o0_o.posix.command:
+    cmd: "printf '{{ symmetry_case['printf'] }}' > {{ symmetry_dest }}"
+    _uses_shell: true
+  check_mode: false
+
+- name: Read the ground truth and take its digest
+  o0_o.posix.read:
+    path: "{{ symmetry_dest }}"
+    content: true
+    sha256: true
+  check_mode: false
+  register: symmetry_ground_reg
+
+- name: Assert the ground truth reads back byte for byte
+  ansible.builtin.assert:
+    that:
+      - symmetry_ground['content'] | b64encode == symmetry_case['b64']
+      - symmetry_ground['sha256'] is match('^[0-9a-f]{64}$')
+  vars:
+    symmetry_ground: "{{ symmetry_ground_reg['paths'][symmetry_dest] }}"
+
+- name: Write the ground truth back as it was read
+  o0_o.posix.write:
+    dest: "{{ symmetry_dest }}"
+    content: "{{ symmetry_ground_back }}"
+    raw: "{{ raw }}"
+  vars:
+    symmetry_ground_back: >-
+      {{ symmetry_ground_reg['paths'][symmetry_dest]['content'] }}
+  register: symmetry_ground_return_reg
+
+- name: Take the digest again
+  o0_o.posix.read:
+    path: "{{ symmetry_dest }}"
+    sha256: true
+  check_mode: false
+  register: symmetry_settled_reg
+
+- name: Assert the ground truth survives its own round trip untouched
+  ansible.builtin.assert:
+    that:
+      - symmetry_ground_return_reg is not changed
+      - symmetry_ground_return_reg['raw'] == raw
+      - symmetry_settled['sha256'] == symmetry_ground['sha256']
+  vars:
+    symmetry_ground: "{{ symmetry_ground_reg['paths'][symmetry_dest] }}"
+    symmetry_settled: "{{ symmetry_settled_reg['paths'][symmetry_dest] }}"

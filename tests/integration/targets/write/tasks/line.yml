@@ -745,3 +745,36 @@
       - line_missing_idempotent_reg is not changed
       - line_missing_idempotent_reg['raw'] == raw
       - line_missing_read_reg['paths'][line_missing_dest] is none
+
+# A file that exists and holds nothing is not a file that could not
+# be read. The encoding probes have no bytes to classify in an empty
+# one and call it binary, and asking read to split binary content
+# into lines failed the edit outright rather than editing an empty
+# file.
+- name: Empty the destination the edit will find holding nothing
+  o0_o.posix.write:
+    dest: "{{ line_empty_dest }}"
+    content: ''
+    raw: "{{ raw }}"
+  check_mode: false
+
+- name: Edit a line into a file that holds nothing
+  o0_o.posix.write:
+    dest: "{{ line_empty_dest }}"
+    line: 'first=1'
+    raw: "{{ raw }}"
+  check_mode: false
+  register: line_empty_reg
+
+- name: Read the file the edit found empty
+  o0_o.posix.read:
+    path: "{{ line_empty_dest }}"
+    lines: true
+  register: line_empty_read_reg
+
+- name: Assert an empty file takes the line and settles
+  ansible.builtin.assert:
+    that:
+      - line_empty_reg is changed
+      - line_empty_reg['raw'] == raw
+      - line_empty_read_reg['paths'][line_empty_dest]['lines'] == ['first=1']

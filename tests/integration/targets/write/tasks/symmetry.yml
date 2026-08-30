@@ -1,0 +1,82 @@
+# vim: ts=2:sw=2:sts=2:et:ft=yaml.ansible
+# -*- mode: yaml; yaml-indent-offset: 2; indent-tabs-mode: nil; -*-
+---
+# GNU General Public License v3.0+
+# SPDX-License-Identifier: GPL-3.0-or-later
+# (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
+#
+# Copyright (c) 2025 oØ.o (@o0-o)
+#
+# This file is part of the o0_o.posix Ansible Collection.
+
+# THE LAW: write and read are inverses over text content.
+#
+#   1. Write C, read the destination, and the read returns C byte for
+#      byte; write what that read returned and nothing changes.
+#   2. Bytes this collection did not lay down - printf stands in for
+#      whatever put the file there - read back and written again
+#      change nothing, and the file's digest does not move.
+#
+# Either half failing means one side is lying about the other's
+# bytes. The suite exists because both sides did: read handed back a
+# file's content with its trailing whitespace eaten, and write
+# compared destinations as lines, which cannot tell 'abc' from
+# 'abc\n'. The cases below are exactly the contents those two defects
+# made indistinguishable.
+#
+# The law is over text. Content the encoding probes cannot decode
+# comes back base64, which represents the bytes rather than being
+# them, so it is outside what this suite claims. The empty file sits
+# on that line and holds anyway: it has no bytes to classify, so the
+# probes call it binary, and the base64 of nothing is nothing.
+#
+# Ground truth is laid with printf escapes, not a YAML scalar, and
+# every comparison runs through base64 or a digest. Whitespace at the
+# end of a line is the thing under test and the one thing no YAML
+# scalar, editor, or diff viewer can be trusted to carry; base64 is
+# the same bytes spelled in characters nothing will tidy.
+
+- name: Start the symmetry suite from an empty tree
+  o0_o.posix.write:
+    dest: "{{ symmetry_dir }}"
+    state: absent
+  check_mode: false
+
+- name: Hold the law over every content the byte-faithful read tells apart
+  ansible.builtin.include_tasks: symmetry_case.yml
+  loop:
+    # A terminated file and the same bytes without the terminator:
+    # the pair forge issue 3 was written about
+    - name: terminated
+      b64: 'YWJjCg=='
+      printf: 'abc\n'
+    - name: unterminated
+      b64: 'YWJj'
+      printf: 'abc'
+    # Spaces at the end of a line, which run's default strip ate
+    # along with the terminator
+    - name: trailing_spaces
+      b64: 'YWxwaGEgICAKYmV0YSAgIAo='
+      printf: 'alpha   \nbeta   \n'
+    - name: trailing_spaces_unterminated
+      b64: 'Z2FtbWEgICA='
+      printf: 'gamma   '
+    # No bytes at all, and a blank line, which is not the same thing
+    - name: empty
+      b64: ''
+      printf: ''
+    - name: blank_line
+      b64: 'Cg=='
+      printf: '\n'
+    - name: multiline
+      b64: 'b25lCnR3bwp0aHJlZQo='
+      printf: 'one\ntwo\nthree\n'
+    # Written as octal escapes so this file stays ASCII and the bytes
+    # that reach the target are not at the mercy of anything's idea of
+    # an encoding
+    - name: unicode
+      b64: 'aMOpbGxvIHfDtnJsZCDDvG7Dr2NvZGUK'
+      printf: 'h\303\251llo w\303\266rld \303\274n\303\257code\n'
+  loop_control:
+    loop_var: symmetry_case
+    label: "{{ symmetry_case['name'] }}"

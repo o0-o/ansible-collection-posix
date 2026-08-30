@@ -60,7 +60,11 @@ options:
     description:
       - Include file content with encoding detection.
       - The content is the file's bytes, trailing newline included.
-      - Binary content is returned base64 encoded.
+      - Binary content is returned base64 encoded. A file the C(file)
+        command calls binary for want of magic to match, which is any
+        file of a few bytes and the empty file, is still read as text
+        when its bytes decode as UTF-8 and hold nothing but printable
+        characters and ordinary whitespace.
       - Only regular files are read. A directory, symlink, FIFO, socket
         or device is reported with no C(content) key and no error; its
         C(type) says why.

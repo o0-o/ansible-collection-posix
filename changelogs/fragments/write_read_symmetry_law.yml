@@ -1,0 +1,23 @@
+# vim: ts=2:sw=2:sts=2:et:ft=yaml.ansible
+# -*- mode: yaml; yaml-indent-offset: 2; indent-tabs-mode: nil; -*-
+---
+bugfixes:
+  - >-
+    read - a file too short for the ``file`` command's magic is no
+    longer reported binary on that ground alone. file answers from
+    magic and has none to match under a few bytes, so it called a
+    one-byte file holding a newline binary, and an empty file too,
+    having nothing at all to look at. Content that decodes as UTF-8
+    and holds nothing but printable characters and ordinary
+    whitespace is text, whatever its length; a file of null bytes
+    keeps the verdict it was given however short it is, and a forced
+    encoding is never second-guessed
+    (https://github.com/o0-o/ansible-collection-posix/pull/XXX).
+  - >-
+    write - a destination holding nothing, or holding one byte, can
+    be written and edited again. Every family read it back to compare,
+    read called it binary, and binary content refuses to split into
+    lines, so the read failed and took the write down with it: an
+    empty file could not be given content, and a ``line`` or ``block``
+    edit of one could not run at all
+    (https://github.com/o0-o/ansible-collection-posix/pull/XXX).

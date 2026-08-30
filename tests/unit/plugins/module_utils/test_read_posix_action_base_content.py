@@ -198,8 +198,111 @@ class TestParseMacosHexDump:
         assert action._parse_macos_hex_dump(["00000000  ca fe"]) == b"\xca\xfe"
 
 
+class TestProbeIsText:
+    """Tests for _probe_is_text."""
+
+    @pytest.mark.parametrize(
+        "content_bytes",
+        [
+            b"",  # nothing to look at is not a reason to call it binary
+            b"\n",  # one byte, and file has no magic that short
+            b"a",
+            b"abc\n",
+            b"keeps   \n",
+            b"h\xc3\xa9llo\n",  # valid UTF-8
+            b"tab\there\r\n",
+        ],
+    )
+    def test_text_bytes_overturn_the_verdict(
+        self, action, content_bytes
+    ) -> None:
+        """Test bytes that read as text are text."""
+        assert action._probe_is_text(content_bytes) is True
+
+    @pytest.mark.parametrize(
+        "content_bytes",
+        [
+            b"\x00\x00\x00",  # short, but genuinely not text
+            b"\x00",
+            b"\x7f\x7f",
+            b"\xff\xfe\x00\x00",  # not valid UTF-8 at all
+            b"text then \x01 a control byte",
+        ],
+    )
+    def test_binary_bytes_keep_the_verdict(
+        self, action, content_bytes
+    ) -> None:
+        """Test bytes that are not text keep the verdict they got."""
+        assert action._probe_is_text(content_bytes) is False
+
+
 class TestAddContentWithEncoding:
     """Tests for _add_content_with_encoding."""
+
+    @pytest.mark.parametrize(
+        "raw,expected_lines",
+        [
+            ("", []),
+            ("\n", [""]),
+            ("a", ["a"]),
+        ],
+    )
+    def test_short_text_is_not_binary(
+        self, action, raw, expected_lines
+    ) -> None:
+        """Test a file too short for file's magic still reads as text.
+
+        file reports anything it has no magic for as binary, which
+        takes in every one-byte file and the empty file. Believing it
+        handed back base64 for no reason but the file's length, and
+        refused to split it into lines at all.
+        """
+        attributes = {}
+
+        action._add_content_with_encoding(
+            attributes,
+            raw,
+            "binary",
+            "/tmp/f",
+            {"content": True, "lines": True},
+        )
+
+        assert attributes == {
+            "encoding": "utf-8",
+            "content": raw,
+            "lines": expected_lines,
+        }
+
+    def test_short_binary_keeps_its_verdict(self, action) -> None:
+        """Test a short file that is not text is still base64."""
+        attributes = {}
+
+        action._add_content_with_encoding(
+            attributes,
+            "\x00\x00\x00",
+            "binary",
+            "/tmp/f",
+            {"content": True},
+        )
+
+        assert attributes == {"encoding": "base64", "content": "AAAA"}
+
+    def test_forced_binary_encoding_is_not_second_guessed(
+        self, action
+    ) -> None:
+        """Test a caller who asked for base64 is given base64."""
+        attributes = {}
+
+        action._add_content_with_encoding(
+            attributes,
+            "abc\n",
+            "base64",
+            "/tmp/f",
+            {"content": True},
+            forced=True,
+        )
+
+        assert attributes == {"encoding": "base64", "content": "YWJjCg=="}
 
     def test_text_content_and_lines(self, action) -> None:
         """Test a text encoding fills content, lines and encoding."""
@@ -264,23 +367,26 @@ class TestAddContentWithEncoding:
 
         assert attributes == {"encoding": "utf-8"}
 
+    # binary and unknown only ever arrive from the probes, and the
+    # probes are overruled by text bytes now, so those two rows carry
+    # bytes that are genuinely not text
     @pytest.mark.parametrize(
-        "encoding,expected",
+        "raw,encoding,expected",
         [
-            ("hex", "hex"),
-            ("base64", "base64"),
-            ("binary", "base64"),
-            ("unknown", "base64"),
+            ("hi", "hex", "hex"),
+            ("hi", "base64", "base64"),
+            ("\x00\x00", "binary", "base64"),
+            ("\x00\x00", "unknown", "base64"),
         ],
     )
     def test_nontext_without_content_records_encoding_only(
-        self, action, encoding, expected
+        self, action, raw, encoding, expected
     ) -> None:
         """Test non-text encodings honor the content flag like text."""
         attributes = {}
 
         action._add_content_with_encoding(
-            attributes, "hi", encoding, "/tmp/f", {}
+            attributes, raw, encoding, "/tmp/f", {}
         )
 
         assert attributes == {"encoding": expected}
@@ -383,17 +489,26 @@ class TestAddContentWithEncoding:
         assert attributes == {"encoding": "hex", "content": "6869"}
 
     @pytest.mark.parametrize(
-        "encoding", ["base64", "binary", "unknown", "UNKNOWN", "Base64"]
+        "raw,encoding,expected",
+        [
+            ("hi", "base64", "aGk="),
+            ("hi", "Base64", "aGk="),
+            ("\x00\x00", "binary", "AAA="),
+            ("\x00\x00", "unknown", "AAA="),
+            ("\x00\x00", "UNKNOWN", "AAA="),
+        ],
     )
-    def test_binary_encodings_emit_base64(self, action, encoding) -> None:
+    def test_binary_encodings_emit_base64(
+        self, action, raw, encoding, expected
+    ) -> None:
         """Test binary style encodings all report base64 content."""
         attributes = {}
 
         action._add_content_with_encoding(
-            attributes, "hi", encoding, "/tmp/f", {"content": True}
+            attributes, raw, encoding, "/tmp/f", {"content": True}
         )
 
-        assert attributes == {"encoding": "base64", "content": "aGk="}
+        assert attributes == {"encoding": "base64", "content": expected}
 
     def test_surrogate_bytes_are_base64_encoded(self, action) -> None:
         """Test surrogate escaped bytes survive base64 encoding."""
@@ -410,15 +525,23 @@ class TestAddContentWithEncoding:
         assert attributes == {"encoding": "base64", "content": "//4="}
 
     @pytest.mark.parametrize(
-        "encoding", ["hex", "base64", "binary", "unknown"]
+        "raw,encoding",
+        [
+            ("hi", "hex"),
+            ("hi", "base64"),
+            ("\x00\x00", "binary"),
+            ("\x00\x00", "unknown"),
+        ],
     )
-    def test_lines_with_binary_encoding_raises(self, action, encoding) -> None:
+    def test_lines_with_binary_encoding_raises(
+        self, action, raw, encoding
+    ) -> None:
         """Test asking for lines with a binary encoding is rejected."""
         attributes = {}
 
         with pytest.raises(ValueError, match="Cannot split binary content"):
             action._add_content_with_encoding(
-                attributes, "hi", encoding, "/tmp/f", {"lines": True}
+                attributes, raw, encoding, "/tmp/f", {"lines": True}
             )
 
         assert attributes == {}

@@ -44,6 +44,14 @@
           setting_one = false
           setting_two = false
 
+    # The standing law that write and read are inverses. It rides the
+    # matrix rather than sitting beside it, so the law is held under
+    # check mode and over the raw path as well as the interpreted one.
+    - name: Hold the write and read symmetry law
+      ansible.builtin.include_tasks: symmetry.yml
+      vars:
+        symmetry_dir: "{{ write_test_dir }}/symmetry"
+
     - name: Run copy family tests
       ansible.builtin.include_tasks: copy.yml
       vars:
@@ -88,6 +96,7 @@
         line_created_dest: "{{ line_dir }}/created.conf"
         line_search_dest: "{{ line_dir }}/search.conf"
         line_missing_dest: "{{ line_dir }}/never_existed.conf"
+        line_empty_dest: "{{ line_dir }}/holds_nothing.conf"
         # pattern=a.c is a regular expression that matches its own
         # neighbour, so a literal match and a pattern match land on
         # different lines of this seed.
