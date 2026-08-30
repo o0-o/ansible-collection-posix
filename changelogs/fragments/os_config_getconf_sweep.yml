@@ -1,0 +1,33 @@
+# vim: ts=2:sw=2:sts=2:et:ft=yaml.ansible
+# -*- mode: yaml; yaml-indent-offset: 2; indent-tabs-mode: nil; -*-
+---
+minor_changes:
+  - >-
+    facts - A new ``config`` subset publishes ``o0_os.config``, what
+    ``getconf`` answers about the host, keyed by the variable asked
+    for. The host-invariant class only - the ``sysconf`` limits, the
+    ``confstr`` strings and the standard versions - because the
+    ``pathconf`` class takes a pathname and is a fact about a
+    filesystem rather than about a host. One invocation per variable,
+    which is the only interface POSIX defines: ``getconf -a`` would
+    answer the whole set at once but it is an extension, and the three
+    implementations that have it print three different formats, so a
+    parser for it would be a parser for whichever host it was written
+    on. The sweep rides the batch a gather was already sending, and it
+    is not in ``min``, which is what one round trip answers
+    (https://github.com/o0-o/ansible-collection-posix/pull/XXX).
+  - >-
+    facts - A configuration variable the host does not know is absent
+    from ``o0_os.config``, and one it has and does not limit is
+    present and null, so the two can be told apart. No two ``getconf``
+    implementations know the same variables - musl has no
+    ``HOST_NAME_MAX``, glibc no ``_POSIX2_VERSION``, macOS no
+    ``CS_PATH`` - and each refuses in its own dialect and with its own
+    exit status, so every plausible refusal is read as an answer
+    rather than a command failure. Both spellings are asked wherever a
+    variable has two: macOS answers ``NPROCESSORS_ONLN`` and both
+    Linux libcs answer only ``_NPROCESSORS_ONLN``, and neither
+    spelling is invented for a host that has neither. Numbers come
+    back as integers and search paths as strings, which is what the
+    host printed and nothing more
+    (https://github.com/o0-o/ansible-collection-posix/pull/XXX).

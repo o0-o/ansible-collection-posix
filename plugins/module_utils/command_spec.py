@@ -33,6 +33,10 @@ from ansible_collections.o0_o.posix.plugins.module_utils.df_utils import (
 from ansible_collections.o0_o.posix.plugins.module_utils.dmidecode_utils import (  # noqa: E501
     _parse_dmidecode,
 )
+from ansible_collections.o0_o.posix.plugins.module_utils.getconf_utils import (
+    GETCONF_RCS,
+    _parse_getconf,
+)
 from ansible_collections.o0_o.posix.plugins.module_utils.getent_utils import (
     GETENT_RCS,
     _parse_getent,
@@ -92,6 +96,20 @@ GETENT_COMMAND_SPEC = {
             "parser": _parse_getent,
             "parser_kwargs": {"database": "group"},
             "non_error_codes": GETENT_RCS,
+        },
+    },
+}
+
+# What the host says its own configuration is.  One invocation per
+# variable, which is the only interface POSIX defines, and every
+# plausible refusal is a non-error so the parser rather than the
+# runner decides what the host knows.
+GETCONF_COMMAND_SPEC = {
+    "posix": {
+        "getconf_sysconf": {
+            "command": ("getconf", "{var}"),
+            "parser": _parse_getconf,
+            "non_error_codes": GETCONF_RCS,
         },
     },
 }

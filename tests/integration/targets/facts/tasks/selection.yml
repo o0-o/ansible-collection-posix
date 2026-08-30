@@ -12,8 +12,8 @@
 # What a gather_subset selects, asserted by the names each selection
 # publishes and the names it leaves alone. Every subset is asked for
 # by the name the module resolves: uname, environment, timezone,
-# compliance, dmidecode, mounts, fstab, users, and the groups min,
-# all and storage.
+# compliance, config, dmidecode, mounts, fstab, users, and the groups
+# min, all and storage.
 
 - name: Gather the smallest useful subset
   o0_o.posix.facts:
@@ -57,6 +57,7 @@
       - gathered['o0_storage'] is not defined
       - gathered['o0_groups'] is not defined
       - gathered['o0_shell_files'] is not defined
+      - gathered['o0_os']['config'] is not defined
       # The compliance sweep fills the path store, so the store is
       # here; the homes and the files only the other subsets read are
       # not
@@ -128,6 +129,26 @@
         is match('^[+-][0-9]{4}$')
     fail_msg: >-
       the timezone subset published something else: {{ gathered }}
+
+- name: Gather the host's configuration alone
+  o0_o.posix.facts:
+    gather_subset: [config]
+  register: facts_config_reg
+
+# The sweep asks getconf and nothing else, so it publishes one key of
+# one namespace. It is not in min: min is what one round trip answers,
+# and a variable at a time is more commands than that.
+- name: Assert the config subset publishes getconf's answers alone
+  vars:
+    gathered: "{{ facts_config_reg['ansible_facts'] }}"
+  ansible.builtin.assert:
+    that:
+      - gathered.keys() | list == ['o0_os']
+      - gathered['o0_os'].keys() | list == ['config']
+      - gathered['o0_os']['config']['ARG_MAX'] is integer
+      - gathered['o0_os']['config']['PATH'] is string
+    fail_msg: >-
+      the config subset published something else: {{ gathered }}
 
 - name: Gather the users of the host alone
   o0_o.posix.facts:

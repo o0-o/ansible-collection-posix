@@ -69,6 +69,35 @@
       o0_os.compliance does not name the standards it read, or one of
       them will not say whether it is supported: {{ supports }}
 
+# POSIX's own configuration interface, asked one variable at a time.
+# A variable the host does not know is absent; one it has and does not
+# limit is present and null. Neither is invented and neither is a
+# failure.
+- name: Assert the host's configuration is what getconf answered
+  vars:
+    config: "{{ facts_all_reg['ansible_facts']['o0_os']['config'] }}"
+    values: "{{ config.values() | list }}"
+  ansible.builtin.assert:
+    that:
+      - config is mapping
+      - config | length > 0
+      # Every key is the variable that was asked for, verbatim
+      - config.keys() | reject('match', '^_?[A-Z][A-Z0-9_]*$')
+        | list | length == 0
+      # Counts and sizes are integers, not the digits getconf printed
+      - config['ARG_MAX'] is integer
+      - config['ARG_MAX'] > 0
+      - config['OPEN_MAX'] is integer
+      - config['_POSIX_VERSION'] is integer
+      # A search path is a path
+      - config['PATH'] is string
+      - config['PATH'] is match('^/')
+      # Nothing was coerced on the way in, and a limit is never a flag
+      - values | select('boolean') | list | length == 0
+      - values | reject('integer') | reject('string') | reject('none')
+        | list | length == 0
+    fail_msg: 'o0_os.config is not the shape getconf answers: {{ config }}'
+
 # What a shell answers about itself is a fact about the shell, so it
 # is filed on that shell's own entry in the path store rather than in
 # a namespace of its own.

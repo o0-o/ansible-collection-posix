@@ -1,0 +1,132 @@
+===PLATFORM===
+Darwin o0-adm-0003 25.5.0 Darwin Kernel Version 25.5.0: Tue Jun  9 22:28:34 PDT 2026; root:xnu-12377.121.10~1/RELEASE_ARM64_T6041 arm64
+===WHICH===
+/usr/bin/getconf
+===CMD=== getconf ARG_MAX
+1048576
+---STDERR---
+---RC--- 0
+===CMD=== getconf CHILD_MAX
+10666
+---STDERR---
+---RC--- 0
+===CMD=== getconf CLK_TCK
+100
+---STDERR---
+---RC--- 0
+===CMD=== getconf HOST_NAME_MAX
+255
+---STDERR---
+---RC--- 0
+===CMD=== getconf LOGIN_NAME_MAX
+255
+---STDERR---
+---RC--- 0
+===CMD=== getconf OPEN_MAX
+1048576
+---STDERR---
+---RC--- 0
+===CMD=== getconf PAGE_SIZE
+16384
+---STDERR---
+---RC--- 0
+===CMD=== getconf PAGESIZE
+16384
+---STDERR---
+---RC--- 0
+===CMD=== getconf RE_DUP_MAX
+255
+---STDERR---
+---RC--- 0
+===CMD=== getconf STREAM_MAX
+1048576
+---STDERR---
+---RC--- 0
+===CMD=== getconf SYMLOOP_MAX
+32
+---STDERR---
+---RC--- 0
+===CMD=== getconf TTY_NAME_MAX
+255
+---STDERR---
+---RC--- 0
+===CMD=== getconf TZNAME_MAX
+255
+---STDERR---
+---RC--- 0
+===CMD=== getconf LINE_MAX
+2048
+---STDERR---
+---RC--- 0
+===CMD=== getconf EXPR_NEST_MAX
+32
+---STDERR---
+---RC--- 0
+===CMD=== getconf COLL_WEIGHTS_MAX
+2
+---STDERR---
+---RC--- 0
+===CMD=== getconf BC_BASE_MAX
+99
+---STDERR---
+---RC--- 0
+===CMD=== getconf BC_DIM_MAX
+2048
+---STDERR---
+---RC--- 0
+===CMD=== getconf BC_SCALE_MAX
+99
+---STDERR---
+---RC--- 0
+===CMD=== getconf BC_STRING_MAX
+1000
+---STDERR---
+---RC--- 0
+===CMD=== getconf NGROUPS_MAX
+16
+---STDERR---
+---RC--- 0
+===CMD=== getconf IOV_MAX
+1024
+---STDERR---
+---RC--- 0
+===CMD=== getconf ATEXIT_MAX
+2147483647
+---STDERR---
+---RC--- 0
+===CMD=== getconf NPROCESSORS_CONF
+16
+---STDERR---
+---RC--- 0
+===CMD=== getconf NPROCESSORS_ONLN
+16
+---STDERR---
+---RC--- 0
+===CMD=== getconf _NPROCESSORS_CONF
+16
+---STDERR---
+---RC--- 0
+===CMD=== getconf _NPROCESSORS_ONLN
+16
+---STDERR---
+---RC--- 0
+===CMD=== getconf PATH
+/usr/bin:/bin:/usr/sbin:/sbin
+---STDERR---
+---RC--- 0
+===CMD=== getconf CS_PATH
+---STDERR---
+getconf: no such configuration parameter `CS_PATH'
+---RC--- 64
+===CMD=== getconf _POSIX_VERSION
+200112
+---STDERR---
+---RC--- 0
+===CMD=== getconf _POSIX2_VERSION
+200112
+---STDERR---
+---RC--- 0
+===CMD=== getconf _XOPEN_VERSION
+600
+---STDERR---
+---RC--- 0

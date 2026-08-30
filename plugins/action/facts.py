@@ -29,6 +29,7 @@ from ansible_collections.o0_o.posix.plugins.module_utils import (
     get_effective_uid_command_requests,
     get_env_command_requests,
     get_file_command_requests,
+    get_getconf_command_requests,
     get_getent_command_requests,
     get_mount_command_requests,
     get_timezone_command_requests,
@@ -38,6 +39,7 @@ from ansible_collections.o0_o.posix.plugins.module_utils import (
     process_effective_uid_results,
     process_env_command_results,
     process_file_command_results,
+    process_getconf_command_results,
     process_getent_command_results,
     process_mount_command_results,
     process_timezone_command_results,
@@ -304,6 +306,7 @@ class ActionModule(ReadPosixActionBase, ActionBase):
             "timezone",
             "dmidecode",
             "compliance",
+            "config",
             "storage",
             "users",
         },
@@ -320,6 +323,10 @@ class ActionModule(ReadPosixActionBase, ActionBase):
         "compliance": {
             "requests": get_compliance_command_requests,
             "processor": process_all_compliance_command_results,
+        },
+        "config": {
+            "requests": get_getconf_command_requests,
+            "processor": process_getconf_command_results,
         },
         "dmidecode": {
             "requests": get_dmidecode_command_requests,

@@ -1,0 +1,132 @@
+===PLATFORM===
+Linux d8ab94273a15 7.1.3-200.fc44.aarch64 #1 SMP PREEMPT_DYNAMIC Sat Jul  4 19:23:52 UTC 2026 aarch64 Linux
+===WHICH===
+/usr/bin/getconf
+===CMD=== getconf ARG_MAX
+131072
+---STDERR---
+---RC--- 0
+===CMD=== getconf CHILD_MAX
+15543
+---STDERR---
+---RC--- 0
+===CMD=== getconf CLK_TCK
+100
+---STDERR---
+---RC--- 0
+===CMD=== getconf HOST_NAME_MAX
+---STDERR---
+getconf: HOST_NAME_MAX: unknown variable
+---RC--- 1
+===CMD=== getconf LOGIN_NAME_MAX
+256
+---STDERR---
+---RC--- 0
+===CMD=== getconf OPEN_MAX
+524288
+---STDERR---
+---RC--- 0
+===CMD=== getconf PAGE_SIZE
+4096
+---STDERR---
+---RC--- 0
+===CMD=== getconf PAGESIZE
+4096
+---STDERR---
+---RC--- 0
+===CMD=== getconf RE_DUP_MAX
+255
+---STDERR---
+---RC--- 0
+===CMD=== getconf STREAM_MAX
+undefined
+---STDERR---
+---RC--- 0
+===CMD=== getconf SYMLOOP_MAX
+---STDERR---
+getconf: SYMLOOP_MAX: unknown variable
+---RC--- 1
+===CMD=== getconf TTY_NAME_MAX
+---STDERR---
+getconf: TTY_NAME_MAX: unknown variable
+---RC--- 1
+===CMD=== getconf TZNAME_MAX
+6
+---STDERR---
+---RC--- 0
+===CMD=== getconf LINE_MAX
+undefined
+---STDERR---
+---RC--- 0
+===CMD=== getconf EXPR_NEST_MAX
+undefined
+---STDERR---
+---RC--- 0
+===CMD=== getconf COLL_WEIGHTS_MAX
+2
+---STDERR---
+---RC--- 0
+===CMD=== getconf BC_BASE_MAX
+99
+---STDERR---
+---RC--- 0
+===CMD=== getconf BC_DIM_MAX
+2048
+---STDERR---
+---RC--- 0
+===CMD=== getconf BC_SCALE_MAX
+99
+---STDERR---
+---RC--- 0
+===CMD=== getconf BC_STRING_MAX
+1000
+---STDERR---
+---RC--- 0
+===CMD=== getconf NGROUPS_MAX
+32
+---STDERR---
+---RC--- 0
+===CMD=== getconf IOV_MAX
+1024
+---STDERR---
+---RC--- 0
+===CMD=== getconf ATEXIT_MAX
+undefined
+---STDERR---
+---RC--- 0
+===CMD=== getconf NPROCESSORS_CONF
+---STDERR---
+getconf: NPROCESSORS_CONF: unknown variable
+---RC--- 1
+===CMD=== getconf NPROCESSORS_ONLN
+---STDERR---
+getconf: NPROCESSORS_ONLN: unknown variable
+---RC--- 1
+===CMD=== getconf _NPROCESSORS_CONF
+4
+---STDERR---
+---RC--- 0
+===CMD=== getconf _NPROCESSORS_ONLN
+4
+---STDERR---
+---RC--- 0
+===CMD=== getconf PATH
+/bin:/usr/bin
+---STDERR---
+---RC--- 0
+===CMD=== getconf CS_PATH
+---STDERR---
+getconf: CS_PATH: unknown variable
+---RC--- 1
+===CMD=== getconf _POSIX_VERSION
+200809
+---STDERR---
+---RC--- 0
+===CMD=== getconf _POSIX2_VERSION
+---STDERR---
+getconf: _POSIX2_VERSION: unknown variable
+---RC--- 1
+===CMD=== getconf _XOPEN_VERSION
+---STDERR---
+getconf: _XOPEN_VERSION: unknown variable
+---RC--- 1

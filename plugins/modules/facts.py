@@ -19,8 +19,9 @@ version_added: '1.3.0'
 description:
   - Collects comprehensive POSIX facts from remote hosts.
   - Gathers the kernel, hostname and architecture C(uname) reports, the
-    host's timezone, its standards compliance, its hardware inventory,
-    its mounts and C(/etc/fstab), its users and groups, and the
+    host's timezone, its standards compliance, the configuration
+    variables C(getconf) answers for, its hardware inventory, its
+    mounts and C(/etc/fstab), its users and groups, and the
     environment and locale of the user the play connects as.
   - Uses efficient shell commands and file reads where possible.
   - Does not require Python on the managed host.
@@ -44,6 +45,7 @@ options:
       - storage
       - uname
       - compliance
+      - config
       - timezone
       - dmidecode
       - mounts
@@ -55,6 +57,7 @@ options:
       - '!storage'
       - '!uname'
       - '!compliance'
+      - '!config'
       - '!timezone'
       - '!dmidecode'
       - '!mounts'
@@ -143,9 +146,42 @@ ansible_facts:
     o0_os:
       description: Facts about the operating system.
       returned: >-
-        when the uname, timezone or compliance subset is gathered
+        when the uname, timezone, compliance or config subset is
+        gathered
       type: dict
       contains:
+        config:
+          description:
+            - What C(getconf) answers about the host, keyed by the
+              variable asked for. The host-invariant class only - the
+              C(sysconf) limits, the C(confstr) strings and the
+              standard versions. The per-filesystem C(pathconf) class
+              takes a pathname and is asked at each mountpoint, so it
+              is the C(config) of a mount rather than of the host.
+            - Numbers come back as integers and paths as strings,
+              which is what the host printed and nothing more. A
+              variable the host answered C(undefined) for - one it has
+              and does not limit - keeps its key and is null. A
+              variable the host does not know is absent from the fact
+              entirely, because no two C(getconf) implementations know
+              the same names, and the two answers are not the same
+              claim.
+            - Both spellings are asked wherever a variable has two.
+              macOS answers C(NPROCESSORS_ONLN) and Linux answers only
+              C(_NPROCESSORS_ONLN), so a host that has both reports
+              both, and neither spelling is invented for a host that
+              has neither.
+          returned: >-
+            when the config subset is gathered and getconf answered at
+            least one variable
+          type: dict
+          sample:
+            ARG_MAX: 2097152
+            LINE_MAX: 2048
+            OPEN_MAX: 524288
+            PATH: /bin:/usr/bin
+            TZNAME_MAX: null
+            _POSIX_VERSION: 200809
         kernel:
           description: The kernel C(uname -a) reported.
           returned: when the uname subset is gathered
@@ -705,6 +741,7 @@ def main() -> None:
                 "storage",
                 "uname",
                 "compliance",
+                "config",
                 "timezone",
                 "dmidecode",
                 "mounts",
@@ -716,6 +753,7 @@ def main() -> None:
                 "!storage",
                 "!uname",
                 "!compliance",
+                "!config",
                 "!timezone",
                 "!dmidecode",
                 "!mounts",
