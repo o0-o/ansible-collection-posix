@@ -30,6 +30,15 @@ pytestmark = pytest.mark.skipif(
 )
 
 
+# The bytes of the symmetry suite's unicode case, and the description
+# a stock OpenBSD host's file printed for a file holding exactly them.
+# OpenBSD's file has no magic for UTF-8 and answers with a single-byte
+# family, which Latin-1 then decodes without complaint. Forge issue 13.
+OPENBSD_UTF8_DESC = "ISO-8859 text"
+UNICODE_BYTES = b"h\xc3\xa9llo w\xc3\xb6rld \xc3\xbcn\xc3\xafcode\n"
+UNICODE_TEXT = UNICODE_BYTES.decode("utf-8")
+
+
 class DummyReadAction(ReadPosixActionBase):
     """Minimal ReadPosixActionBase subclass with no Ansible plumbing."""
 
@@ -299,6 +308,268 @@ class TestProbeIsText:
         assert action._probe_is_text(content_bytes) is False
 
 
+class TestUtf8OverrulesSingleByte:
+    """Tests for _utf8_overrules_single_byte."""
+
+    @pytest.mark.parametrize(
+        "encoding",
+        [
+            "iso-8859-1",
+            "ISO-8859-1",  # the answer is not case sensitive
+            "iso-8859-15",
+            "iso8859-1",
+            "windows-1252",
+            "latin-1",
+            "unknown-8bit",
+            "us-ascii",
+        ],
+    )
+    def test_every_single_byte_family_yields_to_utf8(
+        self, action, encoding
+    ) -> None:
+        """Test a single-byte claim loses to valid multi-byte UTF-8."""
+        assert (
+            action._utf8_overrules_single_byte(encoding, UNICODE_BYTES) is True
+        )
+
+    @pytest.mark.parametrize(
+        "encoding",
+        ["utf-8", "utf-16", "utf-16le", "binary", "unknown", "hex", "base64"],
+    )
+    def test_other_claims_are_never_arbitrated(self, action, encoding) -> None:
+        """Test only single-byte claims are put to the bytes.
+
+        Nothing else is a guess UTF-8 content is silently wrong under.
+        """
+        assert (
+            action._utf8_overrules_single_byte(encoding, UNICODE_BYTES)
+            is False
+        )
+
+    @pytest.mark.parametrize(
+        "content_bytes",
+        [
+            b"",
+            b"\n",
+            b"plain ascii\n",
+            b"tab\there\r\n",
+        ],
+    )
+    def test_pure_ascii_has_nothing_to_arbitrate(
+        self, action, content_bytes
+    ) -> None:
+        """Test ASCII reads identically under either answer."""
+        assert (
+            action._utf8_overrules_single_byte("iso-8859-1", content_bytes)
+            is False
+        )
+
+    @pytest.mark.parametrize(
+        "content_bytes",
+        [
+            b"caf\xe9\n",  # Latin-1 'café\n'
+            b"na\xefve",  # Latin-1 'naïve'
+            b"\xe9\xe8\xea",  # accented bytes, no valid UTF-8 reading
+            b"\xff\xfe",
+        ],
+    )
+    def test_genuine_single_byte_bytes_keep_the_claim(
+        self, action, content_bytes
+    ) -> None:
+        """Test bytes that are real Latin-1 fail the UTF-8 decode.
+
+        This is the half that makes the test decisive rather than a
+        preference: genuine single-byte text cannot be mistaken for
+        UTF-8, so the claim it was given stands.
+        """
+        assert (
+            action._utf8_overrules_single_byte("iso-8859-1", content_bytes)
+            is False
+        )
+
+
+class TestSingleByteClaimsOverUtf8Content:
+    """Tests for the arbitration as read publishes it.
+
+    Forge issue 13: a file holding UTF-8 was described by OpenBSD's
+    file as "ISO-8859 text", Latin-1 accepted every byte of it, and
+    read published mojibake with no error to mark that it had.
+    """
+
+    def test_openbsd_utf8_reads_back_byte_faithful(self, action) -> None:
+        """Test the captured OpenBSD case publishes UTF-8, not mojibake."""
+        attributes = {}
+
+        encoding = action._parse_encoding_from_desc(OPENBSD_UTF8_DESC)
+        assert encoding == "iso-8859-1"
+
+        action._add_content_with_encoding(
+            attributes,
+            UNICODE_TEXT,
+            encoding,
+            "/tmp/f",
+            {"content": True, "lines": True},
+        )
+
+        assert attributes == {
+            "encoding": "utf-8",
+            "content": UNICODE_TEXT,
+            "lines": ["héllo wörld ünïcode"],
+        }
+        # The law the symmetry suite holds: what read publishes is the
+        # bytes the file holds
+        assert attributes["content"].encode("utf-8") == UNICODE_BYTES
+
+    def test_genuine_latin1_under_the_same_description(self, action) -> None:
+        """Test real Latin-1 bytes still read as Latin-1.
+
+        The same description over bytes that are not valid UTF-8. The
+        claim stands and the accented characters are themselves.
+        """
+        attributes = {}
+
+        action._add_content_with_encoding(
+            attributes,
+            "caf\udce9\n",  # b'caf\xe9\n', Latin-1 for 'café\n'
+            action._parse_encoding_from_desc(OPENBSD_UTF8_DESC),
+            "/tmp/f",
+            {"content": True},
+        )
+
+        assert attributes == {
+            "encoding": "iso-8859-1",
+            "content": "café\n",
+        }
+
+    @pytest.mark.parametrize("encoding", ["us-ascii", "iso-8859-1"])
+    def test_ascii_content_keeps_whatever_was_claimed(
+        self, action, encoding
+    ) -> None:
+        """Test ASCII bytes leave the detected encoding alone."""
+        attributes = {}
+
+        action._add_content_with_encoding(
+            attributes, "plain ascii\n", encoding, "/tmp/f", {"content": True}
+        )
+
+        assert attributes == {
+            "encoding": encoding,
+            "content": "plain ascii\n",
+        }
+
+    def test_forced_single_byte_encoding_is_not_second_guessed(
+        self, action
+    ) -> None:
+        """Test forcing iso-8859-1 over UTF-8 bytes gives iso-8859-1.
+
+        The mojibake is the answer that was asked for. A forced
+        encoding is the caller's ruling and the bytes do not overrule
+        it, which is the standing rule for every forced encoding.
+        """
+        attributes = {}
+
+        action._add_content_with_encoding(
+            attributes,
+            UNICODE_TEXT,
+            "iso-8859-1",
+            "/tmp/f",
+            {"content": True},
+            forced=True,
+        )
+
+        assert attributes == {
+            "encoding": "iso-8859-1",
+            "content": UNICODE_BYTES.decode("iso-8859-1"),
+        }
+
+
+class TestEveryProbePathIsArbitrated:
+    """Tests that the ruling covers every way an encoding is detected.
+
+    Three probes can name an encoding -- GNU file's --mime-encoding,
+    BSD file's -I, and OpenBSD file's bare -b description -- and they
+    are tried in that order until one answers. All three arrive at the
+    same seam, so the arbitration is made once and holds for every
+    host. These drive the whole result-processing path to say so,
+    rather than trusting the reading of it.
+    """
+
+    LS = "-rw-r--r-- 1 ci ci 24 Aug 30 13:00 /tmp/u.txt\n"
+    PATH = "/tmp/u.txt"
+
+    def _read(self, action, cat, options, **probes) -> dict:
+        """Process one regular file's results under the given probes."""
+        results = {
+            f"{self.PATH}_ls": {"rc": 0, "stdout": self.LS},
+            f"{self.PATH}_cat": {"rc": 0, "stdout": cat},
+        }
+        results.update({f"{self.PATH}_{k}": v for k, v in probes.items()})
+        file_data, _facts = action._process_read_results(
+            results, [self.PATH], options
+        )
+        return file_data[self.PATH]
+
+    def test_openbsd_file_b_description(self, action) -> None:
+        """Test the description path, where both others failed."""
+        attributes = self._read(
+            action,
+            UNICODE_TEXT,
+            {"content": True},
+            encoding={"rc": 1, "stdout": ""},
+            encoding_bsd={"rc": 1, "stdout": ""},
+            encoding_desc={"rc": 0, "stdout": OPENBSD_UTF8_DESC},
+        )
+
+        assert attributes["encoding"] == "utf-8"
+        assert attributes["content"].encode("utf-8") == UNICODE_BYTES
+
+    def test_bsd_file_dash_i_charset(self, action) -> None:
+        """Test the BSD -I path naming a single-byte charset."""
+        attributes = self._read(
+            action,
+            UNICODE_TEXT,
+            {"content": True},
+            encoding={"rc": 1, "stdout": ""},
+            encoding_bsd={
+                "rc": 0,
+                "stdout": "text/plain; charset=iso-8859-1",
+            },
+        )
+
+        assert attributes["encoding"] == "utf-8"
+        assert attributes["content"].encode("utf-8") == UNICODE_BYTES
+
+    def test_gnu_mime_encoding(self, action) -> None:
+        """Test the GNU --mime-encoding path naming us-ascii.
+
+        file reads a sample rather than the file, so a long file whose
+        accents come after that sample is named us-ascii. The bytes cat
+        returns hold them, and they decode.
+        """
+        attributes = self._read(
+            action,
+            UNICODE_TEXT,
+            {"content": True},
+            encoding={"rc": 0, "stdout": "us-ascii\n"},
+        )
+
+        assert attributes["encoding"] == "utf-8"
+        assert attributes["content"].encode("utf-8") == UNICODE_BYTES
+
+    def test_forced_encoding_reaches_the_seam_unarbitrated(
+        self, action
+    ) -> None:
+        """Test a forced encoding is used as given, probes unread."""
+        attributes = self._read(
+            action,
+            UNICODE_TEXT,
+            {"content": True, "encoding": "iso-8859-1"},
+        )
+
+        assert attributes["encoding"] == "iso-8859-1"
+        assert attributes["content"] == UNICODE_BYTES.decode("iso-8859-1")
+
+
 class TestAddContentWithEncoding:
     """Tests for _add_content_with_encoding."""
 
@@ -461,7 +732,7 @@ class TestAddContentWithEncoding:
         attributes = {}
 
         action._add_content_with_encoding(
-            attributes, "café", "us-ascii", "/tmp/f", {}
+            attributes, "\udcff\udcfe", "utf-8", "/tmp/f", {}
         )
 
         assert attributes == {"encoding": "base64"}
@@ -642,14 +913,21 @@ class TestAddContentWithEncoding:
     def test_autodetected_decode_failure_falls_back_to_base64(
         self, action
     ) -> None:
-        """Test an auto-detected encoding that fails becomes base64."""
+        """Test an auto-detected encoding that fails becomes base64.
+
+        The claim under test is utf-8 over bytes that are not valid
+        UTF-8, which is what a probe answers for a truncated or
+        corrupt file. A single-byte claim would not reach the fallback
+        this pins: the bytes overrule it first, and a claim that never
+        fails to decode cannot demonstrate a decode failure.
+        """
         attributes = {}
 
         action._add_content_with_encoding(
-            attributes, "café", "us-ascii", "/tmp/f", {"content": True}
+            attributes, "\udcff\udcfe", "utf-8", "/tmp/f", {"content": True}
         )
 
-        assert attributes == {"encoding": "base64", "content": "Y2Fmw6k="}
+        assert attributes == {"encoding": "base64", "content": "//4="}
 
     def test_autodetected_unknown_codec_falls_back_to_base64(
         self, action
@@ -672,8 +950,8 @@ class TestAddContentWithEncoding:
         with pytest.raises(ValueError, match="Auto-detected encoding"):
             action._add_content_with_encoding(
                 attributes,
-                "café",
-                "us-ascii",
+                "\udcff\udcfe",
+                "utf-8",
                 "/tmp/f",
                 {"content": True, "lines": True},
             )

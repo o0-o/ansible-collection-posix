@@ -168,11 +168,18 @@ class TestParseEncodingFromDesc:
         [
             ("ASCII text", "us-ascii"),
             ("C source, ASCII text", "us-ascii"),
+            # OpenBSD has no magic for UTF-8 and describes a UTF-8
+            # file this way. The mapper still answers iso-8859-1,
+            # which is the right reading of the description; the bytes
+            # settle which of the two it really is downstream, in
+            # _utf8_overrules_single_byte
             ("ISO-8859 text", "iso-8859-1"),
             ("ISO 8859 text", "iso-8859-1"),
+            ("ISO-8859 text, with very long lines", "iso-8859-1"),
             ("UTF-8 Unicode text", "utf-8"),
             ("Little-endian UTF-16 Unicode text", "utf-16"),
             ("Non-ISO extended-ASCII text", "utf-8"),
+            ("Non-ISO extended-ASCII text, with LF line terminators", "utf-8"),
             ("Algol 68 source text", "utf-8"),
             ("data", "binary"),
             ("empty", "binary"),

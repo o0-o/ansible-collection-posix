@@ -1,0 +1,19 @@
+# vim: ts=2:sw=2:sts=2:et:ft=yaml.ansible
+# -*- mode: yaml; yaml-indent-offset: 2; indent-tabs-mode: nil; -*-
+---
+bugfixes:
+  - >-
+    read - UTF-8 content is no longer published as Latin-1 mojibake on
+    hosts whose ``file`` cannot name UTF-8, OpenBSD foremost. Where it
+    has no magic for the encoding, ``file`` falls back on a
+    single-byte family - OpenBSD calls a UTF-8 file "ISO-8859 text" -
+    and Latin-1 accepts every byte there is, so the decode succeeded
+    and the accented characters came back doubled with nothing to mark
+    that anything had gone wrong. An auto-detected single-byte
+    encoding over content that holds non-ASCII bytes is now put to the
+    bytes, as a verdict of binary already was: content that decodes
+    strictly as UTF-8 carries a multi-byte sequence and is published
+    as UTF-8, and genuine single-byte text, which fails that same
+    decode, keeps the encoding it was given. Pure ASCII reads the same
+    under either answer and is left alone, and an encoding the caller
+    forced is never second-guessed.

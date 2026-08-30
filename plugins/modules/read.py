@@ -70,6 +70,14 @@ options:
         file of a few bytes and the empty file, is still read as text
         when its bytes decode as UTF-8 and hold nothing but printable
         characters and ordinary whitespace.
+      - An encoding the C(file) command names from a single-byte family
+        is settled the same way, because a C(file) with no magic for
+        UTF-8 answers C(ISO-8859) for it and Latin-1 decodes any byte
+        at all. Content holding non-ASCII bytes that decode strictly as
+        UTF-8 is read as UTF-8; content that is genuinely single-byte
+        fails that decode and keeps the detected encoding. This applies
+        to auto-detection only; an encoding set with I(encoding) is
+        used exactly as given.
       - Only regular files are read. A directory, symlink, FIFO, socket
         or device is reported with no C(content) key and no error; its
         C(type) says why.

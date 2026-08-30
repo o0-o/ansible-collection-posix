@@ -43,6 +43,12 @@ LS_TYPE_MAP = {
     "b": "block",
 }
 
+# Encoding names that stand for a single-byte family. Every one of
+# them accepts any byte there is, so a probe that names one is never
+# contradicted by a decode failure. See ``_utf8_overrules_single_byte``.
+SINGLE_BYTE_ENCODINGS = frozenset({"us-ascii", "ascii", "unknown-8bit"})
+SINGLE_BYTE_ENCODING_PREFIXES = ("iso-8859", "iso8859", "windows-", "latin")
+
 
 class ReadPosixActionBase(PosixActionBase):
     """Base class for stat and read plugins with shared methods."""
@@ -716,7 +722,10 @@ class ReadPosixActionBase(PosixActionBase):
         if "ascii" in desc_lower and "non-iso" not in desc_lower:
             return "us-ascii"
         elif "iso-8859" in desc_lower or "iso 8859" in desc_lower:
-            # ISO-8859 text usually means ISO-8859-1 (Latin-1)
+            # ISO-8859 text usually means ISO-8859-1 (Latin-1), and is
+            # also what OpenBSD calls a UTF-8 file it cannot name. The
+            # bytes decide between the two downstream; see
+            # ``_utf8_overrules_single_byte``.
             return "iso-8859-1"
         elif "utf-8" in desc_lower or "utf8" in desc_lower:
             return "utf-8"
@@ -754,6 +763,53 @@ class ReadPosixActionBase(PosixActionBase):
 
         return not self._is_binary_value(decoded)
 
+    def _utf8_overrules_single_byte(
+        self, encoding: str, content_bytes: bytes
+    ) -> bool:
+        """Say whether UTF-8 beats a single-byte claim over these bytes.
+
+        file names an encoding from a sample and a table of magic, and
+        where it has no magic for UTF-8 it falls back on a single-byte
+        family: OpenBSD's file calls a UTF-8 file "ISO-8859 text".
+        Latin-1 accepts every byte there is, so that answer decodes
+        without complaint and publishes mojibake with nothing at all
+        to mark that it went wrong. The same fallback catches a file
+        whose sampled head is plain ASCII and whose accents come
+        later, which is named us-ascii and handed back as base64.
+
+        The bytes settle it, as they settle a binary verdict in
+        ``_probe_is_text``. Content that is pure ASCII reads the same
+        under either answer and is left alone; there is nothing to
+        arbitrate. Content carrying non-ASCII bytes that decodes
+        strictly as UTF-8 necessarily holds a multi-byte sequence,
+        and a multi-byte sequence is not something single-byte text
+        arrives at by accident, while genuine single-byte text fails
+        that same decode. The test is decisive in both directions.
+
+        Only auto-detected encodings are put to it. A forced encoding
+        is the caller's ruling and is never second-guessed.
+
+        :param str encoding: An auto-detected encoding name
+        :param bytes content_bytes: The file's bytes
+        :returns bool: True when the claim should become utf-8
+        """
+        encoding_lower = encoding.lower()
+
+        if encoding_lower not in SINGLE_BYTE_ENCODINGS and (
+            not encoding_lower.startswith(SINGLE_BYTE_ENCODING_PREFIXES)
+        ):
+            return False
+
+        if content_bytes.isascii():
+            return False
+
+        try:
+            content_bytes.decode("utf-8")
+        except UnicodeDecodeError:
+            return False
+
+        return True
+
     def _add_content_with_encoding(
         self,
         attributes: dict[str, Any],
@@ -770,8 +826,12 @@ class ReadPosixActionBase(PosixActionBase):
         Falls back to base64 if auto-detected encoding fails.
         Fails if text decode fails with forced encoding.
 
-        A verdict of binary the probes reached without reading the
-        bytes is put to the bytes themselves. See ``_probe_is_text``.
+        A verdict the probes reached without reading the bytes is put
+        to the bytes themselves: binary for a file they had no magic
+        for, and a single-byte encoding they named because they could
+        not recognize UTF-8. Every auto-detected encoding, from every
+        probe, arrives here, so this is where both rulings are made.
+        See ``_probe_is_text`` and ``_utf8_overrules_single_byte``.
 
         :param dict attributes: Metadata dict to update
         :param str raw_content: Raw content from cat command
@@ -799,6 +859,16 @@ class ReadPosixActionBase(PosixActionBase):
             if self._probe_is_text(content_bytes):
                 encoding = "utf-8"
                 encoding_lower = "utf-8"
+
+        # A single-byte answer is put to the bytes on the same
+        # ground. Every path that detects an encoding arrives here,
+        # so the ruling covers all of them; a forced encoding is
+        # again left alone. See ``_utf8_overrules_single_byte``.
+        if not forced and self._utf8_overrules_single_byte(
+            encoding, content_bytes
+        ):
+            encoding = "utf-8"
+            encoding_lower = "utf-8"
 
         # Fail if lines requested with non-text encoding
         if want_lines and encoding_lower in {
