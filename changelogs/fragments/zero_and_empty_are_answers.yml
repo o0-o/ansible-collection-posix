@@ -1,0 +1,29 @@
+# vim: ts=2:sw=2:sts=2:et:ft=yaml.ansible
+# -*- mode: yaml; yaml-indent-offset: 2; indent-tabs-mode: nil; -*-
+---
+bugfixes:
+  - >-
+    process - a kernel thread keeps its ``memory`` facts. A thread
+    holds no resident user memory and says so with ``rss`` and ``vsz``
+    of zero, which the guards read as a column that had gone
+    unanswered, so ``memory.real`` and ``memory.virtual`` were never
+    built and the empty namespace was then dropped whole. A zero is an
+    answer; only the null ``jc`` gives an unread column is not
+    (https://github.com/o0-o/ansible-collection-posix/pull/XXX).
+  - >-
+    read - a zero-length extended attribute is reported as the
+    attribute it is. An xattr carried as a flag has no value by
+    design, and macOS prints one as its key line and a bare end
+    offset with no dump between them, so the parse dropped the key and
+    read called a present attribute absent. Both the missing dump and
+    the empty bytes it parses to publish now, as the empty string
+    under the same encoding a value gets
+    (https://github.com/o0-o/ansible-collection-posix/pull/XXX).
+  - >-
+    command - a raw execution with an empty stream publishes
+    ``module_stdout`` and ``module_stderr`` as ``""``, the way the
+    native module publishes them. 9a27555 moved the line forms out
+    from behind the truthy gate and left the module forms and the text
+    normalization inside it, so a silent command still answered in a
+    different shape than a talkative one
+    (https://github.com/o0-o/ansible-collection-posix/pull/XXX).

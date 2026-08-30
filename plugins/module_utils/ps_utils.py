@@ -230,7 +230,10 @@ def restructure_process(proc: dict[str, Any]) -> dict[str, Any]:
 
     # memory.real from rss field (with SI parsing)
     # ps reports rss in kilobytes on most systems
-    if "rss" in proc and proc["rss"]:
+    # A kernel thread holds no resident user memory and says so with a
+    # zero, which is an answer; only the null jc gives a column it
+    # could not read means the field went unanswered
+    if proc.get("rss") is not None:
         rss_value = f"{proc['rss']}K"
         rss_data = parse_si(rss_value, binary=True)
         if rss_data:
@@ -244,7 +247,7 @@ def restructure_process(proc: dict[str, Any]) -> dict[str, Any]:
 
     # memory.virtual from vsz field (with SI parsing)
     # ps reports vsz in kilobytes on most systems
-    if "vsz" in proc and proc["vsz"]:
+    if proc.get("vsz") is not None:
         vsz_value = f"{proc['vsz']}K"
         vsz_data = parse_si(vsz_value, binary=True)
         if vsz_data:

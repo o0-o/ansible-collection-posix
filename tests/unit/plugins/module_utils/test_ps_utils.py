@@ -251,6 +251,29 @@ def test_restructure_empty_rss_vsz() -> None:
     assert "memory" not in result
 
 
+def test_restructure_zero_rss_vsz() -> None:
+    """Test a kernel thread's zeros are memory facts, not absences.
+
+    A kernel thread holds no resident user memory and reports zero,
+    which is an answer. Reading it as a column that went unanswered
+    left memory_dict empty and dropped the whole memory namespace.
+    """
+    proc = {
+        "pid": 2,
+        "ppid": 0,
+        "command": "[kthreadd]",
+        "rss": 0,
+        "vsz": 0,
+        "pmem": 0.0,
+    }
+
+    result = restructure_process(proc)
+
+    assert result["memory"]["real"]["bytes"] == 0
+    assert result["memory"]["real"]["percent"] == 0.0
+    assert result["memory"]["virtual"]["bytes"] == 0
+
+
 def test_restructure_complete_process() -> None:
     """Test restructuring process with all fields."""
     proc = {

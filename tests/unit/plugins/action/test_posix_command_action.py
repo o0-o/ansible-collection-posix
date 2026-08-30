@@ -614,6 +614,8 @@ def test_silent_raw_output_still_publishes_its_line_forms(plugin) -> None:
     assert result["stderr"] == ""
     assert result["stdout_lines"] == []
     assert result["stderr_lines"] == []
+    assert result["module_stdout"] == ""
+    assert result["module_stderr"] == ""
 
 
 def test_a_check_mode_prediction_publishes_its_line_forms(plugin) -> None:
@@ -623,6 +625,26 @@ def test_a_check_mode_prediction_publishes_its_line_forms(plugin) -> None:
     result = _run(plugin, {"cmd": "true", "raw": True}, check_mode=True)
 
     assert result["stdout_lines"] == []
+    assert result["stderr_lines"] == []
+    assert result["module_stdout"] == ""
+    assert result["module_stderr"] == ""
+
+
+def test_a_stream_that_said_nothing_is_still_named(plugin) -> None:
+    """Test a command that speaks on one stream names the other empty.
+
+    9a27555 moved the line forms out from behind the truthy gate and
+    left the module forms inside it, so a command with a quiet stream
+    left that stream's module key unset where the native module names
+    it "".
+    """
+    plugin.transport_answer = _says(stdout="said\n", stderr="")
+
+    result = _run(plugin, {"cmd": "echo said", "raw": True})
+
+    assert result["module_stdout"] == "said"
+    assert result["module_stderr"] == ""
+    assert result["stderr"] == ""
     assert result["stderr_lines"] == []
 
 

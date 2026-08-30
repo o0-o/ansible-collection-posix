@@ -2181,26 +2181,31 @@ class ReadPosixActionBase(PosixActionBase):
                                 pass
                         break
 
-                    if hex_lines:
-                        # Parse hex dump to bytes
-                        raw_bytes = self._parse_macos_hex_dump(hex_lines)
-                        if raw_bytes:
-                            # Try to decode as text, fall back to base64
-                            try:
-                                text = raw_bytes.decode("utf-8")
-                                # Strip null terminator if present
-                                flat_xattrs[key] = {
-                                    "encoding": "utf-8",
-                                    "value": text.rstrip("\x00"),
-                                }
-                            except UnicodeDecodeError:
-                                encoded = base64.b64encode(raw_bytes)
-                                flat_xattrs[key] = {
-                                    "encoding": "base64",
-                                    "value": encoded.decode("ascii"),
-                                }
-                        i = j
-                        continue
+                    # A zero-length xattr is an xattr. One carried as a
+                    # flag has no value by design, and macOS prints it
+                    # as the key line and a bare end offset with no
+                    # dump between them, so both the missing dump and
+                    # the empty bytes it parses to are answers rather
+                    # than absences. Publish the key either way; the
+                    # empty value reads as the empty string under the
+                    # same encoding _encode_xattr_value gives it.
+                    raw_bytes = self._parse_macos_hex_dump(hex_lines)
+                    # Try to decode as text, fall back to base64
+                    try:
+                        text = raw_bytes.decode("utf-8")
+                        # Strip null terminator if present
+                        flat_xattrs[key] = {
+                            "encoding": "utf-8",
+                            "value": text.rstrip("\x00"),
+                        }
+                    except UnicodeDecodeError:
+                        encoded = base64.b64encode(raw_bytes)
+                        flat_xattrs[key] = {
+                            "encoding": "base64",
+                            "value": encoded.decode("ascii"),
+                        }
+                    i = j
+                    continue
 
                 i += 1
 

@@ -177,37 +177,39 @@ class ActionModule(PosixActionBase, ActionBase):
 
         # Strip trailing newlines from output if requested and define
         # module stdout/err and stdout/err lines lists.
-        if self.result.get("stdout"):
-            self.result["stdout"] = to_text(self.result["stdout"])
-            # A pseudo-terminal hop turns newlines into
-            # carriage-return pairs; normalize so raw output matches
-            # native byte for byte
-            self.result["stdout"] = self.result["stdout"].replace("\r\n", "\n")
-            if self.strip:
-                self.result["stdout"] = self.result["stdout"].rstrip("\n")
-            self.result["module_stdout"] = self.result["stdout"]
-            self.result["stdout_lines"] = self.result["stdout"].splitlines()
+        #
+        # Empty output is still output. Every form of a stream is
+        # normalized and published whatever the stream holds, the way
+        # the native module publishes them: it names an empty stream
+        # "" rather than leaving the key unset. A truthy gate here
+        # left a silent command and a check-mode prediction answering
+        # in a different shape than a talkative command does, which is
+        # the defect 9a27555 closed for the line forms alone.
+        raw_stdout = self.result.get("stdout")
+        stdout = "" if raw_stdout is None else to_text(raw_stdout)
+        # A pseudo-terminal hop turns newlines into carriage-return
+        # pairs; normalize so raw output matches native byte for byte
+        stdout = stdout.replace("\r\n", "\n")
+        if self.strip:
+            stdout = stdout.rstrip("\n")
+        self.result["stdout"] = stdout
+        self.result["module_stdout"] = stdout
+        self.result["stdout_lines"] = stdout.splitlines()
 
-        if self.result.get("stderr"):
-            stderr_text = to_text(self.result["stderr"]).replace("\r\n", "\n")
-            # Remove SSH "Shared connection to ... closed." message
-            self.result["stderr"] = re.sub(
-                r"^Shared connection to .* closed\.\n?",
-                "",
-                stderr_text,
-                flags=re.MULTILINE,
-            )
-            if self.strip:
-                self.result["stderr"] = self.result["stderr"].rstrip("\n")
-            self.result["module_stderr"] = self.result["stderr"]
-            self.result["stderr_lines"] = self.result["stderr"].splitlines()
-
-        # Empty output is still output: the line forms publish either
-        # way, as the native module's do. Cores before 2.21 do not
-        # inject the keys into action results, so a truthy gate alone
-        # left check-mode predictions and silent commands without them.
-        self.result.setdefault("stdout_lines", [])
-        self.result.setdefault("stderr_lines", [])
+        raw_stderr = self.result.get("stderr")
+        stderr_text = "" if raw_stderr is None else to_text(raw_stderr)
+        # Remove SSH "Shared connection to ... closed." message
+        stderr = re.sub(
+            r"^Shared connection to .* closed\.\n?",
+            "",
+            stderr_text.replace("\r\n", "\n"),
+            flags=re.MULTILINE,
+        )
+        if self.strip:
+            stderr = stderr.rstrip("\n")
+        self.result["stderr"] = stderr
+        self.result["module_stderr"] = stderr
+        self.result["stderr_lines"] = stderr.splitlines()
 
         # A status is not a verdict until the result names it one. The
         # native module names it -- it fails on a non-zero status and

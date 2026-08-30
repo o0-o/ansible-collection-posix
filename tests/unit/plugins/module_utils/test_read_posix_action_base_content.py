@@ -198,6 +198,69 @@ class TestParseMacosHexDump:
         assert action._parse_macos_hex_dump(["00000000  ca fe"]) == b"\xca\xfe"
 
 
+class TestProcessXattrs:
+    """Tests for _process_xattrs, and for the empty value it publishes.
+
+    A zero-length xattr is legal and common: one carried as a flag has
+    no value by design. macOS prints such an attribute as its key line
+    followed by a bare end offset, with no dump between them, so both
+    the missing dump and the empty bytes it parses to are answers.
+    """
+
+    # As xattr -lx prints a file carrying one empty attribute and one
+    # with a value. The layout is the documented one; the trailing
+    # offset line closes each dump.
+    MACOS_LX = (
+        "com.o0o.emptyflag:\n"
+        "00000000\n"
+        "com.o0o.hasvalue:\n"
+        "00000000  68 65 6C 6C 6F                    |hello|\n"
+        "00000005\n"
+    )
+
+    def test_a_zero_length_macos_xattr_is_published(self, action) -> None:
+        """Test the flag attribute is reported as present and empty."""
+        result = action._process_xattrs(self.MACOS_LX, xattr_type="macos")
+
+        assert result["xattrs"]["com"]["o0o"]["emptyflag"] == {
+            "encoding": "utf-8",
+            "value": "",
+        }
+
+    def test_a_macos_xattr_with_a_value_still_carries_it(self, action) -> None:
+        """Test publishing the empty one leaves the other alone."""
+        result = action._process_xattrs(self.MACOS_LX, xattr_type="macos")
+
+        assert result["xattrs"]["com"]["o0o"]["hasvalue"] == {
+            "encoding": "utf-8",
+            "value": "hello",
+        }
+
+    def test_a_zero_length_linux_xattr_is_published(self, action) -> None:
+        """Test getfattr's empty value publishes in the same form, so
+        an attribute reads alike on either platform."""
+        source = '# file: f\nuser.emptyflag=""\nuser.hasvalue="hello"\n'
+
+        result = action._process_xattrs(source, xattr_type="linux")
+
+        assert result["xattrs"]["user"]["emptyflag"] == {
+            "encoding": "utf-8",
+            "value": "",
+        }
+        assert result["xattrs"]["user"]["hasvalue"] == {
+            "encoding": "utf-8",
+            "value": "hello",
+        }
+
+    def test_no_xattr_output_publishes_no_xattrs(self, action) -> None:
+        """Test nothing to parse still means no attributes, which is a
+        different answer than an attribute with no value."""
+        assert action._process_xattrs("", xattr_type="macos") == {"xattrs": {}}
+        assert action._process_xattrs(None, xattr_type="linux") == {
+            "xattrs": {}
+        }
+
+
 class TestProbeIsText:
     """Tests for _probe_is_text."""
 
