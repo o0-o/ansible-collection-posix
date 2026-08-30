@@ -22,6 +22,7 @@ from ansible_collections.o0_o.posix.plugins.module_utils import (
     compose_homes,
     compose_paths,
     compose_shell_files,
+    compose_shells,
     compose_users_groups,
     get_file_command_requests,
     get_getent_command_requests,
@@ -138,15 +139,23 @@ class ActionModule(ReadPosixActionBase, ActionBase):
         # none.
         shells = self._content(files, shells_path, required=False)
         if shells is not None:
+            named = parse_shells(shells)
             paths = compose_paths(
                 paths,
                 {
                     shells_path: {
                         "content": shells,
-                        "config": parse_shells(shells),
+                        "config": named,
                     }
                 },
             )
+            # The same answer keyed by shell path, which is what makes
+            # user.shell in o0_shells a question a host can answer.
+            # This module names the shells and does not run any, so
+            # every key is empty: what a shell's configuration does is
+            # only knowable by running it, and M(o0_o.posix.facts) is
+            # what does that.
+            result["o0_shells"] = compose_shells(named)
 
         if paths:
             result["o0_paths"] = paths

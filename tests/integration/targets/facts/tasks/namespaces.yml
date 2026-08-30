@@ -159,7 +159,6 @@
       - gathered['paths'] is not defined
       - gathered['missing_commands'] is not defined
       - gathered['o0_missing'] is not defined
-      - gathered['o0_shells'] is not defined
       - gathered['o0_os']['shells'] is not defined
       - gathered['o0_paths'] | length > 0
       - gathered['o0_paths'].keys() | reject('match', '^/')
@@ -551,3 +550,103 @@
         'contains', 'shell') | list | length == 0
     fail_msg: >-
       the homes in o0_paths or o0_shell_files is not keyed by path
+
+# A shell's configuration is code, so the only honest way to know what
+# it does is to run it and watch. The pair decides the answer and
+# neither half decides it alone, so o0_shells is keyed by shell and
+# then by the home the shell was run out of.
+- name: Assert the login shells are keyed and the idiom still reads
+  vars:
+    shells: "{{ facts_all_reg['ansible_facts']['o0_shells'] }}"
+    named: >-
+      {{ facts_all_reg['ansible_facts']['o0_paths']['/etc/shells']
+         ['config'] | default([]) }}
+  ansible.builtin.assert:
+    that:
+      - shells is mapping
+      - shells | length > 0
+      - shells.keys() | reject('match', '^/') | list | length == 0
+      # The keys are the answer /etc/shells gave, which is what makes
+      # user.shell in o0_shells a question a host can answer
+      - named | reject('in', shells) | list | length == 0
+      # Rows under a shell are keyed by the home it was run out of
+      - shells | dict2items | map(attribute='value') | map('list')
+        | flatten | reject('match', '^/') | list | length == 0
+    fail_msg: >-
+      o0_shells is not keyed by shell path, or does not carry the
+      shells /etc/shells named: {{ shells.keys() | list }}
+
+# The system layer: the shell the task named, run out of the one home
+# every POSIX host has and none of them has as a directory, so that
+# ~/.profile fails to resolve identically everywhere.
+- name: Assert the system layer was observed out of /dev/null
+  vars:
+    shells: "{{ facts_all_reg['ansible_facts']['o0_shells'] }}"
+    config: "{{ shells['/bin/sh']['/dev/null']['config'] }}"
+  ansible.builtin.assert:
+    that:
+      - shells['/bin/sh']['/dev/null'] is mapping
+      - config is mapping
+      # What the login files made of the mask and the environment
+      - config['umask'] is match('^0[0-7]{3}$')
+      - config['env'] is mapping
+      - config['env']['HOME'] == '/dev/null'
+      - config['env']['PATH'] is string
+      # Only the variables POSIX names are kept, never the whole
+      # environment: a shell's environment is where secrets live
+      - config['env'].keys() | reject('match', '^[A-Z][A-Z0-9_]*$')
+        | list | length == 0
+      # A locale where the host has a locale utility to ask
+      - config['locale'] is not defined or config['locale'] is mapping
+    fail_msg: >-
+      the /bin/sh system layer was not observed out of /dev/null:
+      {{ shells['/bin/sh'] | default({}) }}
+
+# The user layer: the connecting user's own login shell run out of
+# their own home. Only a user /etc/passwd described has both, and
+# macOS keeps its local users in a directory service and names only
+# the system ones in the file, so the row is asserted where there is a
+# passwd entry to assert it of.
+- name: Name the connecting user's own shell and home, if the file did
+  vars:
+    entry: >-
+      {{ facts_all_reg['ansible_facts']['o0_users'][facts_uid] }}
+  ansible.builtin.set_fact:
+    facts_own_shell: "{{ entry['shell'] | default('') }}"
+    facts_own_home: "{{ entry['home'] | default('') }}"
+
+- name: Assert the connecting user's own combination was observed
+  when:
+    - facts_own_shell | length > 0
+    - facts_own_home | length > 0
+  vars:
+    shells: "{{ facts_all_reg['ansible_facts']['o0_shells'] }}"
+    config: >-
+      {{ shells[facts_own_shell][facts_own_home]['config'] }}
+  ansible.builtin.assert:
+    that:
+      - shells[facts_own_shell][facts_own_home] is mapping
+      - config['umask'] is match('^0[0-7]{3}$')
+      # The shell was run out of that home and not out of another
+      - config['env']['HOME'] == facts_own_home
+    fail_msg: >-
+      the connecting user's own shell and home were not observed:
+      {{ facts_own_shell }} in {{ facts_own_home }}
+
+# Only shells a producer was asked about are run. Nothing walks
+# /etc/shells running each one on the chance somebody logs in with it.
+- name: Assert no shell was run that the gather was not asked about
+  vars:
+    shells: "{{ facts_all_reg['ansible_facts']['o0_shells'] }}"
+    observed: >-
+      {{ shells | dict2items | selectattr('value')
+         | map(attribute='key') | list }}
+    asked: >-
+      {{ ['/bin/sh', facts_own_shell] | select | list }}
+  ansible.builtin.assert:
+    that:
+      - observed | length > 0
+      - observed | reject('in', asked) | list | length == 0
+    fail_msg: >-
+      a shell was run that nothing named: {{ observed }} against
+      {{ asked }}

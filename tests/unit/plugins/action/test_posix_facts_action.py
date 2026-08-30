@@ -751,6 +751,7 @@ class TestGatherUsers:
             "o0_groups",
             "o0_paths",
             "o0_shell_files",
+            "o0_shells",
         }
         # A home is a path, so it is an entry of the path store rather
         # than a namespace of its own, and it accumulates there beside
@@ -813,13 +814,21 @@ class TestGatherUsers:
 
         _gather(plugin, "users")
 
-        assert len(batches) == 1
         assert [request["command"] for request in batches[0]] == [
             ("cat", "/etc/passwd"),
             ("cat", "/etc/group"),
             ("cat", "/etc/shells"),
             ("getent", "passwd"),
             ("getent", "group"),
+        ]
+
+        # One batch reads the files. The shells the subset publishes
+        # are run rather than read, and running one is asked at a path
+        # the first batch had to answer with, so it is the second
+        # batch and never part of the first.
+        assert len(batches) == 2
+        assert [request["type"] for request in batches[1]] == [
+            "shell_config"
         ]
 
     def test_a_host_without_getent_gathers_from_its_files(
@@ -1148,8 +1157,14 @@ class TestDefaultGather:
         published beside it. A second copy of an answer is a copy that
         can drift from the first."""
         assert "o0_missing" not in gathered
-        assert "o0_shells" not in gathered
         assert "shells" not in gathered["o0_os"]
+        # o0_shells is not one of them. It went away as a list of the
+        # login shells a host names and came back as a store keyed by
+        # shell path, which is where what running one produces is
+        # filed. The names it holds are the same names.
+        assert set(gathered["o0_shells"]) == set(
+            gathered["o0_paths"]["/etc/shells"]["config"]
+        )
         # What the host is configured to mount is a fact about the
         # file that configures it; o0_storage holds live state
         assert set(gathered["o0_storage"]) == {"mounts"}
@@ -1253,6 +1268,7 @@ class TestUsersProducersAgree:
             "o0_groups",
             "o0_paths",
             "o0_shell_files",
+            "o0_shells",
         }
         for fact, value in gathered.items():
             assert value == standalone[fact], fact

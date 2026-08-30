@@ -31,14 +31,14 @@ breaking_changes:
     those two lists rather than stored beside them
     (https://github.com/o0-o/ansible-collection-posix/pull/XXX).
   - >-
-    facts, users - The login shells a host names are no longer a fact
-    of their own. /etc/shells is a single file parsed on its own, so
+    facts, users - /etc/shells is a single file parsed on its own, so
     it lands at its own path in o0_paths, the bytes under content and
-    the shells they name under config, and the o0_shells fact retires.
-    Read user.shell in o0_paths['/etc/shells']['config'] where
-    user.shell in o0_shells was read. A host whose shells file could
+    the shells they name under config, the way every other file a
+    producer parses does. Read the list as
+    o0_paths['/etc/shells']['config']. A host whose shells file could
     not be read leaves that path out of the store rather than filing
-    it as a file that exists and names none
+    it as a file that exists and names none. The o0_shells fact keeps
+    those same names as its keys; see the entry on its new shape
     (https://github.com/o0-o/ansible-collection-posix/pull/XXX).
 minor_changes:
   - >-

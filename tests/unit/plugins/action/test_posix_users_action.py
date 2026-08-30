@@ -142,12 +142,19 @@ def test_users_action_returns_canonical_fact_names(plugin) -> None:
         "o0_groups",
         "o0_paths",
         "o0_shell_files",
+        "o0_shells",
     }
     assert "users" not in result
     assert "groups" not in result
     assert "homes" not in result
     assert "shells" not in result
-    assert "o0_shells" not in result
+    # The login shells the host names, keyed by path so that
+    # user.shell in o0_shells is a question a host can answer. This
+    # module names them and runs none, so every key is empty.
+    assert set(result["o0_shells"]) == set(
+        result["o0_paths"]["/etc/shells"]["config"]
+    )
+    assert all(rows == {} for rows in result["o0_shells"].values())
     # A home is a path, so it is an entry of the path store rather
     # than a fact of its own
     assert "o0_homes" not in result

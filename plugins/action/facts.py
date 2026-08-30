@@ -17,12 +17,16 @@ from ansible.errors import AnsibleActionFail
 from ansible.plugins.action import ActionBase
 
 from ansible_collections.o0_o.posix.plugins.module_utils import (
+    POSIX_ENV_VARS,
+    SHELL_DEFAULT,
+    SHELL_SYSTEM_HOME,
     ReadPosixActionBase,
     batch_read,
     compose_homes,
     compose_mount_config,
     compose_paths,
     compose_shell_files,
+    compose_shells,
     compose_users_groups,
     fstab,
     get_compliance_command_requests,
@@ -35,6 +39,7 @@ from ansible_collections.o0_o.posix.plugins.module_utils import (
     get_limits_command_requests,
     get_mount_command_requests,
     get_pathconf_command_requests,
+    get_shell_command_requests,
     get_timezone_command_requests,
     parse_shells,
     process_all_compliance_command_results,
@@ -47,80 +52,13 @@ from ansible_collections.o0_o.posix.plugins.module_utils import (
     process_limits_command_results,
     process_mount_command_results,
     process_pathconf_command_results,
+    process_shell_command_results,
     process_timezone_command_results,
 )
 from ansible_collections.o0_o.posix.plugins.module_utils.uname_utils import (
     get_uname_command_requests,
     process_uname_command_results,
 )
-
-# All environment variables named in IEEE Std 1003.1 (POSIX)
-POSIX_ENV_VARS = [
-    # Mandatory (shall be set)
-    "HOME",
-    "LOGNAME",
-    "PATH",
-    # Shell-maintained
-    "PWD",
-    "OLDPWD",
-    "IFS",
-    "PPID",
-    "OPTARG",
-    "OPTIND",
-    # Shell prompts
-    "PS1",
-    "PS2",
-    "PS4",
-    # Locale
-    "LANG",
-    "LC_ALL",
-    "LC_COLLATE",
-    "LC_CTYPE",
-    "LC_MESSAGES",
-    "LC_MONETARY",
-    "LC_NUMERIC",
-    "LC_TIME",
-    # User environment
-    "SHELL",
-    "USER",
-    "TERM",
-    "TZ",
-    "TMPDIR",
-    "MAIL",
-    "MAILCHECK",
-    "MAILPATH",
-    # Editors and pagers
-    "EDITOR",
-    "VISUAL",
-    "PAGER",
-    "FCEDIT",
-    # Shell configuration
-    "CDPATH",
-    "ENV",
-    "HISTFILE",
-    "HISTSIZE",
-    # Terminal
-    "COLUMNS",
-    "LINES",
-    # Internationalization
-    "NLSPATH",
-    # Compilation and build
-    "CC",
-    "CFLAGS",
-    "LDFLAGS",
-    "ARFLAGS",
-    "YACC",
-    "YFLAGS",
-    "LEX",
-    "LFLAGS",
-    "MAKEFLAGS",
-    "GET",
-    "GFLAGS",
-    # Printing
-    "LPDEST",
-    # Editor init
-    "EXINIT",
-]
 
 # The files a gather reads.  A gather reads the canonical paths; the
 # modules that take a path option are where another one is named.
@@ -297,12 +235,14 @@ def _process_users_results(
         facts["o0_groups"] = groups
 
     if shells is not None:
+        named = parse_shells(shells)
         facts["o0_paths"] = {
             SHELLS_PATH: {
                 "content": shells,
-                "config": parse_shells(shells),
+                "config": named,
             }
         }
+        facts["o0_shells"] = compose_shells(named)
 
     return facts, []
 
@@ -451,36 +391,46 @@ class ActionModule(ReadPosixActionBase, ActionBase):
                 else:
                     all_facts[ns][key] = value
 
-    def _probe_mount_config(
+    def _second_batch(
         self,
         mounts: dict[str, Any],
+        pairs: list[tuple[str, str]],
         task_vars: Optional[dict[str, Any]] = None,
     ) -> dict[str, Any]:
-        """Ask each mounted filesystem what it says about itself.
+        """Ask everything that had to wait for the first batch.
 
-        The ``pathconf`` class is asked at a pathname, and the
-        pathnames are the mountpoints the first batch answered with,
-        so this cannot join that batch any more than the homes can.
-        It is one batch of its own: a variable per mountpoint is many
-        commands and few round trips, which the run plugin splits into
-        scripts without being asked to.
+        Two questions are asked at paths the first batch answered
+        with, so neither could have ridden it: what each mounted
+        filesystem says about itself, asked at its mountpoint, and
+        what each login shell produces, asked by running it out of a
+        home.  They are asked together because they are asked at the
+        same moment for the same reason, and one round trip answers
+        both.
 
-        The join is the composition both producers share, so the
-        mounts module attaches the same configuration to the same
-        entries.
+        Each is composed where both producers of its fact compose it,
+        so the mounts module and the users module attach the same
+        answers to the same entries.
 
-        :param dict[str, Any] mounts: The composed mounts fact
+        :param dict[str, Any] mounts: The composed mounts fact, or an
+            empty mapping where the mounts subset did not run
+        :param list[tuple[str, str]] pairs: The (shell, home)
+            combinations to observe
         :param Optional[dict[str, Any]] task_vars: Task variables
-        :returns dict[str, Any]: The mounts, each carrying its
-            filesystem's configuration where there was one
+        :returns dict[str, Any]: The namespaces the answers compose
         """
-        requests = get_pathconf_command_requests(sorted(mounts))
+        requests = []
+        if mounts:
+            requests.extend(get_pathconf_command_requests(sorted(mounts)))
+        if pairs:
+            requests.extend(get_shell_command_requests(pairs))
+
         if not requests:
             return {}
 
         self._display.vvv(
-            f"Probing {len(mounts)} mountpoint(s) with"
-            f" {len(requests)} command(s)"
+            f"Asking {len(requests)} command(s) of"
+            f" {len(mounts)} mountpoint(s) and"
+            f" {len(pairs)} shell context(s)"
         )
 
         run_results = self._run(
@@ -491,11 +441,70 @@ class ActionModule(ReadPosixActionBase, ActionBase):
             check_mode=False,
         )
 
-        pathconf = process_pathconf_command_results(run_results)
+        facts: dict[str, Any] = {}
 
-        return {
-            "o0_storage": {"mounts": compose_mount_config(mounts, pathconf)}
-        }
+        if mounts:
+            facts["o0_storage"] = {
+                "mounts": compose_mount_config(
+                    mounts, process_pathconf_command_results(run_results)
+                )
+            }
+
+        if pairs:
+            shells = compose_shells(
+                None, process_shell_command_results(run_results)
+            )
+            if shells:
+                facts["o0_shells"] = shells
+
+        return facts
+
+    def _shell_pairs(
+        self,
+        shell: str,
+        all_facts: dict[str, Any],
+        uid: Optional[int],
+    ) -> list[tuple[str, str]]:
+        """Name the combinations this gather has reason to observe.
+
+        Two of them at most.  The system layer is the shell the task
+        named, run out of the canonical home no host has: what a login
+        shell does before any user's dot files enter into it.  The
+        user layer is the connecting user's own login shell run out of
+        their own home, which is what they actually get.
+
+        A shell the path store has confirmed absent is not probed.
+        The store is consulted rather than trusted for a positive: a
+        path it has never been asked about is not a path known to be
+        missing, and the probe answers that question itself.
+
+        :param str shell: The shell the task named for the system
+            layer
+        :param dict[str, Any] all_facts: What the gather has composed
+            so far
+        :param Optional[int] uid: The effective uid, where one was
+            determined
+        :returns list[tuple[str, str]]: The (shell, home) pairs to
+            observe
+        """
+        paths = all_facts.get(self.PATHS_NAMESPACE) or {}
+
+        def absent(path: str) -> bool:
+            return path in paths and paths[path] is None
+
+        pairs = []
+        if shell and not absent(shell):
+            pairs.append((shell, SHELL_SYSTEM_HOME))
+
+        entry = (all_facts.get("o0_users") or {}).get(str(uid)) or {}
+        user_shell = entry.get("shell")
+        user_home = entry.get("home")
+        if user_shell and user_home and not absent(user_shell):
+            pair = (user_shell, user_home)
+            if pair not in pairs:
+                pairs.append(pair)
+
+        return pairs
 
     def _read_user_paths(
         self,
@@ -643,7 +652,11 @@ class ActionModule(ReadPosixActionBase, ActionBase):
                 "type": "list",
                 "elements": "str",
                 "default": ["all"],
-            }
+            },
+            "shell": {
+                "type": "str",
+                "default": SHELL_DEFAULT,
+            },
         }
         validation_result, new_args = self.validate_argument_spec(
             argument_spec=argument_spec
@@ -658,6 +671,7 @@ class ActionModule(ReadPosixActionBase, ActionBase):
 
         all_facts = {}
         user_facts: dict[str, Any] = {}
+        effective_uid: Optional[int] = None
 
         # Phase 1: Aggregate and execute every selected subset
         if selected_subsets:
@@ -709,6 +723,7 @@ class ActionModule(ReadPosixActionBase, ActionBase):
                             )
                             continue
 
+                        effective_uid = uid
                         entry: dict[str, Any] = {"uid": uid}
                         if subset in self.USER_SCOPED_FIELDS:
                             entry.update(facts)
@@ -749,14 +764,27 @@ class ActionModule(ReadPosixActionBase, ActionBase):
                     )
 
         # Phase 2: Ask about the paths the batch had to answer with
-        # before they could be asked about - the mountpoints df named
-        # and the homes and shells the passwd entries did
-        mounts = (all_facts.get("o0_storage") or {}).get("mounts")
-        if mounts:
-            self._merge_facts(
-                all_facts, self._probe_mount_config(mounts, task_vars)
-            )
+        # before they could be asked about - the mountpoints df named,
+        # and the shells the task and the passwd entries named. The
+        # shells belong to the users subset, which is where /etc/shells
+        # is read, so that min stays the one round trip it promises.
+        self._merge_facts(
+            all_facts,
+            self._second_batch(
+                (all_facts.get("o0_storage") or {}).get("mounts") or {},
+                (
+                    self._shell_pairs(
+                        new_args["shell"], all_facts, effective_uid
+                    )
+                    if "users" in selected_subsets
+                    else []
+                ),
+                task_vars,
+            ),
+        )
 
+        # Phase 3: Read the paths the passwd entries named, which is a
+        # metadata read rather than a command and cannot join a batch
         if user_facts.get("o0_users"):
             self._merge_facts(
                 all_facts,

@@ -19,6 +19,7 @@ from ansible_collections.o0_o.posix.plugins.module_utils.df_utils import (
     parse_df_entry,
 )
 from ansible_collections.o0_o.posix.plugins.module_utils.env_utils import (
+    POSIX_ENV_VARS,
     get_env_command_requests,
     process_env_command_results,
 )
@@ -112,7 +113,12 @@ from ansible_collections.o0_o.posix.plugins.module_utils.ps_utils import (
     restructure_process,
 )
 from ansible_collections.o0_o.posix.plugins.module_utils.shells_utils import (
+    SHELL_DEFAULT,
+    SHELL_SYSTEM_HOME,
+    compose_shells,
+    get_shell_command_requests,
     parse_shells,
+    process_shell_command_results,
 )
 
 from ansible_collections.o0_o.posix.plugins.module_utils.timezone_utils import (  # noqa: E501
@@ -234,7 +240,12 @@ __all__ = [
     "parse_mount",
     "parse_mount_entry",
     "process_mount_command_results",
+    "SHELL_DEFAULT",
+    "SHELL_SYSTEM_HOME",
+    "compose_shells",
+    "get_shell_command_requests",
     "parse_shells",
+    "process_shell_command_results",
     "get_timezone_command_requests",
     "parse_timezone_offset",
     "process_timezone_command_results",
@@ -246,6 +257,7 @@ __all__ = [
     # "stat",
     "normalize_source",
     "process_registered_result",
+    "POSIX_ENV_VARS",
     "get_env_command_requests",
     "get_locale_command_requests",
     "process_env_command_results",

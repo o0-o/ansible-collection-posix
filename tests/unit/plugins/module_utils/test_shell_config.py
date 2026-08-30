@@ -1,0 +1,350 @@
+# vim: ts=4:sw=4:sts=4:et:ft=python
+# -*- mode: python; tab-width: 4; indent-tabs-mode: nil; -*-
+#
+# GNU General Public License v3.0+
+# SPDX-License-Identifier: GPL-3.0-or-later
+# (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
+#
+# Copyright (c) 2025 oØ.o (@o0-o)
+#
+# This file is part of the o0_o.posix Ansible Collection.
+
+"""Unit tests for the shell-context probe in shells_utils.
+
+Every fixture here is the output of a login shell that actually ran.
+That is the point of the probe rather than an accident of testing it:
+a shell's configuration is code, and what the code does is not
+readable off the files it lives in.  The captures show it - macOS's
+``/bin/sh`` rewrites C(PATH) out of ``path_helper`` before it hands
+you a prompt, and Debian's rewrites C(LANG) - so a fixture written
+from what was handed in would be a fixture of the wrong thing.
+
+Each was taken from a controlled starting environment, so the file is
+short enough to read and carries no host's private variables.  What
+the shell did to that environment is the shell's own doing and is
+verbatim.
+"""
+
+from __future__ import annotations
+
+import os
+
+from typing import Any, Optional
+
+import pytest
+
+from ansible_collections.o0_o.posix.plugins.module_utils.command_spec import (
+    SHELL_COMMAND_SPEC,
+)
+from ansible_collections.o0_o.posix.plugins.module_utils.shells_utils import (
+    SHELL_DEFAULT,
+    SHELL_RCS,
+    SHELL_SYSTEM_HOME,
+    _parse_shell_config,
+    compose_shells,
+    get_shell_command_requests,
+    process_shell_command_results,
+)
+
+FILES = os.path.join(os.path.dirname(__file__), "files")
+
+# The shells whose login run was captured
+SHELLS = (
+    "linux_glibc",
+    "linux_musl",
+    "macos",
+    "macos_ksh",
+    "macos_zsh",
+)
+
+# The environment every capture was started from, so that what a
+# shell changed can be told from what it inherited
+HANDED_IN = {
+    "PATH": "/usr/bin:/bin",
+    "LANG": "en_US.UTF-8",
+    "TERM": "xterm",
+    "EDITOR": "vi",
+}
+
+# What each login shell changed about it, which is the whole reason
+# the fact is an observation rather than a read of the files
+CHANGED = {
+    "linux_glibc": "LANG",
+    "linux_musl": "PATH",
+    "macos": "PATH",
+    "macos_ksh": "PATH",
+    "macos_zsh": "PATH",
+}
+
+# The shells whose host has no locale utility to ask
+NO_LOCALE = ("linux_musl",)
+
+
+def corpus(name: str) -> str:
+    """Read a captured fixture verbatim.
+
+    :param str name: File name under ``files/``
+    :returns str: The file's contents
+    """
+    with open(os.path.join(FILES, name), encoding="utf-8") as handle:
+        return handle.read()
+
+
+def config(shell: str) -> Optional[dict[str, Any]]:
+    """Parse one captured shell's probe output.
+
+    :param str shell: The captured shell's name
+    :returns Optional[dict[str, Any]]: What the combination produced
+    """
+    parsed, errors = _parse_shell_config(
+        0, corpus(f"shell_config_{shell}.txt"), "test: "
+    )
+    assert errors is None
+    return parsed
+
+
+@pytest.mark.parametrize("shell", SHELLS)
+def test_a_login_run_answers_a_mask_and_an_environment(shell: str) -> None:
+    """Test every capture reaches the same three-field shape."""
+    parsed = config(shell)
+
+    assert parsed["umask"] == "0022"
+    assert parsed["env"]["HOME"] == SHELL_SYSTEM_HOME
+    assert set(parsed) <= {"env", "umask", "locale"}
+
+
+@pytest.mark.parametrize("shell", SHELLS)
+def test_the_login_files_ran_and_the_capture_shows_it(shell: str) -> None:
+    """Test the answer is what the shell made, not what it was given.
+
+    A shell that changed nothing would make the probe pointless and
+    a read of the dot files sufficient. Every one of them changed
+    something.
+    """
+    env = config(shell)["env"]
+    variable = CHANGED[shell]
+
+    assert env[variable] != HANDED_IN[variable]
+    assert env[variable]
+
+
+@pytest.mark.parametrize("shell", SHELLS)
+def test_only_the_variables_posix_names_are_kept(shell: str) -> None:
+    """Test the observation is not a copy of the whole environment.
+
+    A shell's environment is a place secrets live, and observing one
+    is not a reason to file it. The captures were started with a
+    variable POSIX does not name, and none of them keeps it.
+    """
+    env = config(shell)["env"]
+
+    assert "NOT_A_POSIX_VARIABLE" not in env
+    assert "SHLVL" not in env
+    assert "_" not in env
+
+    # What it does keep is what o0_users publishes as an environment
+    assert env["PATH"]
+    assert env["EDITOR"] == "vi"
+
+
+@pytest.mark.parametrize("shell", SHELLS)
+def test_a_locale_is_read_where_the_host_has_one_to_ask(
+    shell: str,
+) -> None:
+    """Test a host with no locale utility has no locale field.
+
+    A field the shell would not answer is left out rather than
+    nulled: a configuration with no locale in it is a different claim
+    from a locale that is unset.
+    """
+    parsed = config(shell)
+
+    if shell in NO_LOCALE:
+        assert "locale" not in parsed
+    else:
+        assert parsed["locale"]["language"]
+        assert "all" in parsed["locale"]
+
+
+def test_a_three_digit_mask_is_the_same_mask() -> None:
+    """Test zsh's shorter mask reads as the mode every other one is."""
+    assert config("macos_zsh")["umask"] == config("macos")["umask"]
+
+
+def test_what_a_dot_file_printed_before_the_probe_is_discarded() -> None:
+    """Test the answer starts at the marker, not at the first byte.
+
+    A login shell may print anything it likes on the way in, and a
+    dot file that echoes is still a dot file that ran.
+    """
+    noisy = "Welcome to the host!\nMOTD line two\n" + corpus(
+        "shell_config_macos.txt"
+    )
+
+    assert _parse_shell_config(0, noisy, "test: ")[0] == config("macos")
+
+
+def test_a_value_with_a_newline_in_it_stays_one_value() -> None:
+    """Test a line that cannot start a variable continues the last."""
+    parsed = _parse_shell_config(
+        0,
+        "@UMASK@\n0022\n@ENV@\nPS1=first line\nsecond line\nTERM=vt100\n"
+        "@LOCALE@\n@END@\n",
+        "test: ",
+    )[0]
+
+    assert parsed["env"]["PS1"] == "first line\nsecond line"
+    assert parsed["env"]["TERM"] == "vt100"
+
+
+@pytest.mark.parametrize("rc", [126, 127])
+def test_a_shell_that_did_not_run_answers_nothing(rc: int) -> None:
+    """Test a missing or unrunnable shell files no row at all."""
+    assert _parse_shell_config(rc, "", "test: ") == (None, None)
+    assert rc in SHELL_RCS
+
+
+def test_output_without_the_marker_is_not_an_answer() -> None:
+    """Test a probe whose script never started files no row."""
+    assert _parse_shell_config(0, "", "test: ") == (None, None)
+    assert _parse_shell_config(0, "some other output\n", "test: ") == (
+        None,
+        None,
+    )
+
+
+def test_a_probe_that_answered_only_junk_files_no_row() -> None:
+    """Test a run that named none of the three fields is not a row."""
+    assert _parse_shell_config(
+        0, "@UMASK@\n@ENV@\n@LOCALE@\n@END@\n", "test: "
+    ) == (None, None)
+
+
+def test_the_probe_runs_the_shell_out_of_the_home_it_names() -> None:
+    """Test the invocation is argv-clean and reads the login files."""
+    requests = get_shell_command_requests([("/bin/zsh", "/home/o0-o")])
+
+    assert len(requests) == 1
+    command = requests[0]["command"]
+
+    assert command[:5] == (
+        "env",
+        "HOME=/home/o0-o",
+        "/bin/zsh",
+        "-l",
+        "-c",
+    )
+    assert requests[0]["type"] == "shell_config"
+    assert requests[0]["non_error_codes"] == SHELL_RCS
+    assert requests[0]["args"] == {"shell": "/bin/zsh", "home": "/home/o0-o"}
+
+
+def test_a_home_with_a_space_in_it_reaches_the_shell_whole() -> None:
+    """Test env(1) takes the assignment as an argument, not as syntax."""
+    requests = get_shell_command_requests([("/bin/sh", "/Users/A Person")])
+
+    assert requests[0]["command"][1] == "HOME=/Users/A Person"
+
+
+def test_nothing_is_probed_that_was_not_asked_for() -> None:
+    """Test the builder enumerates no shells of its own."""
+    assert get_shell_command_requests([]) == []
+    assert len(get_shell_command_requests([("/bin/sh", "/dev/null")])) == 1
+
+
+def test_the_spec_names_one_probe() -> None:
+    """Test the shell spec holds the login run and nothing else."""
+    assert set(SHELL_COMMAND_SPEC) == {"posix"}
+    assert set(SHELL_COMMAND_SPEC["posix"]) == {"shell_config"}
+
+
+def test_the_results_are_keyed_by_the_pair_that_decided_them() -> None:
+    """Test a batch reads back as shell and then home."""
+    pairs = [("/bin/sh", SHELL_SYSTEM_HOME), ("/bin/zsh", "/home/o0-o")]
+    captures = {"/bin/sh": "macos", "/bin/zsh": "macos_zsh"}
+
+    results = [
+        {
+            **request,
+            "rc": 0,
+            "stdout": corpus(
+                f"shell_config_{captures[request['args']['shell']]}.txt"
+            ),
+        }
+        for request in get_shell_command_requests(pairs)
+    ]
+
+    observed = process_shell_command_results(results)
+
+    assert set(observed) == {"/bin/sh", "/bin/zsh"}
+    assert set(observed["/bin/sh"]) == {SHELL_SYSTEM_HOME}
+    assert set(observed["/bin/zsh"]) == {"/home/o0-o"}
+    assert observed["/bin/zsh"]["/home/o0-o"]["umask"] == "0022"
+
+
+def test_a_pair_that_answered_nothing_is_not_a_row() -> None:
+    """Test a shell that did not run leaves the store unmentioned."""
+    results = [
+        {**request, "rc": 127, "stdout": "", "stderr": "not found"}
+        for request in get_shell_command_requests(
+            [("/bin/nosuchshell", SHELL_SYSTEM_HOME)]
+        )
+    ]
+
+    assert process_shell_command_results(results) == {}
+    assert process_shell_command_results([]) == {}
+
+
+def test_the_named_shells_are_the_keys_and_the_idiom_survives() -> None:
+    """Test user.shell in o0_shells reads as it always did."""
+    shells = compose_shells(["/bin/sh", "/bin/zsh", "/bin/bash"])
+
+    assert "/bin/zsh" in shells
+    assert "/bin/nosuchshell" not in shells
+    assert shells["/bin/zsh"] == {}
+
+
+def test_an_observed_shell_the_host_did_not_name_is_a_key_too() -> None:
+    """Test the host answered for it, so the fact carries it."""
+    shells = compose_shells(
+        ["/bin/sh"],
+        {"/usr/local/bin/fish": {"/home/o0-o": {"umask": "0022"}}},
+    )
+
+    assert set(shells) == {"/bin/sh", "/usr/local/bin/fish"}
+    assert shells["/bin/sh"] == {}
+    assert shells["/usr/local/bin/fish"]["/home/o0-o"]["config"] == {
+        "umask": "0022"
+    }
+
+
+def test_a_shell_named_and_observed_carries_its_rows() -> None:
+    """Test the two halves meet under one key."""
+    shells = compose_shells(
+        ["/bin/sh", "/bin/zsh"],
+        {
+            "/bin/sh": {
+                SHELL_SYSTEM_HOME: {"umask": "0022"},
+                "/home/o0-o": {"umask": "0077"},
+            }
+        },
+    )
+
+    assert set(shells) == {"/bin/sh", "/bin/zsh"}
+    assert list(shells["/bin/sh"]) == ["/dev/null", "/home/o0-o"]
+    assert shells["/bin/sh"]["/home/o0-o"]["config"]["umask"] == "0077"
+    assert shells["/bin/zsh"] == {}
+
+
+def test_a_host_that_named_no_shells_and_ran_none_composes_nothing() -> None:
+    """Test an empty answer is empty rather than invented."""
+    assert compose_shells() == {}
+    assert compose_shells(None, {}) == {}
+    assert compose_shells([]) == {}
+
+
+def test_the_canonical_home_and_shell_are_what_they_are_documented_as(
+) -> None:
+    """Test the two constants the docs name by value."""
+    assert SHELL_SYSTEM_HOME == "/dev/null"
+    assert SHELL_DEFAULT == "/bin/sh"

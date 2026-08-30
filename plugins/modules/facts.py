@@ -67,6 +67,26 @@ options:
       - '!fstab'
       - '!users'
       - '!environment'
+  shell:
+    description:
+      - The shell to observe the system layer of C(o0_shells) with.
+      - A shell's configuration is code, so what it does is only
+        knowable by running it. The gather runs this one as a login
+        shell out of C(/dev/null) - a path every POSIX host has and
+        none of them has as a directory, so C(~/.profile) fails to
+        resolve identically everywhere - and files what came back
+        under C(o0_shells[<shell>]['/dev/null']).
+      - This names the system layer only. The connecting user's own
+        login shell is observed out of their own home, whatever it is,
+        and nothing probes every shell the host names. A probe is a
+        shell run, and running each one on the chance somebody logs in
+        with it is a cost with no answer attached.
+      - It reaches the shell-context probes and nothing else. The
+        commands every other subset batches are unaffected by it.
+      - A shell the path store has confirmed absent is not probed.
+    type: str
+    default: /bin/sh
+    version_added: "2.0.0"
 author:
   - oØ.o (@o0-o)
 seealso:
@@ -127,14 +147,24 @@ EXAMPLES = r"""
       - all
       - '!storage'
 
+- name: Observe the system layer with a shell other than /bin/sh
+  o0_o.posix.facts:
+    gather_subset:
+      - users
+    shell: /bin/ksh
+
 - name: Read a user's shell against the login shells the host names
-  vars:
-    answer: "{{ lookup('o0_o.posix.shells') }}"
   ansible.builtin.debug:
     msg: >-
       {{ ansible_facts.o0_users['0'].shell }} is a login shell:
-      {{ ansible_facts.o0_users['0'].shell in answer['shells'] }}
-  when: answer['state'] == 'named'
+      {{ ansible_facts.o0_users['0'].shell in ansible_facts.o0_shells }}
+  when: ansible_facts.o0_shells is defined
+
+- name: Read the mask a login shell out of /dev/null actually set
+  ansible.builtin.debug:
+    msg: >-
+      {{ ansible_facts.o0_shells['/bin/sh']['/dev/null'].config.umask }}
+  when: ansible_facts.o0_shells['/bin/sh']['/dev/null'] is defined
 
 - name: Display compliance status
   ansible.builtin.debug:
@@ -705,6 +735,61 @@ ansible_facts:
           tags:
             - posix
             - shell
+    o0_shells:
+      description:
+        - The login shells the host names, keyed by shell path, and
+          under each of them what running it out of a given home
+          actually produced. C(user.shell in o0_shells) reads as it
+          always did - the keys are the login shells - and the rows
+          underneath say what was observed rather than what was
+          configured.
+        - A shell's configuration is code, so running it is the only
+          honest way to know what it does. The pair decides the answer
+          and neither half decides it alone - two users sharing a
+          shell get whatever their own dot files make, and one user's
+          two shells read two different sets of files - so the home is
+          a key and not a field.
+        - The system layer is the C(shell) option's shell run out of
+          C(/dev/null), the row keyed by that literal path. Every
+          POSIX host has C(/dev/null) and none of them has it as a
+          directory, so C(~/.profile) fails to resolve identically
+          everywhere and the row means the same thing on every host.
+          The user layer is the connecting user's own login shell run
+          out of their own home, where C(/etc/passwd) named both.
+        - A shell with an empty mapping under it was named and not
+          run. Nothing probes every shell a host names, because a
+          probe is a shell run, and running each one on the chance
+          somebody logs in with it is a cost with no answer attached. The file
+          metadata of these same paths is in C(o0_paths), and the join
+          is the path string.
+      returned: >-
+        when the users subset is gathered, or a shell context was
+        observed
+      type: dict
+      contains:
+        config:
+          description: >-
+            What the combination produced - the POSIX C(env) it had
+            set, the C(umask) it would create files under, and the
+            C(locale) it reported. A field the shell would not answer
+            is left out rather than nulled.
+          type: dict
+      sample:
+        /bin/bash: {}
+        /bin/sh:
+          /dev/null:
+            config:
+              env:
+                PATH: /usr/bin:/bin
+              umask: '0022'
+              locale:
+                language: en_US.UTF-8
+          /home/o0-o:
+            config:
+              env:
+                HOME: /home/o0-o
+                PATH: /home/o0-o/bin:/usr/bin:/bin
+              umask: '0077'
     o0_paths:
       description:
         - What the gather observed about the paths it touched, keyed
@@ -860,7 +945,11 @@ def main() -> None:
                 "!users",
                 "!environment",
             ],
-        }
+        },
+        "shell": {
+            "type": "str",
+            "default": "/bin/sh",
+        },
     }
 
     module = AnsibleModule(

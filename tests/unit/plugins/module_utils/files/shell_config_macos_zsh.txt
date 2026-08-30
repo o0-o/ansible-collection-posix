@@ -1,0 +1,24 @@
+@UMASK@
+022
+@ENV@
+PATH=/usr/local/bin:/System/Cryptexes/App/usr/bin:/usr/bin:/bin:/usr/sbin:/sbin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/local/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/appleinternal/bin:/pkg/env/global/bin://Applications/Topaz Photo AI.app/Contents/Resources/bin:/Applications/Wireshark.app/Contents/MacOS
+LANG=en_US.UTF-8
+TERM=xterm
+EDITOR=vi
+NOT_A_POSIX_VARIABLE=secret
+HOME=/dev/null
+LOGNAME=o0-o
+SHLVL=1
+PWD=/Users/o0-o/Harness/o0-o/Inventory/Software/o0_o Ansible Collections/ansible_collections/o0_o/posix
+OLDPWD=/Users/o0-o/Harness/o0-o/Inventory/Software/o0_o Ansible Collections/ansible_collections/o0_o/posix
+_=/usr/bin/env
+@LOCALE@
+LANG="en_US.UTF-8"
+LC_COLLATE="en_US.UTF-8"
+LC_CTYPE="en_US.UTF-8"
+LC_MESSAGES="en_US.UTF-8"
+LC_MONETARY="en_US.UTF-8"
+LC_NUMERIC="en_US.UTF-8"
+LC_TIME="en_US.UTF-8"
+LC_ALL=
+@END@

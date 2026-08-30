@@ -1,0 +1,70 @@
+# vim: ts=2:sw=2:sts=2:et:ft=yaml.ansible
+# -*- mode: yaml; yaml-indent-offset: 2; indent-tabs-mode: nil; -*-
+---
+breaking_changes:
+  - >-
+    facts, users - ``o0_shells`` is a mapping keyed by shell path
+    rather than a list of them, and under each shell a row per home
+    that shell was observed running out of, holding the ``config`` that
+    combination produced. The documented idiom is unchanged:
+    ``user.shell in o0_shells`` still asks whether a shell is one the
+    host names, because jinja's ``in`` tests a mapping's keys and the
+    keys are the answer ``/etc/shells`` gave. Read
+    ``o0_shells[shell][home]['config']`` for what running it actually
+    did. The same list stays where it was, as
+    ``o0_paths['/etc/shells']['config']``, because what a file
+    configures is a fact about that file
+    (https://github.com/o0-o/ansible-collection-posix/pull/XXX).
+minor_changes:
+  - >-
+    facts - A shell's configuration is code, so the only honest way to
+    know what it does is to run it and watch. The gather runs a login
+    shell and files what came back - the POSIX environment it had set,
+    the ``umask`` it would create files under, and the ``locale`` it
+    reported - keyed by the pair that decided it. Neither half decides
+    it alone: two users sharing a shell get whatever their own dot
+    files make of it, and one user's two shells read two different sets
+    of files, so the home is a key and not a field. The captures show
+    why a read of the dot files would not do - macOS's ``/bin/sh``
+    rewrites ``PATH`` out of ``path_helper`` before it hands you a
+    prompt, and Debian's rewrites ``LANG``
+    (https://github.com/o0-o/ansible-collection-posix/pull/XXX).
+  - >-
+    facts - A new ``shell`` option, default ``/bin/sh``, names the
+    shell the system layer is observed with. It is run as a login shell
+    out of ``HOME=/dev/null``, and the row is keyed by that literal
+    path: every POSIX host has ``/dev/null`` and none of them has it as
+    a directory, so ``~/.profile`` fails to resolve identically
+    everywhere and the row means the same thing on every host. The
+    invocation is ``env HOME=<home> <shell> -l -c …`` - ``env(1)`` is
+    POSIX and takes its assignment as an argument rather than as shell
+    syntax, so a home with a space in it reaches the shell whole. The
+    option reaches the shell-context probes and nothing else; the
+    commands every other subset batches are unaffected by it
+    (https://github.com/o0-o/ansible-collection-posix/pull/XXX).
+  - >-
+    facts - The user layer is the connecting user's own login shell run
+    out of their own home, where ``/etc/passwd`` named both. Nothing
+    probes every shell a host names: a probe is a shell run, and
+    running each one on the chance somebody logs in with it is a cost
+    with no answer attached, so a shell that was named and not run
+    keeps its key with an empty mapping under it. A shell the path
+    store has confirmed absent is not probed at all. The observation
+    keeps only the variables IEEE Std 1003.1 names, the same
+    environment ``o0_users`` publishes, because a shell's environment
+    is where secrets live and observing one is not a reason to file it
+    (https://github.com/o0-o/ansible-collection-posix/pull/XXX).
+  - >-
+    facts - The shell probes belong to the ``users`` subset, which is
+    where ``/etc/shells`` is read, and they ride the second batch
+    beside the per-mount ``pathconf`` sweep: both are asked at paths the
+    first batch had to answer with, so one round trip answers both and
+    ``min`` remains the single round trip it promises
+    (https://github.com/o0-o/ansible-collection-posix/pull/XXX).
+  - >-
+    users - The module publishes ``o0_shells`` too, keyed by the login
+    shells ``/etc/shells`` names with an empty mapping under each. It
+    names the shells and runs none of them, so the idiom answers from
+    either producer while what running one produces stays the gather's
+    to observe
+    (https://github.com/o0-o/ansible-collection-posix/pull/XXX).

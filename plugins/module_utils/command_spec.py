@@ -56,6 +56,14 @@ from ansible_collections.o0_o.posix.plugins.module_utils.locale_utils import (
 from ansible_collections.o0_o.posix.plugins.module_utils.mount_utils import (
     _parse_mount,
 )
+from ansible_collections.o0_o.posix.plugins.module_utils.shells_utils import (
+    SHELL_END_MARKER,
+    SHELL_ENV_MARKER,
+    SHELL_LOCALE_MARKER,
+    SHELL_RCS,
+    SHELL_UMASK_MARKER,
+    _parse_shell_config,
+)
 from ansible_collections.o0_o.posix.plugins.module_utils.timezone_utils import (  # noqa: E501
     _parse_timezone,
 )
@@ -203,6 +211,33 @@ MOUNT_COMMAND_SPEC = {
         "df": {
             "command": ("df", "-P"),
             "parser": _parse_df,
+        },
+    },
+}
+
+# What running a login shell out of a given home actually produces.
+# env(1) is POSIX and takes its assignment as an argument rather than
+# as shell syntax, so a home with a space or a quote in it reaches the
+# shell whole; -l is what makes the shell read the login files, which
+# is the only reason to run it at all.  The script ends in an echo so
+# that a probe that ran exits 0 whatever the utilities inside it did,
+# leaving 126 and 127 to mean what they mean: no such shell.
+SHELL_COMMAND_SPEC = {
+    "posix": {
+        "shell_config": {
+            "command": (
+                "env",
+                "HOME={home}",
+                "{shell}",
+                "-l",
+                "-c",
+                f"echo {SHELL_UMASK_MARKER}; umask;"
+                f" echo {SHELL_ENV_MARKER}; env;"
+                f" echo {SHELL_LOCALE_MARKER}; locale 2>/dev/null;"
+                f" echo {SHELL_END_MARKER}",
+            ),
+            "parser": _parse_shell_config,
+            "non_error_codes": SHELL_RCS,
         },
     },
 }

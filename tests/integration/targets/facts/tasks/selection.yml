@@ -186,16 +186,18 @@
     gather_subset: [users]
   register: facts_users_reg
 
-# One subset, four facts: the users and groups it composes, the
-# shells they hold, and the path store carrying the homes they live
-# in and the file the host names its login shells in. A gather that
-# published fewer than all four was what made the idiom the users
+# One subset, five facts: the users and groups it composes, the
+# shells they hold, the login shells the host names and what running
+# one produced, and the path store carrying the homes they live in
+# and the file the host names its login shells in. A gather that
+# published fewer than all of them was what made the idiom the users
 # module documents unanswerable.
-- name: Assert the users subset publishes all four of its facts
+- name: Assert the users subset publishes all five of its facts
   vars:
     gathered: "{{ facts_users_reg['ansible_facts'] }}"
     expected: >-
-      {{ ['o0_groups', 'o0_paths', 'o0_shell_files', 'o0_users'] }}
+      {{ ['o0_groups', 'o0_paths', 'o0_shell_files', 'o0_shells',
+          'o0_users'] }}
   ansible.builtin.assert:
     that:
       - gathered.keys() | list | sort == expected | sort
@@ -205,8 +207,10 @@
           gathered['o0_users']['0']['gid'] | string
         ]['members'] is sequence
       - gathered['o0_os'] is not defined
+      # The subset that reads /etc/shells is the one that runs one
+      - gathered['o0_shells']['/bin/sh']['/dev/null'] is mapping
     fail_msg: >-
-      the users subset did not publish its four facts:
+      the users subset did not publish its five facts:
       {{ gathered.keys() | list | sort }}
 
 # The subset reads the homes its users name and one file of its own,

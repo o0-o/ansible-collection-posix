@@ -1,0 +1,16 @@
+@UMASK@
+0022
+@ENV@
+SHLVL=1
+HOME=/dev/null
+PAGER=less
+NOT_A_POSIX_VARIABLE=secret
+TERM=xterm
+LC_COLLATE=C
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+LANG=en_US.UTF-8
+PWD=/
+CHARSET=UTF-8
+EDITOR=vi
+@LOCALE@
+@END@

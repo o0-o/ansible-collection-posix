@@ -27,6 +27,75 @@ from ansible_collections.o0_o.core.plugins.module_utils import (
 )
 
 
+# All environment variables named in IEEE Std 1003.1 (POSIX)
+POSIX_ENV_VARS = [
+    # Mandatory (shall be set)
+    "HOME",
+    "LOGNAME",
+    "PATH",
+    # Shell-maintained
+    "PWD",
+    "OLDPWD",
+    "IFS",
+    "PPID",
+    "OPTARG",
+    "OPTIND",
+    # Shell prompts
+    "PS1",
+    "PS2",
+    "PS4",
+    # Locale
+    "LANG",
+    "LC_ALL",
+    "LC_COLLATE",
+    "LC_CTYPE",
+    "LC_MESSAGES",
+    "LC_MONETARY",
+    "LC_NUMERIC",
+    "LC_TIME",
+    # User environment
+    "SHELL",
+    "USER",
+    "TERM",
+    "TZ",
+    "TMPDIR",
+    "MAIL",
+    "MAILCHECK",
+    "MAILPATH",
+    # Editors and pagers
+    "EDITOR",
+    "VISUAL",
+    "PAGER",
+    "FCEDIT",
+    # Shell configuration
+    "CDPATH",
+    "ENV",
+    "HISTFILE",
+    "HISTSIZE",
+    # Terminal
+    "COLUMNS",
+    "LINES",
+    # Internationalization
+    "NLSPATH",
+    # Compilation and build
+    "CC",
+    "CFLAGS",
+    "LDFLAGS",
+    "ARFLAGS",
+    "YACC",
+    "YFLAGS",
+    "LEX",
+    "LFLAGS",
+    "MAKEFLAGS",
+    "GET",
+    "GFLAGS",
+    # Printing
+    "LPDEST",
+    # Editor init
+    "EXINIT",
+]
+
+
 def get_env_command_requests(
     env_vars: list[str],
 ) -> list[dict[str, Any]]:
