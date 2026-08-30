@@ -334,7 +334,7 @@ class TestResolveSubsets:
         never be silently dropped."""
         for group in plugin.SUBSET_GROUPS:
             expanded = plugin._expand_group(group)
-            assert expanded
+            assert expanded != set()
             assert expanded <= set(plugin.SUBSETS)
 
     def test_exclusion_gathers_less_than_all(self, plugin) -> None:
@@ -347,7 +347,7 @@ class TestResolveSubsets:
     def test_negated_group_removes_its_members(self, plugin) -> None:
         """Test negating a group drops the subsets it names."""
         selected = plugin._resolve_subsets(["all", "!storage"])
-        assert not plugin.SUBSET_GROUPS["storage"] & selected
+        assert (plugin.SUBSET_GROUPS["storage"] & selected) == set()
         assert "uname" in selected
 
     def test_group_cycle_terminates(self, monkeypatch, plugin) -> None:
@@ -961,7 +961,7 @@ class TestDefaultGather:
         """Test every published namespace takes the o0_ prefix. Two
         producers used to publish bare names straight into the
         facts."""
-        assert gathered
+        assert gathered != {}
         assert all(ns.startswith("o0_") for ns in gathered)
 
     def test_every_subset_lands(self, gathered) -> None:
@@ -1147,7 +1147,7 @@ def test_no_action_plugin_reads_the_raw_identity_utils() -> None:
     # The guard read that None and raised, which is a guard that never
     # once looked at an action plugin.
     directories = [Path(entry) for entry in action_pkg.__path__]
-    assert directories
+    assert directories != []
 
     raw = re.compile(r"\b(passwd_info|group_info|id_info)\b")
 

@@ -364,7 +364,8 @@ def test_write_file_check_mode_creates_its_scratch_space(
 
         staged = write_base._connection._shell.tmpdir
         assert result["changed"] is True
-        assert staged and os.path.isdir(staged)
+        assert staged is not None
+        assert os.path.isdir(staged) is True
         assert os.listdir(staged) == []
     finally:
         staged = write_base._connection._shell.tmpdir

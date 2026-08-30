@@ -66,4 +66,4 @@ def test_generate_ansible_backup_path_format(write_base) -> None:
     assert backup_path.startswith(path + ".")
     parts = backup_path.split(".")
     assert len(parts) >= 3  # path, md5, timestamp
-    assert parts[-1].isdigit()
+    assert parts[-1].isdigit() is True

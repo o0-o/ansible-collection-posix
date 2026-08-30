@@ -420,25 +420,25 @@ def test_dmidecode_validates_meaningless_values() -> None:
     )
 
     # Test common meaningless strings (case-insensitive)
-    assert _is_meaningless_value("Default string")
-    assert _is_meaningless_value("default string")
-    assert _is_meaningless_value("Other")
-    assert _is_meaningless_value("None")
-    assert _is_meaningless_value("Not Specified")
-    assert _is_meaningless_value("not specified")
-    assert _is_meaningless_value("Unspecified")
-    assert _is_meaningless_value("Unknown")
-    assert _is_meaningless_value("Not Available")
-    assert _is_meaningless_value("N/A")
+    assert _is_meaningless_value("Default string") is True
+    assert _is_meaningless_value("default string") is True
+    assert _is_meaningless_value("Other") is True
+    assert _is_meaningless_value("None") is True
+    assert _is_meaningless_value("Not Specified") is True
+    assert _is_meaningless_value("not specified") is True
+    assert _is_meaningless_value("Unspecified") is True
+    assert _is_meaningless_value("Unknown") is True
+    assert _is_meaningless_value("Not Available") is True
+    assert _is_meaningless_value("N/A") is True
 
     # Test sequential digits
-    assert _is_meaningless_value("0123456789")
-    assert _is_meaningless_value("123456789")
+    assert _is_meaningless_value("0123456789") is True
+    assert _is_meaningless_value("123456789") is True
 
     # Test valid values
-    assert not _is_meaningless_value("Supermicro")
-    assert not _is_meaningless_value("X10DSC+")
-    assert not _is_meaningless_value("Safe")
+    assert _is_meaningless_value("Supermicro") is False
+    assert _is_meaningless_value("X10DSC+") is False
+    assert _is_meaningless_value("Safe") is False
 
 
 def test_dmidecode_parses_presence() -> None:

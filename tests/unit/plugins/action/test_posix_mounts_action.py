@@ -489,4 +489,5 @@ def test_gather_without_df_publishes_nothing(plugin) -> None:
     facts, errors = process_mount_command_results(answers)
 
     assert facts == {}
-    assert errors
+    assert len(errors) == 1
+    assert "df: not found" in str(errors[0])
