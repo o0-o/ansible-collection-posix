@@ -1,0 +1,18 @@
+# vim: ts=2:sw=2:sts=2:et:ft=yaml.ansible
+# -*- mode: yaml; yaml-indent-offset: 2; indent-tabs-mode: nil; -*-
+---
+# GNU General Public License v3.0+
+# SPDX-License-Identifier: GPL-3.0-or-later
+# (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
+#
+# Copyright (c) 2025 oØ.o (@o0-o)
+#
+# This file is part of the o0_o.posix Ansible Collection.
+
+# This target's entry into the raw lane, per Running CI. The target
+# asks the host what time it keeps and asserts the parse of the
+# answer; the asking is raw-clean and the asserting reads no gathered
+# fact, so the entry is main.yml under no vars of its own.
+
+- name: Read the timezone on a host with no interpreter
+  ansible.builtin.include_tasks: main.yml

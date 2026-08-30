@@ -1,0 +1,24 @@
+# vim: ts=2:sw=2:sts=2:et:ft=yaml.ansible
+# -*- mode: yaml; yaml-indent-offset: 2; indent-tabs-mode: nil; -*-
+---
+# GNU General Public License v3.0+
+# SPDX-License-Identifier: GPL-3.0-or-later
+# (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
+#
+# Copyright (c) 2025 oØ.o (@o0-o)
+#
+# This file is part of the o0_o.posix Ansible Collection.
+
+# This target's entry into the raw lane, per Running CI. Everything
+# main.yml runs reaches the host through this collection's own
+# modules and nothing it asserts is read from a gathered fact, so the
+# entry is the whole target under no vars of its own. The assertions
+# stay in main.yml, where both runners share them.
+#
+# The check mode cases are tasks rather than a loop, so they carry
+# their own keyword and hold here as they do under ansible-test. What
+# they ask is whether a probe answers the same both ways, which is a
+# question the raw path answers too.
+
+- name: Probe compliance on a host with no interpreter
+  ansible.builtin.include_tasks: main.yml

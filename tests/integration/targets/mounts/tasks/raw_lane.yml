@@ -1,0 +1,23 @@
+# vim: ts=2:sw=2:sts=2:et:ft=yaml.ansible
+# -*- mode: yaml; yaml-indent-offset: 2; indent-tabs-mode: nil; -*-
+---
+# GNU General Public License v3.0+
+# SPDX-License-Identifier: GPL-3.0-or-later
+# (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
+#
+# Copyright (c) 2025 oØ.o (@o0-o)
+#
+# This file is part of the o0_o.posix Ansible Collection.
+
+# This target's entry into the raw lane, per Running CI. Every reading
+# main.yml takes comes through this collection's own module and every
+# assertion is about that reading rather than about a gathered fact,
+# so the entry is main.yml under no vars of its own.
+#
+# The check mode case is a task carrying its own keyword, not a loop,
+# so it holds here as it does under ansible-test, and what it asks --
+# whether a reading is the same taken either way -- is a question the
+# raw path answers too.
+
+- name: Read the mounts on a host with no interpreter
+  ansible.builtin.include_tasks: main.yml

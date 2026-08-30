@@ -1,0 +1,33 @@
+# vim: ts=2:sw=2:sts=2:et:ft=yaml.ansible
+# -*- mode: yaml; yaml-indent-offset: 2; indent-tabs-mode: nil; -*-
+---
+# GNU General Public License v3.0+
+# SPDX-License-Identifier: GPL-3.0-or-later
+# (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
+#
+# Copyright (c) 2025 oØ.o (@o0-o)
+#
+# This file is part of the o0_o.posix Ansible Collection.
+
+# This target's entry into the raw lane, per Running CI. Everything
+# main.yml runs is raw-clean -- the users module is the only thing
+# that reaches the host, and the lookup reads the path store that
+# module hands back rather than any Ansible gathered -- so the entry
+# is the whole target under the one var the lane owes it.
+#
+# That var is the empty store ansible-test would have given the
+# target for free. ansible-test enters each target in a play of its
+# own, so main.yml opens on a host nothing has read anything from and
+# can ask what a store nobody filled answers. The lane enters every
+# target in one play instead, so by the time this one runs, an
+# earlier target has filled o0_paths and the file would read as named
+# before the target ever asked for it. Pinning the store empty
+# restores the distinction the target opens by drawing; its own
+# gather fills the store again a few tasks later.
+
+- name: Enter with the paths an unread host has read
+  ansible.builtin.set_fact:
+    o0_paths: {}
+
+- name: Ask what shells a host with no interpreter names
+  ansible.builtin.include_tasks: main.yml

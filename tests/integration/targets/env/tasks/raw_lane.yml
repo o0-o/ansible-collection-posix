@@ -1,0 +1,30 @@
+# vim: ts=2:sw=2:sts=2:et:ft=yaml.ansible
+# -*- mode: yaml; yaml-indent-offset: 2; indent-tabs-mode: nil; -*-
+---
+# GNU General Public License v3.0+
+# SPDX-License-Identifier: GPL-3.0-or-later
+# (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
+#
+# Copyright (c) 2025 oØ.o (@o0-o)
+#
+# This file is part of the o0_o.posix Ansible Collection.
+
+# This target's entry into the raw lane, per Running CI. It runs the
+# same task files main.yml runs, so the assertions have one home; what
+# it chooses is which of them an interpreter-free host can answer and
+# what vars they run under.
+#
+# main.yml turns each file through a loop that names the row's check
+# mode as a var. Nothing under env.yml or failures.yml reads that var,
+# so the two rows ask the host the same questions twice; the lane
+# takes the row that runs and pays for the round trips once.
+
+- name: Read the environment on a host with no interpreter
+  ansible.builtin.include_tasks: env.yml
+  vars:
+    ansible_check_mode: false
+
+- name: Refuse a malformed request on a host with no interpreter
+  ansible.builtin.include_tasks: failures.yml
+  vars:
+    ansible_check_mode: false

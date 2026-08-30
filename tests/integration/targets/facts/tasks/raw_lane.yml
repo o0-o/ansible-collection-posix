@@ -1,0 +1,24 @@
+# vim: ts=2:sw=2:sts=2:et:ft=yaml.ansible
+# -*- mode: yaml; yaml-indent-offset: 2; indent-tabs-mode: nil; -*-
+---
+# GNU General Public License v3.0+
+# SPDX-License-Identifier: GPL-3.0-or-later
+# (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
+#
+# Copyright (c) 2025 oØ.o (@o0-o)
+#
+# This file is part of the o0_o.posix Ansible Collection.
+
+# This target's entry into the raw lane, per Running CI. A gather is
+# the collection's largest reading of a host, and it is the reading an
+# interpreter-free host most needs proved: every producer it drives
+# has to reach the host without python. main.yml asks the host what it
+# can be asked about -- through read, dmidecode and command, all of
+# them raw-clean -- rather than reading a gathered fact for it, so the
+# entry is the whole target under no vars of its own.
+#
+# The one check mode case is a task carrying its own keyword, not a
+# loop, so it holds here as it does under ansible-test.
+
+- name: Gather facts from a host with no interpreter
+  ansible.builtin.include_tasks: main.yml
