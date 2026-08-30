@@ -10,8 +10,10 @@
 # This file is part of the o0_o.posix Ansible Collection.
 
 - name: Get df output for testing
-  ansible.builtin.command:
-    cmd: df -P
+  o0_o.posix.command:
+    argv:
+      - df
+      - -P
   changed_when: false
   register: df_output_reg
 
@@ -154,8 +156,7 @@
     - name: Load basic df output from file
       ansible.builtin.set_fact:
         mock_df_output: >-
-          {{ lookup('file',
-                    playbook_dir + '/targets/filter_df/files/df_basic.txt') }}
+          {{ lookup('file', role_path + '/files/df_basic.txt') }}
 
     - name: Parse mock output
       ansible.builtin.set_fact:
@@ -202,8 +203,7 @@
     - name: Load df output with mismatched percent from file
       ansible.builtin.set_fact:
         mock_df_mismatch: >-
-          {{ lookup('file', playbook_dir +
-                    '/targets/filter_df/files/df_mismatch_percent.txt') }}
+          {{ lookup('file', role_path + '/files/df_mismatch_percent.txt') }}
 
     - name: Parse mock output with mismatched percent
       ansible.builtin.set_fact:
@@ -236,8 +236,7 @@
     - name: Load df output with 512-byte blocks from file
       ansible.builtin.set_fact:
         mock_512_output: >-
-          {{ lookup('file', playbook_dir +
-                    '/targets/filter_df/files/df_512blocks.txt') }}
+          {{ lookup('file', role_path + '/files/df_512blocks.txt') }}
 
     - name: Parse 512-block output
       ansible.builtin.set_fact:

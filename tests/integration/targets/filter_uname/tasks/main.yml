@@ -10,8 +10,10 @@
 # This file is part of the o0_o.posix Ansible Collection.
 
 - name: Get uname output for testing
-  ansible.builtin.command:
-    cmd: uname -a
+  o0_o.posix.command:
+    argv:
+      - uname
+      - -a
   changed_when: false
   register: uname_output_reg
 

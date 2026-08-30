@@ -9,19 +9,29 @@
 #
 # This file is part of the o0_o.posix Ansible Collection.
 
-- name: Read test fstab file
-  ansible.builtin.slurp:
-    src: "{{ role_path }}/files/test.fstab"
-  register: fstab_content_reg
+# The fixture is a string the filter parses on the controller, and the
+# filter never asks a host anything, so the string is read where it
+# lives. A slurp of role_path would have shipped a controller path to
+# the target and read it there, which only finds the file at all when
+# the two are the same machine.
+- name: Read the test fstab file
+  ansible.builtin.set_fact:
+    fstab_text: "{{ lookup('file', role_path + '/files/test.fstab') }}"
+
+# A slurp answers in base64 whatever the file held, and the filter is
+# expected to meet that shape whoever hands it over. The shape is what
+# is under test, so it is built rather than fetched.
+- name: Name the shape a slurp of that file would have handed back
+  ansible.builtin.set_fact:
+    fstab_slurp_shape:
+      content: "{{ fstab_text | b64encode }}"
+      encoding: base64
 
 - name: Test basic fstab parsing
   block:
     - name: Parse fstab content
       ansible.builtin.set_fact:
-        fstab_parsed: >-
-          {{ fstab_content_reg['content']
-             | b64decode
-             | o0_o.posix.fstab }}
+        fstab_parsed: "{{ fstab_text | o0_o.posix.fstab }}"
 
     - name: Assert parsing results
       ansible.builtin.assert:
@@ -35,6 +45,18 @@
           - fstab_parsed[0]['options'][1]['noatime'] == true
           - fstab_parsed[0]['dump'] == 0
           - fstab_parsed[0]['pass'] == 1
+
+    - name: Parse the slurp shape of the same file
+      ansible.builtin.set_fact:
+        fstab_from_slurp_shape: "{{ fstab_slurp_shape | o0_o.posix.fstab }}"
+
+    - name: Assert the slurp shape parses to the same entries
+      ansible.builtin.assert:
+        that:
+          - fstab_from_slurp_shape == fstab_parsed
+        fail_msg: >-
+          An always-base64 content dict should parse to what the same
+          text parses to
 
 - name: Test specific mount entries
   block:
@@ -189,10 +211,7 @@
   block:
     - name: Parse fstab and store entries
       ansible.builtin.set_fact:
-        parsed_entries: >-
-          {{ fstab_content_reg['content']
-             | b64decode
-             | o0_o.posix.fstab }}
+        parsed_entries: "{{ fstab_text | o0_o.posix.fstab }}"
 
     - name: Generate fstab from parsed entries
       ansible.builtin.set_fact:
@@ -279,7 +298,7 @@
     - name: Parse fstab as command output
       ansible.builtin.set_fact:
         fstab_cmd_result:
-          stdout: "{{ fstab_content_reg['content'] | b64decode }}"
+          stdout: "{{ fstab_text }}"
           rc: 0
 
     - name: Parse command output
@@ -298,10 +317,7 @@
   block:
     - name: Parse fstab content directly (without splitting)
       ansible.builtin.set_fact:
-        fstab_from_string: >-
-          {{ fstab_content_reg['content']
-             | b64decode
-             | o0_o.posix.fstab }}
+        fstab_from_string: "{{ fstab_text | o0_o.posix.fstab }}"
 
     - name: Assert parsing results
       ansible.builtin.assert:
@@ -339,44 +355,67 @@
         that:
           - comment_result == []
 
-- name: Test base64 encoded content from slurp
+# Every case above hands the filter a string this play already had.
+# This one puts a file on the host and asks the host for it back, so
+# what the filter meets is a result some other module actually
+# produced rather than a shape written down here.
+- name: Test the content shapes a read of a real file hands back
   block:
-    - name: Create a test fstab file
-      ansible.builtin.copy:
-        content: |
+    - name: Name the content the test file will hold
+      ansible.builtin.set_fact:
+        fstab_written: |
           /dev/sda1   /       ext4    defaults,noatime   0   1
           /dev/sda2   /home   ext4    defaults           0   2
           tmpfs       /tmp    tmpfs   defaults,size=2G   0   0
-        dest: /tmp/test_fstab_for_slurp
+
+    - name: Create a test fstab file
+      o0_o.posix.write:
+        dest: /tmp/test_fstab_for_read
+        content: "{{ fstab_written }}"
         mode: '0644'
 
-    - name: Slurp the test fstab file
-      ansible.builtin.slurp:
-        src: /tmp/test_fstab_for_slurp
-      register: slurped_fstab_reg
+    - name: Read the test fstab file
+      o0_o.posix.read:
+        path: /tmp/test_fstab_for_read
+        content: true
+      register: read_fstab_reg
 
-    - name: Parse base64 encoded content from slurp
+    - name: Name the result that declares text
       ansible.builtin.set_fact:
-        parsed_from_slurp: "{{ slurped_fstab_reg | o0_o.posix.fstab }}"
+        text_fstab: "{{ read_fstab_reg['paths']['/tmp/test_fstab_for_read'] }}"
 
-    - name: Assert base64 content was properly decoded and parsed
+    # read reports the file's bytes as they stand, terminator included,
+    # so what was written is what comes back rather than a trimmed
+    # rendering of it
+    - name: Assert the read hands back the bytes that were written
       ansible.builtin.assert:
         that:
-          - parsed_from_slurp is sequence
-          - parsed_from_slurp | length == 3
-          - parsed_from_slurp[0]['source'] == '/dev/sda1'
-          - parsed_from_slurp[0]['mount'] == '/'
-          - parsed_from_slurp[0]['type'] == 'ext4'
-          - parsed_from_slurp[1]['source'] == '/dev/sda2'
-          - parsed_from_slurp[1]['mount'] == '/home'
-          - parsed_from_slurp[2]['source'] == 'tmpfs'
-          - parsed_from_slurp[2]['mount'] == '/tmp'
-          - parsed_from_slurp[2]['type'] == 'tmpfs'
+          - text_fstab['content'] == fstab_written
+        fail_msg: >-
+          read should report the file's bytes as they stand
 
-    - name: Also test direct content key in dict format
+    - name: Parse the read result
+      ansible.builtin.set_fact:
+        parsed_from_read: "{{ text_fstab | o0_o.posix.fstab }}"
+
+    - name: Assert the read result was parsed
+      ansible.builtin.assert:
+        that:
+          - parsed_from_read is sequence
+          - parsed_from_read | length == 3
+          - parsed_from_read[0]['source'] == '/dev/sda1'
+          - parsed_from_read[0]['mount'] == '/'
+          - parsed_from_read[0]['type'] == 'ext4'
+          - parsed_from_read[1]['source'] == '/dev/sda2'
+          - parsed_from_read[1]['mount'] == '/home'
+          - parsed_from_read[2]['source'] == 'tmpfs'
+          - parsed_from_read[2]['mount'] == '/tmp'
+          - parsed_from_read[2]['type'] == 'tmpfs'
+
+    - name: Name the base64 shape of what the read returned
       ansible.builtin.set_fact:
         content_dict:
-          content: "{{ slurped_fstab_reg['content'] }}"
+          content: "{{ text_fstab['content'] | b64encode }}"
           encoding: base64
 
     - name: Parse content dict
@@ -386,32 +425,29 @@
     - name: Assert content dict parsing works
       ansible.builtin.assert:
         that:
-          - parsed_content_dict == parsed_from_slurp
+          - parsed_content_dict == parsed_from_read
 
-    - name: Test plain text content string (should be decoded by slurp already)
+    - name: Parse the content string on its own
       ansible.builtin.set_fact:
-        decoded_content: "{{ slurped_fstab_reg['content'] | b64decode }}"
+        parsed_decoded: "{{ text_fstab['content'] | o0_o.posix.fstab }}"
 
-    - name: Parse decoded content directly
-      ansible.builtin.set_fact:
-        parsed_decoded: "{{ decoded_content | o0_o.posix.fstab }}"
-
-    - name: Assert decoded parsing works
+    - name: Assert the bare string parses to the same entries
       ansible.builtin.assert:
         that:
-          - parsed_decoded == parsed_from_slurp
+          - parsed_decoded == parsed_from_read
 
-    # read is the only producer of hex, so it stands in for slurp here
+    # Base64 is a shape any reader of a file might answer in; hex has
+    # exactly one producer here, and it is asked for by name
     - name: Read the test fstab file as hex
       o0_o.posix.read:
-        path: /tmp/test_fstab_for_slurp
+        path: /tmp/test_fstab_for_read
         encoding: hex
       register: read_hex_fstab_reg
 
     - name: Name the result that declares hex
       ansible.builtin.set_fact:
         hex_fstab: >-
-          {{ read_hex_fstab_reg['paths']['/tmp/test_fstab_for_slurp'] }}
+          {{ read_hex_fstab_reg['paths']['/tmp/test_fstab_for_read'] }}
 
     - name: Parse hex encoded content from read
       ansible.builtin.set_fact:
@@ -421,10 +457,10 @@
       ansible.builtin.assert:
         that:
           - hex_fstab['encoding'] == 'hex'
-          - parsed_from_hex == parsed_from_slurp
+          - parsed_from_hex == parsed_from_read
 
   always:
     - name: Clean up test file
-      ansible.builtin.file:
-        path: /tmp/test_fstab_for_slurp
+      o0_o.posix.write:
+        dest: /tmp/test_fstab_for_read
         state: absent

@@ -1,0 +1,22 @@
+# vim: ts=2:sw=2:sts=2:et:ft=yaml.ansible
+# -*- mode: yaml; yaml-indent-offset: 2; indent-tabs-mode: nil; -*-
+---
+# GNU General Public License v3.0+
+# SPDX-License-Identifier: GPL-3.0-or-later
+# (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
+#
+# Copyright (c) 2025 oØ.o (@o0-o)
+#
+# This file is part of the o0_o.posix Ansible Collection.
+
+# This target's entry into the raw lane, per Running CI. Most of what
+# main.yml runs never leaves the controller: the fixture is read where
+# it lives and the filter parses it there, which proves nothing about
+# a host. The last block is why the target is in the lane at all --
+# it writes a file to the host and reads it back, so the shapes the
+# filter meets are the ones write and read actually produce over the
+# fallback. Both are raw-clean, so the entry is the whole target under
+# no vars of its own.
+
+- name: Parse what a host with no interpreter wrote and read back
+  ansible.builtin.include_tasks: main.yml

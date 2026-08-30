@@ -1,0 +1,31 @@
+# vim: ts=2:sw=2:sts=2:et:ft=yaml.ansible
+# -*- mode: yaml; yaml-indent-offset: 2; indent-tabs-mode: nil; -*-
+---
+# GNU General Public License v3.0+
+# SPDX-License-Identifier: GPL-3.0-or-later
+# (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
+#
+# Copyright (c) 2025 oØ.o (@o0-o)
+#
+# This file is part of the o0_o.posix Ansible Collection.
+
+# This target's entry into the raw lane, per Running CI. It runs the
+# same task files main.yml runs, so the assertions have one home; what
+# it chooses is which of them an interpreter-free host can answer and
+# what vars they run under.
+#
+# The lane's guests are the ones jc's uname parser names least often,
+# so the gate main.yml carries is exercised from its other side here:
+# the wrapper's report of a refusal is asserted where the three input
+# shapes cannot be.
+
+- name: Ask the host which system it is
+  o0_o.posix.uname:
+  register: jc_uname_reg
+
+- name: Name the system the platform gate reads
+  ansible.builtin.set_fact:
+    jc_system: "{{ jc_uname_reg['uname']['kernel']['pretty'] }}"
+
+- name: Parse a command result from a host with no interpreter
+  ansible.builtin.include_tasks: main.yml
