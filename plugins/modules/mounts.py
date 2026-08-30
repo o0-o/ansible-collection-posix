@@ -23,7 +23,9 @@ description:
     comprehensive mount point information.
   - Also parses C(/etc/fstab) to provide configured mount points.
   - Returns what is mounted where, the filesystem type and options
-    C(mount) reports, and the capacity C(df) reports.
+    C(mount) reports, the capacity C(df) reports, and what each
+    filesystem answers about itself when C(getconf) is asked at its
+    mount point.
   - Returns the same C(mounts) shape M(o0_o.posix.facts) publishes
     under C(o0_storage.mounts), built by the same composition.
   - By default, excludes virtual and pseudo filesystems, but includes
@@ -77,6 +79,11 @@ author:
 notes:
   - The module runs the C(mount) command to get mount information.
   - It also runs C(df -P) to get capacity information.
+  - It then asks C(getconf) for the C(pathconf) class at each mount
+    point that survived the category filters, which is one command per
+    variable per mount point in a second batch - the mount points are
+    what the first commands answered with, so the two cannot share a
+    batch.
   - It reads and parses C(/etc/fstab) to provide configured mount points.
   - Capacity is what C(df) alone knows, so C(df) names what gets
     reported - a mount point only C(mount) named is left out rather
@@ -243,6 +250,33 @@ mounts:
                 counts rather than taken from C(df)
               type: float
               sample: 50.0
+    config:
+      description:
+        - What the filesystem answers about itself, keyed by the
+          C(pathconf) variable asked for at the mount point -
+          C(NAME_MAX), C(PATH_MAX), C(LINK_MAX), C(FILESIZEBITS),
+          C(PIPE_BUF), C(SYMLINK_MAX), C(POSIX_ALLOC_SIZE_MIN),
+          C(_POSIX_CHOWN_RESTRICTED) and C(_POSIX_NO_TRUNC). These
+          describe the filesystem rather than the host, which is why
+          the class takes a pathname - two filesystems on one machine
+          answer differently, and a name apfs keeps whole is truncated
+          by devfs.
+        - A variable the host's C(getconf) does not know, or one this
+          filesystem will not answer, is absent. One the filesystem
+          has and does not limit is present and null. A mount whose
+          filesystem answered nothing carries no C(config) at all.
+        - The terminal members of the class - C(MAX_CANON),
+          C(MAX_INPUT) and C(_POSIX_VDISABLE) - are not asked. They
+          describe a tty and say nothing about a filesystem.
+      returned: when the filesystem answered at least one variable
+      type: dict
+      sample:
+        FILESIZEBITS: 64
+        LINK_MAX: 127
+        NAME_MAX: 255
+        PATH_MAX: 4096
+        PIPE_BUF: 4096
+        SYMLINK_MAX: null
   sample:
     "/":
       source:

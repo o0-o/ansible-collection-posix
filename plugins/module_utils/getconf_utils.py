@@ -12,11 +12,13 @@
 """What the host says its own configuration is.
 
 ``getconf`` is POSIX's interface to its own configuration variables,
-and this module asks it the ones that describe the host rather than a
-filesystem: the ``sysconf`` limits, the ``confstr`` strings, and the
-standard versions the host claims.  The per-filesystem class -
-``pathconf`` - takes a pathname and is asked at each mountpoint, which
-is a different question and lives with the mounts.
+and this module asks it two classes of them.  The ``sysconf`` limits,
+the ``confstr`` strings and the standard versions describe the host,
+and are asked once.  The ``pathconf`` class takes a pathname and
+describes the filesystem behind it, so it is asked once at each
+mountpoint and lands on the mount rather than on the host: what the
+longest name is and how big a file may get are answers a host does
+not have, only its filesystems do.
 
 One variable per invocation, because that is the only interface POSIX
 defines.  ``getconf -a`` would answer the whole set in one command, but
@@ -92,6 +94,23 @@ GETCONF_SYSCONF_VARIABLES = (
     "_POSIX2_VERSION",
     "_POSIX_VERSION",
     "_XOPEN_VERSION",
+)
+
+# The variables a filesystem answers, asked at a mountpoint.  The
+# terminal members of the pathconf class - MAX_CANON, MAX_INPUT,
+# _POSIX_VDISABLE - are not asked: they describe a tty and say nothing
+# about a filesystem, and macOS refuses them for a directory rather
+# than answering.
+GETCONF_PATHCONF_VARIABLES = (
+    "FILESIZEBITS",
+    "LINK_MAX",
+    "NAME_MAX",
+    "PATH_MAX",
+    "PIPE_BUF",
+    "POSIX_ALLOC_SIZE_MIN",
+    "SYMLINK_MAX",
+    "_POSIX_CHOWN_RESTRICTED",
+    "_POSIX_NO_TRUNC",
 )
 
 # Every exit status the sweep reads as an answer rather than a fault.
@@ -175,14 +194,29 @@ def get_getconf_command_requests(
     )
 
 
+def _answered(result: Any) -> bool:
+    """Say whether a result is a value rather than a refusal.
+
+    A refusal parses to None and so does ``undefined``, so the two are
+    told apart here, where the exit status is still in reach, rather
+    than in the parser, where only the value is.
+
+    :param Any result: One processed result of a sweep
+    :returns bool: True where the host named something
+    """
+    return (
+        isinstance(result, dict)
+        and result.get("rc") == 0
+        and bool((result.get("stdout") or "").strip())
+    )
+
+
 def compose_getconf(results: list[dict[str, Any]]) -> dict[str, Any]:
     """Compose the configuration fact from the sweep's answers.
 
     Keyed by the variable asked for, which is the only name the host
     and the fact agree on.  A variable the host refused is left out; a
-    variable it answered ``undefined`` for is present and null, which
-    is the whole reason the two are told apart here rather than in the
-    parser.
+    variable it answered ``undefined`` for is present and null.
 
     :param list[dict[str, Any]] results: Processed results of the
         sweep, each carrying the exit status and the variable asked
@@ -192,18 +226,95 @@ def compose_getconf(results: list[dict[str, Any]]) -> dict[str, Any]:
     config: dict[str, Any] = {}
 
     for result in results:
-        if not isinstance(result, dict):
-            continue
-        if result.get("rc") != 0:
+        if not _answered(result):
             continue
         variable = (result.get("args") or {}).get("var")
-        if not variable:
-            continue
-        if not (result.get("stdout") or "").strip():
-            continue
-        config[variable] = result.get("parsed")
+        if variable:
+            config[variable] = result.get("parsed")
 
     return config
+
+
+def compose_pathconf(
+    results: list[dict[str, Any]],
+) -> dict[str, dict[str, Any]]:
+    """Compose each path's configuration from the sweep's answers.
+
+    Keyed by the path probed and then by the variable asked for.  A
+    path whose filesystem answered nothing is left out entirely rather
+    than carried as an empty mapping, so a caller joining this to the
+    mounts attaches a configuration only where there is one.
+
+    :param list[dict[str, Any]] results: Processed results of the
+        sweep, each carrying the exit status, the variable asked and
+        the path it was asked at
+    :returns dict[str, dict[str, Any]]: The values each filesystem
+        named, keyed by path and then by variable
+    """
+    config: dict[str, dict[str, Any]] = {}
+
+    for result in results:
+        if not _answered(result):
+            continue
+        args = result.get("args") or {}
+        path = args.get("path")
+        variable = args.get("var")
+        if path and variable:
+            config.setdefault(path, {})[variable] = result.get("parsed")
+
+    return config
+
+
+def get_pathconf_command_requests(
+    paths: list[str],
+    variables: Optional[tuple[str, ...]] = None,
+) -> list[dict[str, Any]]:
+    """Build command requests for each path's configuration.
+
+    One request per variable per path, which is the cost of the only
+    interface POSIX defines and the reason these ride a batch rather
+    than going one at a time.  The path is an argument rather than
+    part of a command line, so a mountpoint with a space in it is a
+    mountpoint with a space in it.
+
+    :param list[str] paths: The paths to probe at
+    :param Optional[tuple[str, ...]] variables: The variables to ask
+        for, defaulting to the whole filesystem class
+    :returns list[dict[str, Any]]: Command requests for run plugin
+    """
+    from ansible_collections.o0_o.posix.plugins.module_utils.command_spec import (  # noqa: E501
+        GETCONF_COMMAND_SPEC,
+    )
+
+    if not paths:
+        return []
+
+    return process_command_spec(
+        GETCONF_COMMAND_SPEC,
+        cmd_type="getconf_pathconf",
+        var=list(variables or GETCONF_PATHCONF_VARIABLES),
+        path=list(paths),
+    )
+
+
+def process_pathconf_command_results(
+    cmds_completed: list[dict[str, Any]],
+) -> dict[str, dict[str, Any]]:
+    """Read each path's configuration out of a batch's results.
+
+    :param list[dict[str, Any]] cmds_completed: Command results
+    :returns dict[str, dict[str, Any]]: The values each filesystem
+        named, keyed by path and then by variable
+    """
+    processed = process_all_command_results(cmds_completed)
+
+    results = processed.get("getconf_pathconf")
+    if results is None:
+        return {}
+    if isinstance(results, dict):
+        results = [results]
+
+    return compose_pathconf(results)
 
 
 def process_getconf_command_results(
@@ -237,10 +348,14 @@ def process_getconf_command_results(
 
 
 __all__ = [
+    "GETCONF_PATHCONF_VARIABLES",
     "GETCONF_RCS",
     "GETCONF_SYSCONF_VARIABLES",
     "GETCONF_UNDEFINED",
     "compose_getconf",
+    "compose_pathconf",
     "get_getconf_command_requests",
+    "get_pathconf_command_requests",
     "process_getconf_command_results",
+    "process_pathconf_command_results",
 ]

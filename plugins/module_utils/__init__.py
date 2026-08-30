@@ -64,8 +64,11 @@ from ansible_collections.o0_o.posix.plugins.module_utils.id_utils import (
 )
 from ansible_collections.o0_o.posix.plugins.module_utils.getconf_utils import (
     compose_getconf,
+    compose_pathconf,
     get_getconf_command_requests,
+    get_pathconf_command_requests,
     process_getconf_command_results,
+    process_pathconf_command_results,
 )
 from ansible_collections.o0_o.posix.plugins.module_utils.getent_utils import (
     get_getent_command_requests,
@@ -91,6 +94,7 @@ from ansible_collections.o0_o.posix.plugins.module_utils.path_utils import (
 )
 from ansible_collections.o0_o.posix.plugins.module_utils.mount_utils import (
     MOUNT_FILTER_DEFAULTS,
+    compose_mount_config,
     compose_mounts,
     get_mount_command_requests,
     include_mount,
@@ -201,8 +205,11 @@ __all__ = [
     "compose_shell_files",
     "compose_users_groups",
     "compose_getconf",
+    "compose_pathconf",
     "get_getconf_command_requests",
+    "get_pathconf_command_requests",
     "process_getconf_command_results",
+    "process_pathconf_command_results",
     "get_getent_command_requests",
     "process_getent_command_results",
     "group_info",
@@ -213,6 +220,7 @@ __all__ = [
     "flags_to_octal_mode",
     "normalize_mode",
     "MOUNT_FILTER_DEFAULTS",
+    "compose_mount_config",
     "compose_mounts",
     "get_mount_command_requests",
     "include_mount",

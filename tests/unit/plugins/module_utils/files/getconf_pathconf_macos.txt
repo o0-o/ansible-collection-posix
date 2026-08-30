@@ -1,0 +1,76 @@
+===PLATFORM===
+Darwin o0-adm-0003 25.5.0 Darwin Kernel Version 25.5.0: Tue Jun  9 22:28:34 PDT 2026; root:xnu-12377.121.10~1/RELEASE_ARM64_T6041 arm64
+===WHICH===
+/usr/bin/getconf
+===CMD=== getconf FILESIZEBITS /
+56
+---STDERR---
+---RC--- 0
+===CMD=== getconf LINK_MAX /
+32767
+---STDERR---
+---RC--- 0
+===CMD=== getconf NAME_MAX /
+255
+---STDERR---
+---RC--- 0
+===CMD=== getconf PATH_MAX /
+1024
+---STDERR---
+---RC--- 0
+===CMD=== getconf PIPE_BUF /
+512
+---STDERR---
+---RC--- 0
+===CMD=== getconf POSIX_ALLOC_SIZE_MIN /
+1
+---STDERR---
+---RC--- 0
+===CMD=== getconf SYMLINK_MAX /
+255
+---STDERR---
+---RC--- 0
+===CMD=== getconf _POSIX_CHOWN_RESTRICTED /
+200112
+---STDERR---
+---RC--- 0
+===CMD=== getconf _POSIX_NO_TRUNC /
+200112
+---STDERR---
+---RC--- 0
+===CMD=== getconf FILESIZEBITS /dev
+---STDERR---
+getconf: pathconf: FILESIZEBITS: Invalid argument
+---RC--- 71
+===CMD=== getconf LINK_MAX /dev
+32767
+---STDERR---
+---RC--- 0
+===CMD=== getconf NAME_MAX /dev
+31
+---STDERR---
+---RC--- 0
+===CMD=== getconf PATH_MAX /dev
+127
+---STDERR---
+---RC--- 0
+===CMD=== getconf PIPE_BUF /dev
+---STDERR---
+getconf: pathconf: PIPE_BUF: Invalid argument
+---RC--- 71
+===CMD=== getconf POSIX_ALLOC_SIZE_MIN /dev
+1
+---STDERR---
+---RC--- 0
+===CMD=== getconf SYMLINK_MAX /dev
+255
+---STDERR---
+---RC--- 0
+===CMD=== getconf _POSIX_CHOWN_RESTRICTED /dev
+200112
+---STDERR---
+---RC--- 0
+===CMD=== getconf _POSIX_NO_TRUNC /dev
+0
+---STDERR---
+---RC--- 0

@@ -20,6 +20,7 @@ from ansible_collections.o0_o.posix.plugins.module_utils import (
     ReadPosixActionBase,
     batch_read,
     compose_homes,
+    compose_mount_config,
     compose_paths,
     compose_shell_files,
     compose_users_groups,
@@ -32,6 +33,7 @@ from ansible_collections.o0_o.posix.plugins.module_utils import (
     get_getconf_command_requests,
     get_getent_command_requests,
     get_mount_command_requests,
+    get_pathconf_command_requests,
     get_timezone_command_requests,
     parse_shells,
     process_all_compliance_command_results,
@@ -42,6 +44,7 @@ from ansible_collections.o0_o.posix.plugins.module_utils import (
     process_getconf_command_results,
     process_getent_command_results,
     process_mount_command_results,
+    process_pathconf_command_results,
     process_timezone_command_results,
 )
 from ansible_collections.o0_o.posix.plugins.module_utils.uname_utils import (
@@ -401,6 +404,52 @@ class ActionModule(ReadPosixActionBase, ActionBase):
                 else:
                     all_facts[ns][key] = value
 
+    def _probe_mount_config(
+        self,
+        mounts: dict[str, Any],
+        task_vars: Optional[dict[str, Any]] = None,
+    ) -> dict[str, Any]:
+        """Ask each mounted filesystem what it says about itself.
+
+        The ``pathconf`` class is asked at a pathname, and the
+        pathnames are the mountpoints the first batch answered with,
+        so this cannot join that batch any more than the homes can.
+        It is one batch of its own: a variable per mountpoint is many
+        commands and few round trips, which the run plugin splits into
+        scripts without being asked to.
+
+        The join is the composition both producers share, so the
+        mounts module attaches the same configuration to the same
+        entries.
+
+        :param dict[str, Any] mounts: The composed mounts fact
+        :param Optional[dict[str, Any]] task_vars: Task variables
+        :returns dict[str, Any]: The mounts, each carrying its
+            filesystem's configuration where there was one
+        """
+        requests = get_pathconf_command_requests(sorted(mounts))
+        if not requests:
+            return {}
+
+        self._display.vvv(
+            f"Probing {len(mounts)} mountpoint(s) with"
+            f" {len(requests)} command(s)"
+        )
+
+        run_results = self._run(
+            requests,
+            parallel=True,
+            fail_fast=False,
+            task_vars=task_vars,
+            check_mode=False,
+        )
+
+        pathconf = process_pathconf_command_results(run_results)
+
+        return {
+            "o0_storage": {"mounts": compose_mount_config(mounts, pathconf)}
+        }
+
     def _read_user_paths(
         self,
         users: dict[str, Any],
@@ -521,9 +570,10 @@ class ActionModule(ReadPosixActionBase, ActionBase):
 
         Every selected subset's requests are aggregated and executed
         in a single parallel ``_run()`` call, the files they read
-        included.  The homes and shell files the users subset
-        publishes are read after it, because the paths are what that
-        batch answered with.
+        included.  What is asked at a path the batch itself answered
+        with comes after it: the configuration of each mounted
+        filesystem, and the homes and shell files the users subset
+        publishes.
 
         The ``environment`` subset collects POSIX env vars and
         places them under ``o0_users[<effective uid>]['environment']``.
@@ -647,8 +697,15 @@ class ActionModule(ReadPosixActionBase, ActionBase):
                         f"Failed to process {subset}: {e}"
                     )
 
-        # Phase 2: Read the paths the passwd entries named, which the
-        # batch had to answer before they could be asked about
+        # Phase 2: Ask about the paths the batch had to answer with
+        # before they could be asked about - the mountpoints df named
+        # and the homes and shells the passwd entries did
+        mounts = (all_facts.get("o0_storage") or {}).get("mounts")
+        if mounts:
+            self._merge_facts(
+                all_facts, self._probe_mount_config(mounts, task_vars)
+            )
+
         if user_facts.get("o0_users"):
             self._merge_facts(
                 all_facts,

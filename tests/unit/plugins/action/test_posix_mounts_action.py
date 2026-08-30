@@ -17,8 +17,11 @@ import pytest
 
 from ansible_collections.o0_o.posix.plugins.action.mounts import ActionModule
 from ansible_collections.o0_o.posix.plugins.module_utils import (
+    compose_mount_config,
     get_mount_command_requests,
+    get_pathconf_command_requests,
     process_mount_command_results,
+    process_pathconf_command_results,
 )
 
 # One host's answers, fed to both producers of the mounts fact
@@ -55,7 +58,24 @@ def plugin(base) -> Generator[ActionModule, None, None]:
     plugin._display = base._display
     plugin.inventory_hostname = "localhost"
 
+    # The second batch every producer now sends, answered the way a
+    # host with no getconf answers it. Nothing is attached, so a test
+    # about df and mount is still a test about df and mount; the ones
+    # about what a filesystem said supply their own answers.
+    plugin._run = _no_getconf
+
     yield plugin
+
+
+def _no_getconf(commands: list[dict[str, Any]], **kwargs: Any) -> list[
+    dict[str, Any]
+]:
+    """Answer a batch the way a host with no getconf answers one."""
+    del kwargs
+    return [
+        {**request, "rc": 127, "stdout": "", "stderr": "getconf: not found"}
+        for request in commands
+    ]
 
 
 def test_get_mounts_basic(monkeypatch, plugin) -> None:
@@ -461,6 +481,65 @@ def test_both_producers_compose_one_shape(monkeypatch, plugin) -> None:
     assert gathered["/"]["capacity"]["total"]["bytes"] == 1024000 * 1024
     assert gathered["/"]["options"]["writable"] is True
     assert "mount" not in gathered["/"]
+
+    # A host with no getconf attaches nothing rather than an empty one
+    assert "config" not in gathered["/"]
+
+
+def test_both_producers_join_the_same_filesystem_config(
+    monkeypatch, plugin
+) -> None:
+    """Test what a filesystem answered lands the same way for both.
+
+    The join is the composition both producers share, so a gather and
+    a standalone run attach the same configuration to the same mount
+    points - and each mount point gets its own filesystem's answers
+    rather than the host's.
+    """
+
+    def mock_cmd(cmd, task_vars=None, **kwargs):
+        if cmd == "mount":
+            return {"rc": 0, "stdout": MOUNT_OUTPUT}
+        if cmd == "df -P":
+            return {"rc": 0, "stdout": DF_OUTPUT}
+        return {"rc": 1}
+
+    # Two filesystems that do not agree about how long a name may be,
+    # which is why the class is asked at a path
+    lengths = {"/": "255", "/boot": "12"}
+
+    def mock_run(commands, **kwargs):
+        del kwargs
+        answered = []
+        for request in commands:
+            args = request["args"]
+            if args["var"] == "NAME_MAX":
+                stdout = lengths.get(args["path"], "")
+                rc = 0 if stdout else 1
+            else:
+                stdout, rc = "", 1
+            answered.append({**request, "rc": rc, "stdout": stdout})
+        return answered
+
+    monkeypatch.setattr(plugin, "_command", mock_cmd)
+    monkeypatch.setattr(plugin, "_run", mock_run)
+
+    standalone = plugin._get_mounts_dict(task_vars={})
+
+    facts, _errors = process_mount_command_results(
+        [_answer(r) for r in get_mount_command_requests()]
+    )
+    gathered = facts["o0_storage"]["mounts"]
+    compose_mount_config(
+        gathered,
+        process_pathconf_command_results(
+            mock_run(get_pathconf_command_requests(sorted(gathered)))
+        ),
+    )
+
+    assert gathered == standalone
+    assert standalone["/"]["config"] == {"NAME_MAX": 255}
+    assert standalone["/boot"]["config"] == {"NAME_MAX": 12}
 
 
 def test_gather_without_df_publishes_nothing(plugin) -> None:

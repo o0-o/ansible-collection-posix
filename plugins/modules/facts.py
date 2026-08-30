@@ -479,6 +479,37 @@ ansible_facts:
                         the byte counts rather than taken from C(df)
                       type: float
                       sample: 50.0
+            config:
+              description:
+                - What the filesystem answers about itself, keyed by
+                  the C(pathconf) variable asked for at the mount
+                  point - C(NAME_MAX), C(PATH_MAX), C(LINK_MAX),
+                  C(FILESIZEBITS), C(PIPE_BUF), C(SYMLINK_MAX),
+                  C(POSIX_ALLOC_SIZE_MIN), C(_POSIX_CHOWN_RESTRICTED)
+                  and C(_POSIX_NO_TRUNC). These describe the
+                  filesystem rather than the host, which is why the
+                  class takes a pathname - two filesystems on one
+                  machine answer differently, and a name apfs keeps
+                  whole is truncated by devfs.
+                - A variable the host's C(getconf) does not know, or
+                  one this filesystem will not answer, is absent. One
+                  the filesystem has and does not limit is present and
+                  null. A mount whose filesystem answered nothing
+                  carries no C(config) at all.
+                - The terminal members of the class - C(MAX_CANON),
+                  C(MAX_INPUT) and C(_POSIX_VDISABLE) - are not asked.
+                  They describe a tty and say nothing about a
+                  filesystem.
+              returned: >-
+                when the filesystem answered at least one variable
+              type: dict
+              sample:
+                FILESIZEBITS: 64
+                LINK_MAX: 127
+                NAME_MAX: 255
+                PATH_MAX: 4096
+                PIPE_BUF: 4096
+                SYMLINK_MAX: null
     o0_users:
       description: >-
         Users keyed by stringified UID. Two subsets write here and a

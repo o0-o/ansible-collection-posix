@@ -231,3 +231,38 @@
   when: item.value['options'] is defined
   loop_control:
     label: "{{ item.key }}"
+
+# The pathconf class is asked at a mount point, so what it answers is
+# a fact about that filesystem and lands on its entry. Both producers
+# join it through the same composition, so the module and a gather
+# attach the same configuration to the same mounts.
+- name: Gather the mounts a facts run publishes
+  o0_o.posix.facts:
+    gather_subset: [mounts]
+  register: mounts_facts_reg
+
+- name: Assert both producers answer the same filesystem configuration
+  vars:
+    theirs: "{{ mounts_facts_reg['ansible_facts']['o0_storage']['mounts'] }}"
+    ours: "{{ mount_result_reg['mounts'] }}"
+    ours_config: >-
+      {{ dict(ours | dict2items | selectattr('value.config', 'defined')
+              | map(attribute='key') | zip(
+                ours | dict2items
+                | selectattr('value.config', 'defined')
+                | map(attribute='value.config'))) }}
+    theirs_config: >-
+      {{ dict(theirs | dict2items | selectattr('value.config', 'defined')
+              | map(attribute='key') | zip(
+                theirs | dict2items
+                | selectattr('value.config', 'defined')
+                | map(attribute='value.config'))) }}
+  ansible.builtin.assert:
+    that:
+      - ours.keys() | list | sort == theirs.keys() | list | sort
+      - ours_config == theirs_config
+      - ours_config | length > 0
+      - ours['/']['config']['NAME_MAX'] is integer
+    fail_msg: >-
+      the module and a gather disagree about what the filesystems
+      answered: {{ ours_config }} versus {{ theirs_config }}

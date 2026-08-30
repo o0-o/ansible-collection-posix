@@ -19,6 +19,12 @@ COMMAND_SPEC ``(output, e_prefix) -> (parsed, errors)`` contract.
 ``df`` knows, with the type and options only ``mount`` knows merged
 in.  Every producer of the fact composes it here so consumers see one
 shape.
+
+``compose_mount_config`` is the second half of that composition, and
+it cannot ride the same batch: what a filesystem says about itself is
+asked at its mountpoint, and the mountpoints are what the first batch
+answered with.  Every producer joins it here for the same reason it
+composes the rest here.
 """
 
 from __future__ import annotations
@@ -478,6 +484,38 @@ def compose_mounts(
         for mountpoint, entry in mounts.items()
         if include_mount(entry, filters)
     }, notes
+
+
+def compose_mount_config(
+    mounts: dict[str, dict[str, Any]],
+    pathconf: dict[str, dict[str, Any]],
+) -> dict[str, dict[str, Any]]:
+    """Join each mount to what its filesystem said about itself.
+
+    The ``pathconf`` class is asked at a pathname, and a mountpoint is
+    the pathname that names the filesystem mounted there, so what it
+    answers is a fact about the mount and lands on the mount's entry.
+    The join is the mountpoint, which both sides are already keyed by.
+
+    A mount whose filesystem answered nothing carries no ``config`` at
+    all rather than an empty one, the same way a variable the host
+    does not know is absent from the host's own configuration: an
+    empty mapping would claim a filesystem was asked and had nothing
+    to say, which is a different answer from not having been asked.
+
+    :param dict[str, dict[str, Any]] mounts: The composed mounts fact,
+        keyed by mount point
+    :param dict[str, dict[str, Any]] pathconf: What each path
+        answered, keyed by path and then by variable
+    :returns dict[str, dict[str, Any]]: The same mounts, each carrying
+        its filesystem's configuration where there was one
+    """
+    for mountpoint, entry in mounts.items():
+        config = pathconf.get(mountpoint)
+        if config:
+            entry["config"] = config
+
+    return mounts
 
 
 def get_mount_command_requests() -> list[dict[str, Any]]:

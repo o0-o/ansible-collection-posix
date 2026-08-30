@@ -111,6 +111,14 @@ GETCONF_COMMAND_SPEC = {
             "parser": _parse_getconf,
             "non_error_codes": GETCONF_RCS,
         },
+        # The same interface asked of a filesystem rather than a host.
+        # The path is an argument, so a mountpoint with a space in it
+        # reaches getconf whole.
+        "getconf_pathconf": {
+            "command": ("getconf", "{var}", "{path}"),
+            "parser": _parse_getconf,
+            "non_error_codes": GETCONF_RCS,
+        },
     },
 }
 

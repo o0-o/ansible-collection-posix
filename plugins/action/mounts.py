@@ -18,10 +18,13 @@ from ansible.plugins.action import ActionBase
 from ansible_collections.o0_o.posix.plugins.module_utils import (
     MOUNT_FILTER_DEFAULTS,
     PosixActionBase,
+    compose_mount_config,
     compose_mounts,
     df,
+    get_pathconf_command_requests,
     mount,
     parse_fstab,
+    process_pathconf_command_results,
 )
 
 
@@ -127,6 +130,9 @@ class ActionModule(PosixActionBase, ActionBase):
         The composition is shared with the facts module, which
         publishes the same shape under ``o0_storage.mounts``; this
         module only chooses which filesystem categories to report.
+        That includes what each filesystem answers about itself,
+        joined here through the same composition so both producers
+        attach the same configuration to the same entries.
 
         :param task_vars: Task variables dictionary
         :returns: Dict of mount entries keyed by mountpoint
@@ -146,7 +152,42 @@ class ActionModule(PosixActionBase, ActionBase):
         for note in notes:
             self._display.vvv(note)
 
-        return mounts
+        return compose_mount_config(
+            mounts, self._get_pathconf(sorted(mounts), task_vars)
+        )
+
+    def _get_pathconf(
+        self, mountpoints: list[str], task_vars: dict[str, Any]
+    ) -> dict[str, dict[str, Any]]:
+        """Ask each mounted filesystem what it says about itself.
+
+        A second batch, because the class is asked at a pathname and
+        the pathnames are what the first commands answered with.  One
+        variable per mountpoint is many commands and few round trips:
+        the run plugin splits a long batch into scripts on its own.
+
+        A filesystem that refused every variable, or a host with no
+        ``getconf`` at all, answers nothing here rather than failing,
+        the way an absent variable is absent everywhere else.
+
+        :param list[str] mountpoints: The paths to probe at
+        :param dict[str, Any] task_vars: Task variables dictionary
+        :returns dict[str, dict[str, Any]]: What each filesystem
+            answered, keyed by mountpoint
+        """
+        requests = get_pathconf_command_requests(mountpoints)
+        if not requests:
+            return {}
+
+        run_results = self._run(
+            requests,
+            parallel=True,
+            fail_fast=False,
+            task_vars=task_vars,
+            check_mode=False,
+        )
+
+        return process_pathconf_command_results(run_results)
 
     def _get_df_list(self, task_vars: dict[str, Any]) -> list[dict[str, Any]]:
         """Get df output as a list.

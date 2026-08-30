@@ -37,12 +37,18 @@ from ansible_collections.o0_o.posix.plugins.module_utils.command_spec import (
     GETCONF_COMMAND_SPEC,
 )
 from ansible_collections.o0_o.posix.plugins.module_utils.getconf_utils import (
+    GETCONF_PATHCONF_VARIABLES,
     GETCONF_RCS,
     GETCONF_SYSCONF_VARIABLES,
     _parse_getconf,
     compose_getconf,
     get_getconf_command_requests,
+    get_pathconf_command_requests,
     process_getconf_command_results,
+    process_pathconf_command_results,
+)
+from ansible_collections.o0_o.posix.plugins.module_utils.mount_utils import (
+    compose_mount_config,
 )
 
 FILES = os.path.join(os.path.dirname(__file__), "files")
@@ -78,6 +84,29 @@ UNDEFINED = {
     "linux_glibc": ("SYMLOOP_MAX", "TZNAME_MAX"),
     "linux_musl": ("ATEXIT_MAX", "EXPR_NEST_MAX", "LINE_MAX", "STREAM_MAX"),
     "macos": (),
+}
+
+# The two mountpoints each platform's pathconf sweep was captured at,
+# chosen so the pair is two filesystems rather than one asked twice
+PATHCONF_PATHS = {
+    "linux_glibc": ("/", "/dev/shm"),
+    "linux_musl": ("/", "/dev/shm"),
+    "macos": ("/", "/dev"),
+}
+
+# What each platform's implementation does not know at any path
+PATHCONF_UNKNOWN = {
+    "linux_glibc": (),
+    "linux_musl": ("POSIX_ALLOC_SIZE_MIN", "SYMLINK_MAX"),
+    "macos": (),
+}
+
+# What one filesystem refused and another answered, which is the
+# pathconf class doing the thing that makes it the pathconf class
+PATHCONF_REFUSED_BY_FS = {
+    "linux_glibc": {},
+    "linux_musl": {},
+    "macos": {"/dev": ("FILESIZEBITS", "PIPE_BUF")},
 }
 
 
@@ -126,6 +155,62 @@ def sweep(platform: str) -> dict[str, dict[str, Any]]:
         }
         for variable, answer in found.items()
     }
+
+
+def pathconf_sweep(platform: str) -> dict[tuple[str, str], dict[str, Any]]:
+    """Read one platform's pathconf capture into an answer per probe.
+
+    :param str platform: The captured platform's name
+    :returns dict[tuple[str, str], dict[str, Any]]: Each probe's rc
+        and stdout, keyed by the variable and path it was asked at
+    """
+    found: dict[tuple[str, str], dict[str, Any]] = {}
+    current: Optional[dict[str, Any]] = None
+    where = "stdout"
+
+    for line in corpus(f"getconf_pathconf_{platform}.txt").splitlines():
+        if line.startswith("===CMD=== getconf "):
+            variable, path = line[len("===CMD=== getconf ") :].split(" ", 1)
+            current = {"stdout": [], "stderr": [], "rc": None}
+            found[(variable, path)] = current
+            where = "stdout"
+        elif current is None:
+            continue
+        elif line == "---STDERR---":
+            where = "stderr"
+        elif line.startswith("---RC--- "):
+            current["rc"] = int(line[len("---RC--- ") :])
+            current = None
+        else:
+            current[where].append(line)
+
+    return {
+        probe: {
+            "rc": answer["rc"],
+            "stdout": "\n".join(answer["stdout"]),
+            "stderr": "\n".join(answer["stderr"]),
+        }
+        for probe, answer in found.items()
+    }
+
+
+def pathconf_completed(platform: str) -> list[dict[str, Any]]:
+    """Replay one platform's pathconf capture as a batch's results.
+
+    :param str platform: The captured platform's name
+    :returns list[dict[str, Any]]: Command results for the processor
+    """
+    answers = pathconf_sweep(platform)
+    results = []
+
+    for request in get_pathconf_command_requests(
+        list(PATHCONF_PATHS[platform])
+    ):
+        args = request["args"]
+        answer = answers[(args["var"], args["path"])]
+        results.append({**request, **answer})
+
+    return results
 
 
 def completed(platform: str) -> list[dict[str, Any]]:
@@ -297,7 +382,152 @@ def test_the_spec_asks_only_for_the_variables_it_was_given() -> None:
     ]
 
 
-def test_the_spec_names_one_command_type() -> None:
-    """Test the sysconf sweep is the spec's only posix entry so far."""
+def test_the_spec_names_both_classes() -> None:
+    """Test the spec asks the host class and the filesystem class."""
     assert set(GETCONF_COMMAND_SPEC) == {"posix"}
-    assert "getconf_sysconf" in GETCONF_COMMAND_SPEC["posix"]
+    assert set(GETCONF_COMMAND_SPEC["posix"]) == {
+        "getconf_sysconf",
+        "getconf_pathconf",
+    }
+
+
+@pytest.mark.parametrize("platform", PLATFORMS)
+def test_the_pathconf_capture_covers_every_probe(platform: str) -> None:
+    """Test each capture answers every variable at every path."""
+    expected = {
+        (variable, path)
+        for variable in GETCONF_PATHCONF_VARIABLES
+        for path in PATHCONF_PATHS[platform]
+    }
+
+    assert set(pathconf_sweep(platform)) == expected
+
+
+@pytest.mark.parametrize("platform", PLATFORMS)
+def test_every_pathconf_refusal_is_a_status_the_sweep_allows(
+    platform: str,
+) -> None:
+    """Test no captured refusal would be read as a command failure."""
+    for probe, answer in pathconf_sweep(platform).items():
+        assert answer["rc"] in GETCONF_RCS, probe
+
+
+@pytest.mark.parametrize("platform", PLATFORMS)
+def test_each_path_carries_the_variables_its_filesystem_answered(
+    platform: str,
+) -> None:
+    """Test the fact is keyed by path and then by variable."""
+    config = process_pathconf_command_results(pathconf_completed(platform))
+
+    assert set(config) == set(PATHCONF_PATHS[platform])
+
+    for path, answers in config.items():
+        # Answered by every filesystem in the capture
+        assert isinstance(answers["NAME_MAX"], int)
+        assert answers["NAME_MAX"] > 0
+
+        # An implementation that does not know a variable does not
+        # know it at any path
+        for variable in PATHCONF_UNKNOWN[platform]:
+            assert variable not in answers
+
+        # A filesystem that refused one it does know refused it here
+        for variable in PATHCONF_REFUSED_BY_FS[platform].get(path, ()):
+            assert variable not in answers
+
+
+def test_a_filesystem_answers_for_itself_and_not_for_the_host() -> None:
+    """Test two filesystems on one host give two answers."""
+    config = process_pathconf_command_results(pathconf_completed("macos"))
+
+    # devfs truncates a name apfs would keep whole, which is the whole
+    # reason this class is asked at a path rather than at a host
+    assert config["/"]["NAME_MAX"] == 255
+    assert config["/dev"]["NAME_MAX"] == 31
+
+
+def test_an_undefined_pathconf_keeps_its_key() -> None:
+    """Test a limit a filesystem does not impose is not an absence."""
+    config = process_pathconf_command_results(
+        pathconf_completed("linux_glibc")
+    )
+
+    for path in PATHCONF_PATHS["linux_glibc"]:
+        assert "SYMLINK_MAX" in config[path]
+        assert config[path]["SYMLINK_MAX"] is None
+
+
+def test_the_pathconf_spec_crosses_every_variable_with_every_path() -> None:
+    """Test the sweep expands to a command per variable per path."""
+    paths = ["/", "/var"]
+    requests = get_pathconf_command_requests(paths)
+
+    assert len(requests) == len(GETCONF_PATHCONF_VARIABLES) * len(paths)
+    assert {
+        (request["args"]["var"], request["args"]["path"])
+        for request in requests
+    } == {
+        (variable, path)
+        for variable in GETCONF_PATHCONF_VARIABLES
+        for path in paths
+    }
+
+    for request in requests:
+        args = request["args"]
+        assert request["type"] == "getconf_pathconf"
+        assert request["command"] == ("getconf", args["var"], args["path"])
+        assert request["non_error_codes"] == GETCONF_RCS
+
+
+def test_a_path_with_a_space_reaches_getconf_whole() -> None:
+    """Test the path is an argument rather than a command line."""
+    requests = get_pathconf_command_requests(
+        ["/Volumes/My Disk"], ("NAME_MAX",)
+    )
+
+    assert [request["command"] for request in requests] == [
+        ("getconf", "NAME_MAX", "/Volumes/My Disk")
+    ]
+
+
+def test_no_mountpoints_is_no_commands() -> None:
+    """Test a host with nothing mounted is not probed."""
+    assert get_pathconf_command_requests([]) == []
+
+
+def test_a_batch_without_the_pathconf_sweep_answers_nothing() -> None:
+    """Test a batch the sweep did not ride composes no config."""
+    assert process_pathconf_command_results([]) == {}
+
+
+def test_a_host_with_no_getconf_answers_no_paths() -> None:
+    """Test a sweep every filesystem refused leaves the fact empty."""
+    results = [
+        {**request, "rc": 127, "stdout": "", "stderr": "getconf: not found"}
+        for request in get_pathconf_command_requests(["/"])
+    ]
+
+    assert process_pathconf_command_results(results) == {}
+
+
+def test_a_mount_carries_the_configuration_of_its_own_filesystem() -> None:
+    """Test the join is the mountpoint both sides are keyed by."""
+    mounts = {"/": {"type": "apfs"}, "/dev": {"type": "devfs"}}
+    config = process_pathconf_command_results(pathconf_completed("macos"))
+
+    joined = compose_mount_config(mounts, config)
+
+    assert joined["/"]["config"]["NAME_MAX"] == 255
+    assert joined["/dev"]["config"]["NAME_MAX"] == 31
+    # The join adds a key and touches nothing that was already there
+    assert joined["/"]["type"] == "apfs"
+
+
+def test_a_mount_whose_filesystem_said_nothing_carries_no_config() -> None:
+    """Test an empty answer is not published as an empty mapping."""
+    mounts = {"/": {"type": "apfs"}, "/proc": {"type": "proc"}}
+
+    joined = compose_mount_config(mounts, {"/": {"NAME_MAX": 255}})
+
+    assert joined["/"]["config"] == {"NAME_MAX": 255}
+    assert "config" not in joined["/proc"]
