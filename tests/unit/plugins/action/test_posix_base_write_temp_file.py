@@ -12,6 +12,7 @@
 from __future__ import annotations
 
 import os
+import stat
 
 import pytest
 
@@ -54,6 +55,74 @@ def test_write_temp_file_stages_the_content_verbatim(
     # The command action would otherwise terminate the stream itself,
     # which is the whole newline decision taken away from the caller
     assert issued[0]["kwargs"]["stdin_add_newline"] is False
+
+
+@pytest.mark.parametrize(
+    "content",
+    [
+        # A string with no bytes in it is an empty file
+        "",
+        # So is a list with no lines: nothing normalizes to nothing,
+        # which is not the same as a blank line
+        [],
+    ],
+)
+def test_write_temp_file_stages_empty_content_without_stdin(
+    monkeypatch, write_base, content
+) -> None:
+    """Test empty content is staged with nothing on standard input.
+
+    An empty stream and no stream are one falsy value to the ssh
+    connection, which tests ``if in_data:`` and so reads ``b""`` as no
+    input at all: it never writes the stream and never closes the pipe,
+    and ``tee`` sits on a stdin that never reaches end of file. On a
+    host with no interpreter to take the native path instead, the write
+    never returns.
+    """
+    tmpfile = os.path.join(write_base._connection._shell.tmpdir, "file.txt")
+    issued = _record_commands(monkeypatch, write_base)
+
+    result = write_base._write_temp_file(content, tmpfile, task_vars={})
+
+    assert result["rc"] == 0
+    assert [entry["cmd"] for entry in issued] == [["cp", "/dev/null", tmpfile]]
+    assert issued[0]["stdin"] is None
+
+
+def test_write_temp_file_empty_content_lands_a_zero_byte_file(
+    write_base,
+) -> None:
+    """Test the empty candidate is a file that exists and holds nothing.
+
+    The composition above says which command runs; this runs it. The
+    candidate has to be a real file with no bytes in it, carrying the
+    mode it was given like any other candidate.
+    """
+    tmpfile = os.path.join(write_base._connection._shell.tmpdir, "empty.txt")
+
+    write_base._write_temp_file("", tmpfile, mode="0640", task_vars={})
+
+    assert os.path.isfile(tmpfile)
+    assert os.path.getsize(tmpfile) == 0
+    assert stat.S_IMODE(os.stat(tmpfile).st_mode) == 0o640
+
+
+def test_write_temp_file_empty_content_truncates_what_was_there(
+    write_base,
+) -> None:
+    """Test an empty write empties a candidate that held bytes.
+
+    ``tee`` truncated what it wrote over, and the stdin-free route has
+    to answer the same way: emptying a file is a write, not a skip.
+    """
+    tmpfile = os.path.join(write_base._connection._shell.tmpdir, "reused.txt")
+
+    write_base._write_temp_file("alpha\n", tmpfile, task_vars={})
+    assert os.path.getsize(tmpfile) == len("alpha\n")
+
+    write_base._write_temp_file("", tmpfile, task_vars={})
+
+    assert os.path.getsize(tmpfile) == 0
 
 
 def test_write_temp_file_leaves_an_unasked_mode_alone(
@@ -106,8 +175,9 @@ def test_write_temp_file_applies_mode_zero(monkeypatch, write_base) -> None:
     ]
 
 
-def test_write_temp_file_failure(monkeypatch, write_base) -> None:
-    """Test _write_temp_file raises error when tee command fails."""
+@pytest.mark.parametrize("content", [["oops"], ""])
+def test_write_temp_file_failure(monkeypatch, write_base, content) -> None:
+    """Test a staging command that fails is named, either route."""
 
     def mock_command(cmd, stdin=None, task_vars=None, **kwargs):
         return {"rc": 1, "stderr": "no tee"}
@@ -117,7 +187,7 @@ def test_write_temp_file_failure(monkeypatch, write_base) -> None:
     with pytest.raises(
         RuntimeError, match=r"Failed to write temp file .*no tee"
     ):
-        write_base._write_temp_file(["oops"], "/tmp/fail", task_vars={})
+        write_base._write_temp_file(content, "/tmp/fail", task_vars={})
 
 
 def test_write_temp_file_chmod_failure(monkeypatch, write_base) -> None:

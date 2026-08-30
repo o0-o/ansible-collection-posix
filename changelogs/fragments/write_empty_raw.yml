@@ -1,0 +1,16 @@
+# vim: ts=2:sw=2:sts=2:et:ft=yaml.ansible
+# -*- mode: yaml; yaml-indent-offset: 2; indent-tabs-mode: nil; -*-
+---
+bugfixes:
+  - >-
+    write - writing empty content to a host with no interpreter no
+    longer hangs forever. The candidate was staged by handing ``tee``
+    the content on standard input, and an empty stream is one falsy
+    value with no stream at all: ansible's ssh connection tests ``if
+    in_data:``, so ``b""`` was never written and the pipe was never
+    closed, leaving ``tee`` on a stdin that never reached end of file.
+    An empty file needs nothing said to it, so it is now created by
+    copying ``/dev/null`` over argv, which truncates and creates under
+    the same umask ``tee`` wrote under. Every non-empty write is the
+    stream it always was, and the interpreted path was never affected
+    (https://github.com/o0-o/ansible-collection-posix/pull/XXX).

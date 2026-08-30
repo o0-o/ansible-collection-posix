@@ -19,6 +19,11 @@ def real_cmd(cmd, stdin=None, task_vars=None, check_mode=None, **kwargs):
     execution. Supports both list and string commands, and optional
     stdin input. Under check mode nothing is executed and a no-op
     success result is returned, so check-mode assertions are real.
+
+    An empty stream is a stream. Standard input is passed whenever the
+    caller named one, however many bytes it holds, so that a command
+    handed nothing gets a stdin already at end of file rather than the
+    harness's own. Only ``None`` means no input at all.
     """
     if isinstance(cmd, list):
         shell = False
@@ -43,7 +48,7 @@ def real_cmd(cmd, stdin=None, task_vars=None, check_mode=None, **kwargs):
     try:
         result = subprocess.run(
             cmd,
-            input=stdin.encode("utf-8") if stdin else None,
+            input=None if stdin is None else stdin.encode("utf-8"),
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             shell=shell,

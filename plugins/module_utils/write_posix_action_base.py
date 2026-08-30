@@ -361,6 +361,17 @@ class WritePosixActionBase(ReadPosixActionBase):
         the command action is told not to terminate the stream on its
         own, so what the caller normalized is what lands.
 
+        Empty content is staged without stdin at all. An empty stream
+        is not the same thing as no stream, but the transport cannot
+        tell them apart: ansible's ssh connection tests ``if in_data:``
+        and ``b""`` is falsy, so it neither writes the stream nor
+        closes the pipe, and ``tee`` sits on a stdin that never reaches
+        end of file. On a host with no interpreter to take the native
+        path instead, that is forever. An empty file needs nothing said
+        to it, so ``cp`` copies ``/dev/null`` over argv, creating and
+        truncating under the same umask ``tee`` would have written
+        under. Every non-empty write is the stream it always was.
+
         A mode is applied here rather than after placement, so the
         candidate never sits at the destination under permissions the
         task did not ask for. Without one the candidate keeps whatever
@@ -382,13 +393,22 @@ class WritePosixActionBase(ReadPosixActionBase):
         # The candidate is staged for real even in check mode; it never
         # reaches the destination from here, and a validate command has
         # to be given a file that actually holds the content
-        write_result = self._command(
-            cmd=["tee", tmpfile],
-            stdin=content,
-            task_vars=task_vars,
-            check_mode=False,
-            stdin_add_newline=False,
-        )
+        if content == "":
+            # An empty stream and no stream are one falsy value to the
+            # transport, so empty content is staged without one
+            write_result = self._command(
+                cmd=["cp", "/dev/null", tmpfile],
+                task_vars=task_vars,
+                check_mode=False,
+            )
+        else:
+            write_result = self._command(
+                cmd=["tee", tmpfile],
+                stdin=content,
+                task_vars=task_vars,
+                check_mode=False,
+                stdin_add_newline=False,
+            )
         if write_result.get("rc", 1) != 0:
             raise RuntimeError(
                 f"Failed to write temp file {tmpfile}: "
