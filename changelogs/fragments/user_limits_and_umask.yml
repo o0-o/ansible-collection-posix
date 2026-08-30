@@ -1,0 +1,43 @@
+# vim: ts=2:sw=2:sts=2:et:ft=yaml.ansible
+# -*- mode: yaml; yaml-indent-offset: 2; indent-tabs-mode: nil; -*-
+---
+minor_changes:
+  - >-
+    facts - A new ``limits`` subset publishes what the shell says about
+    the process it hands the gather: ``o0_users[<uid>].limits``, the
+    resource limits in force, and ``o0_users[<uid>].umask``, the mask
+    files will be created under. Both file beside ``environment`` and
+    ``locale`` as fields of the entry rather than nesting the mask
+    inside the limits, because a user's limits and a user's mask are
+    two facts about that user. Both describe the one user the play
+    connects as: effective limits differ per user by design -
+    ``pam_limits`` grants them per user and per group, BSD by login
+    class, and root's ceiling is not anyone else's - so reading them
+    once and filing them under every UID would be one user's answer
+    wearing everyone's name. Another user's are gathered by running as
+    them with ``become_user``, which merges into the same namespace
+    under their own UID, and the module notes now say so
+    (https://github.com/o0-o/ansible-collection-posix/pull/XXX).
+  - >-
+    facts - Each resource carries the ``soft`` ceiling in force, the
+    ``hard`` ceiling it may be raised to, and the ``unit`` the shell
+    reported them in. A ceiling printed as ``unlimited`` is null, so a
+    resource with no cap is present and empty; a resource the shell
+    said it does not support is absent, because declining to answer is
+    not the same as answering that there is no limit. The unit travels
+    with the number because it is not the same everywhere - one shell
+    reports a stack in kbytes, another in Kibytes, a third in kb - and
+    a number with no unit beside it is one a consumer can only misread
+    (https://github.com/o0-o/ansible-collection-posix/pull/XXX).
+  - >-
+    facts - Resources are named from the labels ``ulimit -a`` prints,
+    mapped onto one set of names. The option letters are not used, and
+    could not be: ``-p`` is the pipe buffer under bash and the process
+    count under dash, ``-u`` is the process count under bash and
+    unknown to dash, and ``-x`` is the file lock count under bash
+    where dash spells it ``-w``. A fact keyed by the letter would file
+    two different resources under one name and be wrong about one of
+    them on every host. The labels are shell-specific too but they are
+    self-describing, and a label no known shell prints keeps its own
+    words rather than being dropped or guessed at
+    (https://github.com/o0-o/ansible-collection-posix/pull/XXX).

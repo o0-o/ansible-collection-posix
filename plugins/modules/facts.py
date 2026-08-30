@@ -22,7 +22,8 @@ description:
     host's timezone, its standards compliance, the configuration
     variables C(getconf) answers for, its hardware inventory, its
     mounts and C(/etc/fstab), its users and groups, and the
-    environment and locale of the user the play connects as.
+    environment, locale, resource limits and umask of the user the
+    play connects as.
   - Uses efficient shell commands and file reads where possible.
   - Does not require Python on the managed host.
 options:
@@ -46,6 +47,7 @@ options:
       - uname
       - compliance
       - config
+      - limits
       - timezone
       - dmidecode
       - mounts
@@ -58,6 +60,7 @@ options:
       - '!uname'
       - '!compliance'
       - '!config'
+      - '!limits'
       - '!timezone'
       - '!dmidecode'
       - '!mounts'
@@ -72,6 +75,18 @@ notes:
   - This module must be run via its action plugin.
   - It is designed to support bootstrapping environments where Python
     may not be available on the managed node.
+  - The user-scoped subsets - C(environment) and C(limits) - describe
+    the user the play connects as and no other. Effective limits
+    differ per user by design, C(pam_limits) granting them per user
+    and per group and BSD by login class, and an environment is
+    whatever that user's own login files made it, so one user's
+    answers are not another's.
+  - To gather them for a different user, run the module again as that
+    user with C(become) and C(become_user). The entry lands under
+    that user's UID in the same C(o0_users) namespace, so a play may
+    gather as many users as it is willing to spend a task on. This is
+    why C(o0_users) routinely carries one entry with an
+    C(environment) on it and many without.
 attributes:
   check_mode:
     description: This module supports check mode.
@@ -511,16 +526,24 @@ ansible_facts:
                 PIPE_BUF: 4096
                 SYMLINK_MAX: null
     o0_users:
-      description: >-
-        Users keyed by stringified UID. Two subsets write here and a
-        run that gathers both meets in one entry per UID: C(users)
-        describes every account C(/etc/passwd) names - overlaid with
-        the host's own resolved view of them where the host has a
-        C(getent) to ask - and C(environment) adds the environment and
-        locale of the one user the play connects as.
-        M(o0_o.posix.users) publishes the same entries under the same
-        names.
-      returned: when the users or environment subset is gathered
+      description:
+        - Users keyed by stringified UID. Three subsets write here and
+          a run that gathers them meets in one entry per UID -
+          C(users) describes every account C(/etc/passwd) names,
+          overlaid with the host's own resolved view of them where the
+          host has a C(getent) to ask; C(environment) adds the
+          environment and locale, and C(limits) the resource limits
+          and umask, of the one user the play connects as.
+          M(o0_o.posix.users) publishes the same entries under the
+          same names.
+        - The user-scoped fields describe that one user because they
+          cannot describe another. Reading them once and filing them
+          under every UID would be one user's answer wearing
+          everyone's name. Another user's are gathered by running as
+          them, with C(become) and C(become_user), which merges into
+          this same namespace under their own UID.
+      returned: >-
+        when the users, environment or limits subset is gathered
       type: dict
       contains:
         uid:
@@ -600,6 +623,49 @@ ansible_facts:
           returned: when the environment subset is gathered
           type: str
           sample: en_US.UTF-8
+        limits:
+          description:
+            - The resource limits in force for the user, keyed by
+              resource, each carrying the C(soft) ceiling in effect,
+              the C(hard) ceiling it may be raised to, and the C(unit)
+              the shell reported them in.
+            - A ceiling the shell printed as C(unlimited) is null, so
+              a resource with no cap is present and empty rather than
+              missing. A resource the shell said it does not support
+              is absent, because refusing to answer is not the same as
+              answering that there is no limit. C(unit) is absent
+              where the shell named none.
+            - The unit is kept because it is not the same everywhere.
+              The same resource comes back in blocks from one shell,
+              kilobytes from another and Kibytes from a third, and a
+              number with no unit beside it is a number a consumer can
+              only misread.
+            - Resources are named from the labels C(ulimit -a) prints,
+              mapped onto one set of names. The option letters are not
+              used - C(-p) is the pipe buffer under bash and the
+              process count under dash - and a label no shell here has
+              printed keeps its own words rather than being guessed
+              at.
+          returned: when the limits subset is gathered
+          type: dict
+          sample:
+            open_files:
+              soft: 1024
+              hard: 524288
+            stack:
+              soft: 8192
+              hard: null
+              unit: kbytes
+        umask:
+          description: >-
+            The file creation mask in force for the user, in the
+            four-character octal form the collection writes every mode
+            in
+          returned: >-
+            when the limits subset is gathered and the shell printed
+            an octal mask
+          type: str
+          sample: "0022"
     o0_groups:
       description: >-
         Groups keyed by stringified GID, each with its C(name), its
@@ -773,6 +839,7 @@ def main() -> None:
                 "uname",
                 "compliance",
                 "config",
+                "limits",
                 "timezone",
                 "dmidecode",
                 "mounts",
@@ -785,6 +852,7 @@ def main() -> None:
                 "!uname",
                 "!compliance",
                 "!config",
+                "!limits",
                 "!timezone",
                 "!dmidecode",
                 "!mounts",

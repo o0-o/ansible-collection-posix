@@ -44,6 +44,12 @@ from ansible_collections.o0_o.posix.plugins.module_utils.getent_utils import (
 from ansible_collections.o0_o.posix.plugins.module_utils.id_utils import (
     _parse_effective_uid,
 )
+from ansible_collections.o0_o.posix.plugins.module_utils.limits_utils import (
+    LIMITS_HARD_MARKER,
+    LIMITS_SOFT_MARKER,
+    _parse_ulimit,
+    _parse_umask,
+)
 from ansible_collections.o0_o.posix.plugins.module_utils.locale_utils import (
     _parse_locale,
 )
@@ -150,6 +156,28 @@ UNAME_COMMAND_SPEC = {
         "uname": {
             "command": ("uname", "-a"),
             "parser": _parse_uname,
+        },
+    },
+}
+
+# What the shell says about the process it hands you.  Both are shell
+# builtins, so both are asked through a shell; the soft and hard sets
+# ride the one invocation, marked apart so the parser can tell which
+# it is reading.
+LIMITS_COMMAND_SPEC = {
+    "posix": {
+        "ulimit": {
+            "command": (
+                "sh",
+                "-c",
+                f"echo {LIMITS_SOFT_MARKER}; ulimit -aS 2>/dev/null;"
+                f" echo {LIMITS_HARD_MARKER}; ulimit -aH 2>/dev/null",
+            ),
+            "parser": _parse_ulimit,
+        },
+        "umask": {
+            "command": ("sh", "-c", "umask"),
+            "parser": _parse_umask,
         },
     },
 }

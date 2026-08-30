@@ -1,0 +1,42 @@
+@SOFT@
+address space limit (Kibytes)  (-M)  unlimited
+core file size (blocks)        (-c)  0
+cpu time (seconds)             (-t)  unlimited
+data size (Kibytes)            (-d)  unlimited
+file size (blocks)             (-f)  unlimited
+locks                          (-x)  not supported
+locked address space (Kibytes) (-l)  unlimited
+message queue size (Kibytes)   (-q)  not supported
+nice                           (-e)  not supported
+nofile                         (-n)  1048576
+nproc                          (-u)  10666
+pipe buffer size (bytes)       (-p)  512
+max memory size (Kibytes)      (-m)  unlimited
+rtprio                         (-r)  not supported
+socket buffer size (bytes)     (-b)  512
+sigpend                        (-i)  undefined
+stack size (Kibytes)           (-s)  8176
+swap size (Kibytes)            (-w)  not supported
+threads                        (-T)  not supported
+process size (Kibytes)         (-v)  unlimited
+@HARD@
+address space limit (Kibytes)  (-M)  unlimited
+core file size (blocks)        (-c)  unlimited
+cpu time (seconds)             (-t)  unlimited
+data size (Kibytes)            (-d)  unlimited
+file size (blocks)             (-f)  unlimited
+locks                          (-x)  not supported
+locked address space (Kibytes) (-l)  unlimited
+message queue size (Kibytes)   (-q)  not supported
+nice                           (-e)  not supported
+nofile                         (-n)  unlimited
+nproc                          (-u)  16000
+pipe buffer size (bytes)       (-p)  512
+max memory size (Kibytes)      (-m)  unlimited
+rtprio                         (-r)  not supported
+socket buffer size (bytes)     (-b)  512
+sigpend                        (-i)  undefined
+stack size (Kibytes)           (-s)  65520
+swap size (Kibytes)            (-w)  not supported
+threads                        (-T)  not supported
+process size (Kibytes)         (-v)  unlimited

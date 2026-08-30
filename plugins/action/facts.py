@@ -32,6 +32,7 @@ from ansible_collections.o0_o.posix.plugins.module_utils import (
     get_file_command_requests,
     get_getconf_command_requests,
     get_getent_command_requests,
+    get_limits_command_requests,
     get_mount_command_requests,
     get_pathconf_command_requests,
     get_timezone_command_requests,
@@ -43,6 +44,7 @@ from ansible_collections.o0_o.posix.plugins.module_utils import (
     process_file_command_results,
     process_getconf_command_results,
     process_getent_command_results,
+    process_limits_command_results,
     process_mount_command_results,
     process_pathconf_command_results,
     process_timezone_command_results,
@@ -158,6 +160,36 @@ def _process_environment_results(
         cmds_completed, POSIX_ENV_VARS, False
     )
     return env_data, []
+
+
+def _get_limits_requests() -> list[dict[str, Any]]:
+    """Build command requests for the user-scoped shell facts.
+
+    The effective UID travels with them because it is the key the
+    results nest under, the same way it travels with the environment.
+
+    :returns list[dict[str, Any]]: Command requests for run plugin
+    """
+    return (
+        get_limits_command_requests() + get_effective_uid_command_requests()
+    )
+
+
+def _process_limits_results(
+    cmds_completed: list[dict[str, Any]],
+) -> tuple[dict[str, Any], list[Exception]]:
+    """Process the shell probes into the fields they file.
+
+    Answers with the fields themselves rather than one field named
+    for the subset, because a user's limits and a user's umask are
+    two facts about that user.  The caller is responsible for keying
+    them under the effective UID.
+
+    :param list[dict[str, Any]] cmds_completed: Command results
+    :returns tuple[dict[str, Any], list[Exception]]: Tuple of
+        (fields, errors) to file on the user's entry
+    """
+    return process_limits_command_results(cmds_completed)
 
 
 def _get_fstab_requests() -> list[dict[str, Any]]:
@@ -306,6 +338,7 @@ class ActionModule(ReadPosixActionBase, ActionBase):
         "all": {
             "uname",
             "environment",
+            "limits",
             "timezone",
             "dmidecode",
             "compliance",
@@ -347,6 +380,10 @@ class ActionModule(ReadPosixActionBase, ActionBase):
             "requests": _get_environment_requests,
             "processor": _process_environment_results,
         },
+        "limits": {
+            "requests": _get_limits_requests,
+            "processor": _process_limits_results,
+        },
         "fstab": {
             "requests": _get_fstab_requests,
             "processor": _process_fstab_results,
@@ -357,8 +394,18 @@ class ActionModule(ReadPosixActionBase, ActionBase):
         },
     }
 
-    # Subsets whose results go under o0_users[effective_uid]
-    USER_SCOPED_SUBSETS = {"environment"}
+    # Subsets whose results go under o0_users[effective_uid].  Every
+    # one of them describes the user the play connects as and no
+    # other: another user's environment, limits and umask are what a
+    # run delegated to that user answers, and reading this user's is
+    # not an answer about theirs.
+    USER_SCOPED_SUBSETS = {"environment", "limits"}
+
+    # Of those, the ones whose processor answers with the fields to
+    # file on the entry rather than with one field named for the
+    # subset.  A user's limits and a user's umask are two facts about
+    # that user, not two parts of a thing called limits.
+    USER_SCOPED_FIELDS = {"limits"}
 
     # The namespace that has a composer of its own
     PATHS_NAMESPACE = "o0_paths"
@@ -662,7 +709,11 @@ class ActionModule(ReadPosixActionBase, ActionBase):
                             )
                             continue
 
-                        entry = {"uid": uid, subset: facts}
+                        entry: dict[str, Any] = {"uid": uid}
+                        if subset in self.USER_SCOPED_FIELDS:
+                            entry.update(facts)
+                        else:
+                            entry[subset] = facts
 
                         # Validate LOGNAME/USER
                         if subset == "environment":

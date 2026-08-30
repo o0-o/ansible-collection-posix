@@ -62,6 +62,10 @@ from ansible_collections.o0_o.posix.plugins.module_utils.id_utils import (
     id_info,
     process_effective_uid_results,
 )
+from ansible_collections.o0_o.posix.plugins.module_utils.limits_utils import (
+    get_limits_command_requests,
+    process_limits_command_results,
+)
 from ansible_collections.o0_o.posix.plugins.module_utils.getconf_utils import (
     compose_getconf,
     compose_pathconf,
@@ -204,6 +208,8 @@ __all__ = [
     "compose_homes",
     "compose_shell_files",
     "compose_users_groups",
+    "get_limits_command_requests",
+    "process_limits_command_results",
     "compose_getconf",
     "compose_pathconf",
     "get_getconf_command_requests",
