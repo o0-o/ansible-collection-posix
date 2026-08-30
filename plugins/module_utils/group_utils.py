@@ -21,6 +21,43 @@ from ansible_collections.o0_o.posix.plugins.module_utils.jc_utils import (
 
 VALID_KEYS = {"id", "name"}
 
+# A group line's fields: name, password, gid, members
+GROUP_FIELDS = 4
+
+
+def _restore_members_field(text: str) -> str:
+    """Give back the empty members field a producer left off.
+
+    A group with no members is four fields the last of which is
+    empty, and the flat file writes it that way on every platform.
+    ``getent group`` on the BSDs does not: FreeBSD and OpenBSD print
+    ``daemon:*:1`` where Linux prints ``daemon:x:1:``, dropping the
+    delimiter along with the field.  Both mean a group nobody is a
+    secondary member of, so the field is restored rather than the
+    line being treated as malformed - the alternative is a parser
+    that raises on output a real getent really produces, which reads
+    to the caller as a host that has no getent.
+
+    A field cannot contain the delimiter, so counting delimiters
+    counts fields.  Only a line one field short is padded; anything
+    else is passed through for the parser to judge.
+
+    :param str text: Group content as a producer wrote it
+    :returns str: The same content, every short line padded
+    """
+    lines = []
+    for line in text.split("\n"):
+        stripped = line.strip()
+        if (
+            stripped
+            and not stripped.startswith("#")
+            and line.count(":") == GROUP_FIELDS - 2
+        ):
+            line = f"{line}:"
+        lines.append(line)
+
+    return "\n".join(lines)
+
 
 def group_info(
     config: Union[str, dict[str, Any], list[dict[str, Any]]], key: str = "id"
@@ -34,7 +71,9 @@ def group_info(
 
     if isinstance(config, dict):
         if "stdout" in config or "content" in config:
-            parsed = jc_parse("group", config)
+            parsed = jc_parse(
+                "group", config, normalize=_restore_members_field
+            )
         elif "gid" in config or "name" in config:
             parsed = [config]
         else:
@@ -47,9 +86,11 @@ def group_info(
         ):
             parsed = config
         else:
-            parsed = jc_parse("group", config)
+            parsed = jc_parse(
+                "group", config, normalize=_restore_members_field
+            )
     else:
-        parsed = jc_parse("group", config)
+        parsed = jc_parse("group", config, normalize=_restore_members_field)
 
     if not parsed:
         return {}

@@ -33,6 +33,10 @@ from ansible_collections.o0_o.posix.plugins.module_utils.df_utils import (
 from ansible_collections.o0_o.posix.plugins.module_utils.dmidecode_utils import (  # noqa: E501
     _parse_dmidecode,
 )
+from ansible_collections.o0_o.posix.plugins.module_utils.getent_utils import (
+    GETENT_RCS,
+    _parse_getent,
+)
 from ansible_collections.o0_o.posix.plugins.module_utils.id_utils import (
     _parse_effective_uid,
 )
@@ -65,6 +69,29 @@ FILE_COMMAND_SPEC = {
     "posix": {
         "file": {
             "command": ("cat", "{path}"),
+        },
+    },
+}
+
+# The host's own resolved view of its users and groups. One
+# enumeration per database, which is the probe as well as the answer:
+# a getent that enumerates has proved itself one, and a candidate that
+# does not has said all it is going to. Every plausible exit status is
+# a non-error, so the parser rather than the runner is what decides
+# whether the host has a getent worth believing.
+GETENT_COMMAND_SPEC = {
+    "posix": {
+        "getent_passwd": {
+            "command": ("getent", "passwd"),
+            "parser": _parse_getent,
+            "parser_kwargs": {"database": "passwd"},
+            "non_error_codes": GETENT_RCS,
+        },
+        "getent_group": {
+            "command": ("getent", "group"),
+            "parser": _parse_getent,
+            "parser_kwargs": {"database": "group"},
+            "non_error_codes": GETENT_RCS,
         },
     },
 }

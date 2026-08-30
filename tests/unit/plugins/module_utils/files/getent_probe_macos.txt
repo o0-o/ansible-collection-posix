@@ -1,0 +1,6 @@
+===PLATFORM===
+Darwin o0-adm-0003 25.5.0 Darwin Kernel Version 25.5.0: Tue Jun  9 22:28:34 PDT 2026; root:xnu-12377.121.10~1/RELEASE_ARM64_T6041 arm64
+===WHICH===
+(no getent on PATH)
+---RC--- 0
+===ABSENT=== getent is not on this host

@@ -38,7 +38,7 @@ def test_group_info_key_id(
     if isinstance(config, dict):
         monkeypatch.setattr(
             "ansible_collections.o0_o.posix.plugins.module_utils.group_utils.jc_parse",  # noqa: E501
-            lambda parser, data: SAMPLE_GROUPS,
+            lambda parser, data, **kwargs: SAMPLE_GROUPS,
         )
 
     result = group_info(config, key="id")
@@ -55,7 +55,7 @@ def test_group_info_key_name(monkeypatch: pytest.MonkeyPatch) -> None:
 
     monkeypatch.setattr(
         "ansible_collections.o0_o.posix.plugins.module_utils.group_utils.jc_parse",  # noqa: E501
-        lambda parser, data: SAMPLE_GROUPS,
+        lambda parser, data, **kwargs: SAMPLE_GROUPS,
     )
 
     result = group_info("/etc/group contents", key="name")
@@ -103,7 +103,7 @@ def test_group_info_handles_empty(monkeypatch: pytest.MonkeyPatch) -> None:
 
     monkeypatch.setattr(
         "ansible_collections.o0_o.posix.plugins.module_utils.group_utils.jc_parse",  # noqa: E501
-        lambda parser, data: [],
+        lambda parser, data, **kwargs: [],
     )
 
     assert group_info({"stdout": ""}) == {}
@@ -127,7 +127,7 @@ def test_group_info_normalizes_string_members(
 
     monkeypatch.setattr(
         "ansible_collections.o0_o.posix.plugins.module_utils.group_utils.jc_parse",  # noqa: E501
-        lambda parser, data: sample_groups,
+        lambda parser, data, **kwargs: sample_groups,
     )
 
     result = group_info("/etc/group", key="id")
@@ -135,3 +135,64 @@ def test_group_info_normalizes_string_members(
     assert result["202"]["members"] == ["root", "o0-o"]
     assert result["203"]["members"] == []
     assert result["204"]["members"] == ["ci", "build"]
+
+
+# What ``getent group`` prints on each platform, captured off running
+# hosts. The BSDs drop the empty members field along with its
+# delimiter; every flat file, theirs included, keeps both.
+BSD_GETENT_GROUP = "wheel:*:0:root,ci\ndaemon:*:1:daemon\nbin:*:7\n"
+LINUX_GETENT_GROUP = "root:x:0:\ndaemon:x:1:daemon\nbin:x:2:\n"
+
+
+def test_group_info_reads_a_line_with_no_members_field() -> None:
+    """A BSD getent's short line is a group, not a malformed line.
+
+    FreeBSD and OpenBSD print ``bin:*:7`` for a group nobody is a
+    secondary member of. The parser used to raise on it, which reads
+    to a caller as a host whose getent could not be believed rather
+    than as the BSD it is.
+    """
+    result = group_info(BSD_GETENT_GROUP, key="id")
+
+    assert result["7"] == {"name": "bin", "members": []}
+    assert result["0"]["members"] == ["root", "ci"]
+    assert result["1"]["members"] == ["daemon"]
+
+
+def test_group_info_reads_both_spellings_the_same_way() -> None:
+    """The delimiter a producer left off does not reach the fact."""
+    padded = group_info(LINUX_GETENT_GROUP, key="id")
+    short = group_info(BSD_GETENT_GROUP, key="id")
+
+    assert padded["1"]["members"] == short["1"]["members"]
+    assert padded["0"]["members"] == []
+    assert short["7"]["members"] == []
+
+
+def test_group_info_restores_the_field_in_a_registered_result() -> None:
+    """A short line reads the same from text and from a result."""
+    from_text = group_info(BSD_GETENT_GROUP, key="id")
+
+    assert group_info({"stdout": BSD_GETENT_GROUP}, key="id") == from_text
+    assert group_info({"content": BSD_GETENT_GROUP}, key="id") == from_text
+
+
+def test_group_info_restores_the_field_after_decoding() -> None:
+    """The rewrite runs on the file, never on the blob carrying it.
+
+    A read result declares its encoding, and content is decoded before
+    a parser sees it. Restoring the field before that would rewrite
+    base64 rather than a group line.
+    """
+    encoded = b64encode(BSD_GETENT_GROUP.encode()).decode()
+
+    assert group_info(
+        {"content": encoded, "encoding": "base64"}, key="id"
+    ) == group_info(BSD_GETENT_GROUP, key="id")
+
+
+def test_group_info_leaves_comments_and_blank_lines_alone() -> None:
+    """Padding is for group lines, not for everything short."""
+    result = group_info("# a comment with one : colon\n\nbin:*:7\n", key="id")
+
+    assert result == {"7": {"name": "bin", "members": []}}

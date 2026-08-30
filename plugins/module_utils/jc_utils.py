@@ -13,7 +13,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Union
+from typing import Any, Callable, Optional, Union
 
 from ansible_collections.o0_o.posix.plugins.module_utils.filter_utils import (
     process_registered_result,
@@ -32,17 +32,25 @@ def jc_parse(
     data: Union[str, dict[str, Any]],
     quiet: bool = True,
     raw: bool = False,
+    normalize: Optional[Callable[[str], str]] = None,
 ) -> Union[list[dict[str, Any]], dict[str, Any]]:
     """Parse command output using jc library.
 
     Handles both string and dict inputs (e.g., from command module).
     Parameter order matches jc.parse for consistency.
 
+    A caller whose format has a spelling jc will not read passes a
+    ``normalize`` to reconcile it. It runs on the content jc is about
+    to be handed, which is after a registered result has been decoded,
+    so an encoded blob is never what gets rewritten.
+
     :param parser: Name of the jc parser to use
     :param data: Command output as string or dict
     :param quiet: If True, suppress jc parsing warnings (default: True)
     :param raw: If True, return raw parsed output without
                 post-processing
+    :param normalize: Applied to the decoded content before jc reads
+                it
     :returns: Parsed data structure (list or dict depending on
               parser)
     :raises ValueError: If parsing fails
@@ -66,6 +74,8 @@ def jc_parse(
     def parse_content(
         content: str,
     ) -> Union[list[dict[str, Any]], dict[str, Any]]:
+        if normalize is not None and isinstance(content, str):
+            content = normalize(content)
         try:
             # Parse using jc library
             return jc.parse(parser, content, raw=raw, quiet=quiet)

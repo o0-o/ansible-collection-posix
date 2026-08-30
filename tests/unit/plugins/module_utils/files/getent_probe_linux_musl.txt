@@ -1,0 +1,124 @@
+===PLATFORM===
+Linux 39cbfbdb125d 7.1.3-200.fc44.aarch64 #1 SMP PREEMPT_DYNAMIC Sat Jul  4 19:23:52 UTC 2026 aarch64 Linux
+===WHICH===
+/usr/bin/getent
+---RC--- 0
+===CMD=== getent passwd (enumerate)
+root:x:0:0:root:/root:/bin/sh
+bin:x:1:1:bin:/bin:/sbin/nologin
+daemon:x:2:2:daemon:/sbin:/sbin/nologin
+lp:x:4:7:lp:/var/spool/lpd:/sbin/nologin
+sync:x:5:0:sync:/sbin:/bin/sync
+shutdown:x:6:0:shutdown:/sbin:/sbin/shutdown
+halt:x:7:0:halt:/sbin:/sbin/halt
+mail:x:8:12:mail:/var/mail:/sbin/nologin
+news:x:9:13:news:/usr/lib/news:/sbin/nologin
+uucp:x:10:14:uucp:/var/spool/uucppublic:/sbin/nologin
+cron:x:16:16:cron:/var/spool/cron:/sbin/nologin
+ftp:x:21:21::/var/lib/ftp:/sbin/nologin
+sshd:x:22:22:sshd:/dev/null:/sbin/nologin
+games:x:35:35:games:/usr/games:/sbin/nologin
+ntp:x:123:123:NTP:/var/empty:/sbin/nologin
+guest:x:405:100:guest:/dev/null:/sbin/nologin
+nobody:x:65534:65534:nobody:/:/sbin/nologin
+---STDERR---
+---RC--- 0
+===CMD=== getent passwd root
+root:x:0:0:root:/root:/bin/sh
+---STDERR---
+---RC--- 0
+===CMD=== getent passwd 0
+root:x:0:0:root:/root:/bin/sh
+---STDERR---
+---RC--- 0
+===CMD=== getent passwd zzznosuchuser42
+---STDERR---
+---RC--- 2
+===CMD=== getent group (enumerate)
+root:x:0:root
+bin:x:1:root,bin,daemon
+daemon:x:2:root,bin,daemon
+sys:x:3:root,bin
+adm:x:4:root,daemon
+tty:x:5:
+disk:x:6:root
+lp:x:7:lp
+kmem:x:9:
+wheel:x:10:root
+floppy:x:11:root
+mail:x:12:mail
+news:x:13:news
+uucp:x:14:uucp
+cron:x:16:cron
+audio:x:18:
+cdrom:x:19:
+dialout:x:20:root
+ftp:x:21:
+sshd:x:22:
+input:x:23:
+tape:x:26:root
+video:x:27:root
+netdev:x:28:
+kvm:x:34:kvm
+games:x:35:
+shadow:x:42:
+www-data:x:82:
+users:x:100:games
+ntp:x:123:
+abuild:x:300:
+utmp:x:406:
+ping:x:999:
+nogroup:x:65533:
+nobody:x:65534:
+---STDERR---
+---RC--- 0
+===CMD=== getent group root-or-wheel
+root:x:0:root
+---STDERR---
+---RC--- 0
+===CMD=== getent group zzznosuchgroup42
+---STDERR---
+---RC--- 2
+===CMD=== getent baddatabase
+---STDERR---
+getent: Unknown database `zzznosuchdb': No error information
+Usage: getent database [key ...]
+	database may be one of:
+		ethers group hosts ahosts ahostsv4 ahostsv6 networks
+		passwd protocols services shadow shells
+---RC--- 1
+===CMD=== getent baddatabase key
+---STDERR---
+getent: Unknown database `zzznosuchdb': No error information
+Usage: getent database [key ...]
+	database may be one of:
+		ethers group hosts ahosts ahostsv4 ahostsv6 networks
+		passwd protocols services shadow shells
+---RC--- 1
+===CMD=== getent -V
+---STDERR---
+getent: Unknown database `-V': No error information
+Usage: getent database [key ...]
+	database may be one of:
+		ethers group hosts ahosts ahostsv4 ahostsv6 networks
+		passwd protocols services shadow shells
+---RC--- 1
+===CMD=== getent --version
+---STDERR---
+getent: Unknown database `--version': No error information
+Usage: getent database [key ...]
+	database may be one of:
+		ethers group hosts ahosts ahostsv4 ahostsv6 networks
+		passwd protocols services shadow shells
+---RC--- 1
+===CMD=== getent (no args)
+---STDERR---
+Usage: getent database [key ...]
+	database may be one of:
+		ethers group hosts ahosts ahostsv4 ahostsv6 networks
+		passwd protocols services shadow shells
+---RC--- 1
+===CMD=== getent hosts localhost
+::1               localhost  localhost
+---STDERR---
+---RC--- 0

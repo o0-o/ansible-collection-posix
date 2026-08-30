@@ -1,0 +1,27 @@
+===CMD=== getent passwd (enumerate)
+---STDERR---
+---RC--- 1
+===CMD=== getent passwd root
+root:*:0:0:System Administrator:/var/root:/bin/sh
+---STDERR---
+---RC--- 0
+===CMD=== getent passwd 0
+---STDERR---
+---RC--- 1
+===CMD=== getent passwd zzznosuchuser42
+---STDERR---
+---RC--- 1
+===CMD=== getent group (enumerate)
+---STDERR---
+---RC--- 1
+===CMD=== getent group zzznosuchgroup42
+---STDERR---
+---RC--- 1
+===CMD=== getent baddatabase
+---STDERR---
+grep: /etc/zzznosuchdb: No such file or directory
+---RC--- 2
+===CMD=== getent -V
+---STDERR---
+grep: /etc/-V: No such file or directory
+---RC--- 2
