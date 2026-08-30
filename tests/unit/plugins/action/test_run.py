@@ -11,10 +11,115 @@
 
 from __future__ import annotations
 
+import subprocess
+from typing import Any, Optional
 from unittest.mock import MagicMock
 
 import pytest
 from ansible.errors import AnsibleActionFail
+from ansible_collections.o0_o.posix.plugins.action.command import (
+    ActionModule as CommandActionModule,
+)
+
+
+def _shell(cmd: str) -> dict[str, Any]:
+    """Run what a transport was handed, through a real shell.
+
+    :param str cmd: The command string the transport was given
+    :returns dict[str, Any]: The three fields a POSIX transport
+        answers with
+    """
+    completed = subprocess.run(
+        cmd,
+        shell=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=False,
+    )
+    return {
+        "rc": completed.returncode,
+        "stdout": completed.stdout.decode("utf-8"),
+        "stderr": completed.stderr.decode("utf-8"),
+    }
+
+
+class _CommandOverBothTransports(CommandActionModule):
+    """The command action with both of its transports run locally.
+
+    A batch's fate is whatever the command action reports back, so a
+    test that stubs ``_command`` measures its own opinion of that
+    answer rather than the answer. Each transport is stubbed at the
+    seam it actually uses -- the raw one at the low-level transport,
+    the native one at the module delegation -- and both hand the
+    script to the same shell, so the only thing that differs between
+    them is what each says about a script that exited non-zero.
+    """
+
+    def _low_level_execute_command(
+        self,
+        cmd: str,
+        sudoable: bool = True,
+        in_data: Optional[bytes] = None,
+        executable: Optional[str] = None,
+        chdir: Optional[str] = None,
+        **kwargs: Any,
+    ) -> dict[str, Any]:
+        """Answer the raw transport from a local shell."""
+        return _shell(cmd)
+
+    def _execute_module(
+        self,
+        module_name: Optional[str] = None,
+        module_args: Optional[dict[str, Any]] = None,
+        task_vars: Optional[dict[str, Any]] = None,
+        **kwargs: Any,
+    ) -> dict[str, Any]:
+        """Answer the native delegation as the builtin module does.
+
+        ansible.builtin.command fails on a non-zero status and names
+        it, which is the half of the answer the raw path had to be
+        taught to give.
+        """
+        answer = _shell(module_args["_raw_params"])
+        if answer["rc"] != 0:
+            answer.update({"failed": True, "msg": "non-zero return code"})
+        return answer
+
+
+def _delegate_to_command(plugin) -> None:
+    """Send this action's delegation to a real command action.
+
+    :param plugin: The run action instance to wire up
+    """
+
+    def run_action(
+        plugin_name: str,
+        plugin_args: dict[str, Any],
+        task_vars: Optional[dict[str, Any]] = None,
+        check_mode: Optional[bool] = None,
+    ) -> dict[str, Any]:
+        assert plugin_name == "o0_o.posix.command"
+        task = MagicMock()
+        task.async_val = 0
+        task.check_mode = bool(check_mode)
+        task.action = plugin_name
+        task.args = dict(plugin_args)
+
+        command = _CommandOverBothTransports(
+            task=task,
+            connection=MagicMock(),
+            play_context=MagicMock(),
+            loader=MagicMock(),
+            templar=MagicMock(),
+            shared_loader_obj=MagicMock(),
+        )
+        command._display = MagicMock()
+        command._remove_tmp_path = MagicMock()
+        command.inventory_hostname = "localhost"
+
+        return command.run(task_vars=task_vars or {})
+
+    plugin._run_action = run_action
 
 
 @pytest.fixture
@@ -860,3 +965,59 @@ def test_build_command_wrapper_many_codes(plugin) -> None:
     wrapper = plugin._build_command_wrapper("cmd", "/tmp/", 0, [0, 1, 2, 127])
 
     assert "case $__rc in 0|1|2|127) exit 0;; *) exit 1;; esac" in wrapper
+
+
+# The batch as each transport reports it
+
+
+@pytest.mark.parametrize("raw", [True, False], ids=["raw", "interpreted"])
+def test_fail_fast_fails_the_batch_on_either_transport(
+    plugin, tmp_path, raw
+) -> None:
+    """Test an aborted batch is a failure whichever transport ran it.
+
+    fail_fast is ``set -e``: the command that fails takes the script
+    down with it, and everything after it, including the output the
+    parser was to read. What comes back is a non-zero status and a
+    truncated stream, and the batch has to fail on the status rather
+    than stumble over the stream, in the same words either way.
+    """
+    plugin._make_tmp_path = MagicMock(return_value=f"{tmp_path}/batch")
+    plugin._task.args = {
+        "commands": ["echo before", "false", "echo after"],
+        "fail_fast": True,
+        "raw": raw,
+    }
+    _delegate_to_command(plugin)
+
+    with pytest.raises(
+        AnsibleActionFail,
+        match="Batch execution failed: non-zero return code",
+    ):
+        plugin.run(task_vars={})
+
+
+@pytest.mark.parametrize("raw", [True, False], ids=["raw", "interpreted"])
+def test_without_fail_fast_the_batch_runs_through_on_either_transport(
+    plugin, tmp_path, raw
+) -> None:
+    """Test a batch that is not fail_fast reports each command's own
+    status: ``set +e`` leaves the script to finish and exit zero, so
+    nothing about the transport is at stake and the failure is the
+    task's rather than the batch's.
+    """
+    plugin._make_tmp_path = MagicMock(return_value=f"{tmp_path}/batch")
+    plugin._task.args = {
+        "commands": ["echo first", "false", "echo third"],
+        "parallel": False,
+        "fail_fast": False,
+        "raw": raw,
+    }
+    _delegate_to_command(plugin)
+
+    result = plugin.run(task_vars={})
+
+    assert result["failed"] is True
+    assert [c["rc"] for c in result["commands"]] == [0, 1, 0]
+    assert result["commands"][0]["stdout"] == "first"
+    assert result["commands"][2]["stdout"] == "third"

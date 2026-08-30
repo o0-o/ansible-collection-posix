@@ -1,0 +1,55 @@
+# vim: ts=2:sw=2:sts=2:et:ft=yaml.ansible
+# -*- mode: yaml; yaml-indent-offset: 2; indent-tabs-mode: nil; -*-
+---
+# GNU General Public License v3.0+
+# SPDX-License-Identifier: GPL-3.0-or-later
+# (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
+#
+# Copyright (c) 2025 oØ.o (@o0-o)
+#
+# This file is part of the o0_o.posix Ansible Collection.
+
+# This target's entry into the raw lane, per Running CI. Everything
+# main.yml runs reaches the host through this collection's own command
+# action and nothing it asserts is read from a gathered fact, so the
+# entry is the whole target, file by file, under the one var main.yml
+# would have given it. The assertions stay where both runners share
+# them.
+#
+# main.yml turns each file through a loop that names the row's check
+# mode as a var. The lane takes the row that runs: check mode
+# withholds the execution this lane exists to prove, and every
+# assertion in these files stands down under it anyway, so a check row
+# would send nothing over the transport under test.
+#
+# No transport is named, as none is named in the ten entries that run
+# their targets whole: nothing under these files reads a raw variable
+# or asserts which transport answered, so the module's own auto stands,
+# and that auto finds its way to raw on these hosts is what the lane's
+# preflight proves once per run.
+#
+# failures.yml is why the entry was withdrawn once and is back: a batch
+# that fail_fast cut short comes home as a non-zero status and a
+# truncated stream, and until the raw path named that status a failure
+# the way the native one does, the batch stumbled over the stream
+# instead of failing on the status.
+
+- name: Batch commands on a host with no interpreter
+  ansible.builtin.include_tasks: successes.yml
+  vars:
+    ansible_check_mode: false
+
+- name: Batch them in parallel on a host with no interpreter
+  ansible.builtin.include_tasks: parallel.yml
+  vars:
+    ansible_check_mode: false
+
+- name: Fail a batch on a host with no interpreter
+  ansible.builtin.include_tasks: failures.yml
+  vars:
+    ansible_check_mode: false
+
+- name: Name each command in the batch on a host with no interpreter
+  ansible.builtin.include_tasks: dict_mode.yml
+  vars:
+    ansible_check_mode: false

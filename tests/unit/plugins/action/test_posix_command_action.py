@@ -805,8 +805,44 @@ def test_a_non_zero_return_code_is_named(plugin) -> None:
     result = _run(plugin, {"cmd": "false", "raw": True})
 
     assert result["rc"] != 0
+    assert result["failed"] is True
     assert result["msg"] == "non-zero return code"
     assert result["changed"] is True
+
+
+def test_a_zero_return_code_is_not_a_failure(plugin) -> None:
+    """Test a raw command that succeeded carries no verdict against
+    it, so a caller reading the result reads what happened."""
+    result = _run(plugin, {"cmd": "true", "raw": True})
+
+    assert result["rc"] == 0
+    assert result["failed"] is False
+    assert result["msg"] == ""
+
+
+def test_both_transports_name_a_failure_alike(plugin) -> None:
+    """Test the two transports answer a failed command in one voice.
+
+    The native module fails on a non-zero status and says so in the
+    result. The task layer promotes the status on its own afterwards,
+    so a task fails either way, but a caller inside this process --
+    run's batch is one -- reads the dict and never sees that
+    promotion. Both halves of the answer travel on both transports.
+    """
+    plugin.module_answer = {
+        "rc": 1,
+        "failed": True,
+        "msg": "non-zero return code",
+        "stdout": "",
+        "stderr": "",
+    }
+
+    native = _run(plugin, {"cmd": "false", "raw": False})
+    raw = _run(plugin, {"cmd": "false", "raw": True})
+
+    assert native["failed"] is True
+    assert raw["failed"] == native["failed"]
+    assert raw["msg"] == native["msg"] == "non-zero return code"
 
 
 def test_a_raw_run_reports_its_timing_as_text(plugin) -> None:

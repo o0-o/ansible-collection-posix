@@ -209,10 +209,19 @@ class ActionModule(PosixActionBase, ActionBase):
         self.result.setdefault("stdout_lines", [])
         self.result.setdefault("stderr_lines", [])
 
+        # A status is not a verdict until the result names it one. The
+        # native module names it -- it fails on a non-zero status and
+        # says so in the dict it hands back -- and the task layer would
+        # promote the status on its own afterwards, but a caller inside
+        # this process reads the dict and never sees that promotion. So
+        # the raw path names the failure in both places the native path
+        # does, and one answer serves either transport.
         if self.result["rc"] != 0:
+            self.result["failed"] = True
             self.result["msg"] = "non-zero return code"
         else:
             # Clear any error messages from previous attempts
+            self.result["failed"] = False
             self.result["msg"] = ""
 
         return

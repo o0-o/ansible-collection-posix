@@ -30,8 +30,10 @@
           ansible.builtin.assert:
             that:
               - ansible_failed_result is failed
-              # fail_fast uses shell's set -e which exits immediately,
-              # causing output parsing to fail
+              # fail_fast is the shell's set -e: the batch comes home
+              # with the status of the command that took it down, and
+              # the batch fails on that status rather than on the
+              # output the abort cut short
               - "'Batch execution failed' in ansible_failed_result['msg']"
 
     - name: 'Fail: Test command failure without fail_fast'

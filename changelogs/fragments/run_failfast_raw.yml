@@ -1,0 +1,24 @@
+# vim: ts=2:sw=2:sts=2:et:ft=yaml.ansible
+# -*- mode: yaml; yaml-indent-offset: 2; indent-tabs-mode: nil; -*-
+---
+bugfixes:
+  - >-
+    command - a command that exits non-zero on the raw transport now
+    names the failure in the result, as the native transport has
+    always done. The raw path composed the message and left the
+    verdict to the task layer, which promotes a non-zero status on its
+    own; a caller inside the process reads the dict instead and saw a
+    command that failed reported as one that had not
+    (https://github.com/o0-o/ansible-collection-posix/pull/XXX).
+  - >-
+    run - a ``fail_fast`` batch that a command cut short fails the
+    same way on both transports. ``set -e`` takes the script down with
+    the command that failed, and everything after it, including the
+    output the parser was to read; on a host with no interpreter the
+    status saying so went unread, so the batch stumbled over the
+    truncated stream and reported a parse error rather than the
+    failure that caused it. Both transports raise ``Batch execution
+    failed: non-zero return code`` now. A batch that is not
+    ``fail_fast`` runs to completion and exits zero as before, and
+    each command still carries its own status
+    (https://github.com/o0-o/ansible-collection-posix/pull/XXX).
