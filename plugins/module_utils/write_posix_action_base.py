@@ -437,7 +437,7 @@ class WritePosixActionBase(ReadPosixActionBase):
     def _compare_content_and_perms(
         self,
         dest: str,
-        lines: List[str],
+        content: str,
         perms: Optional[Dict[str, Any]] = None,
         selinux: bool = False,
         task_vars: Optional[Dict[str, Any]] = None,
@@ -445,8 +445,15 @@ class WritePosixActionBase(ReadPosixActionBase):
         """
         Compare existing file contents and permissions to desired state.
 
+        The comparison is of bytes, not of lines. Splitting both sides
+        into lines answers a different question than the one idempotence
+        asks: ``abc`` and ``abc\\n`` split alike, so a destination that
+        differed from the content only in its final newline was reported
+        unchanged and left as it was.
+
         :param str dest: Path to destination file on the remote host
-        :param List[str] lines: Desired content lines to compare
+        :param str content: Desired content, as the byte stream
+            ``_normalize_content`` produced
         :param Optional[dict] perms: Desired permissions dict (may
             include owner, group, mode, etc.)
         :param bool selinux: Whether SELinux attributes are in use
@@ -487,8 +494,14 @@ class WritePosixActionBase(ReadPosixActionBase):
             old_lines = old_content.splitlines()
         self._display.vvv(f"Old lines: {old_lines}")
 
-        if lines != old_lines:
-            self._display.vvv("Content changed (lines comparison)")
+        # Read hands back the file's bytes, so the desired bytes are
+        # what they are measured against. The one thing read does not
+        # report is a carriage return, which it flattens out of the
+        # content it returns, so the desired content is flattened the
+        # same way rather than compared against a difference no read
+        # could ever see.
+        if content.replace("\r", "") != old_content:
+            self._display.vvv("Content changed")
             changed = True
 
         old_perms = self._get_perms(dest, selinux=selinux, task_vars=task_vars)
@@ -729,7 +742,7 @@ class WritePosixActionBase(ReadPosixActionBase):
 
         # Compare old and new
         changed, old_content, old_lines = self._compare_content_and_perms(
-            dest, lines, perms, selinux, task_vars=task_vars
+            dest, content, perms, selinux, task_vars=task_vars
         )
         result["changed"] = changed
 

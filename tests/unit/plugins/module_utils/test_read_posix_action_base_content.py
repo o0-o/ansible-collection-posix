@@ -315,6 +315,46 @@ class TestAddContentWithEncoding:
             "lines": [],
         }
 
+    @pytest.mark.parametrize(
+        "raw,expected_lines",
+        [
+            # A terminated file keeps its terminator
+            ("abc\n", ["abc"]),
+            # An unterminated one is not given one
+            ("abc", ["abc"]),
+            # Trailing spaces on the last line are content
+            ("abc   \n", ["abc   "]),
+            ("abc   ", ["abc   "]),
+            # A file holding one newline is not an empty file
+            ("\n", [""]),
+            ("", []),
+            # A blank line at the end survives as the newline pair
+            # that makes it
+            ("abc\n\n", ["abc", ""]),
+        ],
+    )
+    def test_trailing_bytes_are_content(
+        self, action, raw, expected_lines
+    ) -> None:
+        """Test the file's real trailing bytes reach content untouched.
+
+        The cat these bytes arrive from opts out of run's strip, so
+        what this seam is handed is what the file holds. Lines are
+        unaffected: splitlines drops the terminator either way.
+        """
+        attributes = {}
+
+        action._add_content_with_encoding(
+            attributes,
+            raw,
+            "utf-8",
+            "/tmp/f",
+            {"content": True, "lines": True},
+        )
+
+        assert attributes["content"] == raw
+        assert attributes["lines"] == expected_lines
+
     def test_latin1_content_decodes_from_surrogates(self, action) -> None:
         """Test surrogate escaped bytes decode under iso-8859-1."""
         attributes = {}

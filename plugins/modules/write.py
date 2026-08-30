@@ -45,6 +45,9 @@ description:
     by design. The bytes given, copied, or rendered are the bytes
     written, and a trailing newline is never appended, stripped, or
     otherwise altered.
+  - Idempotence is decided on the destination's bytes, so a file that
+    differs from the content in its final newline alone is a change
+    and is corrected.
   - The C(line) and C(block) families write a POSIX text file by
     design. Every line they write is terminated with a newline, the
     last one included, whatever the destination held before.

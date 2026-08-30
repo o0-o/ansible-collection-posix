@@ -437,6 +437,56 @@ def test_parse_batch_output_no_strip(plugin) -> None:
     assert result[0]["stdout"] == "hello\n\n"
 
 
+def test_parse_batch_output_request_strip_overrides_action(plugin) -> None:
+    """Test a request's own strip governs that command alone."""
+    plugin.strip = True
+    output = (
+        "0\n1735689600\n1735689601\n7 /tmp/0.stdout\nbytes\n\n"
+        "0 /tmp/0.stderr\n"
+        "0\n1735689600\n1735689601\n7 /tmp/1.stdout\nanswer\n"
+        "0 /tmp/1.stderr\n"
+    )
+    command_requests = [
+        {"command": ["cat", "/f"], "strip": False},
+        {"command": ["file", "-b", "/f"]},
+    ]
+
+    result = plugin._parse_batch_output(output, command_requests)
+
+    assert result[0]["stdout"] == "bytes\n\n"
+    assert result[1]["stdout"] == "answer"
+
+
+def test_parse_batch_output_request_strip_can_ask_for_stripping(
+    plugin,
+) -> None:
+    """Test a request may strip while the action does not."""
+    plugin.strip = False
+    output = (
+        "0\n1735689600\n1735689601\n7 /tmp/0.stdout\nanswer\n"
+        "0 /tmp/0.stderr\n"
+    )
+    command_requests = [{"command": "echo answer", "strip": True}]
+
+    result = plugin._parse_batch_output(output, command_requests)
+
+    assert result[0]["stdout"] == "answer"
+
+
+def test_parse_batch_output_request_strip_governs_stderr(plugin) -> None:
+    """Test a request's strip covers its stderr as well as its stdout."""
+    plugin.strip = True
+    output = (
+        "0\n1735689600\n1735689601\n0 /tmp/0.stdout\n"
+        "6 /tmp/0.stderr\nnoise\n"
+    )
+    command_requests = [{"command": ["cat", "/f"], "strip": False}]
+
+    result = plugin._parse_batch_output(output, command_requests)
+
+    assert result[0]["stderr"] == "noise\n"
+
+
 def test_parse_batch_output_skips_leading_whitespace(plugin) -> None:
     """Test _parse_batch_output skips leading whitespace in output."""
     plugin.strip = True

@@ -59,6 +59,7 @@ options:
   content:
     description:
       - Include file content with encoding detection.
+      - The content is the file's bytes, trailing newline included.
       - Binary content is returned base64 encoded.
       - Only regular files are read. A directory, symlink, FIFO, socket
         or device is reported with no C(content) key and no error; its
@@ -437,6 +438,11 @@ paths:
         content:
           description:
             - Decoded file content using the reported encoding.
+            - The file's bytes as they stand. A file ending in a
+              newline reports that newline, and spaces at the end of
+              the last line survive; nothing is trimmed on the way
+              back. Code comparing this against a literal has to
+              spell the terminator out.
             - Only regular files are read, so any other type is
               reported without this key.
           type: str

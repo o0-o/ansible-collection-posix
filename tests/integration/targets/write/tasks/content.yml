@@ -265,3 +265,132 @@
       - content_now['lines'] == content_update.splitlines()
   vars:
     content_now: "{{ content_force_read_reg['paths'][content_dest] }}"
+
+# A destination that differs from the content in its final newline
+# alone differs, in both directions. Both sides split into the same
+# one line, so the comparison saw nothing and the write declined; it
+# is the file's bytes that are compared now. The seeds are laid by
+# write itself, whose content family lands what it is handed and
+# terminates nothing.
+- name: Seed the terminated file the unterminated write must correct
+  o0_o.posix.write:
+    dest: "{{ content_newline_dest }}"
+    content: "{{ content_termed }}"
+    mode: '0644'
+    raw: "{{ raw }}"
+  check_mode: false
+
+- name: Write the same bytes without the terminator
+  o0_o.posix.write:
+    dest: "{{ content_newline_dest }}"
+    content: "{{ content_untermed }}"
+    mode: '0644'
+    raw: "{{ raw }}"
+  register: content_untermed_reg
+
+- name: Read the file back after the terminator was dropped
+  o0_o.posix.read:
+    path: "{{ content_newline_dest }}"
+    attributes: true
+    content: true
+  check_mode: false
+  register: content_untermed_read_reg
+
+- name: Assert dropping the final newline is reported as a change
+  ansible.builtin.assert:
+    that:
+      - content_untermed_reg is changed
+      - content_untermed_reg['raw'] == raw
+
+- name: Assert the terminator is gone from the file
+  ansible.builtin.assert:
+    that:
+      - content_now['content'] == content_untermed
+      - content_now['size']['bytes'] == content_untermed | length
+  vars:
+    content_now: >-
+      {{ content_untermed_read_reg['paths'][content_newline_dest] }}
+  when: not check
+
+- name: Assert check mode left the terminator where it found it
+  ansible.builtin.assert:
+    that:
+      - content_now['content'] == content_termed
+      - content_now['size']['bytes'] == content_termed | length
+  vars:
+    content_now: >-
+      {{ content_untermed_read_reg['paths'][content_newline_dest] }}
+  when: check
+
+- name: Seed the unterminated file the terminated write must correct
+  o0_o.posix.write:
+    dest: "{{ content_newline_dest }}"
+    content: "{{ content_untermed }}"
+    mode: '0644'
+    raw: "{{ raw }}"
+  check_mode: false
+
+- name: Write the same bytes with a terminator
+  o0_o.posix.write:
+    dest: "{{ content_newline_dest }}"
+    content: "{{ content_termed }}"
+    mode: '0644'
+    raw: "{{ raw }}"
+  register: content_termed_reg
+
+- name: Read the file back after the terminator was added
+  o0_o.posix.read:
+    path: "{{ content_newline_dest }}"
+    attributes: true
+    content: true
+  check_mode: false
+  register: content_termed_read_reg
+
+- name: Assert adding a final newline is reported as a change
+  ansible.builtin.assert:
+    that:
+      - content_termed_reg is changed
+      - content_termed_reg['raw'] == raw
+
+- name: Assert the terminator is on the file
+  ansible.builtin.assert:
+    that:
+      - content_now['content'] == content_termed
+      - content_now['size']['bytes'] == content_termed | length
+  vars:
+    content_now: >-
+      {{ content_termed_read_reg['paths'][content_newline_dest] }}
+  when: not check
+
+- name: Assert check mode never added the terminator
+  ansible.builtin.assert:
+    that:
+      - content_now['content'] == content_untermed
+      - content_now['size']['bytes'] == content_untermed | length
+  vars:
+    content_now: >-
+      {{ content_termed_read_reg['paths'][content_newline_dest] }}
+  when: check
+
+- name: Settle the destination at the terminated content
+  o0_o.posix.write:
+    dest: "{{ content_newline_dest }}"
+    content: "{{ content_termed }}"
+    mode: '0644'
+    raw: "{{ raw }}"
+  check_mode: false
+
+- name: Write the terminated content over the bytes it already holds
+  o0_o.posix.write:
+    dest: "{{ content_newline_dest }}"
+    content: "{{ content_termed }}"
+    mode: '0644'
+    raw: "{{ raw }}"
+  check_mode: false
+  register: content_newline_idempotent_reg
+
+- name: Assert a write matching the file byte for byte reports no change
+  ansible.builtin.assert:
+    that:
+      - content_newline_idempotent_reg is not changed
+      - content_newline_idempotent_reg['msg'] == 'File not changed'

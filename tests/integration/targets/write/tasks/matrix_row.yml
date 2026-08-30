@@ -28,6 +28,13 @@
         content_witness: "{{ content_dir }}/witness.conf"
         content_predict_dir: "{{ content_dir }}/predicted"
         content_predict_dest: "{{ content_predict_dir }}/app.conf"
+        content_newline_dest: "{{ content_dir }}/newline.conf"
+        # The pair whose only difference is the final newline. Written
+        # in double quotes so the terminator is a real byte, and named
+        # here so the assertions compare against the same bytes the
+        # writes were handed.
+        content_termed: "abc\n"
+        content_untermed: "abc"
         content_seed: |
           # managed by o0_o.posix.write
           setting_one = true

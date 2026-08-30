@@ -424,7 +424,7 @@ class TestGetContentCommands:
         commands = action._get_content_commands(["/f"], {"content": True})
 
         assert commands == {
-            "/f_cat": ["cat", "/f"],
+            "/f_cat": {"command": ["cat", "/f"], "strip": False},
             "/f_encoding": ["file", "-b", "--mime-encoding", "/f"],
             "/f_encoding_bsd": ["file", "-b", "-I", "/f"],
             "/f_encoding_desc": ["file", "-b", "/f"],
@@ -436,7 +436,17 @@ class TestGetContentCommands:
             ["/f"], {"content": True, "encoding": "utf-8"}
         )
 
-        assert commands == {"/f_cat": ["cat", "/f"]}
+        assert commands == {
+            "/f_cat": {"command": ["cat", "/f"], "strip": False}
+        }
+
+    def test_cat_alone_opts_out_of_strip(self, action) -> None:
+        """Test only the cat asks run to leave its output alone."""
+        commands = action._get_content_commands(["/f"], {"content": True})
+
+        assert commands["/f_cat"]["strip"] is False
+        for key in ("/f_encoding", "/f_encoding_bsd", "/f_encoding_desc"):
+            assert not isinstance(commands[key], dict)
 
     def test_lines_implies_content(self, action) -> None:
         """Test requesting lines pulls in the content commands."""
@@ -577,7 +587,9 @@ class TestRunContentCommands:
             ["/reg", "/fifo"], {"content": True, "encoding": "utf-8"}, results
         )
 
-        assert action.batches == [{"/reg_cat": ["cat", "/reg"]}]
+        assert action.batches == [
+            {"/reg_cat": {"command": ["cat", "/reg"], "strip": False}}
+        ]
         assert counts == {"count": 4, "batches": 1}
         # The content results join the first batch's so the caller
         # processes one dictionary

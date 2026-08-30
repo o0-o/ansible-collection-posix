@@ -53,11 +53,33 @@
         read_regular_content_reg['paths'][read_regular_path]['encoding']
         is defined
       - >-
-        'quick brown fox' in
         read_regular_content_reg['paths'][read_regular_path]['content']
+        == read_regular_content
       - >-
         read_regular_content_reg['paths'][read_regular_path]['hardlinks']
         == 1
+
+# A file's content is its bytes. Nothing is trimmed on the way back:
+# the cat that reads it asks run to leave its output alone, because
+# the trailing whitespace the shell convention discards is data here.
+- name: Read a file whose trailing bytes are the point
+  o0_o.posix.read:
+    path: "{{ read_trailing_path }}"
+    attributes: true
+    content: true
+    lines: true
+  register: read_trailing_reg
+
+- name: Assert the file's real trailing bytes come back
+  ansible.builtin.assert:
+    that:
+      - read_trailing_now['content'] == read_trailing_content
+      - read_trailing_now['size']['bytes'] == read_trailing_content | length
+      # Lines are unchanged by any of it: a terminator is not a line,
+      # and a blank line before it is
+      - read_trailing_now['lines'] == ['keeps   ', 'its bytes', '']
+  vars:
+    read_trailing_now: "{{ read_trailing_reg['paths'][read_trailing_path] }}"
 
 - name: Read regular file without content
   o0_o.posix.read:

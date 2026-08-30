@@ -35,22 +35,32 @@
     read_binary_path: "{{ read_dir_path }}/binary.bin"
     read_directory_path: "{{ read_dir_path }}/subdir"
     read_fifo_path: "{{ read_dir_path }}/special.fifo"
+    read_trailing_path: "{{ read_dir_path }}/trailing.txt"
+
+# Written in double quotes so every escape below is a real byte on the
+# target, and named here so the assertions compare a read against the
+# bytes the fixture was written from.
+- name: Name the bytes the content fixtures hold
+  ansible.builtin.set_fact:
+    read_regular_content: "The quick brown fox\njumps over the lazy dog"
+    # A terminated last line, a blank line before it, and spaces at
+    # the end of a line: everything the shell convention would eat
+    read_trailing_content: "keeps   \nits bytes\n\n"
 
 # The checksums asserted downstream are of these two lines with no
-# newline after the second, and write always terminates what it lands
-# with one, so the bytes are laid down by printf instead
+# newline after the second. write's content family lands the bytes it
+# is handed and terminates nothing, so it lays the fixture down itself.
 - name: Create regular file with known content
-  o0_o.posix.command:
-    cmd: >-
-      printf 'The quick brown fox\njumps over the lazy dog'
-      > {{ read_regular_path }}
-    _uses_shell: true
-
-- name: Hold the regular file at the mode the assertions expect
   o0_o.posix.write:
     dest: "{{ read_regular_path }}"
-    state: touch
+    content: "{{ read_regular_content }}"
     mode: '0640'
+
+- name: Create file whose trailing bytes are the point
+  o0_o.posix.write:
+    dest: "{{ read_trailing_path }}"
+    content: "{{ read_trailing_content }}"
+    mode: '0644'
 
 - name: Create hard link to regular file
   o0_o.posix.command:

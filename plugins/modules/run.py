@@ -44,6 +44,10 @@ options:
       - Dict commands can also include C(rc), C(stdout), or C(stderr)
         to override the parsed command output (useful for suppressing
         errors or stderr).
+      - Dict commands support C(strip) to override I(strip) for that
+        one command. A command whose output is a file's bytes rather
+        than a shell answer sets C(strip=false), since the trailing
+        whitespace the shell convention discards is data there.
       - This allows passing C(process_command_spec) output directly.
     type: raw
     required: true
@@ -76,6 +80,8 @@ options:
     description:
       - Strip trailing whitespace from stdout and stderr of each command.
       - When C(true), trailing newlines and spaces are removed.
+      - A dict command carrying its own C(strip) key overrides this for
+        that command alone.
     type: bool
     default: true
   raw:

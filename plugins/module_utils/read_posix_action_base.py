@@ -374,6 +374,13 @@ class ReadPosixActionBase(PosixActionBase):
         answer is only ever consumed for a regular file, so asking
         about anything else is wasted work.
 
+        The cat is the one command here whose output is not a shell
+        answer, so it is the one command that opts out of run's strip.
+        A file's trailing newline and the spaces at the end of its last
+        line are content, not the punctuation the ``$()`` convention
+        discards. The probes beside it keep the default: what file
+        prints is an answer, and every reader of one trims it anyway.
+
         :param list[str] paths: Paths that proved to be regular files
         :param dict[str, Any] options: Options dict with keys: content,
             lines, encoding
@@ -401,8 +408,11 @@ class ReadPosixActionBase(PosixActionBase):
                 commands[f"{path}_encoding_bsd"] = ["file", "-b", "-I", path]
                 # OpenBSD/fallback: file -b (descriptive text)
                 commands[f"{path}_encoding_desc"] = ["file", "-b", path]
-            # Always need cat to read the content
-            commands[f"{path}_cat"] = ["cat", path]
+            # Always need cat to read the content, byte for byte
+            commands[f"{path}_cat"] = {
+                "command": ["cat", path],
+                "strip": False,
+            }
 
         return commands
 

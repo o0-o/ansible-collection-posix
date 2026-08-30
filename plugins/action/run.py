@@ -64,6 +64,12 @@ class ActionModule(PosixActionBase, ActionBase):
         metadata (implementation, type, parser, validator, etc.) from
         process_command_spec output.
 
+        A request may carry its own ``strip``, which governs that one
+        command's stdout and stderr and leaves the rest of the batch on
+        the action's setting. A command whose output is a file's bytes
+        rather than a shell answer asks for it: the trailing whitespace
+        the shell convention discards is data there.
+
         :param str output: Raw batch output string from shell execution
         :param list[dict[str, Any]] command_requests: Command request dicts
             that were executed. Each is merged with its result.
@@ -91,6 +97,9 @@ class ActionModule(PosixActionBase, ActionBase):
             offset += 1
 
         for i, request in enumerate(command_requests):
+            # A request may opt its own output out of the strip the
+            # action asked for
+            strip = request.get("strip", self.strip)
             # Start with defaults, will be overwritten by parsed values.
             # Request values take precedence via update() in finally block.
             command_result = {
@@ -168,7 +177,7 @@ class ActionModule(PosixActionBase, ActionBase):
                 # Read exactly stdout_len bytes
                 stdout_bytes = output_bytes[offset : offset + stdout_len]
                 stdout = to_text(stdout_bytes, errors="surrogate_or_strict")
-                if self.strip:
+                if strip:
                     stdout = stdout.rstrip()
                 command_result["stdout"] = stdout
                 command_result["stdout_lines"] = (
@@ -199,7 +208,7 @@ class ActionModule(PosixActionBase, ActionBase):
                 # Read exactly stderr_len bytes
                 stderr_bytes = output_bytes[offset : offset + stderr_len]
                 stderr = to_text(stderr_bytes, errors="surrogate_or_strict")
-                if self.strip:
+                if strip:
                     stderr = stderr.rstrip()
                 command_result["stderr"] = stderr
                 command_result["stderr_lines"] = (

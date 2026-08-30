@@ -23,6 +23,20 @@ import pytest
         ({"exists": True}, "same\n", {}, "same\n", {}, False, False),
         # File exists, content differs: change
         ({"exists": True}, "old\n", {}, "new\n", {}, False, True),
+        # Only the final newline differs, either direction: change.
+        # Both sides split into the same one line, which is what the
+        # comparison used to be blind to
+        ({"exists": True}, "abc\n", {}, "abc", {}, False, True),
+        ({"exists": True}, "abc", {}, "abc\n", {}, False, True),
+        # Only trailing spaces on the last line differ: change
+        ({"exists": True}, "abc  \n", {}, "abc\n", {}, False, True),
+        # An empty destination against empty content: no change
+        ({"exists": True}, "", {}, "", {}, False, False),
+        # An empty destination against a bare newline: change
+        ({"exists": True}, "", {}, "\n", {}, False, True),
+        # A carriage return is what read cannot report, so content
+        # carrying one still compares equal to the file read describes
+        ({"exists": True}, "a\nb\n", {}, "a\r\nb\r\n", {}, False, False),
         # File exists, perms differ: change
         (
             {"exists": True},
@@ -139,7 +153,7 @@ def test_compare_content_and_perms(
     if expect_change == "error":
         with pytest.raises(RuntimeError):
             write_base._compare_content_and_perms(
-                lines=content.splitlines(),
+                content=content,
                 dest=dest,
                 perms=perms,
                 selinux=selinux,
@@ -148,7 +162,7 @@ def test_compare_content_and_perms(
     else:
         ret_changed, ret_content, ret_lines = (
             write_base._compare_content_and_perms(
-                lines=content.splitlines(),
+                content=content,
                 dest=dest,
                 perms=perms,
                 selinux=selinux,

@@ -1,0 +1,46 @@
+# vim: ts=2:sw=2:sts=2:et:ft=yaml.ansible
+# -*- mode: yaml; yaml-indent-offset: 2; indent-tabs-mode: nil; -*-
+---
+breaking_changes:
+  - >-
+    read - text content is the file's bytes now, trailing newline and
+    all. The cat that reads a file went out under run's default strip,
+    which is the shell's ``$()`` convention and right for a command's
+    answer, and wrong for a file: it ate the terminator and any spaces
+    at the end of the last line. That cat asks for ``strip=false``
+    now, alone in its batch - the encoding probes beside it are
+    answers and keep the default. Anyone comparing ``content`` against
+    a literal exactly has to spell the terminator out; ``lines`` is
+    unchanged, since a terminator was never a line
+    (https://github.com/o0-o/ansible-collection-posix/pull/XXX).
+bugfixes:
+  - >-
+    write - a destination differing from the content in its final
+    newline alone is a difference, and is corrected. Idempotence
+    compared the two as lines, which is a different question -
+    ``abc`` and ``abc\n`` split alike - so writing either over the
+    other reported no change and left the file as it was, in both
+    directions. The comparison is of bytes now, which is what read
+    hands back
+    (https://github.com/o0-o/ansible-collection-posix/pull/XXX).
+  - >-
+    write - ``remote_src`` copies keep the source file's trailing
+    newline. The copy is made from what read returns, so it lost the
+    terminator the source carried
+    (https://github.com/o0-o/ansible-collection-posix/pull/XXX).
+  - >-
+    write - a ``line`` or ``block`` edit of a file whose last line
+    carries no terminator now terminates it, reporting the change
+    once and settling after. Those two families write POSIX text by
+    design, and an unterminated destination was never the text they
+    promise; the lines comparison could not see the difference to say
+    so
+    (https://github.com/o0-o/ansible-collection-posix/pull/XXX).
+minor_changes:
+  - >-
+    run - a dict command may carry its own ``strip``, governing that
+    one command's output and leaving the rest of the batch on the
+    action's setting. A batch that mixes a file's bytes with commands'
+    answers needs both, and splitting it in two would spend a round
+    trip to say so
+    (https://github.com/o0-o/ansible-collection-posix/pull/XXX).
