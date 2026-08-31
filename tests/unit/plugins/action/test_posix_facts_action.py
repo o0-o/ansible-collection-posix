@@ -109,9 +109,6 @@ PRODUCER_FACTS = {
         },
         "o0_shells": {"/bin/sh": {"builtins": ["cd", "exec"]}},
     },
-    # The environment processor answers with the raw variables; run()
-    # is what keys them under the effective uid.
-    "environment": {"HOME": "/var/root", "LANG": "en_US.UTF-8"},
 }
 
 
@@ -327,7 +324,7 @@ class TestResolveSubsets:
         """Test subset resolution for 'all'."""
         selected = plugin._resolve_subsets(["all"])
         assert "uname" in selected
-        assert "environment" in selected
+        assert "users" in selected
         assert "dmidecode" in selected
         assert "compliance" in selected
 
@@ -336,7 +333,6 @@ class TestResolveSubsets:
         selected = plugin._resolve_subsets(["min"])
         assert selected == {
             "uname",
-            "environment",
             "timezone",
             "compliance",
         }
@@ -383,10 +379,16 @@ class TestResolveSubsets:
         selected = plugin._resolve_subsets(["timezone"])
         assert selected == {"timezone"}
 
-    def test_environment_subset(self, plugin) -> None:
-        """Test environment is a valid subset."""
-        selected = plugin._resolve_subsets(["environment"])
-        assert selected == {"environment"}
+    def test_environment_is_retired(self, plugin) -> None:
+        """Test the retired subset is refused by name.
+
+        An environment is what a login shell built out of the files it
+        read, so it belongs to the shell and the home that built it.
+        Nothing succeeded the subset: o0_shells carries the answer per
+        pair, and o0_o.posix.env answers for a session.
+        """
+        with pytest.raises(AnsibleActionFail, match="Invalid gather_subset"):
+            plugin._resolve_subsets(["environment"])
 
     def test_all_is_every_subset(self, plugin) -> None:
         """Test 'all' resolves to every subset there is, which it can
@@ -561,9 +563,13 @@ class TestMergeFacts:
 class TestBatchedExecution:
     """Tests for the batched COMMAND_SPEC path."""
 
-    def test_environment_in_batched(self, plugin) -> None:
-        """Test environment is a batched subset."""
-        assert "environment" in plugin.SUBSETS
+    def test_environment_is_no_subset_at_all(self, plugin) -> None:
+        """Test the table names no environment, in either polarity."""
+        assert "environment" not in plugin.SUBSETS
+        assert all(
+            "environment" not in group
+            for group in plugin.SUBSET_GROUPS.values()
+        )
 
     def test_every_subset_is_batched(self, plugin) -> None:
         """Test one table names every subset, so no subset gathers
@@ -581,159 +587,65 @@ class TestBatchedExecution:
         """Test locale is not a separate subset."""
         assert "locale" not in plugin.SUBSETS
 
-    def test_timezone_in_batched_system_scoped(self, plugin) -> None:
-        """Test timezone is batched and system-scoped."""
-        assert "timezone" in plugin.SUBSETS
-        assert "timezone" not in plugin.USER_SCOPED_SUBSETS
+    def test_timezone_in_batched(self, plugin) -> None:
+        """Test timezone is a batched subset.
 
-    def test_run_environment_keys_by_uid(self, monkeypatch, plugin) -> None:
-        """Test the locale is keyed under the effective uid.
-
-        The variables it was derived from are not published as a field
-        of the user. An environment is what a login shell built out of
-        the files it read, so o0_shells files it per pair rather than
-        once for whichever identity the gather was handed.
+        Every subset here is system-scoped now. Nothing observes an
+        identity except the shell probes, which file what they observe
+        on the pair that produced it rather than on a user.
         """
-        plugin._task.args = {"gather_subset": ["!all", "environment"]}
-        _mock_effective_uid(monkeypatch, 1000)
+        assert "timezone" in plugin.SUBSETS
+        assert not hasattr(plugin, "USER_SCOPED_SUBSETS")
 
-        def mock_run(commands, **kwargs):
-            return []
-
-        monkeypatch.setattr(plugin, "_run", mock_run)
-
-        def mock_processor(results):
-            return (
-                {
-                    "HOME": "/home/testuser",
-                    "LANG": "en_US.UTF-8",
-                },
-                [],
-            )
-
-        monkeypatch.setitem(
-            plugin.SUBSETS["environment"],
-            "processor",
-            mock_processor,
-        )
-
-        result = plugin.run(tmp=None, task_vars={})
-
-        user_facts = result["ansible_facts"]["o0_users"]["1000"]
-        assert user_facts["uid"] == 1000
-        assert user_facts["locale"] == "en_US.UTF-8"
-        assert "environment" not in user_facts
-
-    def test_id_shape_is_int_under_a_string_key(
+    def test_the_uid_rides_with_the_users_subset(
         self, monkeypatch, plugin
     ) -> None:
-        """Test the identity a gather composes is one shape: the uid
-        is an integer field under its own stringified key, with
-        nothing flipping between the two forms.
+        """Test the effective uid is asked for where it is needed.
 
-        This one drives the real id -u parse rather than stubbing the
-        uid in, so the whole path from what the host printed to what
-        is published is pinned.
+        It publishes nothing of its own now. What it is for is the
+        shell probes: a run that cannot drop into somebody else's
+        login observes the one it is already inside, and whose login
+        that is comes from the passwd entry filed under that uid.
+
+        This drives the real id -u parse rather than stubbing the uid
+        in, so the whole path from what the host printed to which pair
+        gets probed is pinned.
         """
-        plugin._task.args = {"gather_subset": ["!all", "environment"]}
+        _mock_read(monkeypatch, plugin)
+        batches = []
 
         def mock_run(commands, **kwargs):
-            answers = []
+            batches.append(commands)
+            answered = _answer_files(commands, ETC)
             for request in commands:
                 if request["type"] == "effective_uid":
-                    stdout = "1000"
-                else:
-                    stdout = {"LANG": "en_US.UTF-8"}.get(
-                        request["args"]["env"], ""
+                    answered.append(
+                        dict(
+                            request,
+                            rc=0,
+                            stdout="1000",
+                            stdout_lines=["1000"],
+                            stderr="",
+                            stderr_lines=[],
+                        )
                     )
-                answers.append(
-                    dict(
-                        request,
-                        rc=0,
-                        stdout=stdout,
-                        stdout_lines=[stdout],
-                        stderr="",
-                        stderr_lines=[],
-                    )
-                )
-            return answers
+            return answered
 
         monkeypatch.setattr(plugin, "_run", mock_run)
+        # A run that is not root cannot drop, so the pair it observes
+        # is its own, named from the passwd entry rather than answered
+        # by the probe
+        monkeypatch.setattr(plugin, "_login_identities", lambda: [])
 
-        users = plugin.run(tmp=None, task_vars={})["ansible_facts"]["o0_users"]
+        _gather(plugin, "users")
 
-        assert list(users) == ["1000"]
-        assert users["1000"]["uid"] == 1000
-        assert isinstance(users["1000"]["uid"], int)
-        assert users["1000"]["locale"] == "en_US.UTF-8"
+        probed = [
+            (request["args"]["shell"], request["args"]["home"])
+            for request in batches[1]
+            if request["type"] == "shell_config"
+        ]
 
-    def test_environment_dropped_without_uid(
-        self, monkeypatch, plugin
-    ) -> None:
-        """Test environment facts are dropped when id -u did not
-        answer, since the canonical key is the uid."""
-        plugin._task.args = {"gather_subset": ["!all", "environment"]}
-        _mock_effective_uid(monkeypatch, None)
-
-        monkeypatch.setattr(plugin, "_run", lambda commands, **kwargs: [])
-        monkeypatch.setitem(
-            plugin.SUBSETS["environment"],
-            "processor",
-            lambda results: ({"LANG": "C"}, []),
-        )
-
-        result = plugin.run(tmp=None, task_vars={})
-
-        assert result["ansible_facts"] == {}
-
-    def test_locale_defaults_to_ascii(self, monkeypatch, plugin) -> None:
-        """Test locale falls back to ASCII when LANG/LC_ALL
-        unset."""
-        plugin._task.args = {"gather_subset": ["!all", "environment"]}
-        _mock_effective_uid(monkeypatch, 1000)
-
-        def mock_run(commands, **kwargs):
-            return []
-
-        monkeypatch.setattr(plugin, "_run", mock_run)
-
-        def mock_processor(results):
-            return ({"HOME": "/home/testuser"}, [])
-
-        monkeypatch.setitem(
-            plugin.SUBSETS["environment"],
-            "processor",
-            mock_processor,
-        )
-
-        result = plugin.run(tmp=None, task_vars={})
-
-        user_facts = result["ansible_facts"]["o0_users"]["1000"]
-        assert user_facts["locale"] == "ASCII"
-
-    def test_locale_c_becomes_ascii(self, monkeypatch, plugin) -> None:
-        """Test C locale is translated to ASCII."""
-        plugin._task.args = {"gather_subset": ["!all", "environment"]}
-        _mock_effective_uid(monkeypatch, 0)
-
-        def mock_run(commands, **kwargs):
-            return []
-
-        monkeypatch.setattr(plugin, "_run", mock_run)
-
-        def mock_processor(results):
-            return ({"LANG": "C"}, [])
-
-        monkeypatch.setitem(
-            plugin.SUBSETS["environment"],
-            "processor",
-            mock_processor,
-        )
-
-        result = plugin.run(tmp=None, task_vars={})
-
-        user_facts = result["ansible_facts"]["o0_users"]["0"]
-        assert user_facts["locale"] == "ASCII"
+        assert ("/bin/zsh", "/home/o0-o") in probed
 
 
 class TestGatherUsers:
@@ -874,6 +786,10 @@ class TestGatherUsers:
             ("cat", "/etc/shells"),
             ("getent", "passwd"),
             ("getent", "group"),
+            # Not a fact this subset publishes: it is who the shell
+            # probes ask about where they cannot drop into a login,
+            # and it rides the batch the files were already costing
+            ("id", "-u"),
         ]
 
         # One batch reads the files. The shells the subset publishes
@@ -1193,7 +1109,6 @@ class TestDefaultGather:
             "ffs"
         )
         assert gathered["o0_users"]["1000"]["name"] == "o0-o"
-        assert gathered["o0_users"]["0"]["locale"] == "en_US.UTF-8"
 
     def test_mounts_are_keyed_and_carry_capacity(self, gathered) -> None:
         """Test the gathered mounts fact is the shape the mounts
@@ -1258,13 +1173,20 @@ class TestDefaultGather:
             "origins",
         }
 
-    def test_two_producers_share_one_user(self, gathered) -> None:
-        """Test the environment subset and /etc/passwd meet in one
-        entry when they answer for the same uid."""
+    def test_a_user_entry_names_both_who_composed_it(
+        self, gathered
+    ) -> None:
+        """Test the composer and the gather both sign the entry.
+
+        One subset answers under o0_users now, and two modules produce
+        what it answers with: the composition every producer of these
+        facts shares, and the gather that ran it.
+        """
         root = gathered["o0_users"]["0"]
         assert root["name"] == "root"
         assert root["uid"] == 0
-        assert root["locale"] == "en_US.UTF-8"
+        assert "o0_o.posix.users" in root["origins"]
+        assert "o0_o.posix.facts" in root["origins"]
 
 
 class TestRun:

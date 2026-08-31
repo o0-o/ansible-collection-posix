@@ -458,13 +458,13 @@
       a user entry carries limits or a mask: {{ limited }} and
       {{ masked }}
 
-# An environment is what a login shell built out of the files it read,
-# so it belongs to the shell and the home that built it. Published on
-# the user it named one identity - whichever one the gather happened
-# to be handed - and called it that user's. o0_shells files it per
-# pair, for every identity the gather could reach, and the one answer
-# about the user that comes out of the probe is the locale.
-- name: Assert no user carries an environment, and one carries a locale
+# An environment, and the locale derived from it, are what a login
+# shell built out of the files it read, so both belong to the shell and
+# the home that built them. Published on the user they named one
+# identity - whichever one the gather happened to be handed - and
+# called it that user's. o0_shells files them per pair, for every
+# identity the gather could reach.
+- name: Assert no user carries an environment or a locale
   vars:
     users: "{{ facts_all_reg['ansible_facts']['o0_users'] }}"
     shells: "{{ facts_all_reg['ansible_facts']['o0_shells'] }}"
@@ -474,23 +474,27 @@
     localized: >-
       {{ users | dict2items | selectattr('value.locale', 'defined')
          | map(attribute='key') | list }}
-    envs: >-
+    rows: >-
       {{ shells | dict2items | map(attribute='value')
          | selectattr('homes', 'defined') | map(attribute='homes')
          | map('dict2items') | flatten | map(attribute='value')
-         | selectattr('env', 'defined') | map(attribute='env')
+         | list }}
+    envs: >-
+      {{ rows | selectattr('env', 'defined') | map(attribute='env')
          | list }}
   ansible.builtin.assert:
     that:
       - housed == []
-      # The locale is a fact about the user, and about the one user a
-      # run can observe it for
-      - localized == [facts_uid]
-      # And the variables are still asked, on the rows that built them
+      - localized == []
+      # And both are still asked, on the rows that built them
       - envs | length > 0
       - >-
         envs | selectattr('PATH', 'defined') | list | length
         == envs | length
+      # A locale where the host has a locale utility to ask with
+      - >-
+        rows | selectattr('locale', 'defined')
+        | rejectattr('locale', 'mapping') | list | length == 0
     fail_msg: >-
       the environment is filed in the wrong place: {{ housed }} and
       {{ localized }}

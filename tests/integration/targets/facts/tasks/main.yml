@@ -39,10 +39,10 @@
   o0_o.posix.dmidecode:
   register: facts_dmidecode_reg
 
-# The environment subset keys its answer on the effective uid, so the
-# target asks the host the same question the subset does, and by the
-# same means: a command, not an interpreter.
-- name: Ask the host for the uid the environment subset keys on
+# The shell probes ask about the identity a run cannot drop out of, and
+# the gates below name it the same way the users subset does: a
+# command, not an interpreter.
+- name: Ask the host which identity this run is
   o0_o.posix.command:
     argv:
       - id

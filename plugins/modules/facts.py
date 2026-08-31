@@ -21,9 +21,8 @@ description:
   - Gathers the kernel, hostname and architecture C(uname) reports, the
     host's timezone, its standards compliance, the configuration
     variables C(getconf) answers for, its hardware inventory, its
-    mounts and C(/etc/fstab), its users and groups, the login shells
-    it names and what running them produced, and the locale of the
-    user the play connects as.
+    mounts and C(/etc/fstab), its users and groups, and the login
+    shells it names together with what running them produced.
   - Uses efficient shell commands and file reads where possible.
   - Does not require Python on the managed host.
 options:
@@ -32,8 +31,7 @@ options:
       - List of fact subsets to gather.
       - Use C(all) to gather every subset.
       - Use C(min) for the subsets that cost one round trip and no
-        privilege - C(uname), C(environment), C(timezone) and
-        C(compliance).
+        privilege - C(uname), C(timezone) and C(compliance).
       - Use C(storage) for C(mounts) and C(fstab) together.
       - C(users) also runs the host's login shells and publishes
         C(o0_shells), because C(/etc/shells) is read where the users
@@ -59,7 +57,6 @@ options:
       - mounts
       - fstab
       - users
-      - environment
       - '!all'
       - '!min'
       - '!storage'
@@ -71,7 +68,6 @@ options:
       - '!mounts'
       - '!fstab'
       - '!users'
-      - '!environment'
   shell:
     description:
       - The shell to observe the system layer of C(o0_shells) with.
@@ -102,17 +98,16 @@ notes:
   - This module must be run via its action plugin.
   - It is designed to support bootstrapping environments where Python
     may not be available on the managed node.
-  - The user-scoped subset - C(environment) - describes the user the
-    play connects as and no other. It publishes that user's
-    C(locale) and nothing else about them.
-  - The environment variables themselves are not published as a field
-    of the user. An environment is what a login shell built out of the
-    files it read, so it belongs to the shell and the home that built
-    it, which is where C(o0_shells) files it - per pair, for every
-    identity a gather can reach, rather than once for whichever one
-    the gather happened to be handed. M(o0_o.posix.env) answers the
-    variables of the session a task runs in, where that is the
-    question.
+  - Nothing about a session is gathered here, and there is no
+    user-scoped subset. An environment and the locale derived from it
+    are what a login shell built out of the files it read, so both
+    belong to the shell and the home that built them, which is where
+    C(o0_shells) files them - per pair, for every identity a gather can
+    reach, rather than once for whichever identity the gather happened
+    to be handed and filed as though it were that user's.
+  - M(o0_o.posix.env) answers the environment of the session a task
+    runs in, where that is the question. It is a session's answer and
+    says so, rather than a fact about a user.
   - Resource limits are not gathered here. A limit belongs to the
     session that answered rather than to the host or the user, and it
     does not survive the task that read it, so it is asked for by
@@ -121,12 +116,11 @@ notes:
     published by asking for C(users). M(o0_o.posix.shells) answers
     the same shape on its own, from the same planning and the same
     composer, for a play that wants the shells and not the accounts.
-  - To gather them for a different user, run the module again as that
-    user with C(become) and C(become_user). The entry lands under
-    that user's UID in the same C(o0_users) namespace, so a play may
-    gather as many users as it is willing to spend a task on. This is
-    why C(o0_users) routinely carries one entry with a C(locale) on
-    it and many without.
+  - The shell probes are the one thing here that observes an
+    identity rather than a host. A run that is root observes the login
+    of root and of the user it connected as; to observe another user's,
+    run the module again as them with C(become) and C(become_user), and
+    their row lands in C(o0_shells) beside the others.
 attributes:
   check_mode:
     description: This module supports check mode.
@@ -144,7 +138,7 @@ EXAMPLES = r"""
 - name: Gather all POSIX facts
   o0_o.posix.facts:
 
-- name: Gather minimal facts (uname, environment, timezone, compliance)
+- name: Gather minimal facts (uname, timezone, compliance)
   o0_o.posix.facts:
     gather_subset:
       - min
@@ -657,18 +651,15 @@ ansible_facts:
           a run that gathers them meets in one entry per UID -
           C(users) describes every account C(/etc/passwd) names,
           overlaid with the host's own resolved view of them where the
-          host has a C(getent) to ask; and C(environment) adds the
-          C(locale) of the one user the play connects as.
-          M(o0_o.posix.users) publishes the same entries under the
-          same names.
+          host has a C(getent) to ask. M(o0_o.posix.users) publishes
+          the same entries under the same names.
         - The user-scoped fields describe that one user because they
           cannot describe another. Reading them once and filing them
           under every UID would be one user's answer wearing
           everyone's name. Another user's are gathered by running as
           them, with C(become) and C(become_user), which merges into
           this same namespace under their own UID.
-      returned: >-
-        when the users or environment subset is gathered
+      returned: when the users subset is gathered
       type: dict
       contains:
         uid:
@@ -739,16 +730,11 @@ ansible_facts:
               may be absent from C(o0_users) even though the host
               resolves them by name. This field names what answered,
               not what exists.
-            - Both subsets that answer under C(o0_users) add to the
-              entry they land on rather than replacing what the other
-              named. The entry for the user the play connects as
-              therefore names the files it was composed from and,
-              beside them, the shell its locale was read through and
-              the C(id) that said whose answer that is. That
-              entry may carry provenance and no name at all, on a host
-              whose local users are not in C(/etc/passwd).
-          returned: >-
-            when the users or environment subset is gathered
+            - An entry names the files it was composed from and the
+              commands that were consulted about it, and a run that
+              adds to what an earlier one published accumulates both
+              rather than replacing them.
+          returned: when the users subset is gathered
           type: dict
           contains:
             files:
@@ -769,20 +755,6 @@ ansible_facts:
               - /etc/passwd
             commands:
               - getent
-        locale:
-          description:
-            - The locale the connecting user gets, derived from the
-              environment their session was handed - C(LC_ALL) if it
-              is set, otherwise C(LANG), and C(ASCII) where neither is
-              set or where the answer is C(C) or C(POSIX).
-            - The variables it was derived from are not published
-              here. An environment is what a login shell built out of
-              the files it read, so it belongs to the shell and the
-              home that built it, and C(o0_shells) is where each pair's
-              own C(env) is filed.
-          returned: when the environment subset is gathered
-          type: str
-          sample: en_US.UTF-8
     o0_groups:
       description: >-
         Groups keyed by stringified GID, each with its C(name), its
@@ -1149,7 +1121,6 @@ def main() -> None:
                 "mounts",
                 "fstab",
                 "users",
-                "environment",
                 "!all",
                 "!min",
                 "!storage",
@@ -1161,7 +1132,6 @@ def main() -> None:
                 "!mounts",
                 "!fstab",
                 "!users",
-                "!environment",
             ],
         },
         "shell": {

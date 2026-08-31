@@ -11,29 +11,22 @@
 
 # What a gather_subset selects, asserted by the names each selection
 # publishes and the names it leaves alone. Every subset is asked for
-# by the name the module resolves: uname, environment, timezone,
-# compliance, config, dmidecode, mounts, fstab, users, and the groups
-# min, all and storage.
+# by the name the module resolves: uname, timezone, compliance,
+# config, dmidecode, mounts, fstab, users, and the groups min, all and
+# storage.
 
 - name: Gather the smallest useful subset
   o0_o.posix.facts:
     gather_subset: [min]
   register: facts_min_reg
 
-# min is uname, environment, timezone and compliance: what a host can
-# say about itself before anything is read from a file. It is the one
-# selection that publishes o0_users without the users subset, so the
-# entry it publishes is the locale of the user the gather ran as and
-# nothing else about them.
-- name: Assert min gathers an identity's locale and no more
+# min is uname, timezone and compliance: what a host can say about
+# itself before anything is read from a file. Nothing in it observes an
+# identity, so it publishes no o0_users at all - which is what it means
+# for every subset here to be a fact about a host.
+- name: Assert min gathers what a host says about itself and no more
   vars:
     gathered: "{{ facts_min_reg['ansible_facts'] }}"
-    entry: "{{ gathered['o0_users'][facts_uid] }}"
-    homes: >-
-      {{ gathered['o0_users'] | dict2items
-         | selectattr('value.home', 'defined')
-         | map(attribute='value.home') | select('string')
-         | select('in', gathered['o0_paths'].keys() | list) | list }}
   ansible.builtin.assert:
     that:
       - gathered['o0_os']['kernel'] is mapping
@@ -41,74 +34,53 @@
       - gathered['o0_os']['compliance'] is mapping
       - gathered['o0_network']['hostname'] is mapping
       - gathered['o0_hardware']['baseboard'] is mapping
-      # The locale is keyed on the uid the gather ran as
-      - gathered['o0_users'].keys() | list == [facts_uid]
-      - entry['uid'] is integer
-      - entry['uid'] == facts_uid | int
-      # Derived from LC_ALL or LANG, and never left as the C locale
-      - entry['locale'] is string
-      - entry['locale'] not in ['C', 'POSIX']
-      # The variables it was derived from belong to the shell and the
-      # home that built them, which is where o0_shells files them
-      - entry['environment'] is not defined
+      # No identity is observed, so no user is named. An environment
+      # and the locale derived from it belong to the shell and the home
+      # that built them, which is where o0_shells files them
+      - gathered['o0_users'] is not defined
       # What min deliberately lacks: everything read from a file
-      - entry['name'] is not defined
-      - entry['home'] is not defined
-      - entry['shell'] is not defined
       - gathered['o0_storage'] is not defined
       - gathered['o0_groups'] is not defined
       - gathered['o0_os']['config'] is not defined
-      # Limits are no subset's to publish: they belong to the session
-      # that answered, so o0_o.posix.limits answers them where asked
-      - entry['limits'] is not defined
-      - entry['umask'] is not defined
-      # The compliance sweep fills the path store, so the store is
-      # here; the homes and the files only the other subsets read are
-      # not
+      # The compliance sweep names the builtins of the shell it asked
+      # with, so o0_shells is here - carrying what a shell is built out
+      # of and nothing about running one out of a home
+      - >-
+        gathered['o0_shells'] | dict2items
+        | selectattr('value.homes', 'defined') | list | length == 0
+      # That same sweep fills the path store, so the store is here; the
+      # files only the other subsets read are not
       - gathered['o0_paths'] is mapping
       - gathered['o0_paths']['/etc/shells'] is not defined
       - gathered['o0_paths']['/etc/fstab'] is not defined
-      - homes | length == 0
     fail_msg: >-
-      min did not select uname, environment, timezone and compliance
-      alone: {{ gathered.keys() | list | sort }}
+      min did not select uname, timezone and compliance alone:
+      {{ gathered.keys() | list | sort }}
 
-- name: Gather the environment alone
-  o0_o.posix.facts:
-    gather_subset: [environment]
-  register: facts_env_reg
+# The environment subset is gone and nothing succeeded it. An
+# environment is what a login shell built out of the files it read, so
+# it belongs to the shell and the home that built it - o0_shells
+# carries it per pair, and o0_o.posix.env answers for a session.
+- name: Ask for the environment subset the module no longer has
+  block:
+    - name: Ask for the retired environment subset
+      o0_o.posix.facts:
+        gather_subset: [environment]
+      register: facts_retired_env_reg
 
-# The subset asks a session for its environment and publishes one
-# answer about the user out of it - the locale they get. The variables
-# themselves are not a fact about the user: an environment is what a
-# login shell built out of the files it read, so o0_shells files it
-# per shell and home, for every identity a gather can reach.
-- name: Assert the environment subset publishes one user's locale
-  vars:
-    gathered: "{{ facts_env_reg['ansible_facts'] }}"
-    entry: "{{ gathered['o0_users'][facts_uid] }}"
-  ansible.builtin.assert:
-    that:
-      - gathered.keys() | list == ['o0_users']
-      - gathered['o0_users'] | length == 1
-      - entry.keys() | list | sort
-        == ['evidence', 'locale', 'origins', 'uid']
-      # This gather composed the entry, so it is the one producer the
-      # entry names: no passwd line described this user
-      - entry['origins'] == ['o0_o.posix.facts']
-      # Derived from LC_ALL or LANG, and never left as the C locale
-      - entry['locale'] is string
-      - entry['locale'] not in ['C', 'POSIX']
-      # The variables it was derived from are not published here
-      - entry['environment'] is not defined
-      # A variable is asked for by a shell snippet rather than by an
-      # argv of its own, so the subset names what ran it and the id
-      # that says whose answers these are
-      - entry['evidence']['commands'] == ['id', 'sh']
-      - entry['evidence']['files'] is not defined
-    fail_msg: >-
-      the environment subset published more than an identity's
-      locale: {{ entry.keys() | list | sort }}
+    - name: Assert the retired environment subset did not resolve
+      ansible.builtin.fail:
+        msg: >-
+          the environment subset still resolves:
+          {{ facts_retired_env_reg['ansible_facts'] | default({}) }}
+  rescue:
+    - name: Assert the retired environment subset is refused by name
+      ansible.builtin.assert:
+        that:
+          - "'environment' in ansible_failed_result['msg']"
+        fail_msg: >-
+          the environment subset failed for another reason:
+          {{ ansible_failed_result['msg'] }}
 
 - name: Gather what uname reported
   o0_o.posix.facts:
@@ -458,7 +430,7 @@
   vars:
     gathered: "{{ facts_no_users_reg['ansible_facts'] }}"
     homes: >-
-      {{ gathered['o0_users'] | dict2items
+      {{ gathered['o0_users'] | default({}) | dict2items
          | selectattr('value.home', 'defined')
          | map(attribute='value.home') | select('string')
          | select('in', gathered['o0_paths'].keys() | list) | list }}
@@ -468,9 +440,14 @@
       - gathered['o0_groups'] is not defined
       - gathered['o0_paths']['/etc/shells'] is not defined
       - homes | length == 0
-      # environment is still selected, and it is what keys o0_users
-      # even with no field of its own besides the locale
-      - gathered['o0_users'].keys() | list == [facts_uid]
+      # No subset besides users answers under o0_users now, so taking
+      # users out takes the namespace with it
+      - gathered['o0_users'] is not defined
+      # o0_shells is still here, carrying the builtins the compliance
+      # sweep named and no row from running a shell out of a home
+      - >-
+        gathered['o0_shells'] | dict2items
+        | selectattr('value.homes', 'defined') | list | length == 0
     fail_msg: >-
       ['all', '!users'] still published the users:
       {{ gathered.keys() | list | sort }}

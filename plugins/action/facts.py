@@ -19,7 +19,6 @@ from ansible.plugins.action import ActionBase
 from ansible_collections.o0_o.posix.plugins.module_utils import (
     EVIDENCE,
     ORIGINS,
-    POSIX_ENV_VARS,
     SHELL_DEFAULT,
     ShellsPosixActionBase,
     batch_read,
@@ -35,7 +34,6 @@ from ansible_collections.o0_o.posix.plugins.module_utils import (
     get_compliance_command_requests,
     get_dmidecode_command_requests,
     get_effective_uid_command_requests,
-    get_env_command_requests,
     get_file_command_requests,
     get_getconf_command_requests,
     get_getent_command_requests,
@@ -50,7 +48,6 @@ from ansible_collections.o0_o.posix.plugins.module_utils import (
     process_all_compliance_command_results,
     process_dmidecode_command_results,
     process_effective_uid_results,
-    process_env_command_results,
     process_file_command_results,
     process_getconf_command_results,
     process_getent_command_results,
@@ -75,50 +72,6 @@ FSTAB_PATH = "/etc/fstab"
 GROUP_PATH = "/etc/group"
 PASSWD_PATH = "/etc/passwd"
 SHELLS_PATH = "/etc/shells"
-
-
-def _get_environment_requests() -> list[dict[str, Any]]:
-    """Build command requests for POSIX environment collection.
-
-    The effective UID travels with the environment because it is the
-    key the results nest under.
-
-    :returns list[dict[str, Any]]: Command requests for run plugin
-    """
-    return (
-        get_env_command_requests(POSIX_ENV_VARS)
-        + get_effective_uid_command_requests()
-    )
-
-
-def _process_environment_results(
-    cmds_completed: list[dict[str, Any]],
-) -> tuple[dict[str, Any], list[Exception]]:
-    """Read the environment the gather's own session was handed.
-
-    Answers with the variables themselves, which the caller reads an
-    answer about the user out of rather than publishing.  Two things
-    come of them: the locale that user gets, and a check that the
-    identity the connection claims is the identity the session says it
-    is.  The variables are not a fact about the user - an environment
-    is what a login shell built out of the files it read, and this one
-    is whatever the connection and the become left behind.
-
-    :param list[dict[str, Any]] cmds_completed: Command results
-    :returns tuple[dict[str, Any], list[Exception]]: Tuple of
-        (env_dict, errors) where env_dict maps var names to values
-    """
-    env_data = process_env_command_results(
-        cmds_completed, POSIX_ENV_VARS, False
-    )
-    return env_data, []
-
-
-# What the user-scoped probes are run with.  Each variable is asked
-# for by a command written as a shell snippet rather than as argv, so
-# it names no command of its own and the subset that ran it names what
-# ran it: a shell, plus the id(1) that says whose answers these are.
-USER_SCOPED_COMMANDS = ("id", "sh")
 
 
 def _get_fstab_requests() -> list[dict[str, Any]]:
@@ -177,11 +130,18 @@ def _get_users_requests() -> list[dict[str, Any]]:
     batch: getent is a command like any other, and asking for it costs
     a gather nothing it was not already spending.
 
+    So does the effective uid, which is not a fact this subset
+    publishes but is what the shell probes need: a run that cannot
+    drop into somebody else's login observes the one it is already
+    inside, and whose login that is comes from the passwd entry filed
+    under that uid.
+
     :returns list[dict[str, Any]]: Command requests for run plugin
     """
     return (
         get_file_command_requests([PASSWD_PATH, GROUP_PATH, SHELLS_PATH])
         + get_getent_command_requests()
+        + get_effective_uid_command_requests()
     )
 
 
@@ -269,13 +229,11 @@ class ActionModule(ShellsPosixActionBase, ActionBase):
     SUBSET_GROUPS = {
         "min": {
             "uname",
-            "environment",
             "timezone",
             "compliance",
         },
         "all": {
             "uname",
-            "environment",
             "timezone",
             "dmidecode",
             "compliance",
@@ -313,10 +271,6 @@ class ActionModule(ShellsPosixActionBase, ActionBase):
             "requests": get_timezone_command_requests,
             "processor": process_timezone_command_results,
         },
-        "environment": {
-            "requests": _get_environment_requests,
-            "processor": _process_environment_results,
-        },
         "fstab": {
             "requests": _get_fstab_requests,
             "processor": _process_fstab_results,
@@ -326,12 +280,6 @@ class ActionModule(ShellsPosixActionBase, ActionBase):
             "processor": _process_users_results,
         },
     }
-
-    # Subsets whose results go under o0_users[effective_uid].  Each
-    # describes the user the play connects as and no other: another
-    # user's environment is what a run delegated to that user
-    # answers, and reading this user's is not an answer about theirs.
-    USER_SCOPED_SUBSETS = {"environment"}
 
     # What this module is called, which is what a path entry names as
     # having contributed it
@@ -621,9 +569,6 @@ class ActionModule(ShellsPosixActionBase, ActionBase):
         filesystem, and the homes and shell files the users subset
         publishes.
 
-        The ``environment`` subset collects POSIX env vars and
-        places them under ``o0_users[<effective uid>]['environment']``.
-
         :param Optional[str] tmp: Unused temporary directory path
         :param Optional[dict[str, Any]] task_vars: Available Ansible
             variables
@@ -700,62 +645,14 @@ class ActionModule(ShellsPosixActionBase, ActionBase):
                     # Kept for the read that follows the batch
                     if subset == "users":
                         user_facts = facts
-
-                    # User-scoped subsets nest under o0_users, which
-                    # keys on the UID
-                    if subset in self.USER_SCOPED_SUBSETS:
-                        uid = process_effective_uid_results(run_results)
-                        if uid is None:
-                            self._display.warning(
-                                f"[{self.inventory_hostname}] Could"
-                                f" not determine the effective uid;"
-                                f" dropping {subset} facts"
-                            )
-                            continue
-
-                        effective_uid = uid
-                        entry: dict[str, Any] = {
-                            "uid": uid,
-                            EVIDENCE: compose_evidence(
-                                commands=USER_SCOPED_COMMANDS
-                            ),
-                        }
-                        # The variables themselves are not published
-                        # as a field of the user. An environment is
-                        # what a login shell built out of the files it
-                        # read, so it belongs to the shell and the home
-                        # that built it, which is where o0_shells files
-                        # it - per pair, for every identity a gather can
-                        # reach, rather than once for whichever one the
-                        # gather happened to be handed
-                        if subset == "environment":
-                            # Validate LOGNAME/USER
-                            user = self.effective_user
-                            for var in ("LOGNAME", "USER"):
-                                val = facts.get(var)
-                                if val is not None and val != user:
-                                    self._display.warning(
-                                        f"[{self.inventory_hostname}]"
-                                        f" {var}={val} does"
-                                        f" not match effective"
-                                        f" user {user}"
-                                    )
-
-                            # Derive locale: LC_ALL > LANG > ASCII
-                            lc_all = facts.get("LC_ALL")
-                            lang = facts.get("LANG")
-                            locale = lc_all or lang or "ASCII"
-                            if locale in ("C", "POSIX"):
-                                locale = "ASCII"
-                            entry["locale"] = locale
-                        else:
-                            entry[subset] = facts
-
-                        self._merge_facts(
-                            all_facts, {"o0_users": {str(uid): entry}}
+                        # Not a fact this subset publishes: it is who
+                        # the shell probes ask about, where they cannot
+                        # drop into somebody else's login
+                        effective_uid = process_effective_uid_results(
+                            run_results
                         )
-                    else:
-                        self._merge_facts(all_facts, facts)
+
+                    self._merge_facts(all_facts, facts)
 
                 except Exception as e:
                     self._display.warning(

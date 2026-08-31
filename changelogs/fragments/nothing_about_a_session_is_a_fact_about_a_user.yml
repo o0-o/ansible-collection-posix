@@ -1,0 +1,31 @@
+# vim: ts=2:sw=2:sts=2:et:ft=yaml.ansible
+# -*- mode: yaml; yaml-indent-offset: 2; indent-tabs-mode: nil; -*-
+---
+breaking_changes:
+  - >-
+    facts - the ``environment`` gather subset retires with no successor,
+    and ``o0_users[uid].locale`` goes with it. An environment, and the
+    locale derived from it, are what a login shell built out of the
+    files it read, so both belong to the shell and the home that built
+    them - ``o0_shells`` files them per pair, for every identity a
+    gather can reach, rather than once for whichever identity the
+    gather happened to be handed. ``o0_o.posix.env`` answers the
+    environment of the session a task runs in, where that is the
+    question, and says it is a session's answer
+    (https://github.com/o0-o/ansible-collection-posix/pull/XXX).
+  - >-
+    facts - ``min`` is ``uname``, ``timezone`` and ``compliance``, and
+    publishes no ``o0_users`` at all. It used to carry ``environment``,
+    which was the only reason a selection with no user subset in it
+    named a user
+    (https://github.com/o0-o/ansible-collection-posix/pull/XXX).
+minor_changes:
+  - >-
+    facts - the effective uid is asked for by the ``users`` subset,
+    which is what needs it: a run that cannot drop into somebody
+    else's login observes the one it is already inside, and whose login
+    that is comes from the passwd entry filed under that uid. It rides
+    the batch the user files were already costing and publishes nothing
+    of its own. No subset is user-scoped now, and the machinery that
+    made one so is gone
+    (https://github.com/o0-o/ansible-collection-posix/pull/XXX).
