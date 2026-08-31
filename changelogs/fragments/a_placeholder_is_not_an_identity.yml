@@ -1,0 +1,16 @@
+# vim: ts=2:sw=2:sts=2:et:ft=yaml.ansible
+# -*- mode: yaml; yaml-indent-offset: 2; indent-tabs-mode: nil; -*-
+---
+bugfixes:
+  - >-
+    dmidecode, facts - "To Be Filled By O.E.M." reads as absent. The
+    placeholder was not among the meaningless values the parser
+    already screens for, so it published as a make, family, serial,
+    SKU, asset tag, chassis version and OEM string on any board whose
+    vendor filled nothing in. It screens now, with or without its
+    trailing period, and the identity fields that took the vendor's
+    string unchecked - system and baseboard make and model, chassis
+    make, baseboard version, the OEM strings list - screen the same
+    way the checked fields always did. A vendor that filled nothing
+    in said nothing
+    (https://github.com/o0-o/ansible-collection-posix/pull/XXX).

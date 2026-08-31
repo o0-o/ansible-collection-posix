@@ -18,10 +18,14 @@ from pathlib import Path
 import pytest
 
 from ansible_collections.o0_o.posix.plugins.module_utils.dmidecode_utils import (  # noqa: E501
+    _is_meaningless_value,
     _memory_device_key,
     _parse_dmidecode,
     _process_bios,
+    _process_chassis,
+    _process_oem_strings,
     _process_processors,
+    _process_system,
     get_dmidecode_command_requests,
     process_dmidecode_command_results,
 )
@@ -284,3 +288,63 @@ def test_hardware_names_the_command_that_answered(
 
     assert errors == []
     assert facts["o0_hardware"]["evidence"] == {"commands": ["dmidecode"]}
+
+
+def test_oem_placeholder_reads_as_absent() -> None:
+    """"To Be Filled By O.E.M." is a placeholder, not an identity.
+
+    A vendor that filled nothing in said nothing: the field reads as
+    absent per each section's own convention, rather than publishing
+    the placeholder as if a make, serial or asset tag had a value.
+    """
+    placeholder = "To Be Filled By O.E.M."
+
+    assert _is_meaningless_value(placeholder) is True
+    assert _is_meaningless_value("To Be Filled By O.E.M") is True
+
+    system = _process_system(
+        {
+            "values": {
+                "manufacturer": placeholder,
+                "product_name": "X570 Phantom Gaming 4",
+                "serial_number": placeholder,
+                "sku_number": placeholder,
+                "family": placeholder,
+            }
+        }
+    )
+    assert "make" not in system
+    assert "serial" not in system
+    assert "sku" not in system
+    assert "family" not in system
+    assert system["model"] == "X570 Phantom Gaming 4"
+
+    chassis = _process_chassis(
+        {
+            "values": {
+                "manufacturer": placeholder,
+                "asset_tag": placeholder,
+                "version": placeholder,
+                "type": "Desktop",
+            }
+        }
+    )
+    assert "make" not in chassis
+    assert "asset_tag" not in chassis
+    assert "version" not in chassis
+    assert chassis["type"] == "Desktop"
+
+    oem = _process_oem_strings(
+        [{"values": {"string_1": placeholder, "string_2": "real thing"}}]
+    )
+    assert oem == ["real thing"]
+
+
+def test_bios_placeholder_vendor_is_null() -> None:
+    """The BIOS section nulls an absent make, so a placeholder one
+    nulls the same way."""
+    bios = _process_bios(
+        {"values": {"vendor": "To Be Filled By O.E.M."}}
+    )
+
+    assert bios["make"] is None

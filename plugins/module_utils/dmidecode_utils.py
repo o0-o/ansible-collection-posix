@@ -86,7 +86,12 @@ def _is_meaningless_value(value: str) -> bool:
     if not value:
         return True
 
-    lower_value = value.lower()
+    # Trailing periods are punctuation, not identity: the classic
+    # placeholder prints as "To Be Filled By O.E.M." and matches with
+    # or without its last dot
+    lower_value = value.lower().rstrip(".")
+    if not lower_value:
+        return True
 
     # Common meaningless strings
     meaningless = {
@@ -98,6 +103,7 @@ def _is_meaningless_value(value: str) -> bool:
         "unknown",
         "not available",
         "n/a",
+        "to be filled by o.e.m",
     }
 
     if lower_value in meaningless:
@@ -265,7 +271,10 @@ def _process_bios(bios_entry: dict[str, Any]) -> dict[str, Any]:
     :returns: Structured BIOS information
     """
     values = bios_entry.get("values", {})
-    bios = {"make": values.get("vendor")}
+    vendor = values.get("vendor")
+    if vendor and _is_meaningless_value(vendor):
+        vendor = None
+    bios = {"make": vendor}
 
     # Version information (just the version ID, no revision)
     if "version" in values:
@@ -332,10 +341,12 @@ def _process_system(system_entry: dict[str, Any]) -> dict[str, Any]:
     values = system_entry.get("values", {})
     system = {}
 
-    if "manufacturer" in values:
-        system["make"] = values["manufacturer"]
-    if "product_name" in values:
-        system["model"] = values["product_name"]
+    make = values.get("manufacturer")
+    if make and not _is_meaningless_value(make):
+        system["make"] = make
+    model = values.get("product_name")
+    if model and not _is_meaningless_value(model):
+        system["model"] = model
 
     # Only include version if not invalid pattern
     version = values.get("version")
@@ -374,8 +385,9 @@ def _process_chassis(chassis_entry: dict[str, Any]) -> dict[str, Any]:
     values = chassis_entry.get("values", {})
     chassis = {}
 
-    if "manufacturer" in values:
-        chassis["make"] = values["manufacturer"]
+    make = values.get("manufacturer")
+    if make and not _is_meaningless_value(make):
+        chassis["make"] = make
 
     # Only include type if not meaningless
     chassis_type = values.get("type")
@@ -436,12 +448,15 @@ def _process_baseboard(baseboard_entry: dict[str, Any]) -> dict[str, Any]:
     values = baseboard_entry.get("values", {})
     baseboard = {}
 
-    if "manufacturer" in values:
-        baseboard["make"] = values["manufacturer"]
-    if "product_name" in values:
-        baseboard["model"] = values["product_name"]
-    if "version" in values:
-        baseboard["version"] = {"id": values["version"]}
+    make = values.get("manufacturer")
+    if make and not _is_meaningless_value(make):
+        baseboard["make"] = make
+    model = values.get("product_name")
+    if model and not _is_meaningless_value(model):
+        baseboard["model"] = model
+    version = values.get("version")
+    if version and not _is_meaningless_value(version):
+        baseboard["version"] = {"id": version}
 
     # Only include serial if not meaningless
     serial = values.get("serial_number")
@@ -594,7 +609,11 @@ def _process_oem_strings(oem_entries: list[dict[str, Any]]) -> list[str]:
         values = entry.get("values", {})
         # OEM strings are stored as numbered keys: string_1, string_2, etc.
         for key, value in sorted(values.items()):
-            if key.startswith("string_") and value:
+            if (
+                key.startswith("string_")
+                and value
+                and not _is_meaningless_value(value)
+            ):
                 # Strip trailing whitespace from OEM strings
                 oem_strings.append(value.rstrip())
 
