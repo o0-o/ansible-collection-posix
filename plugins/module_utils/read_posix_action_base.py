@@ -56,6 +56,16 @@ LS_TYPE_MAP = {
 SINGLE_BYTE_ENCODINGS = frozenset({"us-ascii", "ascii", "unknown-8bit"})
 SINGLE_BYTE_ENCODING_PREFIXES = ("iso-8859", "iso8859", "windows-", "latin")
 
+# What a script probe asks with, where the shell that reads the script
+# back is not what is being asked.  Evidence names derive from argv,
+# which is right for a command run as a command; a probe whose logic is
+# a script would name the interpreter, and the interpreter is not the
+# question.  These override the derivation for that reason and no
+# other - a shell that is itself the subject keeps naming itself.
+PERMISSION_EVIDENCE = ("test",)
+PERMISSION_DROP_EVIDENCE = ("su", "test")
+RESOLUTION_EVIDENCE = ("cd", "ls", "pwd")
+
 # What this module is called, which is what a path entry names as one
 # of the producers that made it.  A read describes a path; the module
 # that publishes the store names itself beside this one.
@@ -447,7 +457,10 @@ class ReadPosixActionBase(PosixActionBase):
             # a directory in the middle of a path is a link as often as
             # the name at the end of it
             if options.get("resolve", False):
-                commands[f"{path}_resolve"] = self._resolution_command(path)
+                commands[f"{path}_resolve"] = {
+                    "command": self._resolution_command(path),
+                    EVIDENCE: list(RESOLUTION_EVIDENCE),
+                }
 
         # Whether a path can be read, written or run is the kernel's
         # answer and nobody else's, so it is asked rather than derived,
@@ -542,16 +555,24 @@ class ReadPosixActionBase(PosixActionBase):
         for index, user in enumerate(self._permission_probe_users()):
             key = f"{PERMISSION_PROBE_PREFIX}{index}"
             if user is None:
-                commands[key] = ["sh", "-c", script]
+                commands[key] = {
+                    "command": ["sh", "-c", script],
+                    EVIDENCE: list(PERMISSION_EVIDENCE),
+                }
             else:
-                commands[key] = [
-                    "su",
-                    "-s",
-                    PERMISSION_PROBE_SHELL,
-                    user,
-                    "-c",
-                    script,
-                ]
+                commands[key] = {
+                    "command": [
+                        "su",
+                        "-s",
+                        PERMISSION_PROBE_SHELL,
+                        user,
+                        "-c",
+                        script,
+                    ],
+                    # su is a command the probe execs to drop identity,
+                    # so it is named as one
+                    EVIDENCE: list(PERMISSION_DROP_EVIDENCE),
+                }
 
         return commands
 
@@ -863,19 +884,41 @@ class ReadPosixActionBase(PosixActionBase):
         longest = sorted(paths, key=len, reverse=True)
 
         for key, command in (commands or {}).items():
-            if isinstance(command, dict):
-                command = command.get("command")
-            name = command_name(command)
-            if name is None:
+            names = self._command_evidence(command)
+            if not names:
                 continue
             for path in longest:
                 if key.startswith(f"{path}_"):
-                    by_path[path].append(name)
+                    by_path[path].extend(names)
                     break
             else:
-                shared.append(name)
+                shared.extend(names)
 
         return by_path, shared
+
+    def _command_evidence(self, command: Any) -> list[str]:
+        """The names one request contributes to a path's evidence.
+
+        Derived from argv, which is what a command was asked as.  A
+        request that declares its own names overrides that, and only
+        for the one reason it should: the request is a script, so argv
+        names the interpreter that read it back rather than the
+        question the script asks.
+
+        :param Any command: A request as the batch carried it
+        :returns list[str]: The names it contributes
+        """
+        if isinstance(command, dict):
+            declared = command.get(EVIDENCE)
+            if declared is not None:
+                return [
+                    name
+                    for name in declared
+                    if isinstance(name, str) and name
+                ]
+            command = command.get("command")
+
+        return [name for name in [command_name(command)] if name]
 
     def _ls_file_type(self, entry: dict[str, Any]) -> str:
         """

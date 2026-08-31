@@ -73,6 +73,22 @@
       - read_perms_reg['paths'][read_perms_runnable]['xoth'] is true
       - read_perms_reg['paths'][read_perms_runnable]['mode'] == '0755'
 
+- name: Assert the probe names its logic rather than its interpreter
+  vars:
+    consulted: >-
+      {{ read_perms_reg['paths'][read_perms_runnable]['evidence']
+         ['commands'] }}
+  ansible.builtin.assert:
+    that:
+      # The permission probe's logic is test; the sh that read the
+      # script back is not what was asked
+      - "'test' in consulted"
+      - "'sh' not in consulted"
+      # The listing the metadata came from is named as itself
+      - "'ls' in consulted"
+    fail_msg: >-
+      the permission probe named its interpreter: {{ consulted }}
+
 - name: Assert the triple is one row per uid that asked
   ansible.builtin.assert:
     that:

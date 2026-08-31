@@ -829,6 +829,11 @@
       # path or carries an option
       - consulted | length > 0
       - consulted | select('match', '[/ -]') | list | length == 0
+      # A script probe names the commands it asks with. The shell that
+      # read the script back is not the subject of a question about a
+      # path, so nothing here names it
+      - "'test' in consulted"
+      - "'sh' not in consulted"
       # The file the login shells are named in was read with cat, and
       # the entry names that rather than naming itself
       - >-

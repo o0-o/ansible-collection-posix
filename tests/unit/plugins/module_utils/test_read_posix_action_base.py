@@ -1245,8 +1245,8 @@ class TestPermissionCommands:
             platform={"stat_variant": "gnu"},
         )
 
-        assert commands["permissions_0"][:2] == ["sh", "-c"]
-        script = commands["permissions_0"][2]
+        assert commands["permissions_0"]["command"][:2] == ["sh", "-c"]
+        script = commands["permissions_0"]["command"][2]
         assert script.startswith("id -u;")
         assert "for p in /a /b; do" in script
         assert 'test -r "$p"' in script
@@ -1284,14 +1284,17 @@ class TestPermissionCommands:
             ["/a"], {"attributes": True}, platform={"stat_variant": "gnu"}
         )
 
-        assert commands["permissions_1"][:4] == [
+        assert commands["permissions_1"]["command"][:4] == [
             "su",
             "-s",
             "/bin/sh",
             "o0-o",
         ]
-        assert commands["permissions_1"][4] == "-c"
-        assert commands["permissions_1"][5] == commands["permissions_0"][2]
+        assert commands["permissions_1"]["command"][4] == "-c"
+        assert (
+            commands["permissions_1"]["command"][5]
+            == commands["permissions_0"]["command"][2]
+        )
 
     def test_no_paths_is_no_probe(self, action) -> None:
         """Test an empty batch does not build a for loop over nothing."""
@@ -1431,8 +1434,10 @@ class TestEntriesNameWhatWasConsulted:
             results, ["/f"], {"attributes": True}, commands=commands
         )
 
+        # The permission probe's logic is test, not the sh that read
+        # the script back
         assert file_data["/f"]["evidence"] == {
-            "commands": ["ls", "sh", "stat"]
+            "commands": ["ls", "stat", "test"]
         }
 
     def test_a_read_reads_no_file_as_evidence(self, action) -> None:
@@ -1509,3 +1514,84 @@ class TestEntriesNameWhatWasConsulted:
         )
 
         assert file_data["/f"]["evidence"] == {"commands": []}
+
+
+class TestScriptProbesNameWhatTheyAsk:
+    """Tests for the one case an evidence name is declared."""
+
+    def test_the_permission_probe_names_test(self, action) -> None:
+        """Test the probe names its logic rather than its interpreter.
+
+        A name derives from argv, which is right for a command run as
+        a command. This probe's logic is a script, so argv would name
+        the sh that read it back, and sh is not what was asked.
+        """
+        commands = action._get_permission_commands(["/f"])
+
+        assert commands["permissions_0"]["evidence"] == ["test"]
+
+    def test_a_dropped_probe_names_the_su_it_execs(self, action) -> None:
+        """Test su is named, because su really is run as a command."""
+        action._play_context = _PlayContext(
+            become=True, become_user="root", remote_user="o0-o"
+        )
+
+        commands = action._get_permission_commands(["/f"])
+
+        assert commands["permissions_1"]["evidence"] == ["su", "test"]
+
+    def test_the_resolution_walk_names_what_it_walks_with(
+        self, action
+    ) -> None:
+        """Test the walk names cd, pwd and ls rather than sh."""
+        commands = action._get_read_commands(["/f"], {"resolve": True})
+
+        assert commands["/f_resolve"]["evidence"] == ["cd", "ls", "pwd"]
+
+    def test_a_declared_name_supersedes_the_derivation(
+        self, action
+    ) -> None:
+        """Test the override wins where a request declares one."""
+        assert action._command_evidence(
+            {"command": ["sh", "-c", "test -r /f"], "evidence": ["test"]}
+        ) == ["test"]
+
+    def test_a_plain_request_still_derives_its_name(self, action) -> None:
+        """Test nothing else changes: argv is the default everywhere."""
+        assert action._command_evidence(["ls", "-dn", "/f"]) == ["ls"]
+        assert action._command_evidence(
+            {"command": ["cat", "/f"], "strip": False}
+        ) == ["cat"]
+
+    def test_a_declared_empty_list_names_nothing(self, action) -> None:
+        """Test a request may declare that it evidences nothing."""
+        assert action._command_evidence(
+            {"command": ["sh", "-c", ":"], "evidence": []}
+        ) == []
+
+    def test_the_walk_and_the_listing_share_the_ls_they_both_run(
+        self, action
+    ) -> None:
+        """Test a name two probes contribute is named once.
+
+        The walk reads link text with ls and the metadata read lists
+        the path with it, and the evidence holds one of each name.
+        """
+        commands = action._get_read_commands(
+            ["/f"],
+            {"attributes": True, "resolve": True},
+            platform={"stat_variant": "gnu"},
+        )
+        results = {"/f_ls": _ls_result("-rw-r--r--")}
+
+        file_data, _facts = action._process_read_results(
+            results, ["/f"], {"attributes": True}, commands=commands
+        )
+
+        assert file_data["/f"]["evidence"]["commands"] == [
+            "cd",
+            "ls",
+            "pwd",
+            "stat",
+            "test",
+        ]

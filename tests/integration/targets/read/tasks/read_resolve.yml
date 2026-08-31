@@ -110,6 +110,22 @@
         read_resolve_dir_reg['paths'][read_resolve_dir]['origins']
         == ['o0_o.posix.read']
 
+- name: Assert the walk names the commands it walks with
+  vars:
+    consulted: >-
+      {{ read_resolve_dir_reg['paths'][read_resolve_dir]['evidence']
+         ['commands'] }}
+  ansible.builtin.assert:
+    that:
+      # cd and pwd -P canonicalize a directory and ls -ld reads a
+      # link's text; the sh that read the script back asked nothing
+      - "'cd' in consulted"
+      - "'pwd' in consulted"
+      - "'ls' in consulted"
+      - "'sh' not in consulted"
+    fail_msg: >-
+      the resolution walk named its interpreter: {{ consulted }}
+
 - name: Resolve the canonical directory, which is nothing but itself
   o0_o.posix.read:
     path: "{{ read_resolve_real }}"

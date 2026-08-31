@@ -1,0 +1,29 @@
+# vim: ts=2:sw=2:sts=2:et:ft=yaml.ansible
+# -*- mode: yaml; yaml-indent-offset: 2; indent-tabs-mode: nil; -*-
+---
+bugfixes:
+  - >-
+    read, users, facts - a script probe names the commands it asks
+    with rather than the shell that read the script back. An evidence
+    name derives from argv, which is the right answer for a command
+    run as a command and the wrong one for a probe whose logic is a
+    script: an C(o0_paths) entry named C(sh) where the question was
+    whether the path can be read, and C(sh) was only the interpreter.
+    The permission probe names C(test) now, and C(su) where it drops
+    identity, because su really is a command it execs; the resolution
+    walk names C(cd), C(pwd) and C(ls), the last of which dedupes into
+    the C(ls) the metadata read already names
+    (https://github.com/o0-o/ansible-collection-posix/pull/XXX).
+minor_changes:
+  - >-
+    A command request may declare its own evidence names, and that is
+    the only reason to. Derivation from argv stays the default for
+    every request everywhere; an explicit name is for the one case
+    where the derivation answers the wrong question, which is a script
+    whose interpreter is not its subject. Where the shell IS the
+    subject the interpreter is the answer and stays: the compliance
+    sweep tests C(/bin/sh) and the C(o0_shells) probes ask a shell
+    about itself, so both go on naming the shell, as do the
+    C(o0_users) environment and limits probes, whose subject is the
+    user's own login shell
+    (https://github.com/o0-o/ansible-collection-posix/pull/XXX).

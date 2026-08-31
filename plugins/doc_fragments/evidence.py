@@ -89,6 +89,18 @@ class ModuleDocFragment:
         list sits beside its C(supported), evidenced by the lookups
         that missed rather than filed among them.
       - >-
+        An evidence name derives from what was asked - argv's first
+        word, reduced to its base name - and a request overrides that
+        only where the derivation would answer the wrong question. A
+        probe whose logic is a script would name the interpreter that
+        read the script back, so such a probe names the commands it
+        asks with instead: the permission probe names C(test), and
+        C(su) where it drops identity; the resolution walk names
+        C(cd), C(pwd) and C(ls). Where the shell is itself the
+        subject, the interpreter is the answer and stays - the
+        compliance sweep tests C(/bin/sh) and the C(o0_shells) probes
+        ask a shell about itself, so both name the shell.
+      - >-
         C(origins) travels with C(evidence) and answers the other half
         of the same question. Evidence says what was consulted;
         origins says who did the consulting, as a sorted list of the
