@@ -1,0 +1,173 @@
+# vim: ts=2:sw=2:sts=2:et:ft=yaml.ansible
+# -*- mode: yaml; yaml-indent-offset: 2; indent-tabs-mode: nil; -*-
+---
+# GNU General Public License v3.0+
+# SPDX-License-Identifier: GPL-3.0-or-later
+# (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
+#
+# Copyright (c) 2025 oØ.o (@o0-o)
+#
+# This file is part of the o0_o.posix Ansible Collection.
+
+# A key's name is the kernel's, so the one key every host in this
+# matrix answers for is named per platform rather than assumed.
+- name: Name a key this kernel is known to answer for
+  ansible.builtin.set_fact:
+    sysctl_key: >-
+      {{ 'kernel.hostname' if ansible_system == 'Linux'
+         else 'kern.hostname' }}
+    sysctl_read_only: >-
+      {{ 'kernel.ostype' if ansible_system == 'Linux'
+         else 'kern.ostype' }}
+
+- name: Ask the host for every tunable it prints
+  o0_o.posix.sysctl:
+  register: sysctl_all_reg
+
+- name: Assert the listing is the shape the module documents
+  vars:
+    values: "{{ sysctl_all_reg['sysctl'] }}"
+  ansible.builtin.assert:
+    that:
+      - sysctl_all_reg is not changed
+      - values is mapping
+      # Every kernel with a sysctl answers for a great many keys
+      - values | length > 100
+      # Verbatim strings, because a key's meaning is the kernel's: a
+      # number here may be a count, a bitmask or a tuple of both
+      - values | dict2items | rejectattr('value', 'string')
+        | rejectattr('value', 'none') | list | length == 0
+      # No key carries a separator or the whitespace around one, which
+      # is what keeps a value from opening a key of its own
+      - >-
+        values.keys() | select('search', '[ \t=:]') | list | length == 0
+      - values[sysctl_key] is string
+      - values[sysctl_key] | length > 0
+    fail_msg: >-
+      the listing is not the shape the module documents:
+      {{ values | length }} keys
+
+- name: Ask about named keys, one of which the host does not have
+  o0_o.posix.sysctl:
+    name:
+      - "{{ sysctl_key }}"
+      - "{{ sysctl_read_only }}"
+      - nosuch.key.at.all
+  register: sysctl_named_reg
+
+- name: Assert a named key answers and an absent one is null
+  vars:
+    values: "{{ sysctl_named_reg['sysctl'] }}"
+  ansible.builtin.assert:
+    that:
+      - sysctl_named_reg is not changed
+      # Exactly what was asked for, and nothing else
+      - values.keys() | list | sort
+        == [sysctl_key, sysctl_read_only, 'nosuch.key.at.all'] | sort
+      # A key the host has no answer for is null rather than left out:
+      # the task named it, so the answer is about that key
+      - values['nosuch.key.at.all'] is none
+      # And the same key answers the same way either way round
+      - values[sysctl_key] == sysctl_all_reg['sysctl'][sysctl_key]
+    fail_msg: >-
+      a named key did not answer the way the module documents:
+      {{ values }}
+
+- name: Assert the result names the command that answered
+  ansible.builtin.assert:
+    that:
+      - sysctl_named_reg['evidence']['commands'] == ['sysctl']
+      - "'files' not in sysctl_named_reg['evidence']"
+      - "'config' not in sysctl_named_reg['evidence']"
+    fail_msg: >-
+      the sysctl module named something other than what it asked:
+      {{ sysctl_named_reg['evidence'] }}
+
+# A tunable is not a fact. Keys and meanings are the kernel's rather
+# than POSIX's, so nothing here is published under a namespace a
+# gather would merge.
+- name: Assert nothing is published as a fact
+  ansible.builtin.assert:
+    that:
+      - sysctl_all_reg['ansible_facts'] is not defined
+      - sysctl_named_reg['ansible_facts'] is not defined
+    fail_msg: a tunable was published as a fact
+
+# Idempotence, proved the way it can be proved without moving anything
+# the host depends on: the value already in force is asked for, and the
+# module reports no change because it compared before it set.
+- name: Set a key to the value it already holds
+  vars:
+    held: "{{ sysctl_named_reg['sysctl'][sysctl_key] }}"
+  o0_o.posix.sysctl:
+    # Built as a mapping rather than written as one, because a key
+    # written as a template in task args is not templated
+    values: "{{ {sysctl_key: held} }}"
+  become: true
+  register: sysctl_noop_reg
+
+- name: Assert the compare came first, so nothing was set
+  ansible.builtin.assert:
+    that:
+      - sysctl_noop_reg is not changed
+      - sysctl_noop_reg['sysctl'][sysctl_key]
+        == sysctl_named_reg['sysctl'][sysctl_key]
+    fail_msg: >-
+      setting a value already in force reported a change
+
+# What a real change would do, computed without doing it. Check mode is
+# the only way to exercise this against a host a suite does not own.
+- name: Propose a value the host does not hold, in check mode
+  vars:
+    proposed: "{{ sysctl_named_reg['sysctl'][sysctl_key] }}-x"
+  o0_o.posix.sysctl:
+    values: "{{ {sysctl_key: proposed} }}"
+  become: true
+  check_mode: true
+  diff: true
+  register: sysctl_proposed_reg
+
+- name: Ask again for what the host says now
+  o0_o.posix.sysctl:
+    name: ["{{ sysctl_key }}"]
+  register: sysctl_after_reg
+
+- name: Assert check mode reported the change and made none
+  vars:
+    held: "{{ sysctl_named_reg['sysctl'][sysctl_key] }}"
+  ansible.builtin.assert:
+    that:
+      - sysctl_proposed_reg is changed
+      # Nothing was set, so what came back is what the host says now
+      - sysctl_proposed_reg['sysctl'][sysctl_key] == held
+      - sysctl_after_reg['sysctl'][sysctl_key] == held
+      # And the diff names the key it would have moved
+      - sysctl_proposed_reg['diff'] | length == 1
+      - sysctl_proposed_reg['diff'][0]['before'][sysctl_key] == held
+      - sysctl_proposed_reg['diff'][0]['after'][sysctl_key]
+        == held ~ '-x'
+    fail_msg: >-
+      check mode set something or reported nothing:
+      {{ sysctl_proposed_reg }}
+
+- name: Assert a key the kernel will not let go of fails, naming it
+  block:
+    - name: Try to set a read-only key
+      o0_o.posix.sysctl:
+        values: "{{ {sysctl_read_only: 'nonsense'} }}"
+      become: true
+      register: sysctl_refused_reg
+
+    - name: Assert the refusal did not read as success
+      ansible.builtin.fail:
+        msg: >-
+          the host reported setting {{ sysctl_read_only }}:
+          {{ sysctl_refused_reg }}
+  rescue:
+    - name: Assert the failure named the key it could not set
+      ansible.builtin.assert:
+        that:
+          - sysctl_read_only in ansible_failed_result['msg']
+        fail_msg: >-
+          the refusal did not name the key:
+          {{ ansible_failed_result['msg'] }}

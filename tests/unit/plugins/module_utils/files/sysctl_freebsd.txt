@@ -1,0 +1,18 @@
+kern.ostype: FreeBSD
+kern.osrelease: 14.0-RELEASE
+kern.osrevision: 199506
+kern.version: FreeBSD 14.0-RELEASE releng/14.0-n265380-f9716eee8ab4: Fri Nov 10 06:30:32 UTC 2023
+    root@releng1.nyi.freebsd.org:/usr/obj/usr/src/amd64.amd64/sys/GENERIC amd64
+kern.maxvnodes: 213834
+kern.hostname: bsd.example
+kern.hostuuid: 00000000-0000-0000-0000-000000000000
+kern.clockrate: { hz = 1000, tick = 1000, profhz = 8126, stathz = 127 }
+kern.disks: ada0 cd0
+kern.geom.confxml: 
+hw.machine: amd64
+hw.model: Intel(R) Xeon(R) CPU E5-2620 v3 @ 2.40GHz
+hw.ncpu: 4
+hw.physmem: 8577060864
+vm.overcommit: 0
+net.inet.ip.forwarding: 0
+security.bsd.see_other_uids: 1

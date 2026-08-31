@@ -1,0 +1,42 @@
+# vim: ts=2:sw=2:sts=2:et:ft=yaml.ansible
+# -*- mode: yaml; yaml-indent-offset: 2; indent-tabs-mode: nil; -*-
+---
+minor_changes:
+  - >-
+    sysctl - a new module reports what the kernel says its tunables
+    are, and sets the ones a task names. An inquiry rather than a
+    fact - ``sysctl`` is not a POSIX interface and its keys are not
+    portable, so nothing is published to ``ansible_facts`` and values
+    come back verbatim and untyped, because a number here may be a
+    count, a bitmask, a flag or a tuple of all three depending on which
+    kernel answered. A key the host has no answer for is reported null
+    rather than left out or failed on; a host with no ``sysctl`` at all
+    fails plainly, naming the absence
+    (https://github.com/o0-o/ansible-collection-posix/pull/XXX).
+  - >-
+    sysctl - the listing parser reads all three forms one command
+    prints in - ``key = value`` on Linux procps, ``key: value`` on
+    FreeBSD and macOS, ``key=value`` on OpenBSD - and reassembles a
+    multiline value out of either spelling of one. The BSDs print the
+    rest of a value as indented lines of their own, so a line naming no
+    key continues the value before it; Linux prints the key again on
+    every line, so a key seen twice has its lines joined rather than
+    overwritten. A key admits no whitespace and neither separator,
+    which is what stops a value from opening one - macOS answers
+    ``kern.version`` with a colon in the middle of the string, and
+    Linux answers ``dev.cdrom.info`` with a line reading ``drive
+    name:``
+    (https://github.com/o0-o/ansible-collection-posix/pull/XXX).
+  - >-
+    sysctl - a set is written as the plain assignment every
+    implementation takes, never ``-w``, which is the procps and FreeBSD
+    spelling of it and a flag OpenBSD does not have. It is idempotent:
+    what the host holds is read and compared as the string it is, only
+    a differing key is set, and what comes back afterwards is what the
+    kernel says rather than what it was asked to hold. A key the host
+    refuses fails the task naming it, because a value that did not move
+    must not read as success. Check mode compares and reports without
+    setting, and offers a diff. Runtime values are the whole scope: an
+    OS collection's own sysctl module is where a persistence option
+    belongs, extending this one and delegating the runtime set here
+    (https://github.com/o0-o/ansible-collection-posix/pull/XXX).

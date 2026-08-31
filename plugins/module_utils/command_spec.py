@@ -65,6 +65,10 @@ from ansible_collections.o0_o.posix.plugins.module_utils.shells_utils import (
     SHELL_UMASK_MARKER,
     _parse_shell_config,
 )
+from ansible_collections.o0_o.posix.plugins.module_utils.sysctl_utils import (
+    SYSCTL_RCS,
+    _parse_sysctl,
+)
 from ansible_collections.o0_o.posix.plugins.module_utils.timezone_utils import (  # noqa: E501
     _parse_timezone,
 )
@@ -133,6 +137,35 @@ GETCONF_COMMAND_SPEC = {
             "command": ("getconf", "{var}", "{path}"),
             "parser": _parse_getconf,
             "non_error_codes": GETCONF_RCS,
+        },
+    },
+}
+
+# Sysctl spec — the kernel's own tunables, in whichever of the three
+# listing forms the host prints.  The listing exits non-zero on a host
+# that would not read every key it names, having printed the ones it
+# would, so the status rides back as an answer rather than a fault.
+SYSCTL_COMMAND_SPEC = {
+    "posix": {
+        "sysctl_listing": {
+            "command": ("sysctl", "-a"),
+            "parser": _parse_sysctl,
+            "non_error_codes": SYSCTL_RCS,
+        },
+        # One key per invocation, so a refusal belongs to the key that
+        # earned it rather than to the whole command
+        "sysctl_key": {
+            "command": ("sysctl", "{key}"),
+            "parser": _parse_sysctl,
+            "non_error_codes": SYSCTL_RCS,
+        },
+        # Plain assignment, which is the one spelling every
+        # implementation takes: -w is procps and FreeBSD, and OpenBSD
+        # has no such flag
+        "sysctl_assign": {
+            "command": ("sysctl", "{assignment}"),
+            "parser": _parse_sysctl,
+            "non_error_codes": SYSCTL_RCS,
         },
     },
 }

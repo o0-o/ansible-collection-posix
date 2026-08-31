@@ -1,0 +1,17 @@
+kern.ostype=OpenBSD
+kern.osrelease=7.4
+kern.osrevision=202310
+kern.version=OpenBSD 7.4 (GENERIC.MP) #1397: Tue Oct 10 09:02:37 MDT 2023
+    deraadt@amd64.openbsd.org:/usr/src/sys/arch/amd64/compile/GENERIC.MP
+
+kern.maxproc=1310
+kern.hostname=obsd.example
+kern.securelevel=1
+kern.clockrate=tick = 10000, tickadj = 40, hz = 100, profhz = 100, stathz = 100
+kern.boottime=Tue Oct 10 09:02:37 2023
+hw.machine=amd64
+hw.model=Intel(R) Core(TM) i7-8700 CPU @ 3.20GHz
+hw.ncpu=6
+hw.disknames=sd0:0123456789abcdef,cd0:
+vfs.mounts.ffs=1
+net.inet.ip.forwarding=0

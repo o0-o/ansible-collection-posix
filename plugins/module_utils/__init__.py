@@ -177,6 +177,13 @@ from ansible_collections.o0_o.posix.plugins.module_utils.read_posix_action_base 
 from ansible_collections.o0_o.posix.plugins.module_utils.shells_action_base import (  # noqa: E501
     ShellsPosixActionBase,
 )
+from ansible_collections.o0_o.posix.plugins.module_utils.sysctl_utils import (
+    SYSCTL_MISSING_RCS,
+    get_sysctl_assignment_requests,
+    get_sysctl_key_requests,
+    get_sysctl_listing_requests,
+    process_sysctl_command_results,
+)
 from ansible_collections.o0_o.posix.plugins.module_utils.write_posix_action_base import (  # noqa: E501
     WritePosixActionBase,
 )
@@ -196,6 +203,7 @@ __all__ = [
     "ORIGINS",
     "PosixActionBase",
     "ReadPosixActionBase",
+    "SYSCTL_MISSING_RCS",
     "ShellsPosixActionBase",
     "WritePosixActionBase",
     "command_name",
@@ -276,8 +284,12 @@ __all__ = [
     "name_shell_binaries",
     "parse_shells",
     "process_shell_command_results",
+    "get_sysctl_assignment_requests",
+    "get_sysctl_key_requests",
+    "get_sysctl_listing_requests",
     "get_timezone_command_requests",
     "parse_timezone_offset",
+    "process_sysctl_command_results",
     "process_timezone_command_results",
     "parse_uptime",
     "parse_who",
