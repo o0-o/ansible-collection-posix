@@ -1,0 +1,17 @@
+# vim: ts=2:sw=2:sts=2:et:ft=yaml.ansible
+# -*- mode: yaml; yaml-indent-offset: 2; indent-tabs-mode: nil; -*-
+---
+breaking_changes:
+  - >-
+    dmidecode, facts - processors are keyed by normalized model name
+    with the sockets that hold them as ``locations``, keyed by socket
+    designation - the way a part number groups DIMMs and each DIMM
+    keeps its slot, and replacing the socket-designation keying that
+    never appeared in a release. A dual-CPU host of one model states
+    the spec once - make, family, signature, total cores, rated
+    speed, features, internal cache - and each socket files what it
+    alone knows in its location: serial, asset tag, enabled cores,
+    current speed, voltage, external clock. The ``sockets`` view in
+    ``baseboard`` keeps the same socket-designation keys, so the two
+    views of the same hardware still join by key
+    (https://github.com/o0-o/ansible-collection-posix/pull/XXX).

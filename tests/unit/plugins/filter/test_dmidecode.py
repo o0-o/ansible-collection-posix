@@ -245,12 +245,13 @@ def test_dmidecode_parses_real_output(
     assert "cpu2" in sockets
     assert sockets["cpu2"]["populated"] is True
 
-    # Check processors at hardware level - keyed by socket designation
+    # Check processors at hardware level - one model, twice located,
+    # the way a part number groups DIMMs
     assert "processors" in result
     processors = result["processors"]
     assert isinstance(processors, dict)
-    assert sorted(processors) == ["cpu1", "cpu2"]
-    cpu1 = processors["cpu1"]
+    assert sorted(processors) == ["intel_xeon_cpu_e5_2620_v3"]
+    cpu1 = processors["intel_xeon_cpu_e5_2620_v3"]
     assert cpu1["make"] == "Intel"
     assert cpu1["family"] == "Xeon"
     # Model carries the vendor's string verbatim, with a normalized
@@ -264,21 +265,31 @@ def test_dmidecode_parses_real_output(
     assert cpu1["signature"]["family"] == 6
     assert cpu1["signature"]["model"] == 63
     assert cpu1["signature"]["stepping"] == 2
-    # Check cores (threads excluded due to DMI ambiguity)
-    assert cpu1["cores"] == {"total": 6, "enabled": 6}
+    # Check cores (threads excluded due to DMI ambiguity); what is
+    # enabled is each socket's own
+    assert cpu1["cores"] == {"total": 6}
     assert "threads" not in cpu1
-    # Check speed - rated maximum and what the socket runs at now
-    assert cpu1["speed"]["max"]["hertz"] == 4000000000
-    assert cpu1["speed"]["max"]["pretty"] == "4 GHz"
-    assert cpu1["speed"]["current"]["hertz"] == 2400000000
-    assert cpu1["speed"]["current"]["pretty"] == "2.4 GHz"
-    # Check voltage (only present if SI utils parses it)
-    if "voltage" in cpu1:
-        assert "v" in cpu1["voltage"]
-        assert "pretty" in cpu1["voltage"]
-    # Check external clock (flattened)
-    assert cpu1["clock"]["hertz"] == 100000000
-    assert cpu1["clock"]["pretty"] == "100 MHz"
+    # Check speed - the rated maximum is the model's
+    assert cpu1["speed"] == {
+        "max": {"hertz": 4000000000, "pretty": "4 GHz"}
+    }
+    # Each socket files what it alone knows in its location
+    locations = cpu1["locations"]
+    assert sorted(locations) == ["cpu1", "cpu2"]
+    for location in locations.values():
+        assert location["cores"] == {"enabled": 6}
+        assert location["speed"] == {
+            "current": {"hertz": 2400000000, "pretty": "2.4 GHz"}
+        }
+        # Check voltage (only present if SI utils parses it)
+        if "voltage" in location:
+            assert "v" in location["voltage"]
+            assert "pretty" in location["voltage"]
+        # Check external clock (flattened)
+        assert location["clock"] == {
+            "hertz": 100000000,
+            "pretty": "100 MHz",
+        }
     # Check features as dict with abbreviation: description
     assert isinstance(cpu1["features"], dict)
     assert cpu1["features"]["FPU"] == "Floating-point unit on-chip"
@@ -328,10 +339,9 @@ def test_dmidecode_parses_real_output(
     assert "parity" not in l3
     assert l3["associativity"] == 20
     assert l3["enabled"] is True
-    # The second socket is its own record, not a location under the first
-    cpu2 = processors["cpu2"]
-    assert cpu2["cores"]["enabled"] == 6
-    assert cpu2["model"] == cpu1["model"]
+    # The second socket is a location under the one model, not a
+    # second statement of the spec
+    assert cpu1["locations"]["cpu2"]["cores"] == {"enabled": 6}
 
     # Check slots - now grouped by type, then by index
     if "slots" in baseboard:

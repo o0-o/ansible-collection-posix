@@ -1311,11 +1311,17 @@ def _process_processors(
 ) -> tuple[dict[str, dict[str, Any]], dict[str, dict[str, Any]]]:
     """Process Processor Information entries with associated caches.
 
-    Keys processors by Socket Designation - the socket's own identity,
-    the way a Locator names a memory device - and carries the vendor's
-    strings as fields rather than folding them into the key. Also
-    returns socket information for baseboard. Caches are associated via
-    DMI handle ordering (caches appear before their processor).
+    Keys processors by normalized model name with the sockets that
+    hold them as ``locations`` - the way a part number groups DIMMs
+    and each DIMM keeps its slot - so a multi-CPU host of one model
+    states the spec once. The model carries what every instance
+    shares (make, family, signature, total cores, rated speed,
+    features, internal cache); each location carries what its socket
+    alone knows (serial, asset tag, enabled cores, current speed,
+    voltage, external clock). Also returns socket information for
+    baseboard, keyed by the same socket designations the locations
+    use. Caches are associated via DMI handle ordering (caches appear
+    before their processor).
 
     :param processor_entries: List of processor entries from jc parser
     :param cache_by_handle: Dict of cache info keyed by DMI handle
@@ -1393,7 +1399,10 @@ def _process_processors(
         if not make or _is_meaningless_value(make):
             continue
 
+        # The model spec, stated once however many sockets hold one;
+        # what a socket alone knows goes in its location instead
         processor = {"make": make}
+        location: dict[str, Any] = {}
 
         # Family
         family = values.get("family")
@@ -1428,69 +1437,64 @@ def _process_processors(
             if sig_dict:
                 processor["signature"] = sig_dict
 
-        # Cores (total and enabled, which can differ)
-        cores = {}
+        # Cores: the total is the model's, what is enabled is each
+        # socket's own configuration
         core_count = values.get("core_count")
         if core_count and not _is_meaningless_value(str(core_count)):
             try:
-                cores["total"] = int(core_count)
+                processor["cores"] = {"total": int(core_count)}
             except (ValueError, TypeError):
                 pass
 
         core_enabled = values.get("core_enabled")
         if core_enabled and not _is_meaningless_value(str(core_enabled)):
             try:
-                cores["enabled"] = int(core_enabled)
+                location["cores"] = {"enabled": int(core_enabled)}
             except (ValueError, TypeError):
                 pass
-
-        if cores:
-            processor["cores"] = cores
 
         # Threads - EXCLUDED: DMI thread count is unreliable and
         # ambiguous (may be total spec or currently enabled threads,
         # varies by implementation)
 
-        # Speed (rated maximum and what the socket runs at now)
-        speed = {}
+        # Speed: the rated maximum is the model's, what the socket
+        # runs at now is its own
         max_speed = values.get("max_speed")
         if max_speed and not _is_meaningless_value(max_speed):
             parsed = parse_si(max_speed)
             if parsed:
-                speed["max"] = parsed
+                processor["speed"] = {"max": parsed}
 
         current_speed = values.get("current_speed")
         if current_speed and not _is_meaningless_value(current_speed):
             parsed = parse_si(current_speed)
             if parsed:
-                speed["current"] = parsed
+                location["speed"] = {"current": parsed}
 
-        if speed:
-            processor["speed"] = speed
-
-        # Voltage
+        # Voltage - what the socket feeds it now
         voltage_str = values.get("voltage")
         if voltage_str and not _is_meaningless_value(voltage_str):
             parsed = parse_si(voltage_str)
             if parsed:
-                processor["voltage"] = parsed
+                location["voltage"] = parsed
 
-        # External Clock (flattened to just clock)
+        # External Clock (flattened to just clock) - the board's, so
+        # each socket reports its own
         ext_clock = values.get("external_clock")
         if ext_clock and not _is_meaningless_value(ext_clock):
             parsed = parse_si(ext_clock)
             if parsed:
-                processor["clock"] = parsed
+                location["clock"] = parsed
 
         # Serial Number
         serial = values.get("serial_number")
         if serial and not _is_meaningless_value(serial):
-            processor["serial"] = serial
+            location["serial"] = serial
 
         # Asset Tag
         tag = values.get("asset_tag")
         if tag and not _is_meaningless_value(tag):
-            processor["tag"] = tag
+            location["tag"] = tag
 
         # Part Number
         part = values.get("part_number")
@@ -1531,7 +1535,14 @@ def _process_processors(
         if proc_caches:
             processor["cache"] = proc_caches
 
-        processors[socket_key] = processor
+        # The model groups its sockets the way a part number groups
+        # its slots: the spec is stated once and the first statement
+        # of it wins, each socket files its own instance beneath it
+        model_key = processor["model"]["name"]
+        if model_key not in processors:
+            processor["locations"] = {}
+            processors[model_key] = processor
+        processors[model_key]["locations"][socket_key] = location
 
         # Add external caches to socket in sockets dict
         if proc_external_caches and socket_key in sockets:

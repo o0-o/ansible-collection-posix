@@ -105,24 +105,39 @@ hardware:
                   type: str
                   sample: "3.4"
     processors:
-      description: Processors keyed by socket designation
+      description: >-
+        Processor models grouped the way memory groups part numbers -
+        the model states its spec once and each socket that holds one
+        files what it alone knows under C(locations), keyed by socket
+        designation
       type: dict
       sample:
-        cpu1:
+        intel_xeon_cpu_e5_2690_v3:
           make: "Intel"
           model:
             name: "intel_xeon_cpu_e5_2690_v3"
             pretty: "Intel(R) Xeon(R) CPU E5-2690 v3 @ 2.60GHz"
           cores:
             total: 12
-            enabled: 12
           speed:
             max:
               hertz: 3500000000
               pretty: "3.5 GHz"
-            current:
-              hertz: 2600000000
-              pretty: "2.6 GHz"
+          locations:
+            cpu1:
+              cores:
+                enabled: 12
+              speed:
+                current:
+                  hertz: 2600000000
+                  pretty: "2.6 GHz"
+            cpu2:
+              cores:
+                enabled: 12
+              speed:
+                current:
+                  hertz: 2600000000
+                  pretty: "2.6 GHz"
     memory:
       description: >-
         Memory modules grouped by part number, each carrying the

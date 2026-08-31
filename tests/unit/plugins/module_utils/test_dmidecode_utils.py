@@ -166,14 +166,13 @@ def test_memory_device_key_without_a_locator_is_none() -> None:
     assert _memory_device_key({"bank_locator": "P0 CHANNEL A"}) is None
 
 
-def test_processors_keyed_by_socket_designation() -> None:
-    """A processor is named by the socket it sits in.
+def test_processors_keyed_by_model_with_socket_locations() -> None:
+    """A processor model groups the sockets that hold it.
 
-    Keyed on a normalized vendor and version string, the identity read
-    as "advanced micro devices, inc._amd_ryzen_9_5900xt_16_core_
-    processor" - a marketing string mangled into a key. The socket
-    designation names the same thing the way a Locator names a DIMM,
-    and the vendor's strings become fields.
+    The way a part number groups DIMMs and each DIMM keeps its slot:
+    the model states the spec once - make, family, total cores, rated
+    speed - and each socket files what it alone knows beneath
+    locations. The sockets view is keyed by the same designations.
     """
     processors, sockets = _process_processors(
         [
@@ -194,36 +193,11 @@ def test_processors_keyed_by_socket_designation() -> None:
         {},
     )
 
-    assert list(processors) == ["am4"]
+    assert list(processors) == ["amd_ryzen_9_5900xt_16_core_processor"]
     assert list(sockets) == ["am4"]
     assert sockets["am4"]["populated"] is True
 
-
-def test_processor_carries_the_vendor_strings_as_fields() -> None:
-    """Nothing the key held is lost - it moves into fields.
-
-    The make is the vendor as printed and the model is the version
-    string verbatim, with the normalized name beside it to compare on.
-    """
-    processors = _process_processors(
-        [
-            {
-                "handle": "0x0004",
-                "values": {
-                    "socket_designation": "AM4",
-                    "manufacturer": "Advanced Micro Devices, Inc.",
-                    "version": "AMD Ryzen 9 5900XT 16-Core Processor",
-                    "family": "Zen",
-                    "core_count": "16",
-                    "core_enabled": "16",
-                    "max_speed": "4900 MHz",
-                    "current_speed": "3300 MHz",
-                },
-            }
-        ],
-        {},
-    )[0]
-    processor = processors["am4"]
+    processor = processors["amd_ryzen_9_5900xt_16_core_processor"]
 
     assert processor["make"] == "Advanced Micro Devices, Inc."
     assert processor["model"] == {
@@ -231,16 +205,26 @@ def test_processor_carries_the_vendor_strings_as_fields() -> None:
         "pretty": "AMD Ryzen 9 5900XT 16-Core Processor",
     }
     assert processor["family"] == "Zen"
-    assert processor["cores"] == {"total": 16, "enabled": 16}
-    assert processor["speed"]["max"]["hertz"] == 4900000000
-    assert processor["speed"]["current"]["hertz"] == 3300000000
+    assert processor["cores"] == {"total": 16}
+    assert processor["speed"] == {
+        "max": {"hertz": 4900000000, "pretty": "4.9 GHz"}
+    }
+
+    location = processor["locations"]["am4"]
+
+    assert location["cores"] == {"enabled": 16}
+    assert location["speed"] == {
+        "current": {"hertz": 3300000000, "pretty": "3.3 GHz"}
+    }
 
 
-def test_identical_processors_keep_separate_records() -> None:
-    """Two sockets holding the same model are two processors.
+def test_identical_processors_share_a_record() -> None:
+    """Two sockets holding one model are one spec, twice located.
 
-    They are two pieces of hardware with their own serials, and the
-    socket each sits in is what tells them apart.
+    Keyed by socket, a dual-CPU host stated the same spec once per
+    socket. The model is stated once now, and the serials that tell
+    the two pieces of hardware apart sit in the location each socket
+    owns.
     """
     entries = [
         {
@@ -260,11 +244,15 @@ def test_identical_processors_keep_separate_records() -> None:
 
     processors, sockets = _process_processors(entries, {})
 
-    assert sorted(processors) == ["cpu1", "cpu2"]
-    assert processors["cpu1"]["serial"] == "CPU001SERIAL001"
-    assert processors["cpu2"]["serial"] == "CPU001SERIAL002"
-    assert processors["cpu1"]["model"] == processors["cpu2"]["model"]
+    assert list(processors) == ["intel_xeon_cpu_e5_2620_v3"]
+
+    locations = processors["intel_xeon_cpu_e5_2620_v3"]["locations"]
+
+    assert sorted(locations) == ["cpu1", "cpu2"]
+    assert locations["cpu1"]["serial"] == "CPU001SERIAL001"
+    assert locations["cpu2"]["serial"] == "CPU001SERIAL002"
     assert sorted(sockets) == ["cpu1", "cpu2"]
+    assert sorted(sockets) == sorted(locations)
 
 
 def test_hardware_names_the_command_that_answered(

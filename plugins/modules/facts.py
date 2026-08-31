@@ -461,10 +461,14 @@ ansible_facts:
           type: dict
         processors:
           description: >-
-            Installed processors keyed by socket designation - the
-            socket names the processor the way a locator names a DIMM -
-            each carrying the vendor's C(make) and C(model) strings and
-            the caches attached to it
+            Installed processor models, each carrying the sockets that
+            hold one under C(locations) keyed by socket designation -
+            the way a part number groups DIMMs and each DIMM keeps its
+            slot. The model states what every instance shares (the
+            vendor's C(make) and C(model) strings, total cores, rated
+            speed, the caches attached to it); a location states what
+            its socket alone knows (serial, enabled cores, current
+            speed, voltage)
           returned: when dmidecode reported processors
           type: dict
         memory:
