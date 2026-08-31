@@ -263,10 +263,17 @@ o0_paths:
       reading C(o0_users) back against this store. A home no read
       reached is left out entirely, because a store reports what it
       asked rather than what it assumed.
-    - The login shells users actually hold are entries here too, with
-      the file metadata of the shell itself. Every step the shell
-      resolves through gets an entry of its own, so a C(/bin/sh) that
-      is a link to C(bash) puts C(bash) in the store beside it and
+    - The login shells are entries here too, with the file metadata of
+      the shell itself. Two reasons put one here and either is enough -
+      a passwd entry holds it, or I(shells_path) names it - and reading
+      only what users hold would leave out C(/bin/sh) on any host
+      where no passwd entry names it, which is most of them.
+    - An entry describes the path it is keyed by, so a shell that is a
+      link reports a C(type) of C(link) and the C(target) the listing
+      gave
+      rather than its target's metadata. Every step the shell resolves
+      through gets an entry of its own, so a C(/bin/sh) that is a link
+      to C(bash) puts C(bash) in the store beside it and
       C(resolution) says how the one reached the other.
     - A single file parsed on its own lands at its own path - the
       bytes under C(content), the meaning parsed out of them under

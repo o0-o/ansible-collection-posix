@@ -120,18 +120,32 @@ class ActionModule(ReadPosixActionBase, ActionBase):
             group_path=group_path,
         )
 
+        # The login shells the host names are read before anything is
+        # read at them: a shell nobody holds is still a shell the host
+        # calls a login shell, and it is the one a consumer is most
+        # likely to be asking about
+        shells = self._content(files, shells_path, required=False)
+        named = parse_shells(shells) if shells is not None else []
+
         def read_paths(paths: list[str]) -> dict[str, Any]:
             # Every read resolves, because the question a consumer has
             # about a shell is what it really is, and a home reached
-            # through a link is the same question
+            # through a link is the same question. Nothing is followed:
+            # in a store keyed by path, the entry at a path describes
+            # that path, and every step of the chain has an entry of
+            # its own to describe itself
             return self._read(
-                paths=paths, task_vars=task_vars, resolve=True
+                paths=paths,
+                task_vars=task_vars,
+                resolve=True,
+                follow=False,
             )
 
         # Homes and shells are both metadata reads over paths the
-        # passwd entries already named, so they are read together
+        # passwd entries and the shells file already named, so they
+        # are read together
         known_paths = task_vars.get("o0_paths")
-        read = batch_read(users, read_paths, known_paths)
+        read = batch_read(users, read_paths, known_paths, named)
 
         result.update(
             {
@@ -150,7 +164,7 @@ class ActionModule(ReadPosixActionBase, ActionBase):
         )
         paths = compose_paths(
             paths,
-            compose_shell_paths(users, read, known_paths),
+            compose_shell_paths(users, read, known_paths, named),
             origin=FQCN,
         )
 
@@ -160,9 +174,7 @@ class ActionModule(ReadPosixActionBase, ActionBase):
         # whose file could not be read leaves the path unmentioned
         # rather than empty, which would read as a host that names
         # none.
-        shells = self._content(files, shells_path, required=False)
         if shells is not None:
-            named = parse_shells(shells)
             paths = compose_paths(
                 paths,
                 {

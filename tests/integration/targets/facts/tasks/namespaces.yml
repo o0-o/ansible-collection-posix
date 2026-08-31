@@ -627,6 +627,52 @@
     fail_msg: >-
       the homes or the shells in o0_paths are not keyed by path
 
+# Every login shell the host names is described, whether or not any
+# passwd entry holds it. On a modern Linux nobody's shell field says
+# /bin/sh and /bin/sh is still what the host means by the name, so a
+# store that only described what users hold would leave out the one
+# shell a consumer is most likely to be asking about.
+- name: Assert every login shell the host names is described
+  vars:
+    paths: "{{ facts_all_reg['ansible_facts']['o0_paths'] }}"
+    named: >-
+      {{ paths['/etc/shells']['config'] | default([]) }}
+    held: >-
+      {{ facts_all_reg['ansible_facts']['o0_users'] | dict2items
+         | selectattr('value.shell', 'defined')
+         | map(attribute='value.shell') | select('string')
+         | unique | list }}
+    unheld: "{{ named | reject('in', held) | list }}"
+    described: >-
+      {{ named | select('in', paths.keys() | list)
+         | map('extract', paths) | select('mapping') | list }}
+  ansible.builtin.assert:
+    that:
+      - named | length > 0
+      # There is at least one named shell nobody holds, or this
+      # assertion is not testing what it says it tests
+      - unheld | length > 0
+      # Every one of them is a key of the store, described as the file
+      # it is or filed null where the host names a shell it lacks
+      - named | reject('in', paths.keys() | list) | list | length == 0
+      - >-
+        described | rejectattr('type', 'defined') | list | length == 0
+      # A named shell that is a link says so and says what it points
+      # at, rather than wearing its target's data
+      - >-
+        described | selectattr('type', 'eq', 'link')
+        | rejectattr('target', 'defined') | list | length == 0
+      - >-
+        described | rejectattr('resolution', 'defined')
+        | list | length == 0
+      # and every step of every chain is a key of its own
+      - >-
+        described | map(attribute='resolution') | flatten | unique
+        | reject('in', paths.keys() | list) | list | length == 0
+    fail_msg: >-
+      a login shell the host names is not described in o0_paths:
+      named {{ named }}, unheld {{ unheld }}
+
 # One field, one meaning: origin is the provenance of the entry
 # itself, and it is the one thing a later observation adds to rather
 # than replaces, so a path two subsets described names both of them.

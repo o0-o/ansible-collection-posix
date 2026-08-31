@@ -1127,3 +1127,159 @@ def test_batch_read_answers_each_composition_its_own_copy() -> None:
     assert homes["/opt/box"] == {"type": "directory"}
     assert shells["/opt/box"] == {"type": "directory"}
     assert homes["/opt/box"] is not shells["/opt/box"]
+
+
+# A modern Linux: /etc/shells names /bin/sh and /bin/rbash and no
+# passwd entry holds either of them, while /bin itself is a link to
+# usr/bin and both named shells are links to bash. The store has to
+# describe all of them, which is what the owner asks of /bin/sh.
+NAMED_ONLY = ["/bin/sh", "/bin/rbash", "/bin/bash", "/bin/zsh"]
+HOLDERS = {
+    "0": {"uid": 0, "home": "/root", "shell": "/bin/bash"},
+    "1000": {"uid": 1000, "home": "/home/o0-o", "shell": "/bin/zsh"},
+}
+CASA_ANSWERS = {
+    "/root": {"type": "directory"},
+    "/home/o0-o": {"type": "directory"},
+    "/bin/bash": {
+        "type": "regular",
+        "resolution": ["/bin/bash", "/usr/bin/bash"],
+    },
+    "/bin/zsh": {
+        "type": "regular",
+        "resolution": ["/bin/zsh", "/usr/bin/zsh"],
+    },
+    "/bin/sh": {
+        "type": "link",
+        "target": "bash",
+        "resolution": ["/bin/sh", "/usr/bin/sh", "/usr/bin/bash"],
+    },
+    "/bin/rbash": {
+        "type": "link",
+        "target": "bash",
+        "resolution": ["/bin/rbash", "/usr/bin/rbash", "/usr/bin/bash"],
+    },
+    "/usr/bin/sh": {"type": "link", "target": "bash"},
+    "/usr/bin/rbash": {"type": "link", "target": "bash"},
+    "/usr/bin/bash": {"type": "regular"},
+    "/usr/bin/zsh": {"type": "regular"},
+}
+
+
+def test_compose_shell_paths_reads_a_shell_nobody_holds() -> None:
+    """Test a login shell the host names is described anyway.
+
+    No passwd entry on a modern Linux says /bin/sh, and /bin/sh is
+    still what the host means by the name, so reading only what users
+    hold leaves out the one shell a consumer is most likely to be
+    asking about.
+    """
+    read, _asked = _reader(CASA_ANSWERS)
+
+    shells = compose_shell_paths(HOLDERS, read, None, NAMED_ONLY)
+
+    assert shells["/bin/sh"]["type"] == "link"
+    assert shells["/bin/sh"]["target"] == "bash"
+    assert shells["/bin/rbash"]["type"] == "link"
+
+
+def test_compose_shell_paths_keeps_two_links_that_share_a_target() -> None:
+    """Test each spelled shell keeps its own entry and its own chain.
+
+    Two links resolving to one file are two paths, and the store keys
+    a path by what it is: the shared target gets an entry of its own
+    rather than standing in for either link.
+    """
+    read, _asked = _reader(CASA_ANSWERS)
+
+    shells = compose_shell_paths(HOLDERS, read, None, NAMED_ONLY)
+
+    assert shells["/bin/sh"]["resolution"] == [
+        "/bin/sh",
+        "/usr/bin/sh",
+        "/usr/bin/bash",
+    ]
+    assert shells["/bin/rbash"]["resolution"] == [
+        "/bin/rbash",
+        "/usr/bin/rbash",
+        "/usr/bin/bash",
+    ]
+    assert shells["/usr/bin/bash"] == {"type": "regular"}
+
+
+def test_compose_shell_paths_files_every_spelled_shell_and_hop() -> None:
+    """Test the whole store the casa layout composes to."""
+    read, asked = _reader(CASA_ANSWERS)
+
+    shells = compose_shell_paths(HOLDERS, read, None, NAMED_ONLY)
+
+    assert set(shells) == {
+        "/bin/bash",
+        "/bin/rbash",
+        "/bin/sh",
+        "/bin/zsh",
+        "/usr/bin/bash",
+        "/usr/bin/rbash",
+        "/usr/bin/sh",
+        "/usr/bin/zsh",
+    }
+    # The shells first, then every step of every chain, in one batch
+    assert asked == [
+        ["/bin/bash", "/bin/rbash", "/bin/sh", "/bin/zsh"],
+        [
+            "/usr/bin/bash",
+            "/usr/bin/rbash",
+            "/usr/bin/sh",
+            "/usr/bin/zsh",
+        ],
+    ]
+
+
+def test_compose_shell_paths_takes_the_union_of_both_reasons() -> None:
+    """Test a shell a user holds is read whether the file names it.
+
+    The file says what the host is willing to call a login shell and
+    the passwd entry says what somebody logs in with; either is reason
+    enough, and neither is the whole list.
+    """
+    users = {"0": {"uid": 0, "shell": "/bin/held"}}
+    read, asked = _reader(
+        {"/bin/held": {"type": "regular"}, "/bin/named": {"type": "regular"}}
+    )
+
+    shells = compose_shell_paths(users, read, None, ["/bin/named"])
+
+    assert set(shells) == {"/bin/held", "/bin/named"}
+    assert asked[0] == ["/bin/held", "/bin/named"]
+
+
+def test_compose_shell_paths_reads_no_named_shell_twice() -> None:
+    """Test a shell both held and named is one path in the batch."""
+    users = {"0": {"uid": 0, "shell": "/bin/sh"}}
+    read, asked = _reader({"/bin/sh": {"type": "regular"}})
+
+    compose_shell_paths(users, read, None, ["/bin/sh"])
+
+    assert asked == [["/bin/sh"]]
+
+
+def test_batch_read_covers_the_shells_the_file_names() -> None:
+    """Test the named shells ride the one batch the compositions share.
+
+    A named shell the batch left out would fall through to a read of
+    its own, which is the round trip the batch exists to avoid.
+    """
+    read, asked = _reader(CASA_ANSWERS)
+
+    batched = batch_read(HOLDERS, read, None, NAMED_ONLY)
+    compose_homes(HOLDERS, batched)
+    compose_shell_paths(HOLDERS, batched, None, NAMED_ONLY)
+
+    assert asked[0] == [
+        "/bin/bash",
+        "/bin/rbash",
+        "/bin/sh",
+        "/bin/zsh",
+        "/home/o0-o",
+        "/root",
+    ]

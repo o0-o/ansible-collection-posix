@@ -1,0 +1,30 @@
+# vim: ts=2:sw=2:sts=2:et:ft=yaml.ansible
+# -*- mode: yaml; yaml-indent-offset: 2; indent-tabs-mode: nil; -*-
+---
+bugfixes:
+  - >-
+    users, facts - a login shell the host names in ``/etc/shells`` is
+    described in ``o0_paths`` whether or not any passwd entry holds
+    it. Only the shells users hold were read, and on a modern Linux
+    nobody's shell field says ``/bin/sh``, so the one shell a consumer
+    is most likely to be asking about was the one the store did not
+    describe: an Arch host published ``/bin/sh`` and ``/bin/rbash``
+    with nothing on them but the ``command -v`` the compliance sweep
+    had filed, and ``/bin/rbash`` was absent from the store
+    altogether. Both reasons now put a shell in the store and either
+    is enough - a passwd entry holds it, or the file names it - and
+    the two lists ride the one batch the homes share
+    (https://github.com/o0-o/ansible-collection-posix/pull/XXX).
+  - >-
+    users, facts - the reads that fill the path store no longer follow
+    links, so the entry at a path describes that path. A shell that is
+    a link reports C(type: link) and the C(target) the listing gave,
+    where following filed the target's metadata under the link's key
+    and dropped both - which is how ``/bin/sh`` came to be published as
+    a regular file with no target on a host where it is a link to
+    ``bash``. Nothing is lost by not following: every step of the
+    chain already has an entry of its own, so the target is in the
+    store under its own key, and ``resolution`` says how the one
+    reaches the other. Homes are read the same way and for the same
+    reason
+    (https://github.com/o0-o/ansible-collection-posix/pull/XXX).

@@ -269,3 +269,89 @@
       - >-
         'resolution' not in
         read_resolve_unasked_reg['paths'][read_resolve_rel]
+
+# Two links pointing at one file are two paths, and a store keyed by
+# path keys each of them. This is the shape a modern Linux ships in
+# /bin: sh and rbash both link to bash, through a /bin that is itself
+# a link to usr/bin, and none of the three may stand in for another.
+- name: Link a second name at the file the first one names
+  o0_o.posix.write:
+    state: link
+    target: target.txt
+    dest: "{{ read_dir_path }}/resolve/real/second.link"
+  check_mode: false
+
+- name: Name the second link
+  ansible.builtin.set_fact:
+    read_resolve_second: "{{ read_dir_path }}/resolve/real/second.link"
+
+- name: Resolve both links and their shared target in one read
+  o0_o.posix.read:
+    paths:
+      - "{{ read_resolve_rel }}"
+      - "{{ read_resolve_second }}"
+      - "{{ read_resolve_real }}/real/target.txt"
+    resolve: true
+    follow: false
+  register: read_resolve_shared_reg
+
+- name: Assert each link keeps its own entry and its own chain
+  ansible.builtin.assert:
+    that:
+      - read_resolve_shared_reg is not changed
+      # Unfollowed, each entry describes the path it is keyed by
+      - >-
+        read_resolve_shared_reg['paths'][read_resolve_rel]['type']
+        == 'link'
+      - >-
+        read_resolve_shared_reg['paths'][read_resolve_second]['type']
+        == 'link'
+      - >-
+        read_resolve_shared_reg['paths'][read_resolve_real ~
+        '/real/target.txt']['type'] == 'regular'
+      # Both chains end at the one file and neither is the other's
+      - >-
+        read_resolve_shared_reg['paths'][read_resolve_rel]['resolution']
+        | first == read_resolve_rel
+      - >-
+        read_resolve_shared_reg['paths'][read_resolve_second]
+        ['resolution'] | first == read_resolve_second
+      - >-
+        read_resolve_shared_reg['paths'][read_resolve_rel]['resolution']
+        | last == read_resolve_real ~ '/real/target.txt'
+      - >-
+        read_resolve_shared_reg['paths'][read_resolve_second]
+        ['resolution'] | last == read_resolve_real ~ '/real/target.txt'
+      # The shared target keeps its own regular-file entry
+      - >-
+        read_resolve_shared_reg['paths'][read_resolve_real ~
+        '/real/target.txt']['resolution'] | length == 1
+
+- name: Follow both links at once and keep each chain apart
+  o0_o.posix.read:
+    paths:
+      - "{{ read_resolve_rel }}"
+      - "{{ read_resolve_second }}"
+    resolve: true
+    follow: true
+  register: read_resolve_shared_follow_reg
+
+- name: Assert two links sharing a target do not share an entry
+  ansible.builtin.assert:
+    that:
+      - read_resolve_shared_follow_reg is not changed
+      # Followed, both entries describe the one target
+      - >-
+        read_resolve_shared_follow_reg['paths'][read_resolve_rel]
+        ['realpath'] == read_resolve_real ~ '/real/target.txt'
+      - >-
+        read_resolve_shared_follow_reg['paths'][read_resolve_second]
+        ['realpath'] == read_resolve_real ~ '/real/target.txt'
+      # and each still carries the chain it walked to get there, which
+      # a shared mapping would have made one of them wrong
+      - >-
+        read_resolve_shared_follow_reg['paths'][read_resolve_rel]
+        ['resolution'] | first == read_resolve_rel
+      - >-
+        read_resolve_shared_follow_reg['paths'][read_resolve_second]
+        ['resolution'] | first == read_resolve_second

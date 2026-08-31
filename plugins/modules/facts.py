@@ -947,9 +947,18 @@ ansible_facts:
           what makes it. A home the gather read and found is not there
           is C(null), a dangling home, which that same lookup
           surfaces.
-        - The login shells users hold are entries here too, with the
-          file metadata of the shell itself and, for a link, the
-          target the listing reported. Every step a shell resolves
+        - The login shells are entries here too, with the file
+          metadata of the shell itself and, for a link, the target the
+          listing reported. Two reasons put one here and either is
+          enough - a passwd entry holds it, or C(/etc/shells) names
+          it.
+          Reading only what users hold would leave out C(/bin/sh) on
+          any host where no passwd entry names it, which is most of
+          them.
+        - An entry describes the path it is keyed by, so a shell that
+          is a link reports a C(type) of C(link) and its C(target)
+          rather
+          than its target's metadata. Every step a shell resolves
           through gets an entry of its own, so a C(/bin/sh) that is a
           link to C(bash) puts C(bash) in the store beside it and
           C(resolution) says how the one reached the other. Which is

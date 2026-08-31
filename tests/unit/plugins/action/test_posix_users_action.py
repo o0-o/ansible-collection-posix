@@ -494,3 +494,54 @@ def test_users_action_batch_leaves_the_facts_alone(
         "origin": ["o0_o.posix.users"],
     }
     assert result["o0_paths"]["/bin/sh"]["type"] == "regular"
+
+
+def test_users_action_reads_the_paths_unfollowed(monkeypatch, plugin) -> None:
+    """Test the store's reads describe the path rather than the target.
+
+    In a store keyed by path, the entry at a path has to describe that
+    path: a link's entry says it is a link and what it points at, and
+    every step of the chain has an entry of its own to describe
+    itself. Following would file the target's data under the link's
+    key and lose the one fact the entry exists to carry.
+    """
+    asked: list[dict[str, Any]] = []
+
+    def mock_read(**kwargs: Any) -> dict[str, Any]:
+        asked.append(kwargs)
+        return {"paths": {}}
+
+    monkeypatch.setattr(plugin, "_read", mock_read)
+
+    plugin.run(task_vars={})
+
+    assert asked
+    for call in asked:
+        assert call["follow"] is False
+        assert call["resolve"] is True
+
+
+def test_users_action_reads_a_shell_the_file_names(
+    monkeypatch, plugin
+) -> None:
+    """Test a login shell nobody holds is still described.
+
+    /etc/shells here names a shell no passwd entry holds, which is
+    what /bin/sh is on a modern Linux, and the store has to describe
+    it all the same.
+    """
+    _mock_run(
+        monkeypatch,
+        plugin,
+        {
+            "/etc/passwd": PASSWD,
+            "/etc/group": GROUP,
+            "/etc/shells": SHELLS + "\n/bin/rbash",
+        },
+    )
+    asked = _counting_read(monkeypatch, plugin)
+
+    result = plugin.run(task_vars={})
+
+    assert "/bin/rbash" in asked[0]
+    assert result["o0_paths"]["/bin/rbash"]["type"] == "directory"

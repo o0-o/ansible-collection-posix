@@ -362,22 +362,53 @@ def _described(store: dict[str, Any], path: str) -> bool:
     return isinstance(entry, dict) and "type" in entry
 
 
+def _shells_named(
+    users: dict[str, dict[str, Any]],
+    named: Optional[Sequence[str]] = None,
+) -> set[str]:
+    """Every login shell this host has given a reason to describe.
+
+    Two reasons, and either is enough.  A shell a passwd entry holds
+    is what somebody actually logs in with.  A shell ``/etc/shells``
+    names is what the host is willing to call a login shell, whether
+    anybody holds it or not - and on a modern Linux that is the only
+    reason ``/bin/sh`` gets described at all, because no user's shell
+    field says ``/bin/sh`` and it is still the shell the host means by
+    the name.
+
+    :param dict[str, dict[str, Any]] users: The o0_users mapping
+    :param Optional[Sequence[str]] named: The login shells the host
+        names, as ``/etc/shells`` gave them
+    :returns set[str]: Shell paths worth describing
+    """
+    held = {
+        user["shell"]
+        for user in users.values()
+        if isinstance(user.get("shell"), str) and user["shell"]
+    }
+
+    return held | {
+        shell for shell in (named or []) if isinstance(shell, str) and shell
+    }
+
+
 def _unread_shells(
     users: dict[str, dict[str, Any]],
     store: dict[str, Any],
+    named: Optional[Sequence[str]] = None,
 ) -> set[str]:
-    """The shells users hold that no gather has described yet.
+    """The login shells no gather has described yet.
 
     :param dict[str, dict[str, Any]] users: The o0_users mapping
     :param dict[str, Any] store: The o0_paths store as it stands
+    :param Optional[Sequence[str]] named: The login shells the host
+        names
     :returns set[str]: Shell paths still to read
     """
     return {
-        user["shell"]
-        for user in users.values()
-        if isinstance(user.get("shell"), str)
-        and user["shell"]
-        and not _described(store, user["shell"])
+        shell
+        for shell in _shells_named(users, named)
+        if not _described(store, shell)
     }
 
 
@@ -385,6 +416,7 @@ def batch_read(
     users: dict[str, dict[str, Any]],
     read: ReadPaths,
     known: Optional[dict[str, Any]] = None,
+    named: Optional[Sequence[str]] = None,
 ) -> ReadPaths:
     """Read for both compositions at once and serve them from it.
 
@@ -402,19 +434,23 @@ def batch_read(
     that falls through in practice, because a link is only known to
     have one once it has been read.
 
-    ``known`` has to be the same store ``compose_shell_paths`` will be
-    given, or the batch reads shells that composition never asks
-    about.
+    ``known`` and ``named`` have to be the same store and the same
+    list ``compose_shell_paths`` will be given, or the batch reads
+    shells that composition never asks about and misses shells it
+    does.
 
     :param dict[str, dict[str, Any]] users: The o0_users mapping
     :param ReadPaths read: How to read a path's metadata
     :param Optional[dict[str, Any]] known: The o0_paths store a
         previous gather already published
+    :param Optional[Sequence[str]] named: The login shells the host
+        names, as ``/etc/shells`` gave them
     :returns ReadPaths: A read answering from the batch, falling
         through for whatever the batch does not cover
     """
     paths = sorted(
-        set(_homes_named(users)) | _unread_shells(users, dict(known or {}))
+        set(_homes_named(users))
+        | _unread_shells(users, dict(known or {}), named)
     )
 
     batch: dict[str, Any] = {}
@@ -634,6 +670,7 @@ def compose_shell_paths(
     users: dict[str, dict[str, Any]],
     read: ReadPaths,
     known: Optional[dict[str, Any]] = None,
+    named: Optional[Sequence[str]] = None,
 ) -> dict[str, Optional[dict[str, Any]]]:
     """Compose the shell entries of the o0_paths store.
 
@@ -641,10 +678,15 @@ def compose_shell_paths(
     store the way a home is: keyed by the canonical absolute path and
     carrying what a read of that path says - its type, its mode and
     the bits of it, who owns it, when it changed, and for a link the
-    target the listing reported.  The shells users actually hold are
-    what is read, named in ``/etc/shells`` or not; that file's own
-    list is the ``config`` of its own entry, which is a different
-    claim.
+    target the listing reported.
+
+    Two reasons put a shell here and either is enough: a passwd entry
+    holds it, or ``/etc/shells`` names it.  Reading only what users
+    hold would leave out the one shell a consumer is most likely to
+    ask about, because on a modern Linux nobody's shell field says
+    ``/bin/sh`` and ``/bin/sh`` is still what the host means by the
+    name.  The file's own list is the ``config`` of its own entry,
+    which is the host's claim rather than a description of any file.
 
     Every hop the shell resolves through gets an entry of its own, for
     the reason a linked home's target does: the question a consumer
@@ -665,7 +707,7 @@ def compose_shell_paths(
         keyed by canonical absolute path
     """
     store = dict(known or {})
-    unread = _unread_shells(users, store)
+    unread = _unread_shells(users, store, named)
 
     if not unread:
         return {}

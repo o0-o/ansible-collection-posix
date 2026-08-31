@@ -560,6 +560,7 @@ class ActionModule(ReadPosixActionBase, ActionBase):
         self,
         users: dict[str, Any],
         task_vars: Optional[dict[str, Any]] = None,
+        named: Optional[list[str]] = None,
     ) -> dict[str, Any]:
         """Read the paths the passwd entries named.
 
@@ -575,9 +576,17 @@ class ActionModule(ReadPosixActionBase, ActionBase):
         that resolves through links puts every step of the chain in
         the store beside it.
 
+        A shell nobody holds is read too, where the host named it a
+        login shell.  On a modern Linux no passwd entry says
+        ``/bin/sh`` and ``/bin/sh`` is still what the host means by
+        the name, so reading only what users hold leaves out the one
+        shell a consumer is most likely to be asking about.
+
         :param dict[str, Any] users: The o0_users mapping the batch
             composed
         :param Optional[dict[str, Any]] task_vars: Task variables
+        :param Optional[list[str]] named: The login shells the host
+            names, as /etc/shells gave them
         :returns dict[str, Any]: The home and shell entries of the
             path store
         """
@@ -585,17 +594,23 @@ class ActionModule(ReadPosixActionBase, ActionBase):
         def read_paths(paths: list[str]) -> dict[str, Any]:
             # Every read resolves, because the question a consumer has
             # about a shell is what it really is, and a home reached
-            # through a link is the same question
+            # through a link is the same question. Nothing is followed:
+            # in a store keyed by path, the entry at a path describes
+            # that path, and every step of the chain has an entry of
+            # its own to describe itself
             return self._read(
-                paths=paths, task_vars=task_vars, resolve=True
+                paths=paths,
+                task_vars=task_vars,
+                resolve=True,
+                follow=False,
             )
 
         known_paths = (task_vars or {}).get("o0_paths")
-        read = batch_read(users, read_paths, known_paths)
+        read = batch_read(users, read_paths, known_paths, named)
 
         paths = compose_paths(None, compose_homes(users, read))
         paths = compose_paths(
-            paths, compose_shell_paths(users, read, known_paths)
+            paths, compose_shell_paths(users, read, known_paths, named)
         )
 
         return {"o0_paths": paths} if paths else {}
@@ -842,9 +857,15 @@ class ActionModule(ReadPosixActionBase, ActionBase):
         # Phase 3: Read the paths the passwd entries named, which is a
         # metadata read rather than a command and cannot join a batch
         if user_facts.get("o0_users"):
+            # The shells the host names are this subset's own answer,
+            # keyed by shell path, so the list is read back off it
             self._merge_facts(
                 all_facts,
-                self._read_user_paths(user_facts["o0_users"], task_vars),
+                self._read_user_paths(
+                    user_facts["o0_users"],
+                    task_vars,
+                    sorted(user_facts.get("o0_shells") or {}),
+                ),
             )
 
         result["ansible_facts"] = all_facts
