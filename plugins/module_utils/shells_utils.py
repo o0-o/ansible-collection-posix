@@ -87,11 +87,26 @@ SHELL_DEFAULT = "/bin/sh"
 # terminal type the session carries, and TZ and NLSPATH are the other
 # two POSIX variables a login file plausibly sets that name no user.
 #
+# IFS is here for the opposite reason to the rest.  It is almost never
+# exported, so on a healthy host it is simply absent; its presence in
+# a probed login environment is itself the finding, because an
+# exported and modified IFS breaks word splitting for everything that
+# host runs.  OPTIND stays out: it is getopts iteration state, always
+# 1 in a fresh login, bookkeeping rather than configuration.
+#
 # Narrower than the environment ``o0_users`` publishes, deliberately.
 # That fact is about a user and HOME, LOGNAME, MAIL, PWD and USER
 # belong in it; this one is about a shell, and the same variables
 # would only say which identity happened to run the probe.
-SHELL_ENV_VARS = ("LANG", "LC_CTYPE", "NLSPATH", "PATH", "TERM", "TZ")
+SHELL_ENV_VARS = (
+    "IFS",
+    "LANG",
+    "LC_CTYPE",
+    "NLSPATH",
+    "PATH",
+    "TERM",
+    "TZ",
+)
 
 # The variable a row is filed by rather than published with.  A row
 # belongs to the shell that produced it, and the shell's own path is

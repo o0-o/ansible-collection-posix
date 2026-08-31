@@ -1,0 +1,107 @@
+# vim: ts=2:sw=2:sts=2:et:ft=yaml.ansible
+# -*- mode: yaml; yaml-indent-offset: 2; indent-tabs-mode: nil; -*-
+---
+# GNU General Public License v3.0+
+# SPDX-License-Identifier: GPL-3.0-or-later
+# (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
+#
+# Copyright (c) 2025 oØ.o (@o0-o)
+#
+# This file is part of the o0_o.posix Ansible Collection.
+
+- name: Ask the host what it limits
+  o0_o.posix.config:
+  register: config_reg
+
+- name: Assert the answer is the shape the module documents
+  vars:
+    config: "{{ config_reg['config'] }}"
+    answered: >-
+      {{ config | dict2items | rejectattr('value', 'none')
+         | map(attribute='value') | list }}
+  ansible.builtin.assert:
+    that:
+      - config_reg is not changed
+      - config is mapping
+      # Every POSIX host limits something, and the two variables the
+      # standard requires of every one of them are numbers
+      - config | length > 0
+      - config['ARG_MAX'] is integer
+      - config['ARG_MAX'] > 0
+      - config['_POSIX_VERSION'] is integer
+      # Typed the way the host printed them, so a consumer compares
+      # against a number rather than a spelling of one
+      - >-
+        answered | rejectattr('0', 'defined')
+        | select('string') | select('match', '^[0-9]+$')
+        | list | length == 0
+      # A variable the host has and does not limit is null; one it
+      # would not answer for at all is absent, and neither is the other
+      - >-
+        config | dict2items | selectattr('value', 'none')
+        | map(attribute='key') | select('in', config.keys() | list)
+        | list | length
+        == config | dict2items | selectattr('value', 'none')
+        | list | length
+      # No namespace leaks out of a module return
+      - config_reg['o0_os'] is not defined
+      - config_reg['ansible_facts'] is not defined
+    fail_msg: >-
+      the config module did not answer the shape it documents:
+      {{ config.keys() | list | sort }}
+
+- name: Assert the namespace names the command that asked
+  ansible.builtin.assert:
+    that:
+      - config_reg['evidence']['commands'] == ['getconf']
+      # The variables are the fact rather than evidence for one, so
+      # there is no config kind here: a fact is not evidence for itself
+      - "'config' not in config_reg['evidence']"
+      - "'files' not in config_reg['evidence']"
+    fail_msg: >-
+      the config module named something other than the getconf that
+      asked: {{ config_reg['evidence'] }}
+
+- name: Ask again and publish the answer as facts
+  o0_o.posix.config:
+    gather: true
+  register: config_gathered_reg
+
+- name: Assert the gather publishes one namespace and names itself
+  vars:
+    gathered: "{{ config_gathered_reg['ansible_facts'] }}"
+  ansible.builtin.assert:
+    that:
+      - config_gathered_reg is not changed
+      - gathered.keys() | list == ['o0_os']
+      - >-
+        gathered['o0_os'].keys() | list | sort
+        == ['config', 'evidence', 'origins']
+      # The parser that composed it names itself, which is this module
+      - gathered['o0_os']['origins'] == ['o0_o.posix.config']
+      - gathered['o0_os']['evidence']['commands'] == ['getconf']
+      # The same answer either way round
+      - >-
+        gathered['o0_os']['config'] == config_gathered_reg['config']
+    fail_msg: >-
+      the gathered namespace is not what the module returned:
+      {{ gathered }}
+
+- name: Assert the module and the facts subset answer the same thing
+  o0_o.posix.facts:
+    gather_subset: ['config']
+  register: config_subset_reg
+
+- name: Assert one processor means one shape under one name
+  vars:
+    subset: "{{ config_subset_reg['ansible_facts']['o0_os'] }}"
+  ansible.builtin.assert:
+    that:
+      - subset['config'] == config_reg['config']
+      - subset['evidence'] == config_reg['evidence']
+      # Each names the parser that composed it, and the gather names
+      # itself besides
+      - "'o0_o.posix.config' in subset['origins']"
+      - "'o0_o.posix.facts' in subset['origins']"
+    fail_msg: >-
+      the module and the subset disagree about the configuration

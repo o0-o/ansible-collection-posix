@@ -57,6 +57,7 @@ from ansible_collections.o0_o.core.plugins.module_utils import (
 from ansible_collections.o0_o.posix.plugins.module_utils.evidence_utils import (  # noqa: E501
     commands_run,
     compose_evidence,
+    name_origins,
 )
 
 # The variables the sweep asks for: the sysconf limits, the confstr
@@ -131,6 +132,10 @@ GETCONF_RCS = [0, 1, 2, 64, 71, 126, 127]
 
 # What a host prints for a variable it has and does not limit
 GETCONF_UNDEFINED = "undefined"
+
+# What this module is called, which is what a fact it composes
+# names as one of the producers that made it
+FQCN = "o0_o.posix.config"
 
 
 def _parse_getconf(
@@ -352,14 +357,17 @@ def process_getconf_command_results(
     # The namespace names what was consulted, and nothing more: these
     # variables are the fact here rather than evidence for one, and a
     # fact is not evidence for itself.
-    return {
-        "o0_os": {
-            "config": config,
-            "evidence": compose_evidence(
-                commands=commands_run(cmds_completed, "getconf_sysconf")
-            ),
-        }
-    }, []
+    return name_origins(
+        {
+            "o0_os": {
+                "config": config,
+                "evidence": compose_evidence(
+                    commands=commands_run(cmds_completed, "getconf_sysconf")
+                ),
+            }
+        },
+        FQCN,
+    ), []
 
 
 __all__ = [

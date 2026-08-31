@@ -169,9 +169,11 @@
       - >-
         gathered['o0_os'].keys() | list | sort
         == ['config', 'evidence', 'origins']
-      # No getconf module owns this sweep, so the gather that ran it
-      # is the one producer the section names
-      - gathered['o0_os']['origins'] == ['o0_o.posix.facts']
+      # The config module composed the sweep and this gather published
+      # it, and both belong in the record of who made the section
+      - >-
+        gathered['o0_os']['origins']
+        == ['o0_o.posix.config', 'o0_o.posix.facts']
       - gathered['o0_os']['config']['ARG_MAX'] is integer
       - gathered['o0_os']['config']['PATH'] is string
       # These variables are the fact, not evidence for one, so the

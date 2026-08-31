@@ -896,6 +896,10 @@ ansible_facts:
             - C(env) is what describes the shell rather than whoever
               ran the probe - C(LANG), C(LC_CTYPE), C(PATH), C(TERM),
               and C(TZ) and C(NLSPATH) where a login file set them.
+              C(IFS) is watched for the opposite reason to the rest -
+              it is almost never exported, so its presence here is
+              itself the finding, an exported and modified C(IFS)
+              breaking word splitting for everything the host runs.
               Narrower than the environment C(o0_users) publishes, and
               deliberately so - that fact is about a user and C(HOME),
               C(LOGNAME), C(MAIL), C(PWD) and C(USER) belong in it,

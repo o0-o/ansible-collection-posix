@@ -933,8 +933,11 @@
       # names the identity rather than the shell either way
       - >-
         config['env'].keys()
-        | reject('in', ['LANG', 'LC_CTYPE', 'NLSPATH', 'PATH', 'TERM',
-        'TZ']) | list | length == 0
+        | reject('in', ['IFS', 'LANG', 'LC_CTYPE', 'NLSPATH', 'PATH',
+        'TERM', 'TZ']) | list | length == 0
+      # IFS is almost never exported, so its presence is the finding
+      # rather than the norm; OPTIND is iteration state, not config
+      - "'OPTIND' not in config['env']"
       # The home is the key the row is filed under and the shell is
       # the entry it is filed in, so neither is a field of the row
       - "'HOME' not in config['env']"

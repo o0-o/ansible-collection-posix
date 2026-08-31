@@ -1,0 +1,32 @@
+# vim: ts=2:sw=2:sts=2:et:ft=yaml.ansible
+# -*- mode: yaml; yaml-indent-offset: 2; indent-tabs-mode: nil; -*-
+---
+minor_changes:
+  - >-
+    config - a new module asks a host for every configuration variable
+    IEEE Std 1003.1 names and returns what it answered. It is the
+    ``config`` subset of ``o0_o.posix.facts`` as a module of its own,
+    composed through the same processor, so the two publish one shape
+    under one name and cannot disagree about it. ``gather: true``
+    publishes the same answer as ``ansible_facts.o0_os.config``, the
+    way the compliance module does; the returns are populated either
+    way
+    (https://github.com/o0-o/ansible-collection-posix/pull/XXX).
+  - >-
+    config, facts - ``getconf_utils`` names ``o0_o.posix.config`` among
+    the producers of ``o0_os``, so the section a gather publishes reads
+    ``["o0_o.posix.config", "o0_o.posix.facts"]`` - the parser that
+    composed it and the module that published it. The sweep was the one
+    composer with no module to name, which is why it named only its
+    publisher until now
+    (https://github.com/o0-o/ansible-collection-posix/pull/XXX).
+  - >-
+    facts - ``IFS`` joins the environment an ``o0_shells`` row
+    publishes, and it is watched for the opposite reason to the rest of
+    that list. It is almost never exported, so on a healthy host it is
+    simply absent; its presence in a probed login environment is itself
+    the finding, because an exported and modified ``IFS`` breaks word
+    splitting for everything that host runs. ``OPTIND`` stays out: it
+    is ``getopts`` iteration state, always 1 in a fresh login,
+    bookkeeping rather than configuration
+    (https://github.com/o0-o/ansible-collection-posix/pull/XXX).
