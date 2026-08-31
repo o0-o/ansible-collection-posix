@@ -276,6 +276,9 @@ def test_hardware_names_the_command_that_answered(
 
     assert errors == []
     assert facts["o0_hardware"]["evidence"] == {"commands": ["dmidecode"]}
+    # Origins sits where evidence sits, so the section that names what
+    # was consulted names who consulted it
+    assert facts["o0_hardware"]["origins"] == ["o0_o.posix.dmidecode"]
 
 
 def test_oem_placeholder_reads_as_absent() -> None:

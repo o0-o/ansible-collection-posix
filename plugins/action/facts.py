@@ -18,6 +18,7 @@ from ansible.plugins.action import ActionBase
 
 from ansible_collections.o0_o.posix.plugins.module_utils import (
     EVIDENCE,
+    ORIGINS,
     POSIX_ENV_VARS,
     SHELL_DEFAULT,
     SHELL_SYSTEM_HOME,
@@ -46,6 +47,7 @@ from ansible_collections.o0_o.posix.plugins.module_utils import (
     get_timezone_command_requests,
     merge_entry,
     merge_evidence,
+    name_origins,
     parse_shells,
     process_all_compliance_command_results,
     process_dmidecode_command_results,
@@ -398,19 +400,27 @@ class ActionModule(ReadPosixActionBase, ActionBase):
         whose value is anything but a dict is published whole and the
         last producer to answer wins.
 
-        Evidence is the one thing a later producer adds to rather than
-        replaces.  Several subsets answer for one namespace - uname,
-        the clock and the configuration sweep all publish under
-        ``o0_os`` - and each names what it consulted, so a merge that
-        let the last of them win would publish a namespace claiming a
-        fraction of what was gathered for it.  The same holds one
-        level down, where a user's entry is composed from the files
-        and then added to by the subsets that describe the user the
-        play is running as.
+        Evidence and origins are the two things a later producer adds
+        to rather than replaces.  Several subsets answer for one
+        namespace - uname, the clock and the configuration sweep all
+        publish under ``o0_os`` - and each names what it consulted and
+        who consulted it, so a merge that let the last of them win
+        would publish a namespace claiming a fraction of what was
+        gathered for it.  The same holds one level down, where a
+        user's entry is composed from the files and then added to by
+        the subsets that describe the user the play is running as.
+
+        This gather names itself wherever a subset said what it
+        consulted, which is the granularity origins attaches at
+        everywhere.  A subset's own composer has already named itself
+        there, so a section three of them answer for names all three
+        and this module besides.
 
         :param dict[str, Any] all_facts: Accumulator to merge into
         :param dict[str, Any] subset_facts: Facts to merge
         """
+        name_origins(subset_facts, self.FQCN)
+
         for ns, ns_facts in subset_facts.items():
             if ns == self.PATHS_NAMESPACE:
                 all_facts[ns] = compose_paths(
@@ -422,7 +432,14 @@ class ActionModule(ReadPosixActionBase, ActionBase):
                 continue
             if not isinstance(all_facts.get(ns), dict):
                 all_facts[ns] = {}
+            # A namespace's own record of who composed it is a list, so
+            # the field loop would replace it the way it replaces any
+            # other list. It is read before the loop and unioned after,
+            # because it accumulates the way evidence does
+            held = all_facts[ns].get(ORIGINS)
             for key, value in ns_facts.items():
+                if key == ORIGINS:
+                    continue
                 known = all_facts[ns].get(key)
                 if not (isinstance(known, dict) and isinstance(value, dict)):
                     all_facts[ns][key] = value
@@ -430,6 +447,12 @@ class ActionModule(ReadPosixActionBase, ActionBase):
                     merge_evidence(known, value)
                 else:
                     merge_entry(known, value)
+            named = ns_facts.get(ORIGINS)
+            if isinstance(named, list) or isinstance(held, list):
+                all_facts[ns][ORIGINS] = sorted(
+                    set(held if isinstance(held, list) else [])
+                    | set(named if isinstance(named, list) else [])
+                )
 
     def _second_batch(
         self,

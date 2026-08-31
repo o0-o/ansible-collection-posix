@@ -495,8 +495,8 @@ def test_an_entry_names_the_producer_that_composed_it() -> None:
         origin="o0_o.posix.users",
     )
 
-    assert composed["/bin/sh"]["origin"] == ["o0_o.posix.users"]
-    assert composed["/bin/zsh"]["origin"] == ["o0_o.posix.users"]
+    assert composed["/bin/sh"]["origins"] == ["o0_o.posix.users"]
+    assert composed["/bin/zsh"]["origins"] == ["o0_o.posix.users"]
 
 
 def test_two_producers_that_named_a_path_both_stay_in_it() -> None:
@@ -516,7 +516,7 @@ def test_two_producers_that_named_a_path_both_stay_in_it() -> None:
 
     assert composed["/bin/sh"] == {
         "type": "link",
-        "origin": ["o0_o.posix.compliance", "o0_o.posix.facts"],
+        "origins": ["o0_o.posix.compliance", "o0_o.posix.facts"],
     }
 
 
@@ -528,7 +528,7 @@ def test_one_producer_naming_itself_twice_is_named_once() -> None:
         store, {"/bin/sh": {"type": "regular"}}, origin="o0_o.posix.facts"
     )
 
-    assert composed["/bin/sh"]["origin"] == ["o0_o.posix.facts"]
+    assert composed["/bin/sh"]["origins"] == ["o0_o.posix.facts"]
 
 
 def test_a_composition_on_nobody_s_behalf_names_nobody() -> None:
@@ -539,8 +539,8 @@ def test_a_composition_on_nobody_s_behalf_names_nobody() -> None:
 
     composed = compose_paths(store, {"/bin/zsh": {"type": "regular"}})
 
-    assert composed["/bin/sh"]["origin"] == ["o0_o.posix.which"]
-    assert "origin" not in composed["/bin/zsh"]
+    assert composed["/bin/sh"]["origins"] == ["o0_o.posix.which"]
+    assert "origins" not in composed["/bin/zsh"]
 
 
 def test_a_confirmed_absence_names_no_producer() -> None:
@@ -557,17 +557,17 @@ def test_a_confirmed_absence_names_no_producer() -> None:
     assert composed["/usr/bin/pax"] is None
 
 
-def test_an_origin_that_is_not_a_list_of_names_is_refused() -> None:
+def test_origins_that_are_not_a_list_of_names_are_refused() -> None:
     """Test the store keeps its own shape rather than repairing one.
 
     A producer that wrote a bare string meant one name, and guessing
     that is how a store starts holding two spellings of a field.
     """
     with pytest.raises(ValueError, match="must be a list of the module"):
-        compose_paths(None, {"/bin/sh": {"origin": "o0_o.posix.facts"}})
+        compose_paths(None, {"/bin/sh": {"origins": "o0_o.posix.facts"}})
 
     with pytest.raises(ValueError, match="must be a list of the module"):
-        compose_paths(None, {"/bin/sh": {"origin": [1]}})
+        compose_paths(None, {"/bin/sh": {"origins": [1]}})
 
 
 def test_two_observations_of_a_path_name_everything_consulted() -> None:

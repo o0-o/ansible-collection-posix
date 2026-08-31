@@ -129,7 +129,10 @@
           - 0 in root['residents']
           - "'residents' not in root['entry']"
           - "'tags' not in root['entry']"
-          - root['entry']['origin'] is contains('o0_o.posix.users')
+          - root['entry']['origins'] is contains('o0_o.posix.users')
+          # The read that described the home named itself beside the
+          # module that filed it
+          - root['entry']['origins'] is contains('o0_o.posix.read')
         fail_msg: "root's home did not audit as a home root lives in"
 
     - name: Answer for one user by name and by UID

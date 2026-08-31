@@ -20,6 +20,7 @@ from ansible_collections.o0_o.posix.plugins.module_utils.evidence_utils import (
     compose_evidence,
     merge_entry,
     merge_evidence,
+    name_origins,
 )
 
 
@@ -144,3 +145,124 @@ def test_an_entry_with_no_provenance_merges_as_it_always_did() -> None:
     merge_entry(into, {"locale": "en_US.UTF-8"})
 
     assert into == {"uid": 0, "locale": "en_US.UTF-8"}
+
+
+def test_origins_attach_where_evidence_does() -> None:
+    """Test a producer is named wherever a composition says what it
+    consulted, and nowhere else.
+
+    Reading the granularity off the evidence rather than choosing one
+    is what keeps the two from drifting apart as facts are added.
+    """
+    facts = {
+        "o0_os": {
+            "kernel": {"name": "linux"},
+            "evidence": {"commands": ["uname"]},
+        },
+        "o0_users": {
+            "0": {"uid": 0, "evidence": {"files": ["/etc/passwd"]}},
+        },
+    }
+
+    name_origins(facts, "o0_o.posix.uname")
+
+    # The section says what it consulted, so the section is named
+    assert facts["o0_os"]["origins"] == ["o0_o.posix.uname"]
+    # The entry one level down says so for itself, so it is named too
+    assert facts["o0_users"]["0"]["origins"] == ["o0_o.posix.uname"]
+    # A mapping that says nothing was consulted claims no producer
+    assert "origins" not in facts["o0_os"]["kernel"]
+    assert "origins" not in facts["o0_users"]
+
+
+def test_origins_accumulate_across_producers() -> None:
+    """Test every module that composed a section belongs in its list.
+
+    uname answers for the kernel of o0_os, the clock for its timezone
+    and getconf for its configuration, and a record naming the last of
+    them would claim a third of what happened.
+    """
+    section = {"evidence": {"commands": ["uname"]}}
+
+    name_origins(section, "o0_o.posix.uname")
+    name_origins(section, "o0_o.posix.timezone")
+    name_origins(section, "o0_o.posix.uname")
+
+    assert section["origins"] == ["o0_o.posix.timezone", "o0_o.posix.uname"]
+
+
+def test_naming_nobody_names_nobody() -> None:
+    """Test a caller composing on somebody else's behalf adds nothing."""
+    section = {"evidence": {"commands": ["uname"]}}
+
+    name_origins(section, None)
+
+    assert "origins" not in section
+
+
+def test_the_evidence_itself_is_not_walked_into() -> None:
+    """Test what was consulted is not a composition of its own.
+
+    Evidence holds paths, command names and configuration variables,
+    and none of them has a producer to name.
+    """
+    section = {
+        "evidence": {
+            "commands": ["getconf"],
+            "config": {"_POSIX_VERSION": 200809},
+        }
+    }
+
+    name_origins(section, "o0_o.posix.facts")
+
+    assert section["evidence"] == {
+        "commands": ["getconf"],
+        "config": {"_POSIX_VERSION": 200809},
+    }
+
+
+def test_what_is_not_a_mapping_is_left_alone() -> None:
+    """Test a list or a scalar is not a place a producer can be named."""
+    assert name_origins(["a", "b"], "o0_o.posix.facts") == ["a", "b"]
+    assert name_origins("kernel", "o0_o.posix.facts") == "kernel"
+    assert name_origins(None, "o0_o.posix.facts") is None
+
+
+def test_a_merge_keeps_every_producer_that_named_an_entry() -> None:
+    """Test origins is the second field a merge adds to.
+
+    A later producer wins every field it names except the two that
+    record who looked and what they consulted.
+    """
+    into = {
+        "uid": 0,
+        "evidence": {"files": ["/etc/passwd"], "commands": []},
+        "origins": ["o0_o.posix.users"],
+    }
+
+    merge_entry(
+        into,
+        {
+            "uid": 0,
+            "locale": "ASCII",
+            "evidence": {"files": [], "commands": ["id"]},
+            "origins": ["o0_o.posix.facts"],
+        },
+    )
+
+    assert into["origins"] == ["o0_o.posix.facts", "o0_o.posix.users"]
+    assert into["evidence"] == {
+        "files": ["/etc/passwd"],
+        "commands": ["id"],
+    }
+    assert into["locale"] == "ASCII"
+
+
+def test_a_merge_of_one_record_keeps_the_one_it_has() -> None:
+    """Test an entry that names nobody does not erase the names the
+    entry it merges into already had."""
+    into = {"uid": 0, "origins": ["o0_o.posix.users"]}
+
+    merge_entry(into, {"locale": "ASCII"})
+
+    assert into["origins"] == ["o0_o.posix.users"]

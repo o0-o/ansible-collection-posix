@@ -115,6 +115,24 @@ PRODUCER_FACTS = {
 }
 
 
+def _unnamed(value: Any) -> Any:
+    """The same facts with the record of who composed them taken off.
+
+    Two producers that compose one shape disagree about exactly one
+    thing - each names itself - so a test that the shapes agree
+    compares them without it and asserts the difference separately.
+    """
+    if isinstance(value, dict):
+        return {
+            key: _unnamed(held)
+            for key, held in value.items()
+            if key != "origins"
+        }
+    if isinstance(value, list):
+        return [_unnamed(held) for held in value]
+    return value
+
+
 def _mock_effective_uid(monkeypatch, uid) -> None:
     """Answer the batched ``id -u`` with a fixed uid."""
     monkeypatch.setattr(
@@ -487,7 +505,7 @@ class TestMergeFacts:
             "/bin/sh": {"type": "regular"},
             "/etc/shells": {
                 "config": ["/bin/sh"],
-                "origin": ["o0_o.posix.facts"],
+                "origins": ["o0_o.posix.facts"],
             },
         }
 
@@ -499,7 +517,7 @@ class TestMergeFacts:
         plugin._merge_facts(acc, {"o0_paths": {"/bin/sh": {"size": 200}}})
         assert acc["o0_paths"]["/bin/sh"] == {
             "size": 200,
-            "origin": ["o0_o.posix.facts"],
+            "origins": ["o0_o.posix.facts"],
         }
 
     def test_merge_keeps_every_producer_that_named_a_path(
@@ -513,13 +531,13 @@ class TestMergeFacts:
         """
         acc = {
             "o0_paths": {
-                "/bin/sh": {"origin": ["o0_o.posix.compliance"]}
+                "/bin/sh": {"origins": ["o0_o.posix.compliance"]}
             }
         }
         plugin._merge_facts(acc, {"o0_paths": {"/bin/sh": {"type": "link"}}})
         assert acc["o0_paths"]["/bin/sh"] == {
             "type": "link",
-            "origin": ["o0_o.posix.compliance", "o0_o.posix.facts"],
+            "origins": ["o0_o.posix.compliance", "o0_o.posix.facts"],
         }
 
     def test_merge_keeps_a_confirmed_absence(self, plugin) -> None:
@@ -743,12 +761,16 @@ class TestGatherUsers:
             "shell": "/bin/zsh",
             "groups": [20, 101],
             "evidence": {"files": ["/etc/passwd"], "commands": []},
+            # user_utils composed it and this module published it, and
+            # both belong in the record of who made the entry
+            "origins": ["o0_o.posix.facts", "o0_o.posix.users"],
         }
         assert facts["o0_groups"]["101"] == {
             "name": "access_bpf",
             "gid": 101,
             "members": [1000],
             "evidence": {"files": ["/etc/group"], "commands": []},
+            "origins": ["o0_o.posix.facts", "o0_o.posix.users"],
         }
         assert facts["o0_paths"]["/etc/shells"]["config"] == [
             "/bin/sh",
@@ -782,9 +804,12 @@ class TestGatherUsers:
         # the path store rather than namespaces of their own, and both
         # accumulate there beside the shells file rather than
         # replacing it
+        # The read that described it is stubbed here, so this module
+        # is the only producer that named itself; a real read names
+        # itself beside it
         assert facts["o0_paths"]["/home/o0-o"] == {
             "type": "directory",
-            "origin": ["o0_o.posix.facts"],
+            "origins": ["o0_o.posix.facts"],
         }
         assert facts["o0_paths"]["/var/root"]["type"] == "directory"
         assert facts["o0_paths"]["/etc/shells"]["config"] == [
@@ -940,8 +965,15 @@ class TestGatherUsers:
             ETC_PASSWD, ETC_GROUP, GETENT["passwd"], GETENT["group"]
         )
 
-        assert gathered["o0_users"] == users
-        assert gathered["o0_groups"] == groups
+        # Apart from who composed them, which is the one thing the two
+        # producers must disagree about
+        assert _unnamed(gathered["o0_users"]) == _unnamed(users)
+        assert _unnamed(gathered["o0_groups"]) == _unnamed(groups)
+        assert gathered["o0_users"]["1000"]["origins"] == [
+            "o0_o.posix.facts",
+            "o0_o.posix.users",
+        ]
+        assert users["1000"]["origins"] == ["o0_o.posix.users"]
 
     def test_one_metadata_read(self, monkeypatch, plugin) -> None:
         """Test the homes and the shell files are read together, in
@@ -1024,7 +1056,7 @@ class TestGatherUsers:
         assert facts["o0_paths"]["/etc/shells"] == {
             "content": ETC_SHELLS,
             "config": ["/bin/sh", "/bin/zsh"],
-            "origin": ["o0_o.posix.facts"],
+            "origins": ["o0_o.posix.facts"],
             # The file is the fact rather than evidence for itself, so
             # the entry names the command that read it and no path
             "evidence": {"commands": ["cat"]},
@@ -1187,7 +1219,7 @@ class TestDefaultGather:
         assert paths["/usr/bin/awk"]["executable"] == {"0": True}
         assert paths["/etc/shells"]["content"] == ETC_SHELLS
         assert paths["/etc/fstab"]["content"] == ETC_FSTAB
-        assert paths["/home/o0-o"]["origin"] == ["o0_o.posix.facts"]
+        assert paths["/home/o0-o"]["origins"] == ["o0_o.posix.facts"]
         # The users read describes the shell as a file; the compliance
         # sweep's own entry for it says only that the file is there,
         # and neither of them replaces the other
@@ -1218,7 +1250,11 @@ class TestDefaultGather:
         # What the host is configured to mount is a fact about the
         # file that configures it; o0_storage holds live state, and
         # says beside it what was consulted to learn it
-        assert set(gathered["o0_storage"]) == {"mounts", "evidence"}
+        assert set(gathered["o0_storage"]) == {
+            "mounts",
+            "evidence",
+            "origins",
+        }
 
     def test_two_producers_share_one_user(self, gathered) -> None:
         """Test the environment subset and /etc/passwd meet in one
@@ -1321,34 +1357,17 @@ class TestUsersProducersAgree:
             "o0_shells",
         }
 
-        def unnamed(paths: dict) -> dict:
-            """The store with the producers' own names taken off."""
-            return {
-                path: (
-                    {
-                        field: value
-                        for field, value in entry.items()
-                        if field != "origin"
-                    }
-                    if isinstance(entry, dict)
-                    else entry
-                )
-                for path, entry in paths.items()
-            }
-
         for fact, value in gathered.items():
-            if fact == "o0_paths":
-                # The one thing the two producers must disagree on:
-                # each names itself as what composed the entry
-                assert unnamed(value) == unnamed(standalone[fact])
-                assert value["/home/o0-o"]["origin"] == [
-                    "o0_o.posix.facts"
-                ]
-                assert standalone[fact]["/home/o0-o"]["origin"] == [
-                    "o0_o.posix.users"
-                ]
-                continue
-            assert value == standalone[fact], fact
+            # The one thing the two producers must disagree on: each
+            # names itself among what composed the fact
+            assert _unnamed(value) == _unnamed(standalone[fact]), fact
+
+        assert gathered["o0_paths"]["/home/o0-o"]["origins"] == [
+            "o0_o.posix.facts"
+        ]
+        assert standalone["o0_paths"]["/home/o0-o"]["origins"] == [
+            "o0_o.posix.users"
+        ]
 
 
 def test_no_action_plugin_reads_the_raw_identity_utils() -> None:

@@ -957,7 +957,10 @@ class TestProcessReadResults:
         # An entry names what was consulted for it whatever else it
         # publishes, because that is a fact about the entry rather
         # than one of the attributes
-        assert file_data["/l"] == {"evidence": {"commands": []}}
+        assert file_data["/l"] == {
+            "evidence": {"commands": []},
+            "origins": ["o0_o.posix.read"],
+        }
 
     def test_link_target_is_published_on_request(self, action) -> None:
         """Test attributes publishes the target it does not decide."""
@@ -1134,6 +1137,7 @@ class TestResolutionIsPublished:
         assert file_data["/l"] == {
             "resolution": ["/l", "/target"],
             "evidence": {"commands": []},
+            "origins": ["o0_o.posix.read"],
         }
 
     def test_no_chain_key_where_none_was_asked_for(self, action) -> None:

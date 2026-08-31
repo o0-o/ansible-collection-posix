@@ -24,6 +24,7 @@ from ansible_collections.o0_o.posix.plugins.module_utils import (
     compose_paths,
     get_compliance_command_requests,
     missing_commands,
+    name_origins,
     process_all_compliance_command_results,
 )
 
@@ -148,6 +149,7 @@ class ActionModule(PosixActionBase, ActionBase):
         facts["o0_paths"] = compose_paths(
             None, facts["o0_paths"], origin=FQCN
         )
+        name_origins(facts, FQCN)
         result.update(
             {
                 "compliance": compliance,

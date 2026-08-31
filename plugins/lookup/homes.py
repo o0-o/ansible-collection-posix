@@ -235,7 +235,8 @@ _raw:
         type: directory
         uid: 1000
         gid: 20
-        origin:
+        origins:
+          - o0_o.posix.read
           - o0_o.posix.users
   sample:
     - uid: 0
@@ -249,7 +250,8 @@ _raw:
         type: directory
         uid: 0
         gid: 0
-        origin:
+        origins:
+          - o0_o.posix.read
           - o0_o.posix.users
     - uid: 1000
       name: o0-o

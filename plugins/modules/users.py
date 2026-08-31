@@ -302,17 +302,17 @@ o0_paths:
           - ls
           - sh
           - stat
-    origin:
+    origins:
       description: >-
-        The modules that contributed the entry, by FQCN, sorted. One
-        field, one meaning - the provenance of the entry itself - and
-        it is the one thing a later observation adds to rather than
-        replaces, so a path two producers described names both of
-        them. A collection gathering into this store names itself here
-        rather than inventing a field of its own.
+        The modules that composed the entry, by FQCN, sorted. It
+        travels with C(evidence) - one says what was consulted, the
+        other who consulted it - and both accumulate where every other
+        field is replaced, so a path two producers described names
+        both of them. See the C(evidence) notes.
       type: list
       elements: str
       sample:
+        - o0_o.posix.read
         - o0_o.posix.users
     resolution:
       description: >-
@@ -335,7 +335,8 @@ o0_paths:
       type: directory
       uid: 1000
       gid: 20
-      origin:
+      origins:
+        - o0_o.posix.read
         - o0_o.posix.users
     /etc/shells:
       content: "/bin/sh\n/bin/zsh\n"

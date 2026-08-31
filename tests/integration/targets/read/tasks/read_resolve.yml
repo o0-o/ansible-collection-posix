@@ -104,7 +104,11 @@
       # name and arrives on the strength of that question
       - >-
         read_resolve_dir_reg['paths'][read_resolve_dir] | list | sort
-        == ['evidence', 'resolution']
+        == ['evidence', 'origins', 'resolution']
+      # The read composed the entry and names itself for it
+      - >-
+        read_resolve_dir_reg['paths'][read_resolve_dir]['origins']
+        == ['o0_o.posix.read']
 
 - name: Resolve the canonical directory, which is nothing but itself
   o0_o.posix.read:

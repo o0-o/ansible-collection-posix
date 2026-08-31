@@ -171,7 +171,7 @@ def test_users_action_files_the_shells_file_at_its_path(plugin) -> None:
     assert result["o0_paths"]["/etc/shells"] == {
         "content": SHELLS,
         "config": ["/bin/sh", "/bin/zsh"],
-        "origin": ["o0_o.posix.users"],
+        "origins": ["o0_o.posix.users"],
         # The file is the fact rather than evidence for itself, so the
         # entry names the command that read it and no path
         "evidence": {"commands": ["cat"]},
@@ -295,7 +295,11 @@ def test_users_action_composes_canonical_users(plugin) -> None:
         "shell",
         "groups",
         "evidence",
+        "origins",
     }
+    # The composer names itself and so does the module that publishes
+    # it, which here are one and the same
+    assert result["o0_users"]["1000"]["origins"] == ["o0_o.posix.users"]
     assert result["o0_users"]["1000"]["name"] == "o0-o"
     assert result["o0_users"]["1000"]["uid"] == 1000
     assert result["o0_users"]["1000"]["gid"] == 20
@@ -311,6 +315,7 @@ def test_users_action_composes_canonical_groups(plugin) -> None:
         "gid",
         "members",
         "evidence",
+        "origins",
     }
     assert result["o0_groups"]["20"]["name"] == "staff"
     assert result["o0_groups"]["20"]["gid"] == 20
@@ -386,7 +391,7 @@ def test_users_action_files_a_home_at_its_own_key(
 
     assert result["o0_paths"]["/home/o0-o"] == {
         "type": "directory",
-        "origin": ["o0_o.posix.users"],
+        "origins": ["o0_o.posix.users"],
     }
     assert result["o0_paths"]["/var/root"]["type"] == "directory"
     assert "residents" not in result["o0_paths"]["/var/root"]
@@ -427,7 +432,7 @@ def test_users_action_shells_extend_prior_gather(
     assert "/bin/sh" not in result["o0_paths"]
     assert result["o0_paths"]["/bin/zsh"] == {
         "type": "file",
-        "origin": ["o0_o.posix.users"],
+        "origins": ["o0_o.posix.users"],
     }
 
 
@@ -486,12 +491,12 @@ def test_users_action_batch_leaves_the_facts_alone(
 
     assert result["o0_paths"]["/home/o0-o"] == {
         "type": "directory",
-        "origin": ["o0_o.posix.users"],
+        "origins": ["o0_o.posix.users"],
     }
     assert result["o0_paths"]["/var/root"]["type"] == "directory"
     assert result["o0_paths"]["/bin/zsh"] == {
         "type": "regular",
-        "origin": ["o0_o.posix.users"],
+        "origins": ["o0_o.posix.users"],
     }
     assert result["o0_paths"]["/bin/sh"]["type"] == "regular"
 

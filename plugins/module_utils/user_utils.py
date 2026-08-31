@@ -59,6 +59,7 @@ from typing import Any, Callable, Optional, Sequence, Union
 from ansible_collections.o0_o.posix.plugins.module_utils.evidence_utils import (  # noqa: E501
     command_name,
     merge_evidence,
+    name_origins,
 )
 from ansible_collections.o0_o.posix.plugins.module_utils.getent_utils import (
     GETENT_COMMANDS,
@@ -72,6 +73,10 @@ from ansible_collections.o0_o.posix.plugins.module_utils.passwd_utils import (
 from ansible_collections.o0_o.posix.plugins.module_utils.path_utils import (
     canonicalize,
 )
+
+# What this module is called, which is what a fact it composes names
+# as one of the producers that made it
+FQCN = "o0_o.posix.users"
 
 Source = Union[str, dict[str, Any], list[dict[str, Any]]]
 
@@ -280,7 +285,7 @@ def compose_users_groups(
                 user_groups.append(gid)
             _add_member(groups, gid, uid, users[str(uid)]["evidence"], named)
 
-    return users, groups
+    return name_origins(users, FQCN), name_origins(groups, FQCN)
 
 
 def _add_member(

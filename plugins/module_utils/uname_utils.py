@@ -28,6 +28,7 @@ from ansible_collections.o0_o.core.plugins.module_utils import (
 from ansible_collections.o0_o.posix.plugins.module_utils.evidence_utils import (  # noqa: E501
     commands_run,
     compose_evidence,
+    name_origins,
 )
 from ansible_collections.o0_o.posix.plugins.module_utils.jc_utils import (
     jc_parse,
@@ -41,6 +42,10 @@ try:
     HAS_PARSE_HOSTNAME = True
 except ImportError:
     HAS_PARSE_HOSTNAME = False
+
+# What this module is called, which is what a fact it composes
+# names as one of the producers that made it
+FQCN = "o0_o.posix.uname"
 
 
 def _parse_uname_entry(entry: dict[str, Any]) -> dict[str, Any]:
@@ -248,7 +253,7 @@ def process_uname_command_results(
     # of them cannot rewrite another's
     for namespace in facts.values():
         namespace["evidence"] = {
-            kind: list(origins) for kind, origins in evidence.items()
+            kind: list(named) for kind, named in evidence.items()
         }
 
-    return facts, errors
+    return name_origins(facts, FQCN), errors

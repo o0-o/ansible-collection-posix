@@ -26,7 +26,7 @@ is null was asked about and does not exist; a typed empty (``''``,
 those answers into another.
 
 Every composed entry names who composed it and what they consulted.
-``origin`` is a sorted list of the module FQCNs that contributed it -
+``origins`` is a sorted list of the module FQCNs that contributed it -
 one field, one meaning, and a collection contributing to this store
 names itself there rather than inventing a field of its own.
 ``evidence`` is the collection's one provenance vocabulary, keyed by
@@ -52,11 +52,9 @@ from typing import Any, Optional
 
 from ansible_collections.o0_o.posix.plugins.module_utils.evidence_utils import (  # noqa: E501
     EVIDENCE,
+    ORIGINS,
     merge_evidence,
 )
-
-# The key an entry names the producers that composed it under
-ORIGIN = "origin"
 
 
 def canonicalize(path: str) -> str:
@@ -264,17 +262,17 @@ def _validate_entry(path: str, entry: Any) -> Optional[dict[str, Any]]:
 
     composed = dict(entry)
 
-    if ORIGIN in composed:
-        named = composed[ORIGIN]
+    if ORIGINS in composed:
+        named = composed[ORIGINS]
         if not isinstance(named, list) or not all(
             isinstance(name, str) for name in named
         ):
             raise ValueError(
-                f"The origin of {path!r} must be a list of the module"
+                f"The origins of {path!r} must be a list of the module"
                 f" names that composed the entry, got"
                 f" {type(named).__name__}: {named!r}"
             )
-        composed[ORIGIN] = sorted(set(named))
+        composed[ORIGINS] = sorted(set(named))
 
     if "children" in composed:
         children = composed["children"]
@@ -336,9 +334,9 @@ def _name_origin(entry: Any, origin: Optional[str]) -> Any:
     if origin is None or not isinstance(entry, dict):
         return entry
 
-    named = list(entry.get(ORIGIN) or [])
+    named = list(entry.get(ORIGINS) or [])
     named.append(origin)
-    entry[ORIGIN] = sorted(set(named))
+    entry[ORIGINS] = sorted(set(named))
 
     return entry
 
@@ -377,7 +375,7 @@ def compose_paths(
     one path does not report the rest of the filesystem as gone, and
     a null is never rounded to an empty mapping in either direction.
 
-    ``origin`` and ``evidence`` are the exceptions the rule needs.
+    ``origins`` and ``evidence`` are the exceptions the rule needs.
     They are the record of who looked and what they consulted, not
     part of the observation, and two producers that both described a
     path both belong in them, so both accumulate where every other
@@ -405,10 +403,10 @@ def compose_paths(
         entry = _name_origin(entry, origin)
         if isinstance(known, dict) and isinstance(entry, dict):
             named = sorted(
-                set(known.get(ORIGIN) or []) | set(entry.get(ORIGIN) or [])
+                set(known.get(ORIGINS) or []) | set(entry.get(ORIGINS) or [])
             )
             if named:
-                entry[ORIGIN] = named
+                entry[ORIGINS] = named
             consulted = known.get(EVIDENCE)
             if isinstance(consulted, dict):
                 merged = {
@@ -427,7 +425,6 @@ def compose_paths(
 
 
 __all__ = [
-    "ORIGIN",
     "canonicalize",
     "compose_paths",
     "flags_to_octal_mode",

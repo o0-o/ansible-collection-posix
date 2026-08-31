@@ -95,7 +95,7 @@ def test_which_files_the_resolution_under_its_path(
     assert result["o0_paths"] == {
         "/bin/date": {
             "executable": {"1000": True},
-            "origin": ["o0_o.posix.which"],
+            "origins": ["o0_o.posix.which"],
             # The lookup is a shell snippet, so the shell that read it
             # back is named beside the builtin it was asked
             "evidence": {"commands": ["command", "id", "sh"]},
@@ -117,7 +117,7 @@ def test_a_resolution_with_no_uid_claims_nothing(monkeypatch, plugin) -> None:
 
     assert result["o0_paths"] == {
         "/bin/date": {
-            "origin": ["o0_o.posix.which"],
+            "origins": ["o0_o.posix.which"],
             "evidence": {"commands": ["command", "id", "sh"]},
         }
     }

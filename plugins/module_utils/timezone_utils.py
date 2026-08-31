@@ -28,7 +28,12 @@ from ansible_collections.o0_o.core.plugins.module_utils import (
 from ansible_collections.o0_o.posix.plugins.module_utils.evidence_utils import (  # noqa: E501
     commands_run,
     compose_evidence,
+    name_origins,
 )
+
+# What this module is called, which is what a fact it composes
+# names as one of the producers that made it
+FQCN = "o0_o.posix.timezone"
 
 
 def parse_timezone_offset(offset: str) -> timezone:
@@ -130,11 +135,14 @@ def process_timezone_command_results(
     if not tz_data:
         return {}, errors
 
-    return {
-        "o0_os": {
-            "timezone": tz_data,
-            "evidence": compose_evidence(
-                commands=commands_run(cmds_completed, "timezone")
-            ),
-        }
-    }, errors
+    return name_origins(
+        {
+            "o0_os": {
+                "timezone": tz_data,
+                "evidence": compose_evidence(
+                    commands=commands_run(cmds_completed, "timezone")
+                ),
+            }
+        },
+        FQCN,
+    ), errors

@@ -96,6 +96,12 @@ def _corpus(name: str) -> str:
 
 
 # The canonical shape, as composed from the samples above
+# The module whose composer made these entries. Every fact this
+# collection composes names its producers, and a user entry names the
+# users module because user_utils is what composed it; a gather adds
+# its own name beside this one.
+COMPOSED_BY = "o0_o.posix.users"
+
 USERS = {
     "0": {
         "name": "root",
@@ -155,8 +161,15 @@ def test_compose_users_groups_field_census() -> None:
         "shell",
         "groups",
         "evidence",
+        "origins",
     }
-    assert set(groups["20"]) == {"name", "gid", "members", "evidence"}
+    assert set(groups["20"]) == {
+        "name",
+        "gid",
+        "members",
+        "evidence",
+        "origins",
+    }
 
 
 def test_compose_users_groups_keys_by_uid_and_gid() -> None:
@@ -225,6 +238,7 @@ def test_compose_users_groups_invents_unnamed_primary_group() -> None:
         "gid": 600,
         "members": [1002],
         "evidence": FROM_PASSWD,
+        "origins": [COMPOSED_BY],
     }
 
 
@@ -495,6 +509,7 @@ def test_a_bsd_group_line_with_no_members_still_composes() -> None:
         "name": "bin",
         "gid": 7,
         "members": [],
+        "origins": [COMPOSED_BY],
         "evidence": FROM_GETENT_GROUP,
     }
     assert users["0"]["evidence"] == FROM_PASSWD_AND_GETENT

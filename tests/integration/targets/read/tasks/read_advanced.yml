@@ -250,7 +250,7 @@
         == read_dirlink_reg['paths'][read_linktree_link]['realpath']
       - >-
         read_dirlink_no_attrs_reg['paths'][read_linktree_link] | list
-        | sort == ['evidence', 'realpath']
+        | sort == ['evidence', 'origins', 'realpath']
 
 # follow=recursive walks to where the link points, and where it points
 # is what the ls reported, not what the result was allowed to show, so
@@ -294,11 +294,12 @@
         'realpath' not in read_recursive_reg['paths'][read_linktree_link]
       # Both entries with every attribute key held back, the target
       # among them - it is the ls the walk read, not the result - and
-      # nothing left but the record of what was consulted, which is a
-      # fact about the entry rather than one of the attributes
+      # nothing left but the record of what was consulted and who
+      # consulted it, which are facts about the entry rather than
+      # attributes of the path
       - >-
         read_recursive_no_attrs_reg['paths'].values() | map('list')
-        | flatten | unique | list == ['evidence']
+        | flatten | unique | sort == ['evidence', 'origins']
 
 # The other side of the same question: a followed link takes its
 # target's data because the ls found a target to take it from, and

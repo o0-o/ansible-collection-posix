@@ -118,6 +118,22 @@ def test_gather_sorts_the_same_fields_into_namespaces() -> None:
     assert facts["o0_hardware"]["baseboard"]["architecture"] == "x86_64"
 
 
+def test_each_namespace_uname_feeds_names_uname() -> None:
+    """Test the parser names itself on all three sections it composes.
+
+    Origins sits where evidence sits, and this parser stamps evidence
+    on each namespace it feeds, so each of them says uname composed
+    part of it. The module that publishes the section names itself
+    beside this one.
+    """
+    facts, _errors = process_uname_command_results(_answer(UNAME_A))
+
+    for namespace in ("o0_os", "o0_network", "o0_hardware"):
+        assert facts[namespace]["origins"] == ["o0_o.posix.uname"]
+    # A field inside a section is not a composition of its own
+    assert "origins" not in facts["o0_os"]["kernel"]
+
+
 def test_each_namespace_names_the_command_that_answered_for_it() -> None:
     """Test one command answers for three namespaces and each of the
     three says so, rather than leaving a consumer of one of them to

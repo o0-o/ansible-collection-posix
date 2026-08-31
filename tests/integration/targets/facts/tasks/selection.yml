@@ -84,7 +84,10 @@
       - gathered.keys() | list == ['o0_users']
       - gathered['o0_users'] | length == 1
       - entry.keys() | list | sort
-        == ['environment', 'evidence', 'locale', 'uid']
+        == ['environment', 'evidence', 'locale', 'origins', 'uid']
+      # This gather composed the entry, so it is the one producer the
+      # entry names: no passwd line described this user
+      - entry['origins'] == ['o0_o.posix.facts']
       - entry['environment']['HOME'] is string
       - entry['environment'] | length > 0
       # A variable is asked for by a shell snippet rather than by an
@@ -110,11 +113,13 @@
     that:
       - gathered.keys() | list | sort
         == ['o0_hardware', 'o0_network', 'o0_os']
-      - gathered['o0_os'].keys() | list | sort == ['evidence', 'kernel']
+      - >-
+        gathered['o0_os'].keys() | list | sort
+        == ['evidence', 'kernel', 'origins']
       - gathered['o0_network'].keys() | list | sort
-        == ['evidence', 'hostname']
+        == ['evidence', 'hostname', 'origins']
       - gathered['o0_hardware'].keys() | list | sort
-        == ['baseboard', 'evidence']
+        == ['baseboard', 'evidence', 'origins']
       - gathered['o0_hardware']['baseboard']['architecture'] is string
       - gathered['o0_users'] is not defined
       # One command answered for all three, and each of the three
@@ -137,7 +142,9 @@
   ansible.builtin.assert:
     that:
       - gathered.keys() | list == ['o0_os']
-      - gathered['o0_os'].keys() | list | sort == ['evidence', 'timezone']
+      - >-
+        gathered['o0_os'].keys() | list | sort
+        == ['evidence', 'origins', 'timezone']
       - gathered['o0_os']['timezone']['abbreviation'] is string
       - gathered['o0_os']['timezone']['offset']
         is match('^[+-][0-9]{4}$')
@@ -159,7 +166,12 @@
   ansible.builtin.assert:
     that:
       - gathered.keys() | list == ['o0_os']
-      - gathered['o0_os'].keys() | list | sort == ['config', 'evidence']
+      - >-
+        gathered['o0_os'].keys() | list | sort
+        == ['config', 'evidence', 'origins']
+      # No getconf module owns this sweep, so the gather that ran it
+      # is the one producer the section names
+      - gathered['o0_os']['origins'] == ['o0_o.posix.facts']
       - gathered['o0_os']['config']['ARG_MAX'] is integer
       - gathered['o0_os']['config']['PATH'] is string
       # These variables are the fact, not evidence for one, so the
@@ -186,7 +198,7 @@
       - gathered.keys() | list == ['o0_users']
       - gathered['o0_users'].keys() | list == [facts_uid]
       - entry.keys() | list | sort
-        == ['evidence', 'limits', 'uid', 'umask']
+        == ['evidence', 'limits', 'origins', 'uid', 'umask']
       - entry['evidence']['commands'] == ['id', 'sh']
       - entry['uid'] == facts_uid | int
       - entry['umask'] is match('^0[0-7]{3}$')
@@ -308,7 +320,7 @@
     that:
       - gathered.keys() | list == ['o0_storage']
       - gathered['o0_storage'].keys() | list | sort
-        == ['evidence', 'mounts']
+        == ['evidence', 'mounts', 'origins']
       - gathered['o0_storage']['mounts']['/'] is mapping
       # One enumeration answered for every mount there is, so the
       # namespace names it once rather than each mount naming it over,
@@ -338,7 +350,7 @@
     that:
       - gathered.keys() | list | sort == expected | sort
       - gathered['o0_storage'].keys() | list | sort
-        == ['evidence', 'mounts']
+        == ['evidence', 'mounts', 'origins']
       - not facts_has_fstab | bool or
         gathered['o0_paths']['/etc/fstab']['config'] is sequence
     fail_msg: >-

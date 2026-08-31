@@ -478,6 +478,9 @@ def test_both_producers_compose_one_shape(monkeypatch, plugin) -> None:
     # provenance differs from another's and the namespace names them
     # once rather than each mount naming them over again
     assert facts["o0_storage"]["evidence"] == {"commands": ["df", "mount"]}
+    # Origins sits where evidence sits, so the section names who
+    # composed it beside what it consulted
+    assert facts["o0_storage"]["origins"] == ["o0_o.posix.mounts"]
 
     # The shape both now carry: keyed by mount point, capacity from df
     # and type from mount in one entry, and no redundant mount field

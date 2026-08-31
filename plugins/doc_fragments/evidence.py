@@ -88,4 +88,31 @@ class ModuleDocFragment:
         the verdict it is part of - the way a standard's C(missing)
         list sits beside its C(supported), evidenced by the lookups
         that missed rather than filed among them.
+      - >-
+        C(origins) travels with C(evidence) and answers the other half
+        of the same question. Evidence says what was consulted;
+        origins says who did the consulting, as a sorted list of the
+        module FQCNs that composed the thing it sits on. A collection
+        contributing to a fact this one publishes names itself there
+        rather than inventing a field of its own.
+      - >-
+        The two attach at the same granularity, for the same reason
+        and by the same rule: origins goes wherever a composition has
+        already said what it consulted. So a user entry, a group
+        entry, an C(o0_paths) entry, an C(o0_shells) row and a
+        compliance standard each carry their own, because each has its
+        own answer; and C(o0_os), C(o0_network), C(o0_hardware) and
+        C(o0_storage) carry one for the section, because one gather
+        produced it. A mapping that says nothing was consulted claims
+        no producer.
+      - >-
+        Both accumulate where every other field is replaced. A section
+        several subsets answer for was consulted several ways and
+        composed by several producers - C(o0_os) names the C(uname)
+        that answered for its kernel, the C(date) for its timezone and
+        the C(getconf) for its configuration - and a record that let
+        the last of them win would claim a fraction of what happened.
+        The parser that composed a fact and the module that published
+        it both belong in it, so a gather's section routinely names
+        two or three modules and a standalone module's names one.
     """

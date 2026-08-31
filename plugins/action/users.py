@@ -27,6 +27,7 @@ from ansible_collections.o0_o.posix.plugins.module_utils import (
     compose_shells,
     compose_users_groups,
     get_file_command_requests,
+    name_origins,
     get_getent_command_requests,
     parse_shells,
     process_file_command_results,
@@ -147,11 +148,14 @@ class ActionModule(ReadPosixActionBase, ActionBase):
         known_paths = task_vars.get("o0_paths")
         read = batch_read(users, read_paths, known_paths, named)
 
+        # This module names itself wherever a composition said what it
+        # consulted, beside the composer that already named itself
+        # there
         result.update(
             {
                 "changed": False,
-                "o0_users": users,
-                "o0_groups": groups,
+                "o0_users": name_origins(users, FQCN),
+                "o0_groups": name_origins(groups, FQCN),
             }
         )
 
@@ -194,7 +198,9 @@ class ActionModule(ReadPosixActionBase, ActionBase):
             # every key is empty: what a shell's configuration does is
             # only knowable by running it, and M(o0_o.posix.facts) is
             # what does that.
-            result["o0_shells"] = compose_shells(named)
+            result["o0_shells"] = name_origins(
+                compose_shells(named), FQCN
+            )
 
         if paths:
             result["o0_paths"] = paths

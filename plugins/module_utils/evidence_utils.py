@@ -38,6 +38,20 @@ something else.  ``config`` carries a variable's value because a
 compliance verdict is a claim about the host that the variable
 supports; ``o0_os.config`` publishes those same variables as the fact
 they are, and a fact is not evidence for itself.
+
+``origins`` travels with ``evidence`` and answers the other half of
+the same question.  Evidence says what was consulted; origins says who
+did the consulting, as a sorted list of the module FQCNs that
+composed the thing it sits on.  They attach at the same granularity
+for the same reason - a user entry and a compliance standard each have
+their own answer, and a section one gather produced has one - so
+``name_origins`` puts origins wherever a composition has already put
+evidence rather than at a level chosen separately.
+
+Both accumulate where every other field is replaced.  A section three
+subsets answer for was consulted three ways and composed by three
+producers, and a merge that let the last of them win would publish a
+record claiming a third of what happened.
 """
 
 from __future__ import annotations
@@ -48,6 +62,11 @@ from typing import Any, Iterable, Optional, Union
 
 # The key a fact names its provenance under, everywhere
 EVIDENCE = "evidence"
+
+# The key a fact names its producers under, everywhere.  Plural
+# because it is a list: one composition may be the work of several
+# modules, and each of them belongs in it.
+ORIGINS = "origins"
 
 # The whole vocabulary.  A producer names its origins in these and a
 # datum that is none of them is a finding rather than an origin, and
@@ -175,32 +194,85 @@ def merge_evidence(into: Evidence, evidence: Evidence) -> None:
         origins.sort()
 
 
+def name_origins(value: Any, origin: Optional[str]) -> Any:
+    """Name a producer wherever a composition names what it consulted.
+
+    Origins and evidence answer two halves of one question, so they
+    sit together: a mapping that says what was consulted gains the
+    name of whoever consulted it, and a mapping that says nothing
+    gains nothing.  Reading the granularity off the evidence rather
+    than choosing one is what keeps the two from drifting apart as
+    facts are added.
+
+    A name already there stays there.  Several modules compose one
+    section between them - uname answers for the kernel of ``o0_os``,
+    the clock for its timezone, getconf for its configuration - and
+    each of them belongs in the list.
+
+    The evidence itself is not walked into.  It holds paths, command
+    names and configuration variables, none of which is a composition
+    with a producer of its own.
+
+    :param Any value: A fact, a namespace, or a mapping of either;
+        anything else is left alone
+    :param Optional[str] origin: The FQCN of the module that composed
+        it, or None to name nobody
+    :returns Any: The value, named, edited in place
+    """
+    if origin is None or not isinstance(value, dict):
+        return value
+
+    if EVIDENCE in value:
+        known = value.get(ORIGINS)
+        value[ORIGINS] = sorted(
+            {*(known if isinstance(known, list) else []), origin}
+        )
+
+    for key, held in value.items():
+        if key != EVIDENCE:
+            name_origins(held, origin)
+
+    return value
+
+
 def merge_entry(into: dict[str, Any], entry: dict[str, Any]) -> None:
-    """Merge one producer's entry into another's, keeping evidence.
+    """Merge one producer's entry into another's, keeping provenance.
 
     The later producer wins every field it names, which is what a
-    merge means here, except its provenance: two producers that
-    answered for one entry both belong in it.
+    merge means here, except the two that record who looked and what
+    they consulted: two producers that answered for one entry both
+    belong in both.
 
     :param dict[str, Any] into: The entry to add to, edited in place
     :param dict[str, Any] entry: The entry being merged in
     """
+    held: dict[str, Any] = {}
+
     known = into.get(EVIDENCE)
     named = entry.get(EVIDENCE)
-
     if isinstance(known, dict) and isinstance(named, dict):
         merge_evidence(known, named)
-        entry = {key: value for key, value in entry.items() if key != EVIDENCE}
+        held[EVIDENCE] = known
 
-    into.update(entry)
+    mine = into.get(ORIGINS)
+    theirs = entry.get(ORIGINS)
+    if isinstance(mine, list) and isinstance(theirs, list):
+        held[ORIGINS] = sorted(set(mine) | set(theirs))
+
+    into.update(
+        {key: value for key, value in entry.items() if key not in held}
+    )
+    into.update(held)
 
 
 __all__ = [
     "EVIDENCE",
     "EVIDENCE_KINDS",
+    "ORIGINS",
     "command_name",
     "commands_run",
     "compose_evidence",
     "merge_entry",
     "merge_evidence",
+    "name_origins",
 ]

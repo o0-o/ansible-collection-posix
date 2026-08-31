@@ -43,9 +43,14 @@ MISSING_COMMANDS = {"pax"}
 # the shell running it would run, so the claim is keyed by the uid
 # that shell was running as
 EFFECTIVE_UID = 1000
+
+# The module whose sweep composed these entries. A gather that runs
+# the sweep adds its own name beside this one.
+COMPOSED_BY = "o0_o.posix.compliance"
 RESOLVED = {
     "executable": {str(EFFECTIVE_UID): True},
     "evidence": {"commands": ["command"]},
+    "origins": [COMPOSED_BY],
 }
 
 
@@ -219,7 +224,8 @@ class TestProcessAllComplianceCommandResults:
         # nothing was learned about the file itself, so the entry
         # says exactly that
         assert facts["o0_paths"]["/bin/sh"] == {
-            "evidence": {"commands": ["command"]}
+            "evidence": {"commands": ["command"]},
+            "origins": [COMPOSED_BY],
         }
 
     def test_the_missing_list_derives_from_the_standards(self) -> None:
@@ -322,6 +328,7 @@ class TestProcessAllComplianceCommandResults:
             "version",
             "missing",
             "evidence",
+            "origins",
         }
 
     def test_a_standard_names_only_the_kinds_it_attempts(self) -> None:
@@ -337,3 +344,37 @@ class TestProcessAllComplianceCommandResults:
                 isinstance(name, str) for name in evidence["commands"]
             )
             assert evidence["commands"] == sorted(set(evidence["commands"]))
+
+
+class TestOriginsNameTheSweep:
+    """Tests for who the compliance sweep says composed its facts."""
+
+    def test_every_standard_names_the_sweep(self) -> None:
+        """Test a verdict names who decided it as well as what did.
+
+        Origins sits where evidence sits, and each standard carries
+        its own evidence because the standards are decided by
+        different probes, so each carries its own origins too.
+        """
+        facts = _process_fabricated_host()
+        compliance = facts["o0_os"]["compliance"]
+
+        for standard in ("xsh", "xcu", "xsi", "posix", "sus"):
+            assert compliance[standard]["origins"] == [COMPOSED_BY]
+
+    def test_the_namespace_verdict_names_the_sweep(self) -> None:
+        """Test the sh probe's own verdict names its producer too."""
+        compliance = _process_fabricated_host()["o0_os"]["compliance"]
+
+        assert compliance["origins"] == [COMPOSED_BY]
+
+    def test_a_standard_field_is_not_a_composition_of_its_own(self) -> None:
+        """Test a version or a missing list claims no producer.
+
+        Only a mapping that says what was consulted is a composition
+        with a producer to name.
+        """
+        compliance = _process_fabricated_host()["o0_os"]["compliance"]
+
+        assert "origins" not in compliance["xsh"]["version"]
+        assert "origins" not in compliance["xsi"]["evidence"]

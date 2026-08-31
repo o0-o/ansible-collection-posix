@@ -76,8 +76,8 @@
       {{ standards | map(attribute='supported', default=none) | list }}
   ansible.builtin.assert:
     that:
-      - compliance.keys() | list | sort == ['evidence', 'posix',
-        'sh_posix_compliant', 'sus', 'xcu', 'xsh', 'xsi']
+      - compliance.keys() | list | sort == ['evidence', 'origins',
+        'posix', 'sh_posix_compliant', 'sus', 'xcu', 'xsh', 'xsi']
       - compliance['xsh']['name'] == 'System Interfaces'
       - compliance['xsh']['abbreviation'] == 'XSH'
       - compliance['xcu']['abbreviation'] == 'XCU'
@@ -397,7 +397,9 @@
     storage: "{{ facts_all_reg['ansible_facts']['o0_storage'] }}"
   ansible.builtin.assert:
     that:
-      - storage.keys() | list | sort == ['evidence', 'mounts']
+      - >-
+        storage.keys() | list | sort
+        == ['evidence', 'mounts', 'origins']
       # The enumerations that named the mounts, and the interface each
       # filesystem was asked about itself through
       - storage['evidence']['commands']
@@ -673,32 +675,133 @@
       a login shell the host names is not described in o0_paths:
       named {{ named }}, unheld {{ unheld }}
 
-# One field, one meaning: origin is the provenance of the entry
-# itself, and it is the one thing a later observation adds to rather
-# than replaces, so a path two subsets described names both of them.
+# origins travels with evidence and answers the other half of the same
+# question: evidence says what was consulted, origins says who did the
+# consulting. Both accumulate, so the parser that composed a fact and
+# the module that published it both belong in it.
 - name: Assert every composed entry names the modules that composed it
   vars:
     paths: "{{ facts_all_reg['ansible_facts']['o0_paths'] }}"
     described: >-
       {{ paths | dict2items | selectattr('value', 'mapping') | list }}
     named: >-
-      {{ described | map(attribute='value.origin') | flatten
-         | unique | list }}
+      {{ described | map(attribute='value.origins') | flatten
+         | unique | sort }}
   ansible.builtin.assert:
     that:
       - described | length > 0
-      # Every entry a gather composed names this gather and nothing
-      # else, since one module composed the whole store
       - >-
-        described | rejectattr('value.origin', 'defined')
+        described | rejectattr('value.origins', 'defined')
         | list | length == 0
-      - named == ['o0_o.posix.facts']
-      # A path confirmed absent carries no fields, origin included
+      # Every entry names this gather, because this gather published
+      # the store; the composers that described a path name themselves
+      # beside it, so nothing here is a name from another collection
+      - >-
+        described | selectattr('value.origins', 'defined')
+        | rejectattr('value.origins', 'contains', 'o0_o.posix.facts')
+        | list | length == 0
+      - >-
+        named | reject('in', ['o0_o.posix.compliance',
+        'o0_o.posix.facts', 'o0_o.posix.read'])
+        | list | length == 0
+      # The read that described a home named itself beside the gather
+      - >-
+        'o0_o.posix.read' in named
+      # A path confirmed absent carries no fields, origins included
       - >-
         paths | dict2items | rejectattr('value', 'mapping')
         | rejectattr('value', 'none') | list | length == 0
     fail_msg: >-
       an o0_paths entry does not name what composed it: {{ named }}
+
+# Origins spreads to every fact category at the level evidence sits:
+# per entry where entries carry their own, section level where the
+# section does.
+- name: Assert every category names its producers where evidence sits
+  vars:
+    facts: "{{ facts_all_reg['ansible_facts'] }}"
+    sections: >-
+      {{ ['o0_os', 'o0_network', 'o0_hardware', 'o0_storage']
+         | select('in', facts.keys() | list) | list }}
+    # Not named users and groups: Ansible reserves groups for the
+    # inventory group map, which is the whole reason every fact this
+    # collection publishes takes the o0_ prefix
+    user_entries: >-
+      {{ facts['o0_users'] | dict2items | map(attribute='value') | list }}
+    group_entries: >-
+      {{ facts['o0_groups'] | dict2items | map(attribute='value') | list }}
+    standards: >-
+      {{ facts['o0_os']['compliance'] | dict2items
+         | selectattr('value', 'mapping')
+         | selectattr('value.evidence', 'defined')
+         | map(attribute='value') | list }}
+    rows: >-
+      {{ facts['o0_shells'] | dict2items | map(attribute='value')
+         | map('dict2items') | flatten
+         | selectattr('key', 'match', '^/')
+         | map(attribute='value') | list }}
+  ansible.builtin.assert:
+    that:
+      # Section level: one gather produced the whole of it
+      - sections | length > 0
+      - >-
+        sections | map('extract', facts)
+        | rejectattr('origins', 'defined') | list | length == 0
+      - >-
+        sections | map('extract', facts)
+        | rejectattr('origins', 'contains', 'o0_o.posix.facts')
+        | list | length == 0
+      # o0_os is answered for by several subsets, so it names each
+      # parser that composed part of it beside this module
+      - "'o0_o.posix.uname' in facts['o0_os']['origins']"
+      - "'o0_o.posix.timezone' in facts['o0_os']['origins']"
+      - "'o0_o.posix.mounts' in facts['o0_storage']['origins']"
+      - "'o0_o.posix.uname' in facts['o0_hardware']['origins']"
+      - "'o0_o.posix.uname' in facts['o0_network']['origins']"
+      # Per entry: a user, a group and a standard each have their own
+      # answer, so each carries its own record of who composed it
+      - >-
+        user_entries | rejectattr('origins', 'defined')
+        | list | length == 0
+      - >-
+        group_entries | rejectattr('origins', 'defined')
+        | list | length == 0
+      # Every entry names this gather, which published all of them
+      - >-
+        user_entries
+        | rejectattr('origins', 'contains', 'o0_o.posix.facts')
+        | list | length == 0
+      # An entry a passwd line described names the composer that read
+      # it besides. The entry the environment subset keys on the
+      # connecting uid is not one of those - macOS keeps its own users
+      # in a directory service and names only the system ones in the
+      # file - so it names this gather alone, which is the truth
+      - >-
+        user_entries | selectattr('name', 'defined')
+        | rejectattr('origins', 'contains', 'o0_o.posix.users')
+        | list | length == 0
+      - >-
+        group_entries
+        | rejectattr('origins', 'contains', 'o0_o.posix.users')
+        | list | length == 0
+      - standards | length > 0
+      - >-
+        standards
+        | rejectattr('origins', 'contains', 'o0_o.posix.compliance')
+        | list | length == 0
+      # The namespace's own verdict names its producer the same way
+      - >-
+        'o0_o.posix.compliance' in
+        facts['o0_os']['compliance']['origins']
+      # An o0_shells row is one shell observed out of one home, so the
+      # row is where both records sit
+      - rows | length > 0
+      - rows | rejectattr('origins', 'defined') | list | length == 0
+      # And nothing claims a producer where nothing was consulted
+      - "'origins' not in facts['o0_os']['kernel']"
+    fail_msg: >-
+      a fact category does not name its producers where its evidence
+      sits: o0_os {{ facts['o0_os']['origins'] | default('MISSING') }}
 
 # Provenance sits on the entry because it varies by entry: a home was
 # described by a metadata read, a resolved command by command -v, and

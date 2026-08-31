@@ -27,15 +27,36 @@ breaking_changes:
     (https://github.com/o0-o/ansible-collection-posix/pull/XXX).
 minor_changes:
   - >-
-    users, facts, which, compliance - every composed ``o0_paths``
-    entry names the modules that contributed it, in ``origin``: a
-    sorted list of FQCNs. One field, one meaning - the provenance of
-    the entry itself - and it is the one thing a later observation
-    adds to rather than replaces, so a path the compliance sweep and
-    the users read both described names both of them where every other
-    field is replaced whole. A path confirmed absent carries no fields
-    and so names nobody; what a null says is that somebody asked. A
-    collection gathering into this store names itself here rather than
+    users, facts, compliance, dmidecode, which - every fact this
+    collection composes names the modules that composed it, in
+    ``origins``: a sorted list of FQCNs. It travels with ``evidence``
+    and answers the other half of the same question - evidence says
+    what was consulted, origins says who did the consulting - so the
+    two attach at the same granularity, by the same rule: origins goes
+    wherever a composition has already said what it consulted. A
+    mapping that says nothing was consulted claims no producer, and a
+    path confirmed absent carries no fields and so names nobody
+    (https://github.com/o0-o/ansible-collection-posix/pull/XXX).
+  - >-
+    facts - per entry where entries carry their own evidence, section
+    level where the section does. So ``o0_users[uid]``,
+    ``o0_groups[gid]``, each ``o0_paths`` entry, each ``o0_shells``
+    row and each compliance standard carry their own, because each has
+    its own answer; and ``o0_os``, ``o0_network``, ``o0_hardware``,
+    ``o0_storage`` and the compliance namespace's own verdict carry one
+    for the whole of it, because one gather produced it
+    (https://github.com/o0-o/ansible-collection-posix/pull/XXX).
+  - >-
+    users, facts, compliance, dmidecode, which - ``origins`` and
+    ``evidence`` are the two fields a later observation adds to rather
+    than replaces. The parser that composed a fact and the module that
+    published it both belong in it, so a gathered section routinely
+    names two or three modules where a standalone module's names one:
+    a gather's ``o0_os`` names ``o0_o.posix.uname`` for its kernel,
+    ``o0_o.posix.timezone`` for its clock and ``o0_o.posix.facts`` for
+    publishing all of it, and a home entry names the read that
+    described it beside the module that filed it. A collection
+    contributing to one of these facts names itself there rather than
     inventing a field of its own
     (https://github.com/o0-o/ansible-collection-posix/pull/XXX).
   - >-

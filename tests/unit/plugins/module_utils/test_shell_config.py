@@ -36,6 +36,9 @@ import pytest
 from ansible_collections.o0_o.posix.plugins.module_utils.command_spec import (
     SHELL_COMMAND_SPEC,
 )
+from ansible_collections.o0_o.posix.plugins.module_utils.evidence_utils import (  # noqa: E501
+    name_origins,
+)
 from ansible_collections.o0_o.posix.plugins.module_utils.shells_utils import (
     SHELL_DEFAULT,
     SHELL_RCS,
@@ -505,3 +508,28 @@ class TestBuiltinsSitOnTheShell:
         shells = compose_shells(["/bin/sh"])
 
         assert shells == {"/bin/sh": {}}
+
+
+def test_a_row_names_who_composed_it_beside_what_ran() -> None:
+    """Test origins reaches a row two levels down.
+
+    A row is keyed by shell and then by home, and it is where the
+    evidence sits because it is where a probe happened, so it is where
+    origins sits too.
+    """
+    shells = compose_shells(
+        ["/bin/sh"],
+        {"/bin/sh": {"/dev/null": {"umask": "0022"}}},
+        {"commands": ["env"]},
+        {"/bin/sh": ["cd"]},
+    )
+
+    name_origins(shells, "o0_o.posix.facts")
+
+    row = shells["/bin/sh"]["/dev/null"]
+    assert row["origins"] == ["o0_o.posix.facts"]
+    # The shell above the row says nothing was consulted for it - the
+    # builtins came from another producer's sweep - so it claims none
+    assert "origins" not in shells["/bin/sh"]
+    # and a shell named but never run has no observation to attribute
+    assert compose_shells(["/bin/zsh"])["/bin/zsh"] == {}

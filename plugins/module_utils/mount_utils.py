@@ -39,6 +39,7 @@ from ansible_collections.o0_o.core.plugins.module_utils import (
 from ansible_collections.o0_o.posix.plugins.module_utils.evidence_utils import (  # noqa: E501
     commands_run,
     compose_evidence,
+    name_origins,
 )
 from ansible_collections.o0_o.posix.plugins.module_utils.filter_utils import (
     decode_declared_content,
@@ -169,6 +170,10 @@ MOUNT_FILTER_DEFAULTS = {
     "overlay": True,
     "fuse": True,
 }
+
+# What this module is called, which is what a fact it composes
+# names as one of the producers that made it
+FQCN = "o0_o.posix.mounts"
 
 
 def normalize_mount_options(options: dict[str, Any]) -> dict[str, Any]:
@@ -573,11 +578,14 @@ def process_mount_command_results(
 
     mounts, _notes = compose_mounts(df_entries, mount_entries)
 
-    return {
-        "o0_storage": {
-            "mounts": mounts,
-            "evidence": compose_evidence(
-                commands=commands_run(cmds_completed, "df", "mount")
-            ),
-        }
-    }, errors
+    return name_origins(
+        {
+            "o0_storage": {
+                "mounts": mounts,
+                "evidence": compose_evidence(
+                    commands=commands_run(cmds_completed, "df", "mount")
+                ),
+            }
+        },
+        FQCN,
+    ), errors

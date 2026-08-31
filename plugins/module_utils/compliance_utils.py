@@ -50,6 +50,7 @@ from ansible_collections.o0_o.posix.plugins.module_utils.command_utils import (
 from ansible_collections.o0_o.posix.plugins.module_utils.evidence_utils import (  # noqa: E501
     command_name,
     merge_evidence,
+    name_origins,
 )
 from ansible_collections.o0_o.posix.plugins.module_utils.getconf_utils import (
     _answered,
@@ -62,6 +63,10 @@ from ansible_collections.o0_o.posix.plugins.module_utils.id_utils import (
 from ansible_collections.o0_o.posix.plugins.module_utils.shells_utils import (
     compose_shells,
 )
+
+# What this module is called, which is what a fact it composes names
+# as one of the producers that made it
+FQCN = "o0_o.posix.compliance"
 
 # Standards metadata - used to initialize compliance dict with descriptions
 SUS = {
@@ -531,4 +536,4 @@ def process_all_compliance_command_results(
         "o0_shells": compose_shells(builtins={ANSWERING_SHELL: builtins}),
     }
 
-    return facts, errors
+    return name_origins(facts, FQCN), errors

@@ -22,6 +22,7 @@ from ansible_collections.o0_o.posix.plugins.module_utils.evidence_utils import (
     EVIDENCE,
     command_name,
     compose_evidence,
+    name_origins,
 )
 from ansible_collections.o0_o.posix.plugins.module_utils.jc_utils import (
     jc_parse,
@@ -54,6 +55,11 @@ LS_TYPE_MAP = {
 # contradicted by a decode failure. See ``_utf8_overrules_single_byte``.
 SINGLE_BYTE_ENCODINGS = frozenset({"us-ascii", "ascii", "unknown-8bit"})
 SINGLE_BYTE_ENCODING_PREFIXES = ("iso-8859", "iso8859", "windows-", "latin")
+
+# What this module is called, which is what a path entry names as one
+# of the producers that made it.  A read describes a path; the module
+# that publishes the store names itself beside this one.
+FQCN = "o0_o.posix.read"
 
 # The three questions a permission probe asks, in the order the probe
 # prints its answers and in the order test(1) is asked them
@@ -1984,6 +1990,7 @@ class ReadPosixActionBase(PosixActionBase):
                 attributes[EVIDENCE] = compose_evidence(
                     commands=asked.get(path, []) + asked_of_all
                 )
+                name_origins(attributes, FQCN)
 
                 file_data[path] = attributes
 

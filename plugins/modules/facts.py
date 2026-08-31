@@ -997,19 +997,20 @@ ansible_facts:
               - ls
               - sh
               - stat
-        origin:
+        origins:
           description: >-
-            The modules that contributed the entry, by FQCN, sorted.
-            One field, one meaning - the provenance of the entry
-            itself - and it is the one thing a later observation adds
-            to rather than replaces, so a path the compliance sweep
-            and the users read both described names both of them. A
-            collection gathering into this store names itself here
-            rather than inventing a field of its own.
+            The modules that composed the entry, by FQCN, sorted. It
+            travels with C(evidence) - one says what was consulted,
+            the other who consulted it - and both accumulate where
+            every other field is replaced, so a path the compliance
+            sweep and the users read both described names both of
+            them, and every entry names this module besides. See the
+            C(evidence) notes.
           type: list
           elements: str
           sample:
             - o0_o.posix.facts
+            - o0_o.posix.read
         resolution:
           description: >-
             The chain the path resolves through, an ordered list of
@@ -1083,8 +1084,9 @@ ansible_facts:
           type: directory
           uid: 1000
           gid: 20
-          origin:
+          origins:
             - o0_o.posix.facts
+            - o0_o.posix.read
         /etc/shells:
           content: "/bin/sh\n/bin/zsh\n"
           config:

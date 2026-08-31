@@ -50,7 +50,7 @@
       # Every entry names the module that composed it
       - >-
         paths | dict2items | selectattr('value', 'mapping')
-        | map(attribute='value.origin') | flatten | unique | list
+        | map(attribute='value.origins') | flatten | unique | list
         == ['o0_o.posix.compliance']
       # and what was consulted for it, which for these lookups is the
       # one command asked once per name, reading no file

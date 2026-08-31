@@ -77,12 +77,12 @@ o0_paths:
           - command
           - id
           - sh
-    origin:
+    origins:
       description: >-
-        The modules that contributed the entry, by FQCN, sorted. The
-        one thing a later observation adds to rather than replaces, so
-        a path this module and a gather both described names both of
-        them.
+        The modules that composed the entry, by FQCN, sorted. It
+        travels with C(evidence) and accumulates the same way, so a
+        path this module and a gather both described names both of
+        them. See the C(evidence) notes.
       type: list
       elements: str
       sample:
