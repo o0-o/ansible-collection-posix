@@ -174,6 +174,9 @@ from ansible_collections.o0_o.posix.plugins.module_utils.user_utils import (
 from ansible_collections.o0_o.posix.plugins.module_utils.read_posix_action_base import (  # noqa: E501
     ReadPosixActionBase,
 )
+from ansible_collections.o0_o.posix.plugins.module_utils.shells_action_base import (  # noqa: E501
+    ShellsPosixActionBase,
+)
 from ansible_collections.o0_o.posix.plugins.module_utils.write_posix_action_base import (  # noqa: E501
     WritePosixActionBase,
 )
@@ -193,6 +196,7 @@ __all__ = [
     "ORIGINS",
     "PosixActionBase",
     "ReadPosixActionBase",
+    "ShellsPosixActionBase",
     "WritePosixActionBase",
     "command_name",
     "command_names",

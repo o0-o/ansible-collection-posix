@@ -238,10 +238,10 @@ o0_shells:
       lists, keyed rather than ordered.
     - Each key carries C(binary), the file the name finally resolves
       to, copied from the chain C(o0_paths) already walked, and
-      nothing else - M(o0_o.posix.facts) files what running each shell
-      out of a home produced, under C(homes). This module names the shells and
-      runs none of them, because what a shell's configuration does is
-      only knowable by running it.
+      nothing else - M(o0_o.posix.shells) and M(o0_o.posix.facts) file
+      what running each shell out of a home produced, under C(homes).
+      This module names the shells and runs none of them, because what
+      a shell's configuration does is only knowable by running it.
   returned: when the host names its login shells
   type: dict
   sample:

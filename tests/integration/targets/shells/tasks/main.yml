@@ -1,0 +1,187 @@
+# vim: ts=2:sw=2:sts=2:et:ft=yaml.ansible
+# -*- mode: yaml; yaml-indent-offset: 2; indent-tabs-mode: nil; -*-
+---
+# GNU General Public License v3.0+
+# SPDX-License-Identifier: GPL-3.0-or-later
+# (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
+#
+# Copyright (c) 2025 oØ.o (@o0-o)
+#
+# This file is part of the o0_o.posix Ansible Collection.
+
+- name: Ask what this host's login shells do
+  o0_o.posix.shells:
+  register: shells_reg
+
+- name: Assert the answer is the shape the module documents
+  vars:
+    shells: "{{ shells_reg['shells'] }}"
+    named: >-
+      {{ shells_reg['o0_paths']['/etc/shells']['config'] | default([]) }}
+    rows: >-
+      {{ shells | dict2items | map(attribute='value')
+         | selectattr('homes', 'defined') | map(attribute='homes')
+         | map('dict2items') | flatten | map(attribute='value')
+         | list }}
+  ansible.builtin.assert:
+    that:
+      - shells_reg is not changed
+      - shells is mapping
+      # Every shell the host names is a key, which is what makes
+      # user.shell in o0_shells a question a host can answer
+      - named | reject('in', shells.keys() | list) | list | length == 0
+      # And the shell the task named was run, so something is under it
+      - shells['/bin/sh']['homes'] is mapping
+      - shells['/bin/sh']['homes'] | length > 0
+      # A row is what running the shell out of one home produced
+      - rows | length > 0
+      - >-
+        rows | rejectattr('umask', 'defined') | list | length == 0
+      - >-
+        rows | map(attribute='umask')
+        | reject('match', '^0[0-7]{3}$') | list | length == 0
+      - >-
+        rows | rejectattr('env', 'defined') | list | length == 0
+      # What describes the shell, never the identity that ran the probe
+      - >-
+        rows | map(attribute='env') | map('list') | flatten
+        | reject('in', ['IFS', 'LANG', 'LC_CTYPE', 'NLSPATH', 'PATH',
+        'TERM', 'TZ']) | list | length == 0
+      # The keys a row was filed under are not fields of it
+      - >-
+        rows | map(attribute='env') | selectattr('HOME', 'defined')
+        | list | length == 0
+      - >-
+        rows | map(attribute='env') | selectattr('SHELL', 'defined')
+        | list | length == 0
+    fail_msg: >-
+      the shells module did not answer the shape it documents:
+      {{ shells }}
+
+- name: Assert each shell names what was asked of it and who asked
+  vars:
+    probed: >-
+      {{ shells_reg['shells'] | dict2items | map(attribute='value')
+         | selectattr('evidence', 'defined') | list }}
+    consulted: >-
+      {{ probed | map(attribute='evidence.commands') | flatten
+         | unique | sort }}
+  ansible.builtin.assert:
+    that:
+      - probed | length > 0
+      # A shell is run, not read, and it reads no variable the fact
+      # does not already publish
+      - >-
+        probed | selectattr('evidence.files', 'defined')
+        | list | length == 0
+      - >-
+        probed | selectattr('evidence.config', 'defined')
+        | list | length == 0
+      # What the script put to the shell, and the shell among it
+      - "'umask' in consulted"
+      - "'env' in consulted"
+      - "'alias' in consulted"
+      # Every probed shell names this module as having composed it
+      - >-
+        probed | rejectattr('origins', 'defined')
+        | list | length == 0
+      - >-
+        probed | map(attribute='origins') | flatten | unique | list
+        == ['o0_o.posix.shells']
+    fail_msg: >-
+      a shells observation does not name what produced it:
+      {{ consulted }}
+
+- name: Assert the file it read lands at its own path
+  vars:
+    entry: "{{ shells_reg['o0_paths']['/etc/shells'] }}"
+  ansible.builtin.assert:
+    that:
+      # The bytes under content, the names they hold under config, and
+      # the command that read it - the file is the fact rather than
+      # evidence for one
+      - entry['content'] is string
+      - entry['config'] is sequence
+      - entry['config'] | reject('string') | list | length == 0
+      - entry['evidence']['commands'] == ['cat']
+      - entry['origins'] == ['o0_o.posix.shells']
+      # And every shell it named is described as a file besides
+      - >-
+        entry['config'] | reject('in', shells_reg['o0_paths'].keys())
+        | list | length == 0
+    fail_msg: >-
+      /etc/shells is not described as a file: {{ entry }}
+
+- name: Assert nothing is published as facts unless asked
+  ansible.builtin.assert:
+    that:
+      - shells_reg['ansible_facts'] is not defined
+      - shells_reg['o0_shells'] is not defined
+    fail_msg: >-
+      the module published facts nobody asked for
+
+- name: Ask again and publish the answer as facts
+  o0_o.posix.shells:
+    gather: true
+  register: shells_gathered_reg
+
+- name: Assert the gather publishes the names a gather publishes
+  vars:
+    gathered: "{{ shells_gathered_reg['ansible_facts'] }}"
+  ansible.builtin.assert:
+    that:
+      - shells_gathered_reg is not changed
+      - gathered.keys() | list | sort == ['o0_paths', 'o0_shells']
+      - gathered['o0_shells'] == shells_gathered_reg['shells']
+      - gathered['o0_paths'] == shells_gathered_reg['o0_paths']
+    fail_msg: >-
+      the gathered namespaces are not what the module returned:
+      {{ gathered.keys() | list }}
+
+# The shell to observe is the task's to name. /bin/sh is the one
+# shell every POSIX host has, so it is what this names explicitly:
+# what the option does with a different shell is a unit's question,
+# and what it does with this one has to hold on every host.
+- name: Name the shell the system layer runs, rather than defaulting
+  o0_o.posix.shells:
+    shell: /bin/sh
+  register: shells_named_reg
+
+- name: Assert the shell the task named was run out of the system home
+  ansible.builtin.assert:
+    that:
+      - shells_named_reg['shells']['/bin/sh']['homes'] is mapping
+      - >-
+        '/dev/null' in shells_named_reg['shells']['/bin/sh']['homes']
+    fail_msg: >-
+      the named shell was not observed out of the system home
+
+- name: Assert the module and a gather answer the same thing
+  o0_o.posix.facts:
+    gather_subset: [users]
+  register: shells_subset_reg
+
+- name: Assert one planning means one shape under one name
+  vars:
+    gathered: "{{ shells_subset_reg['ansible_facts']['o0_shells'] }}"
+    module: "{{ shells_reg['shells'] }}"
+  ansible.builtin.assert:
+    that:
+      # The same keys: both name what /etc/shells named, plus whatever
+      # each turned out to run
+      - >-
+        module.keys() | reject('in', gathered.keys() | list)
+        | list | length == 0
+      # And the same row for the layer both of them observe
+      - >-
+        gathered['/bin/sh']['homes']['/dev/null']['umask']
+        == module['/bin/sh']['homes']['/dev/null']['umask']
+      - >-
+        gathered['/bin/sh']['homes']['/dev/null']['env']
+        == module['/bin/sh']['homes']['/dev/null']['env']
+      # Each names the module that composed it, and the gather names
+      # itself besides
+      - "'o0_o.posix.shells' in module['/bin/sh']['origins']"
+      - "'o0_o.posix.facts' in gathered['/bin/sh']['origins']"
+    fail_msg: >-
+      the module and the gather disagree about what a shell does

@@ -1,0 +1,23 @@
+# vim: ts=2:sw=2:sts=2:et:ft=yaml.ansible
+# -*- mode: yaml; yaml-indent-offset: 2; indent-tabs-mode: nil; -*-
+---
+minor_changes:
+  - >-
+    shells - a new module names the login shells the host claims, out
+    of ``/etc/shells``, and reports what running them produced. It
+    answers the shape a gather publishes as ``o0_shells``, from the
+    same planning and the same composer, so the two cannot disagree
+    about what a shell turned out to do, and ``gather: true`` publishes
+    it under the gather's own names. What ``o0_paths`` and ``o0_users``
+    already hold is consulted rather than asked for again: a shell the
+    store has confirmed absent is not run, and a run that cannot drop
+    into a login names the connecting user's pair from their passwd
+    entry
+    (https://github.com/o0-o/ansible-collection-posix/pull/XXX).
+  - >-
+    facts - the shell probes are planned and read back in one place
+    both producers of ``o0_shells`` share, rather than in the gather
+    alone. A shell fact is what a login shell turned out to do, so two
+    producers planning it differently would publish two answers to one
+    question
+    (https://github.com/o0-o/ansible-collection-posix/pull/XXX).

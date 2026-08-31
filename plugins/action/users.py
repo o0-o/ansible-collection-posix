@@ -197,8 +197,8 @@ class ActionModule(ReadPosixActionBase, ActionBase):
             # user.shell in o0_shells a question a host can answer.
             # This module names the shells and does not run any, so
             # every key is empty: what a shell's configuration does is
-            # only knowable by running it, and M(o0_o.posix.facts) is
-            # what does that.
+            # only knowable by running it, and the shells module and a
+            # gather are what do that.
             result["o0_shells"] = name_origins(
                 compose_shells(named), FQCN
             )

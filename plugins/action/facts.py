@@ -21,8 +21,7 @@ from ansible_collections.o0_o.posix.plugins.module_utils import (
     ORIGINS,
     POSIX_ENV_VARS,
     SHELL_DEFAULT,
-    SHELL_SYSTEM_HOME,
-    ReadPosixActionBase,
+    ShellsPosixActionBase,
     batch_read,
     commands_run,
     compose_evidence,
@@ -42,8 +41,6 @@ from ansible_collections.o0_o.posix.plugins.module_utils import (
     get_getent_command_requests,
     get_mount_command_requests,
     get_pathconf_command_requests,
-    get_shell_command_requests,
-    get_shell_login_requests,
     get_timezone_command_requests,
     merge_entry,
     merge_evidence,
@@ -59,7 +56,6 @@ from ansible_collections.o0_o.posix.plugins.module_utils import (
     process_getent_command_results,
     process_mount_command_results,
     process_pathconf_command_results,
-    process_shell_command_results,
     process_timezone_command_results,
 )
 from ansible_collections.o0_o.posix.plugins.module_utils.uname_utils import (
@@ -244,7 +240,7 @@ def _process_users_results(
     return facts, []
 
 
-class ActionModule(ReadPosixActionBase, ActionBase):
+class ActionModule(ShellsPosixActionBase, ActionBase):
     """Gather comprehensive POSIX facts from the managed host.
 
     Collects system information using shell commands and file reads,
@@ -331,9 +327,6 @@ class ActionModule(ReadPosixActionBase, ActionBase):
     # user's environment is what a run delegated to that user
     # answers, and reading this user's is not an answer about theirs.
     USER_SCOPED_SUBSETS = {"environment"}
-
-    # The namespace that has a composer of its own
-    PATHS_NAMESPACE = "o0_paths"
 
     # What this module is called, which is what a path entry names as
     # having contributed it
@@ -476,94 +469,11 @@ class ActionModule(ReadPosixActionBase, ActionBase):
             }
 
         if shells:
-            probed, consulted = process_shell_command_results(run_results)
-            observed = compose_shells(None, probed, consulted)
+            observed = self._composed_shells(run_results)
             if observed:
                 facts["o0_shells"] = observed
 
         return facts
-
-    def _shell_probes(
-        self,
-        shell: str,
-        all_facts: dict[str, Any],
-        uid: Optional[int],
-    ) -> list[dict[str, Any]]:
-        """Plan the shell observations this gather has reason to make.
-
-        Two layers.  The system layer is the shell the task named, run
-        out of the canonical home no host has, which is what a login
-        shell does before any user's dot files enter into it.  The
-        user layer is what a person actually gets when they log in.
-
-        A run that can drop asks both out of a reset environment, and
-        the difference is not cosmetic.  Run bare under become, the
-        probe reports the environment sudo left it - a truncated PATH,
-        the connection's working directory, the become target's mail
-        spool - and files all of it as though it were the shell's.  A
-        login su resets the environment to what the user really gets,
-        so the system layer is forced to root and reads one canonical
-        answer whoever the play became, and the user layer is asked of
-        root and of the connecting user, each out of their own home,
-        because those two are rarely configured alike.
-
-        A dropped user-layer probe is not told which shell to run: the
-        user's passwd entry decides and the answer says which it was.
-        A run that cannot drop asks the effective user's own pair
-        instead, named from the passwd entry, and reports whatever
-        environment it was handed.
-
-        A shell the path store has confirmed absent is not probed.
-        The store is consulted rather than trusted for a positive: a
-        path it has never been asked about is not a path known to be
-        missing, and the probe answers that question itself.
-
-        :param str shell: The shell the task named for the system
-            layer
-        :param dict[str, Any] all_facts: What the gather has composed
-            so far
-        :param Optional[int] uid: The effective uid, where one was
-            determined
-        :returns list[dict[str, Any]]: The probes to run
-        """
-        paths = all_facts.get(self.PATHS_NAMESPACE) or {}
-
-        def absent(path: str) -> bool:
-            return path in paths and paths[path] is None
-
-        identities = self._login_identities()
-        dropper = identities[0] if identities else None
-
-        requests: list[dict[str, Any]] = []
-
-        if shell and not absent(shell):
-            requests.extend(
-                get_shell_command_requests(
-                    [(shell, SHELL_SYSTEM_HOME)], dropper=dropper
-                )
-            )
-
-        if identities:
-            requests.extend(get_shell_login_requests(identities))
-            return requests
-
-        # Nothing to drop with, so the one login this run can observe
-        # is the one it is already inside, named from the passwd entry
-        # rather than answered by the probe
-        entry = (all_facts.get("o0_users") or {}).get(str(uid)) or {}
-        user_shell = entry.get("shell")
-        user_home = entry.get("home")
-        if (
-            user_shell
-            and user_home
-            and not absent(user_shell)
-            and (user_shell, user_home) != (shell, SHELL_SYSTEM_HOME)
-        ):
-            requests.extend(
-                get_shell_command_requests([(user_shell, user_home)])
-            )
-
-        return requests
 
     def _read_user_paths(
         self,
