@@ -1,0 +1,22 @@
+# vim: ts=2:sw=2:sts=2:et:ft=yaml.ansible
+# -*- mode: yaml; yaml-indent-offset: 2; indent-tabs-mode: nil; -*-
+---
+breaking_changes:
+  - >-
+    facts - the environment an ``o0_shells`` row publishes narrows to
+    what describes the shell: ``LANG``, ``LC_CTYPE``, ``PATH``,
+    ``TERM``, and ``TZ`` and ``NLSPATH`` where a login file set them.
+    It was the same list ``o0_users`` publishes, which is the wrong
+    list for this fact - that one is about a user, so ``HOME``,
+    ``LOGNAME``, ``MAIL``, ``PWD`` and ``USER`` belong in it, while
+    here they name whichever identity the probe turned out to run as
+    and nothing about the shell being asked. ``POSIX_ENV_VARS`` and
+    the ``o0_users`` environment subset are untouched
+    (https://github.com/o0-o/ansible-collection-posix/pull/XXX).
+  - >-
+    facts - ``SHELL`` and ``HOME`` leave the row for a different
+    reason than the rest: the entry key is the shell and the row key
+    is the home, so publishing either inside the row echoes the key it
+    was filed under. ``TERM`` stays and is documented as
+    session-scoped - observed rather than determined by the shell
+    (https://github.com/o0-o/ansible-collection-posix/pull/XXX).

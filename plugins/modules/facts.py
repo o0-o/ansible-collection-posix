@@ -884,15 +884,28 @@ ansible_facts:
       type: dict
       contains:
         homes:
-          description: >-
-            What running this shell out of each home produced, keyed
-            by home. Each holds the POSIX C(env) it had set, the
-            C(umask) it would create files under, the C(locale) it
-            reported and the C(aliases) it had defined, directly - an
-            alias comes out of a rc file, so it belongs to the shell
-            and the home together the way everything else here does. A
-            field the shell would not answer is left out rather than
-            nulled.
+          description:
+            - What running this shell out of each home produced, keyed
+              by home. Each holds the C(env) it had set, the C(umask)
+              it would create files under, the C(locale) it reported
+              and the C(aliases) it had defined, directly - an alias
+              comes out of a rc file, so it belongs to the shell and
+              the home together the way everything else here does. A
+              field the shell would not answer is left out rather than
+              nulled.
+            - C(env) is what describes the shell rather than whoever
+              ran the probe - C(LANG), C(LC_CTYPE), C(PATH), C(TERM),
+              and C(TZ) and C(NLSPATH) where a login file set them.
+              Narrower than the environment C(o0_users) publishes, and
+              deliberately so - that fact is about a user and C(HOME),
+              C(LOGNAME), C(MAIL), C(PWD) and C(USER) belong in it,
+              while here they would only name whichever identity the
+              probe turned out to run as.
+            - C(SHELL) is left out for a different reason. The entry
+              key already asserts it, so publishing it inside the row
+              would echo the key it was filed under.
+            - C(TERM) is session-scoped, observed rather than
+              determined by the shell.
           type: dict
         builtins:
           description: >-

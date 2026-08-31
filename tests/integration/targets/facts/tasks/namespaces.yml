@@ -927,12 +927,18 @@
       # What the login files made of the mask and the environment
       - config['umask'] is match('^0[0-7]{3}$')
       - config['env'] is mapping
-      - config['env']['HOME'] == '/dev/null'
       - config['env']['PATH'] is string
-      # Only the variables POSIX names are kept, never the whole
-      # environment: a shell's environment is where secrets live
-      - config['env'].keys() | reject('match', '^[A-Z][A-Z0-9_]*$')
-        | list | length == 0
+      # What describes the shell, not whoever ran the probe. A shell's
+      # environment is where secrets live, and an identity variable
+      # names the identity rather than the shell either way
+      - >-
+        config['env'].keys()
+        | reject('in', ['LANG', 'LC_CTYPE', 'NLSPATH', 'PATH', 'TERM',
+        'TZ']) | list | length == 0
+      # The home is the key the row is filed under and the shell is
+      # the entry it is filed in, so neither is a field of the row
+      - "'HOME' not in config['env']"
+      - "'SHELL' not in config['env']"
       # A locale where the host has a locale utility to ask
       - config['locale'] is not defined or config['locale'] is mapping
     fail_msg: >-
@@ -964,8 +970,11 @@
     that:
       - shells[facts_own_shell]['homes'][facts_own_home] is mapping
       - config['umask'] is match('^0[0-7]{3}$')
-      # The shell was run out of that home and not out of another
-      - config['env']['HOME'] == facts_own_home
+      # The home the shell was run out of is the key, which is the
+      # only place it needs saying
+      - >-
+        facts_own_home in shells[facts_own_shell]['homes']
+      - "'HOME' not in config['env'] | default({})"
     fail_msg: >-
       the connecting user's own shell and home were not observed:
       {{ facts_own_shell }} in {{ facts_own_home }}

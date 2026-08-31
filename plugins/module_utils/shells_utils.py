@@ -58,9 +58,6 @@ from ansible_collections.o0_o.core.plugins.module_utils import (
     process_command_spec,
 )
 
-from ansible_collections.o0_o.posix.plugins.module_utils.env_utils import (
-    POSIX_ENV_VARS,
-)
 from ansible_collections.o0_o.posix.plugins.module_utils.evidence_utils import (  # noqa: E501
     EVIDENCE,
     merge_evidence,
@@ -82,6 +79,25 @@ SHELL_SYSTEM_HOME = "/dev/null"
 
 # The shell a producer probes when it was not told which
 SHELL_DEFAULT = "/bin/sh"
+
+# What a shell's environment says about the shell rather than about
+# whoever ran it.  POSIX names every one of these and none of them is
+# an identity: LANG and LC_CTYPE are the locale the login files set,
+# PATH is where the shell will look for a command, TERM is the
+# terminal type the session carries, and TZ and NLSPATH are the other
+# two POSIX variables a login file plausibly sets that name no user.
+#
+# Narrower than the environment ``o0_users`` publishes, deliberately.
+# That fact is about a user and HOME, LOGNAME, MAIL, PWD and USER
+# belong in it; this one is about a shell, and the same variables
+# would only say which identity happened to run the probe.
+SHELL_ENV_VARS = ("LANG", "LC_CTYPE", "NLSPATH", "PATH", "TERM", "TZ")
+
+# The variable a row is filed by rather than published with.  A row
+# belongs to the shell that produced it, and the shell's own path is
+# the key it is filed under, so publishing the same answer inside the
+# row would be a constant echo of the key it chose.
+SHELL_ENV_FILING = "SHELL"
 
 # What the login probe asks the shell.  The shell itself is named
 # beside these, because a probe of what a shell's own configuration
@@ -173,20 +189,25 @@ def parse_shells(data: Union[str, Sequence[str], dict[str, Any]]) -> list[str]:
     return shells
 
 
-def _parse_env_block(text: str) -> dict[str, str]:
-    """Read an ``env`` block into the POSIX variables it printed.
+def _parse_env_block(
+    text: str,
+    keep: Sequence[str],
+) -> dict[str, str]:
+    """Read an ``env`` block into the variables it printed.
 
     A value may hold newlines, and ``env`` prints them as newlines, so
     a line that does not begin with a variable name and an equals sign
     continues the value before it rather than starting a new one.
 
-    Only the variables IEEE Std 1003.1 names are kept, which is the
-    same environment ``o0_users`` publishes.  A shell's environment is
-    a place secrets live, and an observation is not a reason to copy
-    them into a fact.
+    Only the variables the caller names are kept.  A shell's
+    environment is a place secrets live, and an observation is not a
+    reason to copy them into a fact - which is why the caller says
+    what it is observing rather than taking what it is handed.
 
     :param str text: The block between the env and locale markers
-    :returns dict[str, str]: The POSIX variables the shell had set
+    :param Sequence[str] keep: The variables worth keeping, in the
+        order a fact publishes them
+    :returns dict[str, str]: The variables the shell had set
     """
     values: dict[str, str] = {}
     current: Optional[str] = None
@@ -199,7 +220,7 @@ def _parse_env_block(text: str) -> dict[str, str]:
         elif current is not None:
             values[current] += "\n" + line
 
-    return {name: values[name] for name in POSIX_ENV_VARS if name in values}
+    return {name: values[name] for name in keep if name in values}
 
 
 def _parse_alias_block(text: str) -> dict[str, str]:
@@ -299,7 +320,12 @@ def _parse_shell_config(
     if umask is not None:
         config["umask"] = umask
 
-    env = _parse_env_block(env_text)
+    # What the shell set, and nothing about who ran it. The identity
+    # variables a login environment carries - HOME, LOGNAME, MAIL,
+    # PWD, USER - describe whoever the probe turned out to be rather
+    # than the shell being asked, and the home this row is filed under
+    # is the key it is filed under
+    env = _parse_env_block(env_text, SHELL_ENV_VARS)
     if env:
         config["env"] = env
 
@@ -527,6 +553,7 @@ def name_shell_binaries(
 
 __all__ = [
     "SHELL_ALIAS_MARKER",
+    "SHELL_ENV_VARS",
     "SHELL_DEFAULT",
     "SHELL_END_MARKER",
     "SHELL_ENV_MARKER",

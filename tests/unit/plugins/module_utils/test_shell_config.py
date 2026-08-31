@@ -41,6 +41,7 @@ from ansible_collections.o0_o.posix.plugins.module_utils.evidence_utils import (
 )
 from ansible_collections.o0_o.posix.plugins.module_utils.shells_utils import (
     SHELL_DEFAULT,
+    SHELL_ENV_VARS,
     SHELL_RCS,
     SHELL_SYSTEM_HOME,
     _parse_shell_config,
@@ -113,7 +114,7 @@ def test_a_login_run_answers_a_mask_and_an_environment(shell: str) -> None:
     parsed = config(shell)
 
     assert parsed["umask"] == "0022"
-    assert parsed["env"]["HOME"] == SHELL_SYSTEM_HOME
+    assert parsed["env"]["PATH"]
     assert set(parsed) <= {"env", "umask", "locale"}
 
 
@@ -133,12 +134,14 @@ def test_the_login_files_ran_and_the_capture_shows_it(shell: str) -> None:
 
 
 @pytest.mark.parametrize("shell", SHELLS)
-def test_only_the_variables_posix_names_are_kept(shell: str) -> None:
+def test_only_what_describes_the_shell_is_kept(shell: str) -> None:
     """Test the observation is not a copy of the whole environment.
 
     A shell's environment is a place secrets live, and observing one
-    is not a reason to file it. The captures were started with a
-    variable POSIX does not name, and none of them keeps it.
+    is not a reason to file it. Narrower than that: the fact is about
+    a shell, so the identity variables a login environment carries
+    say which user happened to run the probe rather than anything
+    about the shell, and they are left out too.
     """
     env = config(shell)["env"]
 
@@ -146,9 +149,18 @@ def test_only_the_variables_posix_names_are_kept(shell: str) -> None:
     assert "SHLVL" not in env
     assert "_" not in env
 
-    # What it does keep is what o0_users publishes as an environment
+    # Not an identity, however POSIX the name is
+    for identity in ("HOME", "LOGNAME", "MAIL", "PWD", "USER"):
+        assert identity not in env
+
+    # The home the row was run out of is the key it is filed under,
+    # and the shell is the entry it is filed in, so neither is a field
+    assert "SHELL" not in env
+
+    # What it does keep describes the shell: where it will look, what
+    # locale it set, what terminal the session carries
     assert env["PATH"]
-    assert env["EDITOR"] == "vi"
+    assert set(env) <= set(SHELL_ENV_VARS)
 
 
 @pytest.mark.parametrize("shell", SHELLS)
@@ -192,12 +204,12 @@ def test_a_value_with_a_newline_in_it_stays_one_value() -> None:
     """Test a line that cannot start a variable continues the last."""
     parsed = _parse_shell_config(
         0,
-        "@UMASK@\n0022\n@ENV@\nPS1=first line\nsecond line\nTERM=vt100\n"
-        "@LOCALE@\n@END@\n",
+        "@UMASK@\n0022\n@ENV@\nPATH=first line\nsecond line\n"
+        "TERM=vt100\n@LOCALE@\n@END@\n",
         "test: ",
     )[0]
 
-    assert parsed["env"]["PS1"] == "first line\nsecond line"
+    assert parsed["env"]["PATH"] == "first line\nsecond line"
     assert parsed["env"]["TERM"] == "vt100"
 
 
