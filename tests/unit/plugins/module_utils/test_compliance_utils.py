@@ -195,9 +195,10 @@ class TestProcessAllComplianceCommandResults:
         }
         assert set(facts["o0_paths"]["/bin/sh"]) == {"aliases", "builtins"}
 
-    def test_the_missing_list_derives_from_the_canaries(self) -> None:
+    def test_the_missing_list_derives_from_the_standards(self) -> None:
         """Test the commands a host lacks are read back out of the
-        evidence, so nothing has to store them a second time."""
+        standards that require them, so nothing has to store them a
+        second time."""
         facts = _process_fabricated_host()
 
         assert missing_commands(facts["o0_os"]["compliance"]) == sorted(
@@ -205,37 +206,115 @@ class TestProcessAllComplianceCommandResults:
         )
 
     def test_a_missing_command_downgrades_its_standard(self) -> None:
-        """Test a missing XSI command is recorded as a canary and
-        turns full support into partial."""
+        """Test a missing XSI command is recorded beside the standard's
+        verdict and turns full support into partial."""
         facts = _process_fabricated_host()
 
         xsi = facts["o0_os"]["compliance"]["xsi"]
         assert xsi["supported"] == "partial"
-        assert xsi["canaries"]["missing"] == sorted(MISSING_COMMANDS)
+        assert xsi["missing"] == sorted(MISSING_COMMANDS)
 
-    def test_every_probe_leaves_its_canary(self) -> None:
-        """Test a canary adds to what the earlier probes left rather
+    def test_every_probe_names_what_it_read(self) -> None:
+        """Test a probe adds to what the earlier probes left rather
         than replacing it, so the _XOPEN_UNIX answer that decided XSI
-        support survives the _XOPEN_VERSION one that dated it."""
+        support survives the _XOPEN_VERSION one that dated it. The
+        value is typed the way o0_os.config types it, because the two
+        are one fact read at two moments."""
         compliance = _process_fabricated_host()["o0_os"]["compliance"]
 
-        assert compliance["xsi"]["canaries"]["getconf"] == {
-            "_XOPEN_UNIX": "1",
-            "_XOPEN_VERSION": "700",
+        assert compliance["xsi"]["evidence"]["config"] == {
+            "_XOPEN_UNIX": 1,
+            "_XOPEN_VERSION": 700,
         }
-        assert compliance["xsh"]["canaries"]["getconf"] == {
-            "_POSIX_VERSION": "200809",
+        assert compliance["xsh"]["evidence"]["config"] == {
+            "_POSIX_VERSION": 200809,
         }
-        assert compliance["xcu"]["canaries"]["getconf"] == {
-            "_POSIX2_VERSION": "200809",
+        assert compliance["xcu"]["evidence"]["config"] == {
+            "_POSIX2_VERSION": 200809,
+        }
+
+    def test_every_probe_names_the_argv_it_ran(self) -> None:
+        """Test a standard names the commands that decided it as the
+        argv they were executed with - the getconf invocations that
+        dated and decided it, and the lookup of each utility it
+        records as missing."""
+        compliance = _process_fabricated_host()["o0_os"]["compliance"]
+
+        assert compliance["xsh"]["evidence"]["commands"] == [
+            ["getconf", "_POSIX_VERSION"],
+        ]
+        assert compliance["xsi"]["evidence"]["commands"] == [
+            ["getconf", "_XOPEN_UNIX"],
+            ["getconf", "_XOPEN_VERSION"],
+            ["command", "-v", "pax"],
+        ]
+
+    def test_a_derived_standard_borrows_what_derives_it(self) -> None:
+        """Test POSIX and SUS, which probe nothing of their own, name
+        the evidence of the standards they are composed of, so a
+        consumer reads a verdict and its support together without
+        knowing which standards add up to it."""
+        compliance = _process_fabricated_host()["o0_os"]["compliance"]
+
+        assert compliance["posix"]["evidence"] == {
+            "commands": [
+                ["getconf", "_POSIX_VERSION"],
+                ["getconf", "_POSIX2_VERSION"],
+            ],
+            "config": {"_POSIX_VERSION": 200809, "_POSIX2_VERSION": 200809},
+        }
+        assert compliance["sus"]["evidence"]["commands"] == (
+            compliance["posix"]["evidence"]["commands"]
+            + compliance["xsi"]["evidence"]["commands"]
+        )
+
+    def test_the_sh_verdict_names_its_probe(self) -> None:
+        """Test the namespace's own verdict names the probe that
+        produced it beside itself, as a command and nothing else: the
+        probe's answer is the published verdict rather than a
+        configuration variable it read."""
+        compliance = _process_fabricated_host()["o0_os"]["compliance"]
+
+        assert compliance["evidence"] == {
+            "commands": [
+                [
+                    "sh",
+                    "-c",
+                    'x=1; [ "$x" = 1 ] && printf "posix sh"',
+                ],
+            ],
         }
 
     def test_the_missing_list_outlives_the_probes(self) -> None:
         """Test the missing list seeded for the standards that require
-        utilities is still there once the getconf canaries are in, so
-        a standard that found all of its own says so with an empty
-        list rather than with silence."""
+        utilities is still there once the getconf probes are in, so a
+        standard that found all of its own says so with an empty list
+        rather than with silence."""
         compliance = _process_fabricated_host()["o0_os"]["compliance"]
 
-        assert compliance["xcu"]["canaries"]["missing"] == []
-        assert set(compliance["xsi"]["canaries"]) == {"getconf", "missing"}
+        assert compliance["xcu"]["missing"] == []
+        assert set(compliance["xsi"]) == {
+            "name",
+            "abbreviation",
+            "description",
+            "supported",
+            "version",
+            "missing",
+            "evidence",
+        }
+
+    def test_a_standard_names_only_the_kinds_it_attempts(self) -> None:
+        """Test evidence is kind by key: compliance reads no files, so
+        no record carries the files kind at all, while the two kinds it
+        does attempt are present even where they decided nothing."""
+        compliance = _process_fabricated_host()["o0_os"]["compliance"]
+
+        for standard in ("xsh", "xcu", "xsi", "posix", "sus"):
+            evidence = compliance[standard]["evidence"]
+            assert set(evidence) == {"commands", "config"}
+            assert all(
+                isinstance(argv, list) and all(
+                    isinstance(arg, str) for arg in argv
+                )
+                for argv in evidence["commands"]
+            )

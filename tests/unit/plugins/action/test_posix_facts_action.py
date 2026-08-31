@@ -716,13 +716,13 @@ class TestGatherUsers:
             "home": "/home/o0-o",
             "shell": "/bin/zsh",
             "groups": [20, 101],
-            "sources": {"files": ["/etc/passwd"], "commands": []},
+            "evidence": {"files": ["/etc/passwd"], "commands": []},
         }
         assert facts["o0_groups"]["101"] == {
             "name": "access_bpf",
             "gid": 101,
             "members": [1000],
-            "sources": {"files": ["/etc/group"], "commands": []},
+            "evidence": {"files": ["/etc/group"], "commands": []},
         }
         assert facts["o0_paths"]["/etc/shells"]["config"] == [
             "/bin/sh",
@@ -861,11 +861,11 @@ class TestGatherUsers:
 
         facts = _gather(plugin, "users")
 
-        assert facts["o0_users"]["1000"]["sources"] == {
+        assert facts["o0_users"]["1000"]["evidence"] == {
             "files": ["/etc/passwd"],
             "commands": [],
         }
-        assert facts["o0_groups"]["101"]["sources"] == {
+        assert facts["o0_groups"]["101"]["evidence"] == {
             "files": ["/etc/group"],
             "commands": [],
         }
@@ -881,12 +881,12 @@ class TestGatherUsers:
 
         facts = _gather(plugin, "users")
 
-        assert facts["o0_users"]["1000"]["sources"] == {
+        assert facts["o0_users"]["1000"]["evidence"] == {
             "files": ["/etc/passwd"],
             "commands": [["getent", "passwd"]],
         }
         assert facts["o0_users"]["4000"]["name"] == "ldap"
-        assert facts["o0_users"]["4000"]["sources"] == {
+        assert facts["o0_users"]["4000"]["evidence"] == {
             "files": [],
             "commands": [["getent", "passwd"]],
         }

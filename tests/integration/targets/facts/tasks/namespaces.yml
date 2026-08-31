@@ -42,13 +42,14 @@
   vars:
     compliance: >-
       {{ facts_all_reg['ansible_facts']['o0_os']['compliance'] }}
+    standards: >-
+      {{ ['posix', 'sus', 'xcu', 'xsh', 'xsi']
+         | map('extract', compliance) | list }}
     supports: >-
-      {{ compliance | dict2items
-         | selectattr('value', 'mapping')
-         | map(attribute='value.supported', default=none) | list }}
+      {{ standards | map(attribute='supported', default=none) | list }}
   ansible.builtin.assert:
     that:
-      - compliance.keys() | list | sort == ['posix',
+      - compliance.keys() | list | sort == ['evidence', 'posix',
         'sh_posix_compliant', 'sus', 'xcu', 'xsh', 'xsi']
       - compliance['xsh']['name'] == 'System Interfaces'
       - compliance['xsh']['abbreviation'] == 'XSH'
@@ -59,12 +60,30 @@
       # A standard is supported, unsupported, or supported in part
       - supports | reject('in', [true, false, 'partial'])
         | list | length == 0
-      # Each of the two standards with required commands says what it
-      # asked the host, whether the answer was a version or a miss
-      - compliance['xcu']['canaries'] is mapping
-      - compliance['xsi']['canaries'] is mapping
-      # The one behavioral probe publishes its verdict beside them
+      # Every standard names what decided it, in the two kinds of the
+      # vocabulary compliance attempts. It reads no files, so the
+      # third kind is absent rather than carried empty
+      - standards | rejectattr('evidence.commands', 'defined')
+        | list | length == 0
+      - standards | rejectattr('evidence.config', 'defined')
+        | list | length == 0
+      - standards | selectattr('evidence.files', 'defined')
+        | list | length == 0
+      # A command origin is argv - the command as executed - never a
+      # string that would imply a shell reading it back
+      - standards | map(attribute='evidence.commands')
+        | flatten(levels=1) | select('string') | list | length == 0
+      # Each of the two standards with required commands says which
+      # of them the host did not have, empty where it had them all
+      - compliance['xcu']['missing'] is sequence
+      - compliance['xsi']['missing'] is sequence
+      - compliance['xcu']['missing'] is not string
+      - compliance['xsi']['missing'] is not string
+      # The one behavioral probe publishes its verdict beside them,
+      # and the namespace names the probe beside the verdict
       - compliance['sh_posix_compliant'] is boolean
+      - compliance['evidence']['commands'] | length == 1
+      - compliance['evidence']['commands'][0][0] == 'sh'
     fail_msg: >-
       o0_os.compliance does not name the standards it read, or one of
       them will not say whether it is supported: {{ supports }}
@@ -458,7 +477,7 @@
 # origins it came from: the paths that were read, and the commands
 # that were run as the argv they were run with. The environment
 # subset's entries are not composed from either, so they carry no
-# sources and are not asked for any - which is why the users below are
+# evidence and are not asked for any - which is why the users below are
 # the ones a name describes.
 - name: Assert every composed entry names its origins, legally
   vars:
@@ -470,9 +489,9 @@
       {{ facts_all_reg['ansible_facts']['o0_groups'].values() | list }}
     composed: "{{ users + host_groups }}"
     named_files: >-
-      {{ composed | map(attribute='sources.files') | flatten }}
+      {{ composed | map(attribute='evidence.files') | flatten }}
     named_commands: >-
-      {{ composed | map(attribute='sources.commands')
+      {{ composed | map(attribute='evidence.commands')
          | flatten(levels=1) }}
   ansible.builtin.assert:
     that:
@@ -480,14 +499,14 @@
       # Both kinds are always there, because both are always
       # attempted: a kind that answered for nothing is empty rather
       # than left out to be inferred from a missing field
-      - composed | rejectattr('sources.files', 'defined')
+      - composed | rejectattr('evidence.files', 'defined')
         | list | length == 0
-      - composed | rejectattr('sources.commands', 'defined')
+      - composed | rejectattr('evidence.commands', 'defined')
         | list | length == 0
       # And at least one origin across the two, so no entry is here
       # without something that named it
-      - composed | selectattr('sources.files', 'falsy')
-        | selectattr('sources.commands', 'falsy')
+      - composed | selectattr('evidence.files', 'falsy')
+        | selectattr('evidence.commands', 'falsy')
         | list | length == 0
       # A file origin is the path that was read, and these are the
       # two files a gather reads users out of
@@ -513,7 +532,7 @@
       {{ users | dict2items | selectattr('value.name', 'defined')
          | map(attribute='value') | list }}
     resolved: >-
-      {{ described | selectattr('sources.commands', 'truthy') | list }}
+      {{ described | selectattr('evidence.commands', 'truthy') | list }}
   ansible.builtin.assert:
     that:
       - facts_has_getent | bool
@@ -521,9 +540,9 @@
       # root is in the flat file on every POSIX host, so a host that
       # resolves at all resolves root, and both origins named it
       - not facts_has_getent | bool
-        or users['0']['sources']['files'] == ['/etc/passwd']
+        or users['0']['evidence']['files'] == ['/etc/passwd']
       - not facts_has_getent | bool
-        or users['0']['sources']['commands'] == [['getent', 'passwd']]
+        or users['0']['evidence']['commands'] == [['getent', 'passwd']]
     fail_msg: >-
       o0_users names a getent enumeration on a host that has none, or
       omits it on a host that has one: has_getent

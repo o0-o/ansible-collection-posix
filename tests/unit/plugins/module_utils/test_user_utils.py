@@ -104,7 +104,7 @@ USERS = {
         "home": "/var/root",
         "shell": "/bin/sh",
         "groups": [0],
-        "sources": FROM_PASSWD,
+        "evidence": FROM_PASSWD,
     },
     "1000": {
         "name": "o0-o",
@@ -114,7 +114,7 @@ USERS = {
         "home": "/home/o0-o",
         "shell": "/bin/zsh",
         "groups": [20, 0, 101],
-        "sources": FROM_PASSWD,
+        "evidence": FROM_PASSWD,
     },
 }
 
@@ -123,19 +123,19 @@ GROUPS = {
         "name": "wheel",
         "gid": 0,
         "members": [0, 1000],
-        "sources": FROM_GROUP,
+        "evidence": FROM_GROUP,
     },
     "20": {
         "name": "staff",
         "gid": 20,
         "members": [1000],
-        "sources": FROM_GROUP,
+        "evidence": FROM_GROUP,
     },
     "101": {
         "name": "access_bpf",
         "gid": 101,
         "members": [1000],
-        "sources": FROM_GROUP,
+        "evidence": FROM_GROUP,
     },
 }
 
@@ -153,9 +153,9 @@ def test_compose_users_groups_field_census() -> None:
         "home",
         "shell",
         "groups",
-        "sources",
+        "evidence",
     }
-    assert set(groups["20"]) == {"name", "gid", "members", "sources"}
+    assert set(groups["20"]) == {"name", "gid", "members", "evidence"}
 
 
 def test_compose_users_groups_keys_by_uid_and_gid() -> None:
@@ -223,7 +223,7 @@ def test_compose_users_groups_invents_unnamed_primary_group() -> None:
         "name": None,
         "gid": 600,
         "members": [1002],
-        "sources": FROM_PASSWD,
+        "evidence": FROM_PASSWD,
     }
 
 
@@ -237,7 +237,7 @@ def test_a_host_without_getent_composes_what_it_always_did() -> None:
 
     Passing nothing for the resolved view is the macOS case and the
     case of every host that has no getent, and it has to compose the
-    facts the files alone say - saying so in sources rather than by
+    facts the files alone say - saying so in evidence rather than by
     leaving the field off.
     """
     users, groups = compose_users_groups(SAMPLE_PASSWD, SAMPLE_GROUP)
@@ -245,15 +245,15 @@ def test_a_host_without_getent_composes_what_it_always_did() -> None:
 
     assert users == without[0]
     assert groups == without[1]
-    assert users["1000"]["sources"] == FROM_PASSWD
-    assert groups["20"]["sources"] == FROM_GROUP
+    assert users["1000"]["evidence"] == FROM_PASSWD
+    assert groups["20"]["evidence"] == FROM_GROUP
 
 
 def test_a_resolved_view_that_only_repeats_the_files_says_both() -> None:
     """Test agreement is still two origins, not one.
 
     A files-only host with a real getent gets the same bytes twice.
-    Both answered, so both are named: sources reports what was asked
+    Both answered, so both are named: evidence reports what was asked
     and answered, not whether the answers differed.
     """
     users, groups = compose_users_groups(
@@ -263,16 +263,16 @@ def test_a_resolved_view_that_only_repeats_the_files_says_both() -> None:
         SAMPLE_GETENT_GROUP,
     )
 
-    assert users["1000"]["sources"] == FROM_PASSWD_AND_GETENT
-    assert groups["20"]["sources"] == FROM_GROUP_AND_GETENT
+    assert users["1000"]["evidence"] == FROM_PASSWD_AND_GETENT
+    assert groups["20"]["evidence"] == FROM_GROUP_AND_GETENT
 
     # And the facts themselves are what the files alone composed
     files_only = compose_users_groups(SAMPLE_PASSWD, SAMPLE_GROUP)[0]
     assert {
-        uid: {k: v for k, v in user.items() if k != "sources"}
+        uid: {k: v for k, v in user.items() if k != "evidence"}
         for uid, user in users.items()
     } == {
-        uid: {k: v for k, v in user.items() if k != "sources"}
+        uid: {k: v for k, v in user.items() if k != "evidence"}
         for uid, user in files_only.items()
     }
 
@@ -287,7 +287,7 @@ def test_the_resolved_view_wins_a_field_the_files_disagree_on() -> None:
     )[0]
 
     assert users["1000"]["shell"] == "/usr/local/bin/fish"
-    assert users["1000"]["sources"] == FROM_PASSWD_AND_GETENT
+    assert users["1000"]["evidence"] == FROM_PASSWD_AND_GETENT
 
 
 def test_an_empty_field_the_resolved_view_reported_wins() -> None:
@@ -338,11 +338,11 @@ def test_a_user_only_getent_knows_is_added_and_says_so() -> None:
     )
 
     assert users["4000"]["name"] == "ldap"
-    assert users["4000"]["sources"] == FROM_GETENT_PASSWD
-    assert groups["4000"]["sources"] == FROM_GETENT_GROUP
+    assert users["4000"]["evidence"] == FROM_GETENT_PASSWD
+    assert groups["4000"]["evidence"] == FROM_GETENT_GROUP
 
 
-def test_a_group_only_a_resolved_user_implies_borrows_their_sources() -> None:
+def test_a_group_only_a_resolved_user_implies_borrows_their_evidence() -> None:
     """Test an unnamed primary group's provenance is its claimants'.
 
     Such a group is in no group source at all - it exists because a
@@ -360,11 +360,11 @@ def test_a_group_only_a_resolved_user_implies_borrows_their_sources() -> None:
 
     assert groups["900"]["name"] is None
     assert groups["900"]["members"] == [4000]
-    assert groups["900"]["sources"] == FROM_GETENT_PASSWD
+    assert groups["900"]["evidence"] == FROM_GETENT_PASSWD
 
 
-def test_membership_does_not_change_a_named_group_s_sources() -> None:
-    """Test a group's sources are its own record's, not its members'.
+def test_membership_does_not_change_a_named_group_s_evidence() -> None:
+    """Test a group's evidence is its own record's, not its members'.
 
     staff is named in the files and nowhere else; that a
     getent-resolved user holds it as a primary says nothing about
@@ -378,7 +378,7 @@ def test_membership_does_not_change_a_named_group_s_sources() -> None:
     )[1]
 
     assert 4000 in groups["20"]["members"]
-    assert groups["20"]["sources"] == FROM_GROUP
+    assert groups["20"]["evidence"] == FROM_GROUP
 
 
 def test_both_kinds_of_origin_are_always_present() -> None:
@@ -396,16 +396,16 @@ def test_both_kinds_of_origin_are_always_present() -> None:
     )
 
     for entry in list(users.values()) + list(groups.values()):
-        sources = entry["sources"]
-        assert set(sources) == {"files", "commands"}
-        assert sources["files"] + sources["commands"]
+        evidence = entry["evidence"]
+        assert set(evidence) == {"files", "commands"}
+        assert evidence["files"] + evidence["commands"]
         # A path is a string, and a command is the argv it was run
         # with rather than a rendering of it
-        assert all(isinstance(path, str) for path in sources["files"])
+        assert all(isinstance(path, str) for path in evidence["files"])
         assert all(
             isinstance(command, list)
             and all(isinstance(word, str) for word in command)
-            for command in sources["commands"]
+            for command in evidence["commands"]
         )
 
 
@@ -423,11 +423,11 @@ def test_a_file_names_the_path_it_was_actually_read_from() -> None:
         group_path="/usr/local/etc/group",
     )
 
-    assert users["1000"]["sources"] == {
+    assert users["1000"]["evidence"] == {
         "files": ["/etc/master.passwd"],
         "commands": [],
     }
-    assert groups["20"]["sources"] == {
+    assert groups["20"]["evidence"] == {
         "files": ["/usr/local/etc/group"],
         "commands": [],
     }
@@ -444,8 +444,8 @@ def test_one_half_of_the_resolved_view_overlays_alone() -> None:
         SAMPLE_PASSWD, SAMPLE_GROUP, SAMPLE_GETENT_PASSWD, None
     )
 
-    assert users["1000"]["sources"] == FROM_PASSWD_AND_GETENT
-    assert groups["20"]["sources"] == FROM_GROUP
+    assert users["1000"]["evidence"] == FROM_PASSWD_AND_GETENT
+    assert groups["20"]["evidence"] == FROM_GROUP
 
 
 def test_the_captured_platforms_compose_the_same_shape() -> None:
@@ -468,8 +468,8 @@ def test_the_captured_platforms_compose_the_same_shape() -> None:
         users, groups = compose_users_groups(passwd, group, passwd, group)
 
         assert users["0"]["uid"] == 0
-        assert users["0"]["sources"] == FROM_PASSWD_AND_GETENT
-        assert groups["0"]["sources"] == FROM_GROUP_AND_GETENT
+        assert users["0"]["evidence"] == FROM_PASSWD_AND_GETENT
+        assert groups["0"]["evidence"] == FROM_GROUP_AND_GETENT
         assert all(user["uid"] == int(uid) for uid, user in users.items())
         assert all(group["gid"] == int(gid) for gid, group in groups.items())
         # A group nobody is a secondary member of is a group with no
@@ -497,9 +497,9 @@ def test_a_bsd_group_line_with_no_members_still_composes() -> None:
         "name": "bin",
         "gid": 7,
         "members": [],
-        "sources": FROM_GETENT_GROUP,
+        "evidence": FROM_GETENT_GROUP,
     }
-    assert users["0"]["sources"] == FROM_PASSWD_AND_GETENT
+    assert users["0"]["evidence"] == FROM_PASSWD_AND_GETENT
 
 
 def test_lookup_user_by_uid() -> None:

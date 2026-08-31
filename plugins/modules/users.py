@@ -26,9 +26,11 @@ description:
     The C(o0_o.posix.facts) module publishes the same shape under the
     same names, along with C(o0_shell_files) and the C(o0_paths)
     entries for the homes users live in and the login shells file.
-  - Every entry names where it came from in C(sources) - the paths
+  - Every entry names where it came from in C(evidence) - the paths
     that were read and the commands that were run, named concretely -
-    so a consumer reads provenance rather than guessing at it.
+    so a consumer reads provenance rather than guessing at it. That is
+    the one provenance vocabulary this collection speaks, and the
+    C(evidence) notes below document its kinds.
 options:
   passwd_path:
     description:
@@ -48,6 +50,8 @@ options:
         login shells.
     type: str
     default: /etc/shells
+extends_documentation_fragment:
+  - o0_o.posix.evidence
 author:
   - oØ.o (@o0-o)
 notes:
@@ -60,13 +64,13 @@ notes:
     overlay on it. A host with no C(getent) - macOS has none, and
     C(o0_o.posix) does not speak Darwin's Directory Services - is
     gathered from its files alone. That is a correct gather, not a
-    degraded one, and C(sources) states it rather than leaving it to
+    degraded one, and C(evidence) states it rather than leaving it to
     be inferred.
   - Where C(getent) is present, what it enumerates is what the host's
     name service switch resolves, which is not always everything it
     can resolve. An SSSD-backed host disables enumeration by default,
     so its directory users may be absent from C(o0_users) even though
-    the host resolves them by name. C(sources) is what keeps that
+    the host resolves them by name. C(evidence) is what keeps that
     honest - it names what answered, not what exists.
   - A C(getent) is believed only once it has behaved like one.
     Something answering to the name may be a shell function that greps
@@ -161,10 +165,12 @@ o0_users:
       type: list
       elements: int
       sample: [20, 101]
-    sources:
+    evidence:
       description:
         - The concrete origins the entry's own record came from, by
-          kind, base first within each kind.
+          kind, base first within each kind. This is the collection's
+          one provenance vocabulary, documented in full by the
+          C(evidence) notes on this module.
         - C(files) names the paths that were read. Each is a key of
           C(o0_paths), so an entry joins against the file it came out
           of.
@@ -176,7 +182,9 @@ o0_users:
           attempted. A kind that contributed nothing to the entry is
           empty rather than absent, so a host with no C(getent)
           names no command rather than leaving the field off. At least
-          one origin is named across the two.
+          one origin is named across the two. The vocabulary's third
+          kind, C(config), is absent, because no user or group record
+          is composed from a configuration variable.
       type: dict
       contains:
         files:
@@ -200,9 +208,10 @@ o0_groups:
     Mapping of groups keyed by stringified GID. Each entry includes the
     group name when available, the GID, the UIDs of every member, and
     the origins the group's own record came from, in the same shape
-    C(o0_users) names them. Membership does not enter into C(sources) -
-    a group's sources are where its record came from, not where its
-    members' did - except for a group no group source named at all,
+    C(o0_users) names them. Membership does not enter into
+    C(evidence) - a group's evidence is where its record came from,
+    not where its members' did - except for a group no group source
+    named at all,
     which exists only because a passwd entry claimed it as a primary
     and so carries the origins of the users claiming it, the passwd
     file and the passwd enumeration rather than the group ones.
@@ -215,7 +224,7 @@ o0_groups:
       members:
         - 0
         - 1000
-      sources:
+      evidence:
         files:
           - /etc/group
         commands:

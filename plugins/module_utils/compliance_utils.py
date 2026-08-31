@@ -13,6 +13,17 @@
 
 Constants and processing functions for gathering and processing POSIX,
 X/Open, and SUS compliance information.
+
+Every verdict this publishes names what decided it, in the one
+provenance vocabulary the collection speaks: ``evidence``, keyed by
+kind of origin.  Compliance reads no files, so it carries the two
+kinds it attempts - ``commands``, the argv of each probe as it was
+executed, and ``config``, the POSIX configuration variables it read
+and the values they answered with, keyed and typed the way
+``o0_os.config`` keys and types them.  A value lives in the evidence
+rather than being pointed at, because a compliance gather can run
+without the configuration subset and a support that dangles is no
+support at all.
 """
 
 from __future__ import annotations
@@ -20,7 +31,6 @@ from __future__ import annotations
 from typing import Any
 
 from ansible_collections.o0_o.utils.plugins.module_utils import (
-    merge_hash,
     typechecked,
 )
 
@@ -35,6 +45,10 @@ from ansible_collections.o0_o.posix.plugins.module_utils.command_spec import (
 )
 from ansible_collections.o0_o.posix.plugins.module_utils.command_utils import (
     process_command_lookups,
+)
+from ansible_collections.o0_o.posix.plugins.module_utils.getconf_utils import (
+    _answered,
+    _parse_getconf,
 )
 
 # Standards metadata - used to initialize compliance dict with descriptions
@@ -211,44 +225,104 @@ def missing_commands(compliance: dict[str, Any]) -> list[str]:
     """Derive the utilities a host was asked for and did not have.
 
     Every command the sweep probes belongs to XCU or to XSI, and a
-    standard records each of its own misses as a canary, so the two
-    canary lists already hold the whole answer.  Deriving it here is
-    what lets a fact namespace of absences retire: an absence stored
-    beside the evidence for it is a second copy waiting to drift from
-    the first.
+    standard records each of its own misses beside its verdict, so the
+    two lists already hold the whole answer.  Deriving it here is what
+    lets a fact namespace of absences retire: an absence stored beside
+    the evidence for it is a second copy waiting to drift from the
+    first.
 
     :param dict[str, Any] compliance: The o0_os.compliance fact
     :returns list[str]: The commands that did not resolve, sorted
     """
     missing: set[str] = set()
     for standard in ("xcu", "xsi"):
-        canaries = compliance.get(standard, {}).get("canaries", {})
-        missing.update(canaries.get("missing") or [])
+        missing.update(compliance.get(standard, {}).get("missing") or [])
     return sorted(missing)
 
 
 @typechecked
-def _record_canary(
-    standard: dict[str, Any],
-    canary: dict[str, Any],
-) -> None:
-    """Add one canary to a standard's record of what it asked.
+def _name_command(evidence: dict[str, Any], command: Any) -> None:
+    """Name one probe on an evidence record, as executed and once.
 
-    A standard's canaries accumulate: XSI is probed twice, the missing
-    list is seeded before any probe runs, and a missing utility is
-    recorded after the probes are done. Writing a canary therefore has
-    to merge into what the other probes left rather than replace it.
+    A command is argv, so a spec that names its command as a string -
+    a shell reading it back, which is a different thing from a command
+    being run - names no argv and is left unnamed rather than
+    published as one.  Nothing in the compliance sweep is written that
+    way.
+
+    :param dict[str, Any] evidence: The record to add to, edited in
+        place
+    :param Any command: The command as the request carried it
+    """
+    if not isinstance(command, (list, tuple)) or not command:
+        return
+
+    argv = [str(arg) for arg in command]
+    if argv not in evidence["commands"]:
+        evidence["commands"].append(argv)
+
+
+@typechecked
+def _record_probe(standard: dict[str, Any], result: dict[str, Any]) -> None:
+    """Name one getconf probe as evidence of what it decided.
+
+    The probe is a command and what it read is a POSIX configuration
+    variable, so both kinds of the one record are written here: the
+    argv that ran, and the variable it answered with under the value
+    it answered.  The value is typed the way ``o0_os.config`` types
+    it - an integer where the host printed a number - because the two
+    are the same fact read at two moments and a consumer joining them
+    by variable name has to find one answer, not two spellings of it.
+
+    A variable the host would not answer is named by the command that
+    asked for it and left out of the configuration, which is what
+    leaving one out means everywhere else: the host was asked and said
+    nothing.  A variable it has and does not limit answers
+    ``undefined``, which is an answer, so it keeps its key valued
+    null.
 
     :param dict[str, Any] standard: One standard's compliance dict,
         edited in place
-    :param dict[str, Any] canary: The canary to merge under 'canaries'
+    :param dict[str, Any] result: The processed result of one probe
     """
-    standard["canaries"] = merge_hash(
-        standard.get("canaries", {}),
-        canary,
-        recursive=True,
-        list_merge="append",
-    )
+    evidence = standard["evidence"]
+    command = result.get("command") or ()
+    _name_command(evidence, command)
+
+    if len(command) < 2 or not _answered(result):
+        return
+
+    value, _errors = _parse_getconf(0, result.get("stdout") or "", "")
+    evidence["config"][command[1]] = value
+
+
+@typechecked
+def _borrow_evidence(
+    standard: dict[str, Any],
+    *decided_by: dict[str, Any],
+) -> None:
+    """Give a derived standard the evidence of what derives it.
+
+    POSIX and SUS run no probe of their own: each is a verdict on the
+    standards it is composed of, so whatever decided those decided it,
+    and it names their evidence as its own.  That is what lets a
+    consumer read one standard's support and the support for it
+    without knowing which other standards add up to it.  Origins are
+    laid down in the order the composition names them and once each.
+
+    :param dict[str, Any] standard: The derived standard, edited in
+        place
+    :param dict[str, Any] decided_by: The standards it is composed of,
+        in composition order
+    """
+    evidence = standard["evidence"]
+    for source in decided_by:
+        borrowed = source["evidence"]
+        for argv in borrowed["commands"]:
+            if argv not in evidence["commands"]:
+                evidence["commands"].append(argv)
+        for variable, value in borrowed["config"].items():
+            evidence["config"].setdefault(variable, value)
 
 
 @typechecked
@@ -267,8 +341,17 @@ def process_all_compliance_command_results(
     under the path it resolved to, a miss as a null at each path it
     was not at, and the builtins and aliases the probes answered with
     on the entry of the shell that answered them.  A command the host
-    does not have is recorded once, as a canary of the standard that
-    requires it, and ``missing_commands`` derives the list back out.
+    does not have is recorded once, in the ``missing`` list of the
+    standard that requires it, and ``missing_commands`` derives the
+    list back out.
+
+    Every verdict names what decided it in ``evidence``.  A standard
+    probed by getconf names the argv that asked and the variable it
+    answered; a standard that records a utility as missing names the
+    lookup that missed it; and POSIX and SUS, which probe nothing of
+    their own, name the evidence of the standards they are composed
+    of.  The namespace's own verdict, ``sh_posix_compliant``, names
+    its probe the same way beside it.
 
     :param list[dict[str, Any]] cmds_completed: List of command result
         dicts, each containing 'type', 'implementation', 'rc', 'stdout',
@@ -286,9 +369,22 @@ def process_all_compliance_command_results(
         "sus": SUS.copy(),
     }
 
+    # Both kinds a standard is decided by are always attempted, so
+    # both are always present and a kind that decided nothing is
+    # empty rather than absent. The third kind of the vocabulary,
+    # files, is left off: compliance reads none.
+    for entry in compliance.values():
+        entry["evidence"] = {"commands": [], "config": {}}
+
     # Standards with required commands
     for standard in ["xcu", "xsi"]:
-        compliance[standard]["canaries"] = {"missing": []}
+        compliance[standard]["missing"] = []
+
+    # The namespace has one verdict of its own - the behavioral shell
+    # probe - so it names that probe beside it, in the same shape a
+    # standard names its own. Only a command: the probe's answer is
+    # the verdict itself rather than a variable it read.
+    compliance["evidence"] = {"commands": []}
 
     # Parse all command results through their registered parsers
     processed_results = process_all_command_results(cmds_completed)
@@ -296,6 +392,14 @@ def process_all_compliance_command_results(
     # Process command lookups
     lookup_results = processed_results["lookup_command"]
     paths, missing, errors = process_command_lookups(lookup_results)
+
+    # The argv each utility was looked for with, as it was executed,
+    # so a standard names the lookup that decided a miss rather than
+    # a rendering of it
+    lookups = {
+        (result.get("args") or {}).get("cmd"): result.get("command")
+        for result in lookup_results
+    }
 
     # Only process getconf results if getconf is available
     if "getconf" in missing:
@@ -310,23 +414,17 @@ def process_all_compliance_command_results(
 
         if parsed:
             compliance["xsi"].update(parsed)
-            getconf_var = support_result["command"][1]
-            getconf_val = support_result["stdout_lines"][0]
-            _record_canary(
-                compliance["xsi"],
-                {"getconf": {getconf_var: getconf_val}},
-            )
             errors.extend(support_result.pop("errors", []))
         else:
             # busybox getconf exits nonzero for variables it does
             # not know, so an unanswerable probe is the platform
-            # answering no; the null canary records that it was asked
-            getconf_var = support_result["command"][1]
+            # answering no
             compliance["xsi"]["supported"] = False
-            _record_canary(
-                compliance["xsi"],
-                {"getconf": {getconf_var: None}},
-            )
+
+        # Either way the probe decided the verdict, so either way the
+        # verdict names it; the variable is in the evidence only where
+        # the host answered with one
+        _record_probe(compliance["xsi"], support_result)
 
         for standard in ["xsh", "xcu", "xsi"]:
             cmd_type = f"{standard}_version"
@@ -344,23 +442,24 @@ def process_all_compliance_command_results(
 
             if parsed and compliance[standard].get("supported") is not False:
                 compliance[standard].update(parsed)
-                getconf_var = version_result["command"][1]
-                getconf_val = version_result["stdout_lines"][0]
-                _record_canary(
-                    compliance[standard],
-                    {"getconf": {getconf_var: getconf_val}},
-                )
+                _record_probe(compliance[standard], version_result)
                 errors.extend(version_result.pop("errors", []))
 
     for cmd in sorted(missing):
         if cmd in XCU_REQUIRED_COMMANDS:
-            if compliance["xcu"].get("supported") is True:
-                compliance["xcu"]["supported"] = "partial"
-            _record_canary(compliance["xcu"], {"missing": [cmd]})
+            required_by = compliance["xcu"]
         elif cmd in XSI_REQUIRED_COMMANDS:
-            if compliance["xsi"].get("supported") is True:
-                compliance["xsi"]["supported"] = "partial"
-            _record_canary(compliance["xsi"], {"missing": [cmd]})
+            required_by = compliance["xsi"]
+        else:
+            continue
+
+        if required_by.get("supported") is True:
+            required_by["supported"] = "partial"
+        required_by["missing"].append(cmd)
+
+        # The miss is the standard's own record, and the lookup that
+        # missed is what put it there
+        _name_command(required_by["evidence"], lookups.get(cmd))
 
     # POSIX requires both XSH (system interfaces) and XCU (shell/utilities)
     xsh_support = compliance["xsh"].get("supported")
@@ -371,6 +470,10 @@ def process_all_compliance_command_results(
         compliance["posix"]["supported"] = False
     elif xsh_support is not None and xcu_support is not None:
         compliance["posix"]["supported"] = "partial"
+
+    _borrow_evidence(
+        compliance["posix"], compliance["xsh"], compliance["xcu"]
+    )
 
     # SUS requires full POSIX plus XSI extensions
     posix_support = compliance["posix"].get("supported")
@@ -392,13 +495,19 @@ def process_all_compliance_command_results(
     else:
         compliance["sus"]["supported"] = False
 
+    _borrow_evidence(
+        compliance["sus"], compliance["posix"], compliance["xsi"]
+    )
+
     # The one behavioral probe in a subsystem of declarations: the
-    # sh test's verdict publishes beside the standards it evidences
+    # sh test's verdict publishes beside the standards it evidences,
+    # and the probe that produced it publishes beside the verdict
     sh_result = processed_results.get("sh_test")
     if sh_result is not None:
         parsed = sh_result["parsed"]
         if parsed:
             compliance.update(parsed)
+            _name_command(compliance["evidence"], sh_result.get("command"))
         errors.extend(sh_result.pop("errors", []) or [])
 
     # The processor names its own facts, so the two producers that

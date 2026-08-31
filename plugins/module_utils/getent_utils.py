@@ -37,8 +37,8 @@ as the shim does.
 
 Nothing here can prove the answer came through the name service
 switch rather than off the disk, and on a files-only host the two are
-the same bytes.  ``sources`` claims only what was asked and answered:
-that this command, run this way, said so.
+the same bytes.  ``evidence`` claims only what was asked and
+answered: that this command, run this way, said so.
 """
 
 from __future__ import annotations

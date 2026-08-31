@@ -52,20 +52,68 @@
         | reject('in', ['probed', 'inferred']) | list | length == 0
     fail_msg: 'the path store is not what the probes observed'
 
-# The commands a host lacks are read back out of the canaries the
-# standards record them in, rather than stored a second time.
-- name: Verify the missing list is the canaries it derives from
+# The commands a host lacks are read back out of the standards that
+# require them, rather than stored a second time.
+- name: Verify the missing list is the standards it derives from
   vars:
-    canaries: >-
-      {{ (compliance_result_reg['compliance']['xcu']['canaries']['missing']
-          + compliance_result_reg['compliance']['xsi']['canaries']['missing'])
+    recorded: >-
+      {{ (compliance_result_reg['compliance']['xcu']['missing']
+          + compliance_result_reg['compliance']['xsi']['missing'])
          | unique | sort }}
   ansible.builtin.assert:
     that:
-      - compliance_result_reg['missing_commands'] == canaries
+      - compliance_result_reg['missing_commands'] == recorded
     fail_msg: >-
-      missing_commands does not derive from the canaries:
-      {{ compliance_result_reg['missing_commands'] }} vs {{ canaries }}
+      missing_commands does not derive from the standards:
+      {{ compliance_result_reg['missing_commands'] }} vs {{ recorded }}
+
+# Every verdict names what decided it, and a miss is evidenced by the
+# lookup that missed rather than filed among the evidence itself.
+- name: Verify every verdict names the evidence that decided it
+  vars:
+    compliance: "{{ compliance_result_reg['compliance'] }}"
+    standards: >-
+      {{ ['posix', 'sus', 'xcu', 'xsh', 'xsi']
+         | map('extract', compliance) | list }}
+    argvs: >-
+      {{ standards | map(attribute='evidence.commands')
+         | flatten(levels=1) }}
+    lookups: >-
+      {{ argvs | selectattr('0', 'eq', 'command')
+         | map(attribute='2') | unique | sort }}
+    read: >-
+      {{ standards | map(attribute='evidence.config')
+         | map('dict2items') | flatten }}
+  ansible.builtin.assert:
+    that:
+      # Both kinds compliance attempts, on every standard; the kind it
+      # does not attempt is absent rather than carried empty
+      - standards | rejectattr('evidence.commands', 'defined')
+        | list | length == 0
+      - standards | rejectattr('evidence.config', 'defined')
+        | list | length == 0
+      - standards | selectattr('evidence.files', 'defined')
+        | list | length == 0
+      # A command is argv, never a string a shell would read back
+      - argvs | select('string') | list | length == 0
+      # A configuration variable is named as getconf names it, and
+      # valued as o0_os.config values one - nothing coerced on the way
+      # in, and a limit is never a flag
+      - read | map(attribute='key')
+        | reject('match', '^_?[A-Z][A-Z0-9_]*$') | list | length == 0
+      - read | map(attribute='value') | select('boolean')
+        | list | length == 0
+      - read | map(attribute='value') | reject('integer')
+        | reject('string') | reject('none') | list | length == 0
+      # The lookups a standard names are exactly the misses it records
+      - lookups == compliance_result_reg['missing_commands']
+      # The namespace's own verdict names its own probe
+      - compliance['sh_posix_compliant'] is boolean
+      - compliance['evidence']['commands'] | length == 1
+      - compliance['evidence']['commands'][0][0] == 'sh'
+      - compliance['evidence']['config'] is not defined
+    fail_msg: >-
+      a compliance verdict does not name what decided it: {{ argvs }}
 
 # A name that cannot be a file names no candidate path, so only a
 # miss of something a directory could hold has a null to file.

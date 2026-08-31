@@ -14,7 +14,8 @@ bugfixes:
   - >-
     compliance - busybox getconf exits nonzero for variables it does
     not know, which left the XSI entry without a supported field; an
-    unanswerable probe now reads as unsupported with a null canary
+    unanswerable probe now reads as unsupported, evidenced by the
+    command that asked and answered by nothing
     (https://github.com/o0-o/ansible-collection-posix/pull/XXX).
   - >-
     df filter - jc slices df columns by header position and busybox

@@ -53,7 +53,8 @@ def _parse_posix_version(
     :param str output: Raw getconf output (POSIX version string)
     :param str e_prefix: Error prefix for error messages
     :returns tuple: (partial_compliance_dict, errors_or_none) where the
-        dict contains 'supported', 'version', and optionally 'canaries'
+        dict contains 'supported' and, where the host named one,
+        'version'
     """
     result = {}
     errors = []

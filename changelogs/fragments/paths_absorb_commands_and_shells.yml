@@ -26,7 +26,7 @@ breaking_changes:
     compliance, facts - o0_missing retires. A namespace of absences is
     a second copy of an answer the evidence already holds: every
     command the sweep probes belongs to XCU or to XSI, and each
-    standard records its own misses under canaries.missing. The
+    standard records its own misses in a missing list of its own. The
     compliance module still returns missing_commands, derived from
     those two lists rather than stored beside them
     (https://github.com/o0-o/ansible-collection-posix/pull/XXX).

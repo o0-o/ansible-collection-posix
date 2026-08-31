@@ -1,0 +1,14 @@
+---
+bugfixes:
+  - >-
+    compliance - What a standard published about its own probes
+    overwrote itself. Each probe assigned the whole record rather than
+    adding to it, so XSI, which is asked twice, published only the
+    ``_XOPEN_VERSION`` that dated it and never the ``_XOPEN_UNIX``
+    that decided whether it was supported at all, and the ``missing``
+    list seeded for XCU and XSI was thrown away before either could
+    report a utility as present. Every probe now merges what it read
+    in, so XSI shows both variables it was asked and a standard that
+    found all of its required utilities says so with an empty
+    ``missing`` list rather than with the key's absence
+    (https://github.com/o0-o/ansible-collection-posix/pull/XXX).

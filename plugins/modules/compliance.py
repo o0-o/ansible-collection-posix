@@ -37,11 +37,13 @@ options:
         names M(o0_o.posix.facts) publishes them by, because both
         producers share the processor that names them. The
         C(missing_commands) return is the one value derived rather
-        than published - it reads back out of the canaries the
+        than published - it reads back out of the C(missing) lists the
         standards already record it in.
     type: bool
     default: false
     version_added: "2.0.0"
+extends_documentation_fragment:
+  - o0_o.posix.evidence
 author:
   - oØ.o (@o0-o)
 notes:
@@ -127,9 +129,8 @@ ansible_facts:
         compliance:
           description: >-
             Compliance data, the same structure as the C(compliance)
-            return value, plus C(sh_posix_compliant) - the behavioral
-            verdict of the basic POSIX shell test run against
-            C(/bin/sh)
+            return value, which already carries C(sh_posix_compliant)
+            and the C(evidence) for it
           type: dict
     o0_paths:
       description: The same structure as the C(paths) return value
@@ -137,7 +138,9 @@ ansible_facts:
 compliance:
   description: >-
     Dictionary of compliance standards detected. Contains top-level keys for
-    each standard (xsh, xcu, xsi, posix, sus) with their support status.
+    each standard (xsh, xcu, xsi, posix, sus) with their support status,
+    the behavioral C(sh_posix_compliant) verdict, and the C(evidence)
+    for that verdict.
   returned: always
   type: dict
   contains:
@@ -173,14 +176,46 @@ compliance:
               description: Full version name
               type: str
               sample: "POSIX.1-2008"
-        canaries:
-          description: >-
-            What was asked and what answered - C(getconf) maps the
-            variable probed to the value it printed
+        evidence:
+          description:
+            - What decided the answer, in the one provenance
+              vocabulary this collection speaks. The C(evidence) notes
+              on this module document its kinds; every standard below
+              names its own in the same shape.
+            - C(commands) names the probes that were run, each as the
+              argv it was executed with rather than as a string.
+            - C(config) maps each POSIX configuration variable those
+              probes read to the value the host answered with, typed
+              the way C(o0_os.config) types one - an integer where the
+              host printed a number - so the two join by variable name
+              and find one answer. A variable the host would not
+              answer is named by the command that asked for it and
+              left out of C(config), which is what leaving one out
+              means in C(o0_os.config) too.
+            - Both kinds are always present, because both are always
+              attempted. The vocabulary's third kind, C(files), is
+              absent throughout the namespace, since compliance reads
+              no files at all.
           type: dict
+          contains:
+            commands:
+              description: The probes that were run, each as argv
+              type: list
+              elements: list
+              sample: [["getconf", "_POSIX_VERSION"]]
+            config:
+              description: >-
+                The configuration variables the probes read, mapped to
+                the values the host answered with
+              type: dict
+              sample:
+                _POSIX_VERSION: 200809
           sample:
-            getconf:
-              _POSIX_VERSION: "200809"
+            commands:
+              - - getconf
+                - _POSIX_VERSION
+            config:
+              _POSIX_VERSION: 200809
     xcu:
       description: POSIX Shell and Utilities (XCU) compliance
       type: dict
@@ -215,18 +250,30 @@ compliance:
               description: Full version name
               type: str
               sample: "POSIX.1-2008"
-        canaries:
+        missing:
           description: >-
-            What was asked and what answered. C(getconf) maps each
-            variable probed to the value it printed, null where the
-            variable was probed and the platform would not answer.
-            C(missing) beside it names the required utilities that were
-            not found, and is empty when they all were.
+            The required utilities the host did not have, sorted, and
+            empty where it had them all. A finding rather than
+            evidence for one - what evidences it is the lookup that
+            missed, named among C(evidence.commands).
+          type: list
+          elements: str
+          sample: []
+        evidence:
+          description: >-
+            What decided the answer, in the shape C(xsh) names it: the
+            C(getconf) probe that dated the standard, and the lookup
+            of each utility C(missing) records. Where the host has no
+            C(_POSIX2_VERSION) to answer - POSIX.2 was merged into
+            POSIX.1, so glibc does not - the probe named here is the
+            C(_POSIX_VERSION) one that answered in its place.
           type: dict
           sample:
-            getconf:
-              _POSIX2_VERSION: "200809"
-            missing: []
+            commands:
+              - - getconf
+                - _POSIX2_VERSION
+            config:
+              _POSIX2_VERSION: 200809
     xsi:
       description: X/Open System Interfaces (XSI) extensions
       type: dict
@@ -263,22 +310,34 @@ compliance:
               description: Human-readable issue string
               type: str
               sample: "Issue 7"
-        canaries:
+        missing:
           description: >-
-            What was asked and what answered. XSI is probed twice, so
-            C(getconf) carries both the C(_XOPEN_UNIX) that decided
-            support and the C(_XOPEN_VERSION) that dated it, each
-            mapped to the value it printed and null where the variable
-            was probed and the platform would not answer. C(missing)
-            beside it names the required utilities that were not found,
-            and is empty when they all were; it stands alone naming
-            C(getconf) itself when the host has none to ask.
+            The required utilities the host did not have, sorted, and
+            empty where it had them all. It names C(getconf) itself
+            when the host has none to ask, which is also why XSI is
+            the standard that can be unsupported with nothing but a
+            lookup to show for it.
+          type: list
+          elements: str
+          sample: []
+        evidence:
+          description: >-
+            What decided the answer, in the shape C(xsh) names it. XSI
+            is probed twice, so C(config) carries both the
+            C(_XOPEN_UNIX) that decided support and the
+            C(_XOPEN_VERSION) that dated it, and C(commands) names
+            both invocations along with the lookup of each utility
+            C(missing) records.
           type: dict
           sample:
-            getconf:
-              _XOPEN_UNIX: "1"
-              _XOPEN_VERSION: "700"
-            missing: []
+            commands:
+              - - getconf
+                - _XOPEN_UNIX
+              - - getconf
+                - _XOPEN_VERSION
+            config:
+              _XOPEN_UNIX: 1
+              _XOPEN_VERSION: 700
     posix:
       description: Overall POSIX compliance (requires XSH + XCU)
       type: dict
@@ -301,6 +360,24 @@ compliance:
             only XSH or XCU is supported.
           type: raw
           sample: true
+        evidence:
+          description: >-
+            What decided the answer, in the shape C(xsh) names it.
+            POSIX runs no probe of its own, so it names the evidence
+            of the two standards it is composed of - XSH first, then
+            XCU - and a consumer reads the verdict and its support
+            together without having to know which standards add up to
+            it.
+          type: dict
+          sample:
+            commands:
+              - - getconf
+                - _POSIX_VERSION
+              - - getconf
+                - _POSIX2_VERSION
+            config:
+              _POSIX_VERSION: 200809
+              _POSIX2_VERSION: 200809
     sus:
       description: Single UNIX Specification compliance (requires POSIX + XSI)
       type: dict
@@ -342,6 +419,34 @@ compliance:
               description: Human-readable version string
               type: str
               sample: "v4"
+        evidence:
+          description: >-
+            What decided the answer, in the shape C(xsh) names it. SUS
+            runs no probe of its own either, so it names POSIX's
+            evidence and then XSI's, which is every probe the
+            namespace ran bar the behavioral one.
+          type: dict
+    sh_posix_compliant:
+      description: >-
+        The one behavioral verdict in a subsystem of declarations -
+        whether C(/bin/sh) actually passed a basic POSIX shell test
+        rather than merely declaring a version. Absent where the probe
+        did not run.
+      type: bool
+      sample: true
+    evidence:
+      description: >-
+        What decided C(sh_posix_compliant), the namespace's own
+        verdict, named beside it the way each standard names its own.
+        A command and nothing else - the probe's answer is the
+        published verdict rather than a configuration variable it
+        read, so there is no C(config) here to carry it.
+      type: dict
+      sample:
+        commands:
+          - - sh
+            - -c
+            - 'x=1; [ "$x" = 1 ] && printf "posix sh"'
 paths:
   description: >-
     What the probes observed about the paths they touched, keyed by
@@ -394,9 +499,9 @@ paths:
 missing_commands:
   description: >-
     The probed commands C(command -v) could not find, sorted, derived
-    from the C(canaries.missing) each standard records its own misses
-    in. Names C(command) alone when C(command) itself is missing,
-    since no other lookup can be trusted then.
+    from the C(missing) list each standard records its own misses in.
+    Names C(command) alone when C(command) itself is missing, since no
+    other lookup can be trusted then.
   returned: always
   type: list
   elements: str

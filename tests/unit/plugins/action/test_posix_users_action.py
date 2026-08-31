@@ -288,7 +288,7 @@ def test_users_action_composes_canonical_users(plugin) -> None:
         "home",
         "shell",
         "groups",
-        "sources",
+        "evidence",
     }
     assert result["o0_users"]["1000"]["name"] == "o0-o"
     assert result["o0_users"]["1000"]["uid"] == 1000
@@ -304,7 +304,7 @@ def test_users_action_composes_canonical_groups(plugin) -> None:
         "name",
         "gid",
         "members",
-        "sources",
+        "evidence",
     }
     assert result["o0_groups"]["20"]["name"] == "staff"
     assert result["o0_groups"]["20"]["gid"] == 20
@@ -338,11 +338,11 @@ def test_users_action_names_the_files_it_was_told_to_read(
 
     result = plugin.run(task_vars={})
 
-    assert result["o0_users"]["1000"]["sources"] == {
+    assert result["o0_users"]["1000"]["evidence"] == {
         "files": ["/etc/master.passwd"],
         "commands": [],
     }
-    assert result["o0_groups"]["20"]["sources"] == {
+    assert result["o0_groups"]["20"]["evidence"] == {
         "files": ["/usr/local/etc/group"],
         "commands": [],
     }

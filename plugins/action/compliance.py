@@ -135,7 +135,7 @@ class ActionModule(PosixActionBase, ActionBase):
         # Process results into compliance structure. The processor
         # names the facts; the module's own returns are the same
         # values unwrapped, plus the missing list derived from the
-        # canaries that already record it.
+        # standards that already record it.
         facts, errors = process_all_compliance_command_results(commands_result)
         compliance = facts["o0_os"]["compliance"]
         result.update(

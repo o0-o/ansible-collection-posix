@@ -87,6 +87,8 @@ options:
     type: str
     default: /bin/sh
     version_added: "2.0.0"
+extends_documentation_fragment:
+  - o0_o.posix.evidence
 author:
   - oØ.o (@o0-o)
 seealso:
@@ -270,12 +272,16 @@ ansible_facts:
             C(xsh), C(xcu) and C(xsi). Each entry carries the
             standard's name, abbreviation and description, whether it
             is C(supported), the C(version) detected, and the
-            C(canaries) that decided the answer. Beside the standards,
-            C(sh_posix_compliant) records the one behavioral probe:
-            whether C(/bin/sh) actually passed a basic POSIX shell
-            test, rather than merely declaring a version.
-            M(o0_o.posix.compliance) builds this fact and documents
-            every field of it.
+            C(evidence) that decided the answer - the probes that were
+            run and the configuration variables they read. The two
+            standards with required utilities carry C(missing) beside
+            that, naming the ones the host did not have. Beside the
+            standards, C(sh_posix_compliant) records the one
+            behavioral probe - whether C(/bin/sh) actually passed a
+            basic POSIX shell test, rather than merely declaring a
+            version - and the namespace's own C(evidence) names the
+            probe that decided it. M(o0_o.posix.compliance) builds
+            this fact and documents every field of it.
           returned: when the compliance subset is gathered
           type: dict
     o0_network:
@@ -620,10 +626,12 @@ ansible_facts:
           type: list
           elements: int
           sample: [20, 101]
-        sources:
+        evidence:
           description:
             - The concrete origins the entry's own record came from,
-              by kind, base first within each kind.
+              by kind, base first within each kind. This is the
+              collection's one provenance vocabulary, documented in
+              full by the C(evidence) notes on this module.
             - C(files) names the paths that were read. Each is a key
               of C(o0_paths), so an entry joins against the file it
               came out of.
@@ -637,7 +645,10 @@ ansible_facts:
               C(getent) - macOS has none, and C(o0_o.posix) does not
               speak Darwin's Directory Services - names no command,
               which is a correct gather rather than a degraded one. At
-              least one origin is named across the two.
+              least one origin is named across the two. The
+              vocabulary's third kind, C(config), is absent, because
+              no user or group record is composed from a
+              configuration variable.
             - Where C(getent) is present, what it enumerates is what
               the host's name service switch resolves, which is not
               always everything it can resolve. An SSSD-backed host
@@ -731,10 +742,10 @@ ansible_facts:
       description: >-
         Groups keyed by stringified GID, each with its C(name), its
         integer C(gid), the UIDs of every C(members) entry, and the
-        C(sources) its own record came from, in the same shape
+        C(evidence) its own record came from, in the same shape
         C(o0_users) names them. Membership does not enter into
-        C(sources) - a group's sources are where its record came from,
-        not where its members' did - except for a group no group
+        C(evidence) - a group's evidence is where its record came
+        from, not where its members' did - except for a group no group
         source named at all, which exists only because a passwd entry
         claimed it as a primary and so carries the origins of the
         users claiming it, the passwd file and the passwd enumeration
@@ -749,7 +760,7 @@ ansible_facts:
           members:
             - 0
             - 1000
-          sources:
+          evidence:
             files:
               - /etc/group
             commands:

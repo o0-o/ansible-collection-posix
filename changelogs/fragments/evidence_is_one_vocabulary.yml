@@ -1,0 +1,76 @@
+# vim: ts=2:sw=2:sts=2:et:ft=yaml.ansible
+# -*- mode: yaml; yaml-indent-offset: 2; indent-tabs-mode: nil; -*-
+---
+breaking_changes:
+  - >-
+    users, facts, compliance - provenance is named ``evidence``
+    everywhere, in one vocabulary of three kinds, and the two names it
+    replaces are gone. ``o0_users`` and ``o0_groups`` carried
+    ``sources``; each standard of ``o0_os.compliance`` carried
+    ``canaries``; neither name said the same thing as the other and
+    neither appeared in a release, so the shape is corrected inside
+    the 2.0.0 window rather than deprecated. A consumer reading either
+    name reads ``evidence`` now. The word canary survives in prose
+    describing what a probe is for, which is what it was always good
+    at, and names no field.
+minor_changes:
+  - >-
+    users, facts, compliance - ``evidence`` names concrete origins by
+    kind, and the kinds are the same three wherever it appears.
+    ``files`` holds the paths that were read, each of them a key of
+    ``o0_paths`` and so a key an entry joins against. ``commands``
+    holds the commands that were run, each as the argv it was executed
+    with. Argv rather than a string because argv is the form a command
+    was executed in - the raw quoting contract's lesson, that a
+    command written as a string implies a shell reading it back - and
+    because membership answers on list elements without a consumer
+    having to parse anything. ``config`` holds the POSIX configuration
+    variables that were read, mapped to the values the host answered
+    with, keyed and typed the way ``o0_os.config`` keys and types
+    them; the value is in the evidence rather than pointed at, because
+    a producer that names a variable may run without the configuration
+    subset ever being gathered. A producer carries the subkey of every
+    kind it attempts, empty where the kind contributed nothing, and
+    leaves off the kinds it has none of - so a user entry carries
+    files and commands and a compliance verdict carries commands and
+    config. A new ``o0_o.posix.evidence`` documentation fragment is the
+    one description of the shape, and the modules that publish it
+    extend it rather than restating it
+    (https://github.com/o0-o/ansible-collection-posix/pull/XXX).
+  - >-
+    users, facts - a user or group entry's ``evidence`` names the
+    origins its own record came from, where the list form it replaces
+    - ``["files", "getent"]``, naming what kind of thing answered
+    rather than which one - named neither. Nothing about the merge
+    changes: the resolved view still wins a field the two disagree on,
+    an empty field still wins like any other, a null still leaves the
+    base what it had, and a group no group source named still borrows
+    its claimants' provenance, which is now the passwd file and the
+    passwd enumeration by name
+    (https://github.com/o0-o/ansible-collection-posix/pull/XXX).
+  - >-
+    compliance - every verdict names what decided it. A standard
+    carries the argv of each probe that was run for it and the
+    configuration variables those probes read, valued as the host
+    answered them, so ``_XOPEN_UNIX`` reads ``1`` rather than
+    ``"1"`` and joins ``o0_os.config`` by name. A variable the host
+    would not answer is named by the command that asked for it and
+    left out of the configuration, which is what leaving one out means
+    in ``o0_os.config`` too, and replaces the null the canary form
+    published. POSIX and SUS probe nothing of their own, so each names
+    the evidence of the standards it is composed of and a consumer
+    reads a verdict and its support together. The namespace's own
+    verdict, ``sh_posix_compliant``, names the shell probe that
+    decided it in a ``compliance.evidence`` beside it - a command and
+    nothing else, since that probe's answer is the published verdict
+    rather than a variable it read
+    (https://github.com/o0-o/ansible-collection-posix/pull/XXX).
+  - >-
+    compliance - the utilities a standard requires and the host did
+    not have are recorded in a ``missing`` list on the standard, where
+    ``canaries.missing`` held them. A miss is a finding rather than
+    evidence for one: what evidences it is the ``command -v`` that
+    missed, which the standard names among its commands. Nothing else
+    moves - ``missing_commands`` still derives from the two lists
+    rather than storing a third copy
+    (https://github.com/o0-o/ansible-collection-posix/pull/XXX).
