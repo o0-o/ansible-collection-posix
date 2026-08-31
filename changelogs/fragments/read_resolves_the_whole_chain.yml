@@ -1,0 +1,38 @@
+# vim: ts=2:sw=2:sts=2:et:ft=yaml.ansible
+# -*- mode: yaml; yaml-indent-offset: 2; indent-tabs-mode: nil; -*-
+---
+minor_changes:
+  - >-
+    read - a new ``resolve`` option walks each path through every
+    symbolic link it passes through and publishes the walk as
+    ``resolution``, an ordered list of the absolute paths visited,
+    starting at the path as it was asked for and ending at the
+    canonical path it names. Where ``target`` reports a link's text as
+    it was written and one hop deep, this reports the whole chain: a
+    linked directory component is a hop like any other, so resolving
+    ``/bin/sh`` on a host whose ``/bin`` is a link to ``usr/bin`` and
+    whose ``/usr/bin/sh`` is a link to ``bash`` answers ``["/bin/sh",
+    "/usr/bin/sh", "/usr/bin/bash"]``. A path that is nothing but
+    itself resolves to a chain of one, and a relative target resolves
+    against the directory the link lives in, the way the kernel
+    resolves one
+    (https://github.com/o0-o/ansible-collection-posix/pull/XXX).
+  - >-
+    read - a link whose target is not there is walked to that target
+    all the same, and the chain's last step is the path that is
+    missing, so an audit reads what a dangling link was aimed at rather
+    than only that it dangles. A chain that returns to a path it has
+    already visited never ends, so the module fails and names the cycle
+    rather than publishing a prefix of an infinite list. ``resolve``
+    answers a different question from ``follow`` - which entry the path
+    carries - and the two hold together: a followed link's entry
+    describes its target and still carries the chain this path walked
+    to reach it
+    (https://github.com/o0-o/ansible-collection-posix/pull/XXX).
+  - >-
+    read - the walk is POSIX shell and nothing else, so it answers in
+    the raw lane the way every other probe here does. ``readlink(1)``
+    and ``realpath(1)`` are neither of them POSIX, so a link's text
+    comes from ``ls -ld`` and a directory's real form from ``cd``
+    followed by ``pwd -P``, one invocation per path
+    (https://github.com/o0-o/ansible-collection-posix/pull/XXX).

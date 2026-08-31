@@ -150,6 +150,27 @@ options:
       - When C(false), lists the link without following or recursing.
     type: raw
     default: true
+  resolve:
+    description:
+      - Walk each path through every symbolic link it passes through and
+        report the walk under C(resolution), an ordered list of the
+        absolute paths visited, ending at the canonical path.
+      - A directory component is a hop like any other. Where C(/bin) is
+        itself a link to C(usr/bin) and C(/bin/sh) is a link to C(bash),
+        resolving C(/bin/sh) reports
+        C([/bin/sh, /usr/bin/sh, /usr/bin/bash]).
+      - A path that is nothing but itself resolves to a chain of one.
+      - A link whose target is not there is walked to that target all
+        the same, and the chain's last step is the path that is
+        missing.
+      - A chain that returns to a path it has already visited never
+        ends, so the module fails and names the cycle rather than
+        publishing a prefix of an infinite list.
+      - Independent of I(follow), which decides whose metadata the
+        entry carries. A resolved link still reports the chain it
+        walked, whatever entry it ends up holding.
+    type: bool
+    default: false
   list:
     description:
       - Add a C(children) field to directory entries containing the list
@@ -258,6 +279,12 @@ EXAMPLES = r"""
     path: /var/log
     children: 2
   register: log_tree_read
+
+- name: Ask what /bin/sh really is, hop by hop
+  o0_o.posix.read:
+    path: /bin/sh
+    resolve: true
+  register: sh_resolution
 
 - name: Read a symlink without following it
   o0_o.posix.read:
@@ -376,6 +403,25 @@ paths:
           type: str
           sample: /usr/share/zoneinfo/UTC
           returned: when I(follow=true) resolved a symlink
+        resolution:
+          description:
+            - The chain the path resolves through, as an ordered list of
+              the absolute paths the walk visited.
+            - The first step is the path as it was asked for and the
+              last is the canonical path it names. A path that is
+              nothing but itself has a chain of one.
+            - Every hop is a step, a linked directory component as much
+              as a linked name, so a chain may be longer than the number
+              of links at the end of the path.
+            - Published whenever I(resolve=true) and the walk answered,
+              whether or not I(attributes) is on.
+          type: list
+          elements: str
+          returned: when I(resolve=true)
+          sample:
+            - /bin/sh
+            - /usr/bin/sh
+            - /usr/bin/bash
         modified:
           description: Modification time, in seconds and rendered
           type: dict
@@ -524,6 +570,7 @@ def main() -> None:
         "sha512": {"type": "bool", "default": False},
         "parents": {"type": "raw", "default": False},
         "follow": {"type": "raw", "default": True},
+        "resolve": {"type": "bool", "default": False},
         "list": {"type": "bool", "default": False},
         "children": {"type": "raw", "default": False},
         "raw": {"type": "raw", "default": "auto"},

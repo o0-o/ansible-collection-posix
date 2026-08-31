@@ -170,6 +170,17 @@ class ActionModule(ReadPosixActionBase, ActionBase):
                     "following or recursing"
                 ),
             },
+            "resolve": {
+                "type": "bool",
+                "default": False,
+                "description": (
+                    "Walk each path through the symlinks it passes "
+                    "through and publish the ordered list of absolute "
+                    "paths visited under 'resolution', ending at the "
+                    "canonical path. A directory component is a hop "
+                    "like any other"
+                ),
+            },
             "list": {
                 "type": "bool",
                 "default": False,
@@ -220,6 +231,7 @@ class ActionModule(ReadPosixActionBase, ActionBase):
         self.sha1 = new_module_args["sha1"]
         self.sha256 = new_module_args["sha256"]
         self.sha512 = new_module_args["sha512"]
+        self.resolve = new_module_args["resolve"]
         self.list = new_module_args["list"]
 
         # required=True only proves the key was given: an empty list
@@ -353,6 +365,7 @@ class ActionModule(ReadPosixActionBase, ActionBase):
             "sha1": self.sha1,
             "sha256": self.sha256,
             "sha512": self.sha512,
+            "resolve": self.resolve,
         }
 
         # Two-phase approach: detect platform from first path, then use
@@ -739,11 +752,25 @@ class ActionModule(ReadPosixActionBase, ActionBase):
                         # target types as nothing at all
                         for link_path, target in resolved_targets.items():
                             if target in target_facts:
-                                file_data[link_path] = target_data[target]
+                                # Two links resolving to one target get
+                                # a copy each, because what follows
+                                # writes on the entry and a shared
+                                # mapping would put one link's realpath
+                                # and chain on the other
+                                entry = dict(target_data[target])
                                 # Add realpath key when it differs from
                                 # original path
                                 if target != link_path:
-                                    file_data[link_path]["realpath"] = target
+                                    entry["realpath"] = target
+                                # The entry describes the target, but
+                                # the chain is how this path got there,
+                                # so the link keeps its own
+                                chain = (ls_facts.get(link_path) or {}).get(
+                                    "resolution"
+                                )
+                                if chain is not None:
+                                    entry["resolution"] = list(chain)
+                                file_data[link_path] = entry
 
         except (ValueError, RuntimeError, IOError) as e:
             # Convert standard Python exceptions to module failure

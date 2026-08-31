@@ -30,3 +30,6 @@
 
     - name: Execute advanced read module tests
       ansible.builtin.include_tasks: read_advanced.yml
+
+    - name: Execute the resolution walk tests
+      ansible.builtin.include_tasks: read_resolve.yml

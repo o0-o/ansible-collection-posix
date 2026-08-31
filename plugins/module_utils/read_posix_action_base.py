@@ -14,6 +14,7 @@
 from __future__ import annotations
 
 import base64
+import shlex
 from os.path import join
 from typing import Any, Optional
 
@@ -48,6 +49,53 @@ LS_TYPE_MAP = {
 # contradicted by a decode failure. See ``_utf8_overrules_single_byte``.
 SINGLE_BYTE_ENCODINGS = frozenset({"us-ascii", "ascii", "unknown-8bit"})
 SINGLE_BYTE_ENCODING_PREFIXES = ("iso-8859", "iso8859", "windows-", "latin")
+
+# What the resolution walk prints once nothing is left to follow, and
+# the ceiling that stops a walk that would never print it.  A chain
+# that reaches the ceiling has returned to somewhere it has been, and
+# the repeat in the chain itself is what names the cycle.
+RESOLUTION_END_MARKER = "@RESOLVED@"
+RESOLUTION_MAX_HOPS = 40
+
+# The walk itself, hop by hop, in the shell every host has.
+# readlink(1) is not POSIX and neither is realpath(1), so the two
+# things a resolution needs are asked of the two utilities that are:
+# ``ls -ld`` prints a link's text after an arrow, and ``cd`` followed
+# by ``pwd -P`` is how a directory says what it really is.
+#
+# A component is a hop.  Each turn canonicalizes the directory the
+# path lives in before looking at the name in it, so a path reached
+# through a linked directory reports that directory's real form as a
+# step of its own, which is what the kernel walked to get there.  The
+# name is only then tested for being a link, and a link's text is
+# resolved against the directory that was just canonicalized, which
+# is how the kernel resolves a relative target.
+#
+# Every step is printed as it is taken.  A walk that runs out of links
+# prints the marker; a walk that cannot is cut off at the ceiling
+# without it, and the chain it printed holds the repeat that says why.
+_RESOLUTION_SCRIPT = (
+    "p=__PATH__;"
+    ' printf "%s\\n" "$p";'
+    " last=$p; n=0;"
+    ' while [ "$n" -lt __HOPS__ ]; do'
+    " n=$((n+1));"
+    " d=${p%/*}; b=${p##*/};"
+    ' [ -n "$d" ] || d=/;'
+    ' r=$(cd "$d" 2>/dev/null && pwd -P) || r=$d;'
+    ' case "$r" in /) q="/$b";; *) q="$r/$b";; esac;'
+    ' if [ "$q" != "$last" ]; then printf "%s\\n" "$q"; last=$q; fi;'
+    " p=$q;"
+    ' if [ ! -h "$p" ]; then printf "%s\\n" "__END__"; exit 0; fi;'
+    ' t=$(ls -ld -- "$p" 2>/dev/null)'
+    ' || { printf "%s\\n" "__END__"; exit 0; };'
+    " t=${t#* -> };"
+    ' case "$t" in'
+    " /*) p=$t;;"
+    ' *) case "$r" in /) p="/$t";; *) p="$r/$t";; esac;;'
+    " esac;"
+    " done"
+)
 
 
 class ReadPosixActionBase(PosixActionBase):
@@ -109,7 +157,7 @@ class ReadPosixActionBase(PosixActionBase):
 
         :param list[str] paths: Paths to inspect
         :param dict[str, Any] options: Options dict with keys: attributes,
-            extended, mime, md5, sha1, sha256, sha512
+            extended, mime, md5, sha1, sha256, sha512, resolve
         :param bool need_dir_contents: If True, add commands to list
             directory contents (for children feature)
         :param Optional[dict[str, Any]] platform: Platform capabilities
@@ -362,7 +410,91 @@ class ReadPosixActionBase(PosixActionBase):
             if need_dir_contents:
                 commands[f"{path}_contents"] = ["ls", "-1A", path]
 
+            # The chain the path resolves through, when it was asked
+            # for. Every path is walked and not only the links, because
+            # a directory in the middle of a path is a link as often as
+            # the name at the end of it
+            if options.get("resolve", False):
+                commands[f"{path}_resolve"] = self._resolution_command(path)
+
         return commands
+
+    def _resolution_command(self, path: str) -> list[str]:
+        """The command that walks one path to what it finally names.
+
+        :param str path: The path to resolve
+        :returns list[str]: The argv that runs the walk
+        """
+        script = (
+            _RESOLUTION_SCRIPT.replace("__PATH__", shlex.quote(path))
+            .replace("__HOPS__", str(RESOLUTION_MAX_HOPS))
+            .replace("__END__", RESOLUTION_END_MARKER)
+        )
+
+        return ["sh", "-c", script]
+
+    def _parse_resolution(
+        self,
+        result: dict[str, Any],
+        path: str,
+    ) -> Optional[list[str]]:
+        """Read one walk's steps back, or fail on the cycle it found.
+
+        The steps are the answer: an ordered list of the absolute
+        paths the walk visited, starting at the path as it was asked
+        for and ending at the one it finally names.  A chain of one is
+        a path that resolves to itself, which is an answer rather than
+        a silence; a chain that ends at a path which is not there is
+        the answer for a link that dangles, and the absent path is its
+        last step.
+
+        A walk that returns to somewhere it has been never ends, so a
+        path repeated in the chain is a cycle and the module says so
+        rather than publishing a prefix of an infinite list.  A walk
+        cut off at the ceiling without repeating is a cycle too - the
+        ceiling is far past any real chain - and the message names
+        what it walked.
+
+        :param dict[str, Any] result: The walk command's result
+        :param str path: The path that was walked, for the message
+        :returns Optional[list[str]]: The chain, or None where the
+            walk did not answer
+        :raises ValueError: If the chain names a cycle
+        """
+        if result.get("rc") != 0:
+            return None
+
+        steps = [
+            line.strip()
+            for line in (result.get("stdout") or "").splitlines()
+            if line.strip()
+        ]
+
+        if not steps:
+            return None
+
+        ended = steps[-1] == RESOLUTION_END_MARKER
+        if ended:
+            steps = steps[:-1]
+
+        seen: dict[str, int] = {}
+        for index, step in enumerate(steps):
+            if step in seen:
+                cycle = steps[seen[step] : index + 1]
+                raise ValueError(
+                    f"Resolving {path} never ends: it returns to "
+                    f"{step}, cycling through {' -> '.join(cycle)}"
+                )
+            seen[step] = index
+
+        if not ended:
+            raise ValueError(
+                f"Resolving {path} never ends: the walk was still "
+                f"following links after {RESOLUTION_MAX_HOPS} hops, "
+                f"through {' -> '.join(steps)}"
+            )
+
+        return steps or None
 
     def _get_content_commands(
         self,
@@ -961,6 +1093,10 @@ class ReadPosixActionBase(PosixActionBase):
         whether a path was there at all reads them from there rather
         than out of the dict it is about to publish.
 
+        The chain a path resolves through travels with them when it
+        was asked for, under 'resolution', so a caller that has to put
+        it back on an entry it replaced reads it from the same place.
+
         :param dict results: Raw command results from _run()
         :param list[str] paths: Original paths that were inspected
         :param Optional[dict[str, bool]] options: Boolean options dict
@@ -968,8 +1104,10 @@ class ReadPosixActionBase(PosixActionBase):
         :returns tuple[dict, dict]: (file_data, ls_facts); file_data
             maps each path to its parsed file data, or None when the
             path does not exist, and ls_facts maps each path whose
-            listing parsed to its type under 'type' and, for a link,
-            the target the ls reported under 'target'
+            listing parsed to its type under 'type', for a link the
+            target the ls reported under 'target', and where a walk
+            answered the chain it took under 'resolution'
+        :raises ValueError: If a path's resolution names a cycle
         """
         options = options or {"attributes": True}
         file_data: dict[str, Optional[dict[str, Any]]] = {}
@@ -987,6 +1125,17 @@ class ReadPosixActionBase(PosixActionBase):
             if ls_result.get("rc") != 0:
                 file_data[path] = None
                 continue
+
+            # The chain is read before the listing is parsed, because a
+            # chain that never ends is a fault of its own rather than
+            # an attribute that failed to parse, and the message that
+            # names the cycle is the answer
+            resolve_key = f"{path}_resolve"
+            resolution = (
+                self._parse_resolution(results[resolve_key], path)
+                if resolve_key in results
+                else None
+            )
 
             # Parse ls output using jc
             ls_output = ls_result.get("stdout", "")
@@ -1013,9 +1162,17 @@ class ReadPosixActionBase(PosixActionBase):
                 facts: dict[str, Any] = {"type": file_type}
                 if file_type == "link":
                     facts["target"] = entry.get("link_to", "")
+                if resolution is not None:
+                    facts["resolution"] = resolution
                 ls_facts[path] = facts
                 if flags and include_attributes:
                     attributes["type"] = file_type
+
+                # A chain was asked for by name, so it is published on
+                # the strength of that question rather than on whether
+                # the attributes came with it
+                if resolution is not None:
+                    attributes["resolution"] = list(resolution)
 
                 # Add optional attributes fields only if requested
                 if include_attributes:

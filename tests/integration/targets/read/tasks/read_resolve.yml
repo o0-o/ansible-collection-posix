@@ -1,0 +1,270 @@
+# vim: ts=2:sw=2:sts=2:et:ft=yaml.ansible
+# -*- mode: yaml; yaml-indent-offset: 2; indent-tabs-mode: nil; -*-
+---
+# GNU General Public License v3.0+
+# SPDX-License-Identifier: GPL-3.0-or-later
+# (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
+# Copyright (c) 2025 oØ.o (@o0-o)
+#
+# This file is part of the o0_o.posix Ansible Collection.
+
+# What resolve answers, hop by hop. A directory component is a link as
+# often as the name at the end of a path, so the walk canonicalizes
+# the directory before it looks at the name in it and reports both.
+# The temporary directory is itself reached through a link on some
+# hosts - /var is a link to private/var on macOS - so every expectation
+# below is written against the canonical form the walk answered with
+# rather than against the spelling mktemp handed back.
+
+- name: Build the tree a resolution walk has to cross
+  o0_o.posix.write:
+    state: directory
+    dest: "{{ read_dir_path }}/resolve/real"
+  check_mode: false
+
+- name: Put the file every chain below ends at
+  o0_o.posix.write:
+    dest: "{{ read_dir_path }}/resolve/real/target.txt"
+    content: 'resolved'
+    mode: '0644'
+  check_mode: false
+
+# Written relative on purpose: ls reports a link's text as it was
+# written, and a relative one only names a path against the directory
+# the link lives in
+- name: Link to that file by a relative target beside it
+  o0_o.posix.write:
+    state: link
+    target: target.txt
+    dest: "{{ read_dir_path }}/resolve/real/rel.link"
+  check_mode: false
+
+- name: Link to the directory the file lives in
+  o0_o.posix.write:
+    state: link
+    target: real
+    dest: "{{ read_dir_path }}/resolve/linkdir"
+  check_mode: false
+
+- name: Link to a path that is not there
+  o0_o.posix.write:
+    state: link
+    target: "{{ read_dir_path }}/resolve/gone.txt"
+    dest: "{{ read_dir_path }}/resolve/broken.link"
+  check_mode: false
+
+- name: Link two paths at each other
+  o0_o.posix.write:
+    state: link
+    target: loopb
+    dest: "{{ read_dir_path }}/resolve/loopa"
+  check_mode: false
+
+- name: Close the cycle the other way
+  o0_o.posix.write:
+    state: link
+    target: loopa
+    dest: "{{ read_dir_path }}/resolve/loopb"
+  check_mode: false
+
+- name: Name the entries of the resolve tree
+  ansible.builtin.set_fact:
+    read_resolve_dir: "{{ read_dir_path }}/resolve"
+    read_resolve_linkdir: "{{ read_dir_path }}/resolve/linkdir"
+    read_resolve_through: "{{ read_dir_path }}/resolve/linkdir/rel.link"
+    read_resolve_rel: "{{ read_dir_path }}/resolve/real/rel.link"
+    read_resolve_broken: "{{ read_dir_path }}/resolve/broken.link"
+    read_resolve_loop: "{{ read_dir_path }}/resolve/loopa"
+
+# The walk's own answer for the directory is what every other
+# expectation is written against, which is the only honest way to name
+# a path on a host whose /var is a link
+- name: Ask the walk what the tree's own directory really is
+  o0_o.posix.read:
+    path: "{{ read_resolve_dir }}"
+    resolve: true
+    attributes: false
+  register: read_resolve_dir_reg
+
+- name: Name the canonical form of the tree
+  ansible.builtin.set_fact:
+    read_resolve_real: >-
+      {{ read_resolve_dir_reg['paths'][read_resolve_dir]['resolution']
+         | last }}
+
+- name: Assert a directory resolves to itself once it is canonical
+  ansible.builtin.assert:
+    that:
+      - read_resolve_dir_reg is not changed
+      - >-
+        read_resolve_dir_reg['paths'][read_resolve_dir]['resolution']
+        | first == read_resolve_dir
+      # attributes is off, so the chain is the whole entry: a chain was
+      # asked for by name and arrives on the strength of that question
+      - >-
+        read_resolve_dir_reg['paths'][read_resolve_dir] | list
+        == ['resolution']
+
+- name: Resolve the canonical directory, which is nothing but itself
+  o0_o.posix.read:
+    path: "{{ read_resolve_real }}"
+    resolve: true
+  register: read_resolve_itself_reg
+
+- name: Assert a path that is only itself resolves to a chain of one
+  ansible.builtin.assert:
+    that:
+      - read_resolve_itself_reg is not changed
+      - >-
+        read_resolve_itself_reg['paths'][read_resolve_real]['resolution']
+        == [read_resolve_real]
+      - >-
+        read_resolve_itself_reg['paths'][read_resolve_real]['type']
+        == 'directory'
+
+- name: Resolve a link whose target was written relative
+  o0_o.posix.read:
+    path: "{{ read_resolve_rel }}"
+    resolve: true
+    follow: false
+  register: read_resolve_rel_reg
+
+- name: Assert a relative target resolves against the link's directory
+  ansible.builtin.assert:
+    that:
+      - read_resolve_rel_reg is not changed
+      # ls reports the text as it was written, and the chain reports
+      # the path that text names
+      - >-
+        read_resolve_rel_reg['paths'][read_resolve_rel]['target']
+        == 'target.txt'
+      - >-
+        read_resolve_rel_reg['paths'][read_resolve_rel]['resolution']
+        | first == read_resolve_rel
+      - >-
+        read_resolve_rel_reg['paths'][read_resolve_rel]['resolution']
+        | last == read_resolve_real ~ '/real/target.txt'
+
+- name: Resolve a link reached through a linked directory
+  o0_o.posix.read:
+    path: "{{ read_resolve_through }}"
+    resolve: true
+    follow: false
+  register: read_resolve_through_reg
+
+- name: Assert a linked directory component is a hop of its own
+  ansible.builtin.assert:
+    that:
+      - read_resolve_through_reg is not changed
+      - >-
+        read_resolve_through_reg['paths'][read_resolve_through]
+        ['resolution'] | first == read_resolve_through
+      # The directory canonicalizes before the name in it is looked at,
+      # so the walk passes through the real directory's spelling of the
+      # link and only then follows it
+      - >-
+        read_resolve_real ~ '/real/rel.link' in
+        read_resolve_through_reg['paths'][read_resolve_through]
+        ['resolution']
+      - >-
+        read_resolve_through_reg['paths'][read_resolve_through]
+        ['resolution'] | last == read_resolve_real ~ '/real/target.txt'
+      - >-
+        read_resolve_through_reg['paths'][read_resolve_through]
+        ['resolution'] | length >= 3
+
+- name: Resolve a link that points at nothing
+  o0_o.posix.read:
+    path: "{{ read_resolve_broken }}"
+    resolve: true
+  register: read_resolve_broken_reg
+
+- name: Assert a broken chain records the step that is not there
+  ansible.builtin.assert:
+    that:
+      - read_resolve_broken_reg is not changed
+      - >-
+        read_resolve_broken_reg['paths'][read_resolve_broken]
+        ['resolution'] | first == read_resolve_broken
+      - >-
+        read_resolve_broken_reg['paths'][read_resolve_broken]
+        ['resolution'] | last == read_resolve_real ~ '/gone.txt'
+      # The link itself is what the entry describes: follow found no
+      # target to take data from, so no realpath was added
+      - >-
+        'realpath' not in
+        read_resolve_broken_reg['paths'][read_resolve_broken]
+      - >-
+        read_resolve_broken_reg['paths'][read_resolve_broken]['type']
+        == 'link'
+
+- name: Read the step the broken chain ends at
+  o0_o.posix.read:
+    path: >-
+      {{ read_resolve_broken_reg['paths'][read_resolve_broken]
+         ['resolution'] | last }}
+  register: read_resolve_gone_reg
+
+- name: Assert the chain's last step is a path the host does not have
+  ansible.builtin.assert:
+    that:
+      - read_resolve_gone_reg is not changed
+      - >-
+        read_resolve_gone_reg['paths'].values() | list == [None]
+
+- name: Resolve a link that points back at what points at it
+  o0_o.posix.read:
+    path: "{{ read_resolve_loop }}"
+    resolve: true
+  register: read_resolve_loop_reg
+  ignore_errors: true
+
+- name: Assert a cycle fails the read and names the cycle
+  ansible.builtin.assert:
+    that:
+      - read_resolve_loop_reg is failed
+      - "'never ends' in read_resolve_loop_reg['msg']"
+      - read_resolve_loop in read_resolve_loop_reg['msg']
+      - read_resolve_real ~ '/loopb' in read_resolve_loop_reg['msg']
+
+# follow decides whose metadata the entry carries; resolve decides
+# whether the entry says how it got there. The two answer different
+# questions and both answer them at once
+- name: Resolve a link and follow it in the one read
+  o0_o.posix.read:
+    path: "{{ read_resolve_rel }}"
+    resolve: true
+    follow: true
+  register: read_resolve_followed_reg
+
+- name: Assert a followed link keeps the chain it walked
+  ansible.builtin.assert:
+    that:
+      - read_resolve_followed_reg is not changed
+      # The entry describes the target
+      - >-
+        read_resolve_followed_reg['paths'][read_resolve_rel]['type']
+        == 'regular'
+      - >-
+        read_resolve_followed_reg['paths'][read_resolve_rel]['realpath']
+        == read_resolve_real ~ '/real/target.txt'
+      # and the chain is still this path's own
+      - >-
+        read_resolve_followed_reg['paths'][read_resolve_rel]['resolution']
+        | first == read_resolve_rel
+      - >-
+        read_resolve_followed_reg['paths'][read_resolve_rel]['resolution']
+        | last == read_resolve_real ~ '/real/target.txt'
+
+- name: Read the same path without asking it to resolve
+  o0_o.posix.read:
+    path: "{{ read_resolve_rel }}"
+  register: read_resolve_unasked_reg
+
+- name: Assert a read that did not ask publishes no chain
+  ansible.builtin.assert:
+    that:
+      - read_resolve_unasked_reg is not changed
+      - >-
+        'resolution' not in
+        read_resolve_unasked_reg['paths'][read_resolve_rel]

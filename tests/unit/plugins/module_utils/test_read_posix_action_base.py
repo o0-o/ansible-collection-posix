@@ -20,10 +20,14 @@ import pytest
 
 try:
     from ansible_collections.o0_o.posix.plugins.module_utils.read_posix_action_base import (  # type: ignore  # noqa: E501
+        RESOLUTION_END_MARKER,
+        RESOLUTION_MAX_HOPS,
         ReadPosixActionBase,
     )
 except ModuleNotFoundError:  # pragma: no cover - ansible missing in tests
     ReadPosixActionBase = None  # type: ignore
+    RESOLUTION_END_MARKER = "@RESOLVED@"  # type: ignore
+    RESOLUTION_MAX_HOPS = 40  # type: ignore
 
 pytestmark = pytest.mark.skipif(
     ReadPosixActionBase is None, reason="ansible package is required"
@@ -977,3 +981,166 @@ class TestProcessReadResults:
 
         assert file_data == {"/gone": None}
         assert ls_facts == {}
+
+
+def _resolve_result(*steps: str, ended: bool = True) -> dict[str, Any]:
+    """Build a resolution walk's result out of the steps it printed."""
+    lines = list(steps)
+    if ended:
+        lines.append(RESOLUTION_END_MARKER)
+    return {"rc": 0, "stdout": "\n".join(lines) + "\n"}
+
+
+class TestResolutionCommand:
+    """Tests for the walk _get_read_commands plans."""
+
+    def test_resolve_is_not_planned_unless_asked_for(self, action) -> None:
+        """Test a read that did not ask walks nothing."""
+        commands = action._get_read_commands(["/f"], {"attributes": True})
+
+        assert "/f_resolve" not in commands
+
+    def test_resolve_plans_one_walk_per_path(self, action) -> None:
+        """Test every path gets a walk, links and plain files alike."""
+        commands = action._get_read_commands(
+            ["/a", "/b"], {"resolve": True}, platform={"stat_variant": "gnu"}
+        )
+
+        assert sorted(commands) == [
+            "/a_inode",
+            "/a_ls",
+            "/a_resolve",
+            "/b_inode",
+            "/b_ls",
+            "/b_resolve",
+        ]
+
+    def test_the_walk_runs_in_a_posix_shell(self, action) -> None:
+        """Test the walk is a sh script, readlink(1) not being POSIX."""
+        command = action._resolution_command("/bin/sh")
+
+        assert command[:2] == ["sh", "-c"]
+        assert command[2].startswith("p=/bin/sh;")
+        assert "readlink" not in command[2]
+        assert "pwd -P" in command[2]
+        assert "ls -ld" in command[2]
+
+    def test_a_quoted_path_reaches_the_shell_whole(self, action) -> None:
+        """Test a path holding a quote is quoted rather than broken."""
+        command = action._resolution_command("/tmp/it's here")
+
+        assert command[2].startswith("""p='/tmp/it'"'"'s here';""")
+
+
+class TestParseResolution:
+    """Tests for reading a walk's steps back."""
+
+    def test_a_chain_of_one_is_an_answer(self, action) -> None:
+        """Test a path that is only itself resolves to itself."""
+        assert action._parse_resolution(
+            _resolve_result("/etc/hosts"), "/etc/hosts"
+        ) == ["/etc/hosts"]
+
+    def test_every_hop_is_a_step(self, action) -> None:
+        """Test a linked directory component is a step of its own."""
+        assert action._parse_resolution(
+            _resolve_result("/bin/sh", "/usr/bin/sh", "/usr/bin/bash"),
+            "/bin/sh",
+        ) == ["/bin/sh", "/usr/bin/sh", "/usr/bin/bash"]
+
+    def test_a_broken_chain_records_the_step_that_is_not_there(
+        self, action
+    ) -> None:
+        """Test the path a dangling link names is the last step."""
+        assert action._parse_resolution(
+            _resolve_result("/tmp/dangling", "/tmp/gone"), "/tmp/dangling"
+        ) == ["/tmp/dangling", "/tmp/gone"]
+
+    def test_a_walk_that_did_not_run_answers_nothing(self, action) -> None:
+        """Test a failed walk is a silence rather than a chain."""
+        assert (
+            action._parse_resolution({"rc": 1, "stdout": ""}, "/f") is None
+        )
+
+    def test_an_empty_walk_answers_nothing(self, action) -> None:
+        """Test a walk that printed nothing is not a chain of none."""
+        assert action._parse_resolution({"rc": 0, "stdout": ""}, "/f") is None
+
+    def test_a_cycle_fails_and_names_itself(self, action) -> None:
+        """Test a chain returning to a path it visited is a fault."""
+        with pytest.raises(ValueError) as excinfo:
+            action._parse_resolution(
+                _resolve_result("/a", "/b", "/a", "/b", ended=False), "/a"
+            )
+
+        message = str(excinfo.value)
+        assert "/a" in message
+        assert "/b" in message
+        assert "never ends" in message
+
+    def test_a_walk_cut_off_at_the_ceiling_is_a_cycle(self, action) -> None:
+        """Test a walk that never ended fails even with no repeat."""
+        steps = [f"/step{index}" for index in range(RESOLUTION_MAX_HOPS)]
+
+        with pytest.raises(ValueError) as excinfo:
+            action._parse_resolution(
+                _resolve_result(*steps, ended=False), "/step0"
+            )
+
+        assert str(RESOLUTION_MAX_HOPS) in str(excinfo.value)
+
+
+class TestResolutionIsPublished:
+    """Tests for where a chain lands once it has been read."""
+
+    def test_the_chain_is_published_with_the_attributes(self, action) -> None:
+        """Test a resolved read carries the chain it walked."""
+        results = {
+            "/l_ls": _ls_link_result("/l", "/target"),
+            "/l_resolve": _resolve_result("/l", "/target"),
+        }
+
+        file_data, ls_facts = action._process_read_results(
+            results, ["/l"], {"attributes": True, "resolve": True}
+        )
+
+        assert file_data["/l"]["resolution"] == ["/l", "/target"]
+        assert ls_facts["/l"]["resolution"] == ["/l", "/target"]
+
+    def test_the_chain_survives_attributes_being_off(self, action) -> None:
+        """Test a chain asked for by name is published regardless."""
+        results = {
+            "/l_ls": _ls_link_result("/l", "/target"),
+            "/l_resolve": _resolve_result("/l", "/target"),
+        }
+
+        file_data, _facts = action._process_read_results(
+            results, ["/l"], {"attributes": False, "resolve": True}
+        )
+
+        assert file_data["/l"] == {"resolution": ["/l", "/target"]}
+
+    def test_no_chain_key_where_none_was_asked_for(self, action) -> None:
+        """Test a read that did not resolve publishes no chain."""
+        results = {"/f_ls": _ls_result("-rw-r--r--")}
+
+        file_data, ls_facts = action._process_read_results(
+            results, ["/f"], {"attributes": True}
+        )
+
+        assert "resolution" not in file_data["/f"]
+        assert "resolution" not in ls_facts["/f"]
+
+    def test_a_cycle_takes_the_whole_read_down(self, action) -> None:
+        """Test the cycle is reported rather than a truncated chain."""
+        results = {
+            "/a_ls": _ls_link_result("/a", "/b"),
+            "/a_resolve": _resolve_result("/a", "/b", "/a", ended=False),
+        }
+
+        with pytest.raises(ValueError) as excinfo:
+            action._process_read_results(
+                results, ["/a"], {"attributes": True, "resolve": True}
+            )
+
+        assert "never ends" in str(excinfo.value)
