@@ -6,10 +6,8 @@ breaking_changes:
     compliance, facts - What the command probes learned is filed as
     facts about paths, in o0_paths, rather than as three shapes beside
     it. A command that resolved is an entry at the file it resolved
-    to, carrying executable and an executable_evidence of inferred,
-    since a lookup names an executable it would run without ever
-    reading a permission; a producer that reads one files probed, and
-    the two never blend. A command that did not resolve files a null -
+    to, carrying executable, because command -v names a pathname the
+    shell would run. A command that did not resolve files a null -
     confirmed absent - at its name in each directory the resolutions
     show were searched. The aliases and builtins the answering shell
     reported are fields on that shell's own entry, because they
@@ -43,9 +41,9 @@ breaking_changes:
 minor_changes:
   - >-
     which - The module answers with an o0_paths observation of the
-    file it resolved to, keyed by that path and carrying executable
-    with an executable_evidence of inferred, so a resolution feeds the
-    same store a compliance sweep fills. A built-in names no file and
+    file it resolved to, keyed by that path and carrying executable,
+    so a resolution feeds the same store a compliance sweep fills. A
+    built-in names no file and
     a lookup that missed names no path it was not at, so both leave
     the store unmentioned
     (https://github.com/o0-o/ansible-collection-posix/pull/XXX).

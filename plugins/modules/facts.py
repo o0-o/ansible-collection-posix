@@ -969,13 +969,6 @@ ansible_facts:
           description: >-
             Whether the path is executable
           type: bool
-        executable_evidence:
-          description: >-
-            How C(executable) was arrived at - C(probed) where a
-            permission was read, C(inferred) where a command
-            resolution implied it
-          type: str
-          sample: inferred
         aliases:
           description: >-
             For a shell that answered the probes, the aliases it
@@ -1009,7 +1002,6 @@ ansible_facts:
             - test
         /usr/bin/grep:
           executable: true
-          executable_evidence: inferred
         /usr/bin/pax: null
         /home/o0-o:
           type: directory

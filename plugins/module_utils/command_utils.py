@@ -164,11 +164,9 @@ def process_command_lookups(
 
     A command that resolved is a fact about the file it resolved to,
     so it files under that path rather than under the name it was
-    asked for.  ``command -v`` only names an executable it would run,
-    which is a strong claim about the file and still not a permission
-    probe, so the entry records ``executable`` as true and
-    ``executable_evidence`` as ``inferred``; a producer that actually
-    read the mode files ``probed`` instead, and the two never blend.
+    asked for, recording ``executable`` as true: ``command -v`` names
+    a pathname the shell would run, which is the shell answering the
+    same question ``test -x`` answers.
 
     A command that did not resolve was not found in any directory the
     lookups searched, and the resolutions themselves name those
@@ -245,7 +243,7 @@ def process_command_lookups(
                 )
 
     entries: dict[str, Optional[dict[str, Any]]] = {
-        path: {"executable": True, "executable_evidence": "inferred"}
+        path: {"executable": True}
         for path in resolved
     }
 

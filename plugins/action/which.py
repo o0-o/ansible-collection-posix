@@ -65,12 +65,7 @@ class ActionModule(PosixActionBase, ActionBase):
         # single lookup that missed names no path it was not at, so
         # both leave the store unmentioned rather than guessed at.
         if path and path.startswith("/"):
-            observation = {
-                path: {
-                    "executable": True,
-                    "executable_evidence": "inferred",
-                }
-            }
+            observation = {path: {"executable": True}}
             try:
                 result["o0_paths"] = compose_paths(None, observation)
             except ValueError as exc:

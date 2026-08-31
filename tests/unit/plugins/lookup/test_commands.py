@@ -25,14 +25,14 @@ from ansible_collections.o0_o.posix.plugins.lookup.commands import (
     canonicalize,
 )
 
-# What a producer files at a path a command resolved to. command -v
-# names an executable it would run without reading the mode, and a
-# producer that read the mode says so instead; either settles the bit
-INFERRED = {"executable": True, "executable_evidence": "inferred"}
-PROBED = {"executable": True, "executable_evidence": "probed"}
+# What a producer files at a path a command resolved to. Either
+# producer settles the bit the same way and says the same thing about
+# it: the file will run
+INFERRED = {"executable": True}
+PROBED = {"executable": True}
 
 # A file the store read and found will not run
-NOT_EXECUTABLE = {"executable": False, "executable_evidence": "probed"}
+NOT_EXECUTABLE = {"executable": False}
 
 # A path the store has an observation of that never settles the
 # executable bit. The mode is not read as one: the lookup answers off

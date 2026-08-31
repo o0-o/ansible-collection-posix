@@ -1208,7 +1208,6 @@ class ReadPosixActionBase(PosixActionBase):
                         attributes["executable"] = perms.get(
                             "executable", False
                         )
-                        attributes["executable_evidence"] = "probed"
 
                 # Add content/hardlinks field based on file type
                 if file_type == "link" and include_attributes:

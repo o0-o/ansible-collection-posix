@@ -20,7 +20,7 @@ from ansible_collections.o0_o.posix.plugins.module_utils.command_utils import (
     process_command_lookups,
 )
 
-INFERRED = {"executable": True, "executable_evidence": "inferred"}
+INFERRED = {"executable": True}
 
 
 def _lookup(cmd: str, parsed: Optional[str]) -> dict[str, Any]:
@@ -47,14 +47,14 @@ def test_a_resolution_files_under_the_path_it_resolved_to() -> None:
 
 
 def test_the_executable_claim_names_where_it_came_from() -> None:
-    """Test a lookup's claim is marked as inferred, leaving a probe of
-    the mode free to say something else without the two blending."""
+    """Test a command that resolved is recorded as executable, which
+    is what the shell naming a pathname it would run says about it."""
 
     paths, _missing, _errors = process_command_lookups(
         [_lookup("awk", "/usr/bin/awk")]
     )
 
-    assert paths["/usr/bin/awk"]["executable_evidence"] == "inferred"
+    assert paths["/usr/bin/awk"]["executable"] is True
 
 
 def test_a_miss_files_null_at_each_candidate_path() -> None:
@@ -126,7 +126,6 @@ def test_the_shell_entry_is_whole_where_sh_resolved_to_it() -> None:
 
     assert paths[ANSWERING_SHELL] == {
         "executable": True,
-        "executable_evidence": "inferred",
         "aliases": {},
         "builtins": ["cd"],
     }

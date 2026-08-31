@@ -153,14 +153,11 @@ class TestProcessAllComplianceCommandResults:
 
     def test_a_resolved_command_files_under_its_path(self) -> None:
         """Test a command the sweep found is a fact about the file it
-        found, recorded as executable on the strength of the lookup
-        rather than of a permission probe."""
+        found, recorded as executable because the shell named it as a
+        pathname it would run."""
         facts = _process_fabricated_host()
 
-        assert facts["o0_paths"]["/usr/bin/awk"] == {
-            "executable": True,
-            "executable_evidence": "inferred",
-        }
+        assert facts["o0_paths"]["/usr/bin/awk"] == {"executable": True}
 
     def test_builtins_and_aliases_file_on_the_answering_shell(self) -> None:
         """Test what the shell answers about itself lands on the
@@ -189,10 +186,7 @@ class TestProcessAllComplianceCommandResults:
         other half to the next producer along."""
         facts = _process_fabricated_host()
 
-        assert facts["o0_paths"]["/usr/bin/sh"] == {
-            "executable": True,
-            "executable_evidence": "inferred",
-        }
+        assert facts["o0_paths"]["/usr/bin/sh"] == {"executable": True}
         assert set(facts["o0_paths"]["/bin/sh"]) == {"aliases", "builtins"}
 
     def test_the_missing_list_derives_from_the_standards(self) -> None:

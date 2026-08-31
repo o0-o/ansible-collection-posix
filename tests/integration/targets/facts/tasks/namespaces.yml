@@ -158,36 +158,22 @@
       - shell['builtins'] is not string
     fail_msg: 'o0_paths does not describe /bin/sh: {{ shell }}'
 
-# A command the sweep found is a fact about the file it found, and
-# the executable claim says where it came from: a lookup names an
-# executable it would run without ever reading a permission.
+# A command the sweep found is a fact about the file it found, filed
+# at the path it resolved to and recorded as executable: command -v
+# names a pathname the shell would run.
 - name: Assert a resolved command is filed under the path it resolved to
   vars:
     paths: "{{ facts_all_reg['ansible_facts']['o0_paths'] }}"
     claimed: >-
       {{ paths | dict2items | selectattr('value', 'mapping')
          | selectattr('value.executable', 'defined') | list }}
-    evidence: >-
-      {{ claimed | map(attribute='value.executable_evidence')
-         | unique | list }}
-    # A resolution names an executable it would run without reading a
-    # permission, so it is inferred and it is always true. A read
-    # observed the bit itself and reports what it saw, false included:
-    # the store holds files that are not executable, and saying so is
-    # the point of the distinction.
-    resolved: >-
-      {{ claimed
-         | selectattr('value.executable_evidence', 'eq', 'inferred')
-         | list }}
   ansible.builtin.assert:
     that:
-      - resolved | length > 0
-      - resolved | rejectattr('value.executable') | list | length == 0
-      - evidence | reject('in', ['probed', 'inferred'])
-        | list | length == 0
+      - claimed | length > 0
+      - claimed | rejectattr('value.executable') | list | length == 0
     fail_msg: >-
-      no command resolved into the path store, or one did without
-      saying how it knows the file is executable: {{ evidence }}
+      no command resolved into the path store, or one resolved to a
+      file the sweep will not call executable
 
 # The processor that builds the compliance payload names its own
 # facts. A bare name here is that payload published straight into the

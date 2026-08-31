@@ -62,19 +62,14 @@ o0_paths:
   type: dict
   contains:
     executable:
-      description: Whether the path is executable
-      type: bool
-    executable_evidence:
       description: >-
-        How C(executable) was arrived at - C(inferred) here, because
-        a lookup names an executable it would run without reading a
-        permission; a producer that read one files C(probed)
-      type: str
-      sample: inferred
+        Whether the path is executable. C(command -v) names a pathname
+        the shell would run, which is that shell answering the
+        question a C(test -x) answers.
+      type: bool
   sample:
     /bin/date:
       executable: true
-      executable_evidence: inferred
 """
 from ansible.module_utils.basic import AnsibleModule
 

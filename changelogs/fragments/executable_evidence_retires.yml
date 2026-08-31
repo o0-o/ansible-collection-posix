@@ -1,0 +1,23 @@
+# vim: ts=2:sw=2:sts=2:et:ft=yaml.ansible
+# -*- mode: yaml; yaml-indent-offset: 2; indent-tabs-mode: nil; -*-
+---
+breaking_changes:
+  - >-
+    read, which, compliance, facts - ``executable_evidence`` retires.
+    It sat on an ``o0_paths`` entry beside ``executable`` and said
+    which of two producers settled the bit, ``probed`` where a mode
+    was read and ``inferred`` where a command resolution named the
+    file. The distinction it drew is not one a consumer can act on -
+    both answers are about whether the file will run, and neither was
+    ever more than one probe's word for it - and the word evidence now
+    means something else here, the ``evidence`` vocabulary every fact
+    names its origins in, so a field spelling it differently one key
+    over could only be read as part of that. The field never appeared
+    in a release, so it is removed inside the 2.0.0 window rather than
+    deprecated: a consumer reads ``executable`` and nothing beside it
+    (https://github.com/o0-o/ansible-collection-posix/pull/XXX).
+minor_changes:
+  - >-
+    read - the permission fields are described in the module's return
+    values, where they were published and never documented
+    (https://github.com/o0-o/ansible-collection-posix/pull/XXX).

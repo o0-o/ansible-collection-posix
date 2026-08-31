@@ -887,15 +887,13 @@ class TestProcessReadResults:
         "flags,executable",
         [("-rwxr-xr-x", True), ("-rw-r--r--", False)],
     )
-    def test_an_executable_claim_names_its_evidence(
+    def test_an_executable_claim_is_the_bit_that_was_read(
         self, action, flags, executable
     ) -> None:
-        """Test a read permission files itself as probed evidence.
+        """Test the execute bit is published as it was observed.
 
-        This path reads the execute bit rather than inferring it from
-        a name resolving, and says so, so a consumer can tell the two
-        apart.  A claim that arrived without its evidence would read
-        as a resolution's guess.
+        The store holds files that will not run as well as files that
+        will, and saying so is the whole use of the field.
         """
         results = {"/f_ls": _ls_result(flags)}
 
@@ -904,7 +902,6 @@ class TestProcessReadResults:
         )
 
         assert file_data["/f"]["executable"] is executable
-        assert file_data["/f"]["executable_evidence"] == "probed"
 
     def test_type_returned_without_being_published(self, action) -> None:
         """Test the caller is told the type the result withholds.

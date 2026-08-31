@@ -103,10 +103,7 @@ PRODUCER_FACTS = {
         "o0_os": {"compliance": {"posix": {"supported": True}}},
         "o0_paths": {
             "/bin/sh": {"aliases": {}, "builtins": ["cd", "exec"]},
-            "/usr/bin/awk": {
-                "executable": True,
-                "executable_evidence": "inferred",
-            },
+            "/usr/bin/awk": {"executable": True},
         },
     },
     # The environment processor answers with the raw variables; run()

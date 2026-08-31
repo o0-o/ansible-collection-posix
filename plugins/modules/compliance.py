@@ -457,14 +457,10 @@ paths:
   type: dict
   contains:
     executable:
-      description: Whether the path is executable
-      type: bool
-    executable_evidence:
       description: >-
-        How C(executable) was arrived at - C(inferred) from a command
-        resolution here, C(probed) where a producer read a permission
-      type: str
-      sample: inferred
+        Whether the path is executable, as the C(command -v) that
+        named it answered
+      type: bool
     aliases:
       description: >-
         For the shell that answered the probes, the aliases it
@@ -491,7 +487,6 @@ paths:
         - test
     /usr/bin/grep:
       executable: true
-      executable_evidence: inferred
     /usr/bin/pax: null
 missing_commands:
   description: >-

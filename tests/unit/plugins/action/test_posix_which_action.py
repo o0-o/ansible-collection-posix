@@ -64,12 +64,7 @@ def test_which_files_the_resolution_under_its_path(
     plugin._task.args = {"command": "date"}
     result = plugin.run(task_vars={})
 
-    assert result["o0_paths"] == {
-        "/bin/date": {
-            "executable": True,
-            "executable_evidence": "inferred",
-        }
-    }
+    assert result["o0_paths"] == {"/bin/date": {"executable": True}}
 
 
 def test_which_not_found(monkeypatch, plugin) -> None:

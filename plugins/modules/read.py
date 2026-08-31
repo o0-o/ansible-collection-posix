@@ -40,10 +40,9 @@ options:
   attributes:
     description:
       - Include basic metadata and extended filesystem attributes such as
-        type, mode, uid, gid, size, readable, writable, executable
-        (with the evidence for it), hardlinks,
-        inode, timestamps (modified, created, changed), ACL, filesystem
-        flags, and SELinux context.
+        type, mode, uid, gid, size, readable, writable, executable,
+        hardlinks, inode, timestamps (modified, created, changed), ACL,
+        filesystem flags, and SELinux context.
       - Does not include extended attributes (xattrs); use I(extended)
         for those.
       - Defaults to C(false) when I(content) or I(lines) is requested and
@@ -359,21 +358,6 @@ paths:
           description: Whether the path is executable for the remote user
           type: bool
           sample: true
-        executable_evidence:
-          description:
-            - How the C(executable) claim was arrived at. Always
-              C(probed) here, because this module reads the permission
-              itself.
-            - A resolution that names an executable without reading a
-              permission - what M(o0_o.posix.which) does - files
-              C(inferred) instead, so the two are never mistaken for
-              one another.
-          type: str
-          choices:
-            - probed
-            - inferred
-          sample: probed
-          returned: with the permission fields
         hardlinks:
           description:
             - For regular files, the count of OTHER hard links pointing to
