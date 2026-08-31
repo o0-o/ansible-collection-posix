@@ -24,8 +24,8 @@ description:
   - Returns the canonical C(o0_users) and C(o0_groups) mappings, keyed
     by stringified UID and GID and cross-referenced by numeric ID.
     The C(o0_o.posix.facts) module publishes the same shape under the
-    same names, along with C(o0_shell_files) and the C(o0_paths)
-    entries for the homes users live in and the login shells file.
+    same names, along with the C(o0_paths) entries for the homes users
+    live in, the shells they log in with, and the login shells file.
   - Every entry names where it came from in C(evidence) - the paths
     that were read and the commands that were run, named concretely -
     so a consumer reads provenance rather than guessing at it. That is
@@ -230,22 +230,6 @@ o0_groups:
           - /etc/group
         commands:
           - getent
-o0_shell_files:
-  description: >-
-    Mapping of the login shell paths users actually hold to their file
-    metadata. Distinct from the login shells C(/etc/shells) names,
-    which are the C(config) of that path in C(o0_paths) whether anyone
-    holds them or not.
-  returned: always
-  type: dict
-  sample:
-    /bin/sh:
-      type: file
-      uid: 0
-      gid: 0
-      tags:
-        - posix
-        - shell
 o0_shells:
   description:
     - The login shells the host names, keyed by shell path, which is
@@ -277,14 +261,21 @@ o0_paths:
       reading C(o0_users) back against this store. A home no read
       reached is left out entirely, because a store reports what it
       asked rather than what it assumed.
+    - The login shells users actually hold are entries here too, with
+      the file metadata of the shell itself. Every step the shell
+      resolves through gets an entry of its own, so a C(/bin/sh) that
+      is a link to C(bash) puts C(bash) in the store beside it and
+      C(resolution) says how the one reached the other.
     - A single file parsed on its own lands at its own path - the
       bytes under C(content), the meaning parsed out of them under
       C(config) - so the login shells the host names are
       C(o0_paths[shells_path]['config']), surfaced by the
-      C(o0_o.posix.shells) lookup. A host whose shells file could not
-      be read leaves that path out rather than filing it as a file
-      that names none, which is why the lookup answers unknown there
-      rather than empty.
+      C(o0_o.posix.shells) lookup. That is a different claim from the
+      shells users hold - the file lists what the host is willing to
+      call a login shell, whether anyone holds it or not. A host whose
+      shells file could not be read leaves that path out rather than
+      filing it as a file that names none, which is why the lookup
+      answers unknown there rather than empty.
   returned: when the module observed a path
   type: dict
   contains:
@@ -299,6 +290,14 @@ o0_paths:
         For a home, the UIDs that call the path home
       type: list
       elements: int
+    resolution:
+      description: >-
+        The chain the path resolves through, an ordered list of the
+        absolute paths the walk visited, from the path itself to the
+        canonical path it names. Every step has an entry of its own in
+        this store.
+      type: list
+      elements: str
     content:
       description: The bytes read from the path
       type: str

@@ -140,7 +140,7 @@ class TestProcessAllComplianceCommandResults:
         facts aggregator merging its return cannot leak a bare key."""
         facts = _process_fabricated_host()
 
-        assert set(facts) == {"o0_os", "o0_paths"}
+        assert set(facts) == {"o0_os", "o0_paths", "o0_shells"}
         assert all(ns.startswith("o0_") for ns in facts)
 
     def test_compliance_under_o0_os(self) -> None:
@@ -167,15 +167,32 @@ class TestProcessAllComplianceCommandResults:
 
         assert facts["o0_paths"]["/usr/bin/awk"] == RESOLVED
 
-    def test_builtins_and_aliases_file_on_the_answering_shell(self) -> None:
-        """Test what the shell answers about itself lands on the
-        shell's own entry, which is where the store keeps facts about
-        a file."""
+    def test_builtins_file_on_the_shell_and_not_on_a_path(self) -> None:
+        """Test a builtin is a fact about the shell binary.
+
+        It resolves to no file, so there is no path for it to be a
+        fact about, and no home changes which commands a shell is
+        built out of - so it sits at the shell in o0_shells rather
+        than in one of the per-home rows or in the path store.
+        """
         facts = _process_fabricated_host()
 
-        shell = facts["o0_paths"]["/bin/sh"]
-        assert shell["aliases"] == {"ls": "ls --color=auto"}
-        assert shell["builtins"] == sorted(BUILTIN_COMMANDS)
+        assert facts["o0_shells"]["/bin/sh"]["builtins"] == sorted(
+            BUILTIN_COMMANDS
+        )
+        assert "builtins" not in facts["o0_paths"]["/bin/sh"]
+
+    def test_an_alias_lands_in_neither(self) -> None:
+        """Test an alias is not the sweep's to report.
+
+        It comes out of a rc file, so it belongs to a shell and a home
+        together, and the shell-context probe is what reports it into
+        that row's config.
+        """
+        facts = _process_fabricated_host()
+
+        assert "aliases" not in facts["o0_paths"]["/bin/sh"]
+        assert "aliases" not in facts["o0_shells"]["/bin/sh"]
 
     def test_a_missing_command_files_null_at_each_candidate(self) -> None:
         """Test a miss is confirmed absence at the paths it was looked
@@ -195,7 +212,10 @@ class TestProcessAllComplianceCommandResults:
         facts = _process_fabricated_host()
 
         assert facts["o0_paths"]["/usr/bin/sh"] == RESOLVED
-        assert set(facts["o0_paths"]["/bin/sh"]) == {"aliases", "builtins"}
+        # The shell ran the probes, so it is not one of the misses;
+        # nothing was learned about the file itself, so the entry
+        # says exactly that
+        assert facts["o0_paths"]["/bin/sh"] == {}
 
     def test_the_missing_list_derives_from_the_standards(self) -> None:
         """Test the commands a host lacks are read back out of the

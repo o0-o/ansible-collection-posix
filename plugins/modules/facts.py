@@ -833,22 +833,6 @@ ansible_facts:
               - /etc/group
             commands:
               - getent
-    o0_shell_files:
-      description: >-
-        The login shells users actually hold, keyed by path, each with
-        the file metadata of the shell. Distinct from the login shells
-        C(/etc/shells) names, which are the C(config) of that path in
-        C(o0_paths) whether anyone holds them or not.
-      returned: when the users subset is gathered
-      type: dict
-      sample:
-        /bin/sh:
-          type: regular
-          uid: 0
-          gid: 0
-          tags:
-            - posix
-            - shell
     o0_shells:
       description:
         - The login shells the host names, keyed by shell path, and
@@ -873,20 +857,37 @@ ansible_facts:
         - A shell with an empty mapping under it was named and not
           run. Nothing probes every shell a host names, because a
           probe is a shell run, and running each one on the chance
-          somebody logs in with it is a cost with no answer attached. The file
-          metadata of these same paths is in C(o0_paths), and the join
-          is the path string.
+          somebody logs in with it is a cost with no answer attached.
+          The file metadata of these same paths is in C(o0_paths),
+          along with every step each of them resolves through, and the
+          join is the path string.
+        - Beside the rows, C(builtins) - the commands the shell
+          answers itself rather than by running a file. A builtin is
+          intrinsic to the shell binary and no home changes it, so it
+          sits at the shell rather than in a row. Every row's key is
+          an absolute path and this one is a bare name, so the two
+          never collide.
       returned: >-
         when the users subset is gathered, or a shell context was
         observed
       type: dict
       contains:
+        builtins:
+          description: >-
+            The commands the shell answers itself rather than by
+            running a file, sorted. A fact about the shell binary, so
+            it sits beside the per-home rows rather than in one.
+          type: list
+          elements: str
         config:
           description: >-
             What the combination produced - the POSIX C(env) it had
-            set, the C(umask) it would create files under, and the
-            C(locale) it reported. A field the shell would not answer
-            is left out rather than nulled.
+            set, the C(umask) it would create files under, the
+            C(locale) it reported, and the C(aliases) it had defined.
+            An alias comes out of a rc file, so it belongs to the
+            shell and the home together the way everything else here
+            does. A field the shell would not answer is left out
+            rather than nulled.
           type: dict
         evidence:
           description: >-
@@ -902,6 +903,10 @@ ansible_facts:
       sample:
         /bin/bash: {}
         /bin/sh:
+          builtins:
+            - '['
+            - command
+            - test
           /dev/null:
             config:
               env:
@@ -909,6 +914,7 @@ ansible_facts:
               umask: '0022'
               locale:
                 language: en_US.UTF-8
+              aliases: {}
             evidence:
               commands:
                 - env
@@ -940,6 +946,13 @@ ansible_facts:
           C(null), a dangling home, which the C(o0_o.posix.homes)
           lookup surfaces by reading C(o0_users) back against the
           store.
+        - The login shells users hold are entries here too, with the
+          file metadata of the shell itself and, for a link, the
+          target the listing reported. Every step a shell resolves
+          through gets an entry of its own, so a C(/bin/sh) that is a
+          link to C(bash) puts C(bash) in the store beside it and
+          C(resolution) says how the one reached the other. Which is
+          the question a consumer usually has about C(/bin/sh).
         - A single file parsed on its own is an entry too - the bytes
           under C(content), the meaning parsed out of them under
           C(config) - because what a file configures is a fact about
@@ -965,6 +978,19 @@ ansible_facts:
             For a home, the UIDs that call the path home
           type: list
           elements: int
+        resolution:
+          description: >-
+            The chain the path resolves through, an ordered list of
+            the absolute paths the walk visited, from the path itself
+            to the canonical path it names. Every hop is a step, a
+            linked directory component as much as a linked name, and
+            each step has an entry of its own in this store.
+          type: list
+          elements: str
+          sample:
+            - /bin/sh
+            - /usr/bin/sh
+            - /usr/bin/bash
         readable:
           description: >-
             Whether the path can be read, as the kernel answered
@@ -996,17 +1022,6 @@ ansible_facts:
             C(woth), C(xoth), C(isuid), C(isgid). What the filesystem
             asserts, beside what it will actually do.
           type: bool
-        aliases:
-          description: >-
-            For a shell that answered the probes, the aliases it
-            reported, mapping the alias name to what it expands to
-          type: dict
-        builtins:
-          description: >-
-            For a shell that answered the probes, the probed commands
-            it answers itself rather than by running a file, sorted
-          type: list
-          elements: str
         content:
           description: The bytes read from the path
           type: str
@@ -1022,11 +1037,12 @@ ansible_facts:
           type: raw
       sample:
         /bin/sh:
-          aliases: {}
-          builtins:
-            - '['
-            - command
-            - test
+          type: link
+          target: bash
+          resolution:
+            - /bin/sh
+            - /usr/bin/sh
+            - /usr/bin/bash
         /usr/bin/grep:
           executable:
             '0': true

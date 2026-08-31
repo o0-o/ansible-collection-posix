@@ -83,6 +83,7 @@ SHELL_DEFAULT = "/bin/sh"
 SHELL_UMASK_MARKER = "@UMASK@"
 SHELL_ENV_MARKER = "@ENV@"
 SHELL_LOCALE_MARKER = "@LOCALE@"
+SHELL_ALIAS_MARKER = "@ALIAS@"
 SHELL_END_MARKER = "@END@"
 
 # Every exit status the probe reads as an answer rather than a fault.
@@ -93,6 +94,11 @@ SHELL_RCS = [0, 126, 127]
 # What a variable may be named, which is how a continuation line is
 # told from the start of the next variable
 _ENV_NAME = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
+
+# What an alias may be named.  Wider than a variable name, because the
+# standard allows the portable filename characters and four more, so
+# ll., grep-i and %% are all names a host may really have used
+_ALIAS_NAME = re.compile(r"[A-Za-z0-9._!%,@+:^-]+")
 
 
 def _coerce_to_text(data: Union[str, Sequence[str]]) -> str:
@@ -181,6 +187,53 @@ def _parse_env_block(text: str) -> dict[str, str]:
     return {name: values[name] for name in POSIX_ENV_VARS if name in values}
 
 
+def _parse_alias_block(text: str) -> dict[str, str]:
+    """Read an ``alias`` block into the aliases the shell had set.
+
+    ``alias`` with no operands lists every alias, and what it prints
+    is unspecified beyond being re-inputtable, so both spellings are
+    read: bash prints ``alias ls='ls --color=auto'`` and dash prints
+    ``ls='ls --color=auto'``.  A value may hold newlines, so a line
+    that does not begin with a name and an equals sign continues the
+    value before it, the way an ``env`` block's does.
+
+    The quoting is the shell's own and is removed, because what the
+    alias expands to is the fact and the quotes are how the shell
+    said it.
+
+    :param str text: The block between the alias and end markers
+    :returns dict[str, str]: The aliases the shell had set
+    """
+    values: dict[str, str] = {}
+    order: list[str] = []
+    current: Optional[str] = None
+
+    for line in text.splitlines():
+        entry = line
+        if current is None or not entry.startswith((" ", "\t")):
+            stripped = entry.strip()
+            if stripped.startswith("alias "):
+                stripped = stripped[len("alias ") :]
+            name, sep, value = stripped.partition("=")
+            if sep and _ALIAS_NAME.fullmatch(name):
+                current = name
+                if name not in values:
+                    order.append(name)
+                values[name] = value
+                continue
+        if current is not None:
+            values[current] += "\n" + entry
+
+    aliases: dict[str, str] = {}
+    for name in order:
+        value = values[name]
+        if len(value) >= 2 and value[0] == value[-1] and value[0] in "\"'":
+            value = value[1:-1]
+        aliases[name] = value
+
+    return aliases
+
+
 def _parse_shell_config(
     rc: int,
     output: str,
@@ -213,7 +266,13 @@ def _parse_shell_config(
     _before, _marker, rest = text.partition(SHELL_UMASK_MARKER)
     umask_text, _marker, rest = rest.partition(SHELL_ENV_MARKER)
     env_text, _marker, rest = rest.partition(SHELL_LOCALE_MARKER)
-    locale_text, _marker, _after = rest.partition(SHELL_END_MARKER)
+    locale_text, _marker, rest = rest.partition(SHELL_ALIAS_MARKER)
+    alias_text, _marker, _after = rest.partition(SHELL_END_MARKER)
+
+    # A probe that stopped before the alias marker leaves the end
+    # marker in the locale block, so the locale is trimmed to its own
+    # end wherever the alias section turned out not to be there
+    locale_text, _marker, _after = locale_text.partition(SHELL_END_MARKER)
 
     config: dict[str, Any] = {}
 
@@ -232,6 +291,10 @@ def _parse_shell_config(
     locale, _errors = _parse_locale(locale_text, "")
     if locale:
         config["locale"] = locale
+
+    aliases = _parse_alias_block(alias_text)
+    if aliases:
+        config["aliases"] = aliases
 
     return (config or None), None
 
@@ -305,7 +368,8 @@ def compose_shells(
     named: Optional[Sequence[str]] = None,
     observed: Optional[dict[str, dict[str, dict[str, Any]]]] = None,
     evidence: Optional[dict[str, Any]] = None,
-) -> dict[str, dict[str, dict[str, Any]]]:
+    builtins: Optional[dict[str, Sequence[str]]] = None,
+) -> dict[str, dict[str, Any]]:
     """Compose the canonical shells fact from both halves.
 
     Keyed by shell path, so ``user.shell in o0_shells`` reads as it
@@ -314,8 +378,16 @@ def compose_shells(
     the host answered for it.
 
     Under each shell, a row per home probed, holding the ``config``
-    that combination produced and the ``evidence`` for it.  A row is
-    where the provenance sits because a row is where a probe happened:
+    that combination produced and the ``evidence`` for it, plus the
+    ``builtins`` the shell answers itself.  A builtin is intrinsic to
+    the shell binary - no home changes which commands a shell is built
+    out of - so it sits at the shell, beside the rows rather than in
+    one, and its key is a bare name where every row's key is an
+    absolute path.  An alias is the opposite: it comes from a rc file,
+    so it belongs to the pair and rides in the row's ``config``
+    alongside the environment, the umask and the locale that same
+    probe answered with.  A row is where the provenance sits because a
+    row is where a probe happened:
     one shell may be observed out of two homes, and the fact is a fact
     about the pair.  A shell nothing was observed of keeps its key
     with an empty mapping under it - the key is the host's claim that
@@ -331,11 +403,13 @@ def compose_shells(
         What each probed combination produced, keyed by shell and home
     :param Optional[dict[str, Any]] evidence: What the observations
         were made with, named on every row they produced
-    :returns dict[str, dict[str, dict[str, Any]]]: The shells fact
+    :param Optional[dict[str, Sequence[str]]] builtins: The commands
+        each shell answers itself, keyed by shell
+    :returns dict[str, dict[str, Any]]: The shells fact
     """
     observed = observed or {}
 
-    shells: dict[str, dict[str, dict[str, Any]]] = {
+    shells: dict[str, dict[str, Any]] = {
         shell: {} for shell in (named or [])
     }
 
@@ -349,10 +423,20 @@ def compose_shells(
                 }
             rows[home] = row
 
+    # A builtin is the shell binary answering for itself, so it sits
+    # at the shell rather than in a row: no home changes which
+    # commands a shell is built out of. The key is a bare name and
+    # every row's key is an absolute path, so the two never collide
+    for shell in sorted(builtins or {}):
+        shells.setdefault(shell, {})["builtins"] = sorted(
+            set(builtins[shell])
+        )
+
     return shells
 
 
 __all__ = [
+    "SHELL_ALIAS_MARKER",
     "SHELL_DEFAULT",
     "SHELL_END_MARKER",
     "SHELL_ENV_MARKER",

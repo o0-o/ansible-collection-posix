@@ -393,7 +393,7 @@ paths:
           sample: {'0': true, '1000': true}
         rusr:
           description:
-            - The mode's own bits, as the C(ls) listing carries them:
+            - The mode's own bits, as the C(ls) listing carries them -
               C(rusr), C(wusr), C(xusr) for the owner, C(rgrp),
               C(wgrp), C(xgrp) for the group, C(roth), C(woth),
               C(xoth) for everybody else, and C(isuid) and C(isgid)

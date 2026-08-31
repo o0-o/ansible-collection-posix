@@ -44,6 +44,7 @@ from ansible_collections.o0_o.posix.plugins.module_utils.command_spec import (
     COMPLIANCE_COMMAND_SPEC,
 )
 from ansible_collections.o0_o.posix.plugins.module_utils.command_utils import (
+    ANSWERING_SHELL,
     process_command_lookups,
 )
 from ansible_collections.o0_o.posix.plugins.module_utils.evidence_utils import (  # noqa: E501
@@ -57,6 +58,9 @@ from ansible_collections.o0_o.posix.plugins.module_utils.getconf_utils import (
 from ansible_collections.o0_o.posix.plugins.module_utils.id_utils import (
     get_effective_uid_command_requests,
     process_effective_uid_results,
+)
+from ansible_collections.o0_o.posix.plugins.module_utils.shells_utils import (
+    compose_shells,
 )
 
 # Standards metadata - used to initialize compliance dict with descriptions
@@ -340,14 +344,15 @@ def process_all_compliance_command_results(
     Takes command results from run plugin, calls the appropriate
     parser for each command type, and merges the partial results into
     the two facts both compliance producers publish:
-    ``o0_os.compliance`` and ``o0_paths``.
+    ``o0_os.compliance``, ``o0_paths`` and ``o0_shells``.
 
-    What the sweep learned about the commands it looked for is a set
-    of facts about paths, so it lands in the path store: at the path a
-    command resolved to, an executable row keyed by the uid the
-    lookups ran as; a miss as a null at each path it was not at; and
-    the builtins and aliases the probes answered with on the entry of
-    the shell that answered them.  A command the host
+    What the sweep learned about the commands it looked for is mostly
+    a set of facts about paths, so it lands in the path store: at the
+    path a command resolved to, an executable row keyed by the uid the
+    lookups ran as, and a miss as a null at each path it was not at.
+    A builtin is not a fact about a path - it resolved to no file -
+    but about the shell that answered for it, so it lands on that
+    shell in ``o0_shells``.  A command the host
     does not have is recorded once, in the ``missing`` list of the
     standard that requires it, and ``missing_commands`` derives the
     list back out.
@@ -364,8 +369,8 @@ def process_all_compliance_command_results(
         dicts, each containing 'type', 'implementation', 'rc', 'stdout',
         and optionally 'parser' from the command spec
     :returns tuple[dict[str, Any], list[Exception]]: Tuple of
-        (facts, errors) where facts holds the o0_os and o0_paths
-        namespaces
+        (facts, errors) where facts holds the o0_os, o0_paths and
+        o0_shells namespaces
     """
     # Initialize compliance dict with standard metadata
     compliance = {
@@ -398,7 +403,7 @@ def process_all_compliance_command_results(
 
     # Process command lookups
     lookup_results = processed_results["lookup_command"]
-    paths, missing, errors = process_command_lookups(
+    paths, builtins, missing, errors = process_command_lookups(
         lookup_results, process_effective_uid_results(cmds_completed)
     )
 
@@ -520,9 +525,10 @@ def process_all_compliance_command_results(
 
     # The processor names its own facts, so the two producers that
     # share it cannot disagree about where they land.
-    facts = {
+    facts: dict[str, Any] = {
         "o0_os": {"compliance": compliance},
         "o0_paths": paths,
+        "o0_shells": compose_shells(builtins={ANSWERING_SHELL: builtins}),
     }
 
     return facts, errors

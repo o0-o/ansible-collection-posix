@@ -161,7 +161,7 @@ def quote(s: str, shell: Optional[Any] = None) -> str:
 def process_command_lookups(
     lookup_results_list: list[dict],
     uid: Optional[int] = None,
-) -> tuple[dict[str, Any], list[str], list[Exception]]:
+) -> tuple[dict[str, Any], list[str], list[str], list[Exception]]:
     """Compose command lookups into one o0_paths observation.
 
     A command that resolved is a fact about the file it resolved to,
@@ -182,9 +182,19 @@ def process_command_lookups(
     command's name in each of them.  A name that cannot be a file, a
     dot or a path of its own, names no candidate and files nothing.
 
-    Builtins and aliases are what the answering shell says about
-    itself, not about any file the command name might also have, so
-    they file on that shell's own entry.
+    Builtins are not paths at all.  A command the shell answers
+    itself resolves to no file, so it is answered back to the caller
+    to file on the shell rather than filed here - the store is facts
+    about paths, and which commands a shell is built out of is a fact
+    about the shell.  An alias is not a path either and is not
+    answered back: it comes from a rc file, so it belongs to a shell
+    and a home together and is what the shell-context probe reports.
+
+    The answering shell keeps an entry all the same, empty where
+    nothing else was learned about the file.  It ran the probes, which
+    is as much as anything can say that a file is there, so it is
+    never one of the misses even where the name ``sh`` did not resolve
+    in the search path.
 
     Each path is observed once and composed whole, because the store
     replaces an entry rather than blending fields into it.  A path the
@@ -195,11 +205,11 @@ def process_command_lookups(
         dicts, each containing 'args' with 'cmd' key and 'parsed' output
     :param Optional[int] uid: The uid the lookups ran as, where it was
         determined
-    :returns tuple[dict[str, Any], list[str], list[Exception]]: The
-        o0_paths observation, the commands that did not resolve
-        (sorted), and the errors the lookups raised
+    :returns tuple[dict[str, Any], list[str], list[str],
+        list[Exception]]: The o0_paths observation, the commands the
+        answering shell answers itself (sorted), the commands that did
+        not resolve (sorted), and the errors the lookups raised
     """
-    aliases: dict[str, str] = {}
     builtins: list[str] = []
     resolved: set[str] = set()
     missing: list[str] = []
@@ -227,17 +237,15 @@ def process_command_lookups(
                 missing.append(cmd)
                 continue
 
-            # Alias
-            alias_declaration = f"alias {cmd}="
-            if parsed.startswith(alias_declaration):
-                alias_def = parsed[len(alias_declaration) :]
-                # Remove surrounding quotes if present
-                if f"{alias_def[0]}{alias_def[-1]}" in ['""', "''"]:
-                    alias_def = alias_def[1:-1]
-                aliases[cmd] = alias_def
+            # An alias names no file and is not a fact about one.
+            # What a shell aliases comes out of a rc file, so it
+            # belongs to that shell and that home together and the
+            # shell-context probe is what reports it
+            if parsed.startswith(f"alias {cmd}="):
+                continue
 
             # Path
-            elif parsed.startswith("/"):
+            if parsed.startswith("/"):
                 resolved.add(parsed)
 
             # Builtin (output equals command name)
@@ -259,12 +267,10 @@ def process_command_lookups(
         path: deepcopy(claim) for path in resolved
     }
 
-    # The shell answered, whatever it said about itself, so its entry
-    # is written before the misses and is not one of them
-    shell = dict(entries.get(ANSWERING_SHELL) or {})
-    shell["aliases"] = aliases
-    shell["builtins"] = sorted(builtins)
-    entries[ANSWERING_SHELL] = shell
+    # The shell answered, so its entry is written before the misses
+    # and is not one of them, empty where the lookups learned nothing
+    # about the file itself
+    entries.setdefault(ANSWERING_SHELL, {})
 
     searched = sorted({posixpath.dirname(path) for path in resolved})
     for cmd in missing:
@@ -280,4 +286,4 @@ def process_command_lookups(
         except ValueError as exc:
             errors.append(exc)
 
-    return paths, sorted(missing), errors
+    return paths, sorted(set(builtins)), sorted(missing), errors

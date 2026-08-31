@@ -130,7 +130,7 @@
       - gathered['o0_storage'] is mapping
       - gathered['o0_users'] is mapping
       - gathered['o0_groups'] is mapping
-      - gathered['o0_shell_files'] is mapping
+      - gathered['o0_shells'] is mapping
       - gathered['o0_paths'] is mapping
     fail_msg: >-
       a default gather is missing a namespace:

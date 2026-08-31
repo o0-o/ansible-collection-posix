@@ -1,0 +1,62 @@
+# vim: ts=2:sw=2:sts=2:et:ft=yaml.ansible
+# -*- mode: yaml; yaml-indent-offset: 2; indent-tabs-mode: nil; -*-
+---
+breaking_changes:
+  - >-
+    users, facts - ``o0_shell_files`` retires. A login shell is a file
+    and ``o0_paths`` is the one flat store of what this collection
+    knows about files, so the shells users hold are entries there, the
+    way the homes they live in already were. Read a shell's metadata
+    as ``o0_paths[user.shell]``; nothing about its shape changes but
+    the namespace it is filed under, and the seed a run reads to skip
+    what an earlier gather already described is now ``o0_paths``
+    rather than the retired fact. The namespace never appeared in a
+    release, so it is removed inside the 2.0.0 window
+    (https://github.com/o0-o/ansible-collection-posix/pull/XXX).
+  - >-
+    compliance, facts - ``builtins`` and ``aliases`` leave
+    ``o0_paths``. Neither is a fact about a path. A builtin resolves to
+    no file at all - that is what makes it a builtin - and it is
+    intrinsic to the shell binary, so it is
+    ``o0_shells[shell].builtins``, beside the per-home rows rather
+    than in one, since no home changes which commands a shell is built
+    out of. An alias is the opposite: it comes out of a rc file, so it
+    belongs to a shell and a home together and rides in
+    ``o0_shells[shell][home].config.aliases`` alongside the
+    environment, the umask and the locale that same probe answered
+    with. The C(o0_paths) entry for a shell keeps filesystem facts and
+    nothing else
+    (https://github.com/o0-o/ansible-collection-posix/pull/XXX).
+minor_changes:
+  - >-
+    users, facts - a login shell entry carries the read suite the
+    homes already carried: its type, its mode and the bits of it, who
+    owns it, when it changed, and for a link the target the listing
+    reported. The store held only what the command sweep put there
+    before, so a host's ``/bin/sh`` entry was otherwise empty and a
+    ``/bin/bash`` nobody looked up had no entry at all
+    (https://github.com/o0-o/ansible-collection-posix/pull/XXX).
+  - >-
+    users, facts - every step a shell resolves through gets an entry
+    of its own, the way a linked home's target already did. A
+    ``/bin/sh`` that is a link to ``bash`` puts ``bash`` in the store
+    beside it and carries the ``resolution`` chain that says how the
+    one reached the other, which is the question a consumer usually
+    has about ``/bin/sh``. Homes resolve the same way and for the same
+    reason, so a home reached through a linked directory says which
+    directory
+    (https://github.com/o0-o/ansible-collection-posix/pull/XXX).
+  - >-
+    compliance - the module returns ``shells``, the ``o0_shells``
+    fact's shape, carrying the builtins the answering shell reported.
+    ``paths`` keeps the resolutions and the misses
+    (https://github.com/o0-o/ansible-collection-posix/pull/XXX).
+  - >-
+    facts - the shell-context probe asks ``alias`` beside ``umask``,
+    ``env`` and ``locale``, in the same login run and at no extra
+    round trip, so what a shell aliases is observed the way everything
+    else about that pair is rather than inferred from a file. Both
+    forms a real shell prints are read - bash's ``alias ll='ls -l'``
+    and the bare ``ll='ls -l'`` its POSIX mode prints - and the shell
+    quoting is removed, because what the alias expands to is the fact
+    (https://github.com/o0-o/ansible-collection-posix/pull/XXX).

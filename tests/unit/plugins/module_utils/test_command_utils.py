@@ -41,7 +41,7 @@ def _lookup(cmd: str, parsed: Optional[str]) -> dict[str, Any]:
 def test_a_resolution_files_under_the_path_it_resolved_to() -> None:
     """Test the fact is about the file, not about the name asked for."""
 
-    paths, missing, errors = process_command_lookups(
+    paths, builtins, missing, errors = process_command_lookups(
         [_lookup("awk", "/usr/bin/awk")], UID
     )
 
@@ -54,7 +54,7 @@ def test_the_executable_claim_is_keyed_by_the_uid_that_asked() -> None:
     """Test a command that resolved is recorded as executable for
     whoever the shell that named it was running as."""
 
-    paths, _missing, _errors = process_command_lookups(
+    paths, builtins, _missing, _errors = process_command_lookups(
         [_lookup("awk", "/usr/bin/awk")], UID
     )
 
@@ -66,7 +66,7 @@ def test_a_sweep_with_no_uid_makes_no_executable_claim() -> None:
     guessed at, while the path the command resolved to is still
     filed: that much was reached and is known."""
 
-    paths, _missing, _errors = process_command_lookups(
+    paths, builtins, _missing, _errors = process_command_lookups(
         [_lookup("awk", "/usr/bin/awk")]
     )
 
@@ -77,7 +77,7 @@ def test_two_resolutions_do_not_share_one_claim() -> None:
     """Test each entry carries its own mapping, so an observation
     written on one path cannot reach another."""
 
-    paths, _missing, _errors = process_command_lookups(
+    paths, builtins, _missing, _errors = process_command_lookups(
         [_lookup("awk", "/usr/bin/awk"), _lookup("cat", "/bin/cat")], UID
     )
 
@@ -94,7 +94,7 @@ def test_a_miss_files_null_at_each_candidate_path() -> None:
     its name in every directory they searched, which the resolutions
     themselves are the evidence for."""
 
-    paths, missing, _errors = process_command_lookups(
+    paths, builtins, missing, _errors = process_command_lookups(
         [
             _lookup("awk", "/usr/bin/awk"),
             _lookup("tar", "/bin/tar"),
@@ -111,7 +111,9 @@ def test_a_miss_names_no_candidate_without_a_resolution() -> None:
     """Test a sweep that resolved nothing searched no directory it can
     name, so its misses file nothing rather than a guess."""
 
-    paths, missing, _errors = process_command_lookups([_lookup("pax", None)])
+    paths, builtins, missing, _errors = process_command_lookups(
+        [_lookup("pax", None)]
+    )
 
     assert set(paths) == {ANSWERING_SHELL}
     assert missing == ["pax"]
@@ -121,7 +123,7 @@ def test_a_name_that_cannot_be_a_file_names_no_candidate() -> None:
     """Test a dot is not a filename, so a shell that fails to report it
     leaves no '/usr/bin/.' behind for the store to refuse."""
 
-    paths, missing, errors = process_command_lookups(
+    paths, builtins, missing, errors = process_command_lookups(
         [_lookup("awk", "/usr/bin/awk"), _lookup(".", None)]
     )
 
@@ -130,48 +132,58 @@ def test_a_name_that_cannot_be_a_file_names_no_candidate() -> None:
     assert errors == []
 
 
-def test_builtins_and_aliases_file_on_the_shell_that_answered() -> None:
-    """Test the shell's own entry carries what the shell said about
-    itself, sorted, rather than a namespace of its own."""
+def test_a_builtin_is_answered_back_rather_than_filed() -> None:
+    """Test a command the shell answers itself is not a fact about a
+    path - it resolved to no file - so it comes back for the caller
+    to file on the shell rather than landing in the store."""
 
-    paths, _missing, _errors = process_command_lookups(
-        [
-            _lookup("cd", "cd"),
-            _lookup("[", "["),
-            _lookup("ls", "alias ls='ls --color=auto'"),
-        ]
+    paths, builtins, _missing, _errors = process_command_lookups(
+        [_lookup("cd", "cd"), _lookup("[", "[")]
     )
 
-    assert paths[ANSWERING_SHELL] == {
-        "aliases": {"ls": "ls --color=auto"},
-        "builtins": ["[", "cd"],
-    }
+    assert builtins == ["[", "cd"]
+    assert paths[ANSWERING_SHELL] == {}
+
+
+def test_an_alias_is_neither_a_path_nor_a_builtin() -> None:
+    """Test an alias names no file and is not answered back either.
+
+    What a shell aliases comes out of a rc file, so it belongs to a
+    shell and a home together, and the shell-context probe is what
+    reports it.
+    """
+
+    paths, builtins, missing, errors = process_command_lookups(
+        [_lookup("ls", "alias ls='ls --color=auto'")]
+    )
+
+    assert builtins == []
+    assert missing == []
+    assert errors == []
+    assert paths == {ANSWERING_SHELL: {}}
 
 
 def test_the_shell_entry_is_whole_where_sh_resolved_to_it() -> None:
     """Test one path observed twice by one producer is composed once,
     since the store replaces an entry rather than blending fields."""
 
-    paths, _missing, _errors = process_command_lookups(
+    paths, builtins, _missing, _errors = process_command_lookups(
         [_lookup("sh", ANSWERING_SHELL), _lookup("cd", "cd")], UID
     )
 
-    assert paths[ANSWERING_SHELL] == {
-        "executable": {"1000": True},
-        "aliases": {},
-        "builtins": ["cd"],
-    }
+    assert paths[ANSWERING_SHELL] == {"executable": {"1000": True}}
+    assert builtins == ["cd"]
 
 
 def test_the_shell_answered_even_where_sh_did_not_resolve() -> None:
     """Test the shell that ran the probes is not filed as absent by
     the miss of the name it happens to share."""
 
-    paths, missing, _errors = process_command_lookups(
+    paths, builtins, missing, _errors = process_command_lookups(
         [_lookup("cat", "/bin/cat"), _lookup("sh", None)]
     )
 
-    assert paths[ANSWERING_SHELL] == {"aliases": {}, "builtins": []}
+    assert paths[ANSWERING_SHELL] == {}
     assert missing == ["sh"]
 
 
@@ -179,12 +191,13 @@ def test_a_missing_command_utility_stops_the_lookups() -> None:
     """Test nothing else is trusted once command itself is missing, and
     the shell still publishes the nothing it answered with."""
 
-    paths, missing, errors = process_command_lookups(
+    paths, builtins, missing, errors = process_command_lookups(
         [_lookup("command", None), _lookup("awk", "/usr/bin/awk")]
     )
 
     assert missing == ["command"]
-    assert paths == {ANSWERING_SHELL: {"aliases": {}, "builtins": []}}
+    assert paths == {ANSWERING_SHELL: {}}
+    assert builtins == []
     assert errors == []
 
 
@@ -192,12 +205,12 @@ def test_unexpected_lookup_output_is_an_error() -> None:
     """Test output that is neither a path, an alias nor the name back
     is reported rather than filed as a fact."""
 
-    paths, missing, errors = process_command_lookups(
+    paths, builtins, missing, errors = process_command_lookups(
         [_lookup("awk", "no idea what awk is")]
     )
 
     assert missing == []
-    assert paths == {ANSWERING_SHELL: {"aliases": {}, "builtins": []}}
+    assert paths == {ANSWERING_SHELL: {}}
     assert len(errors) == 1
     assert "Unexpected 'command -v awk' output" in str(errors[0])
 
@@ -207,7 +220,7 @@ def test_a_path_the_store_refuses_does_not_take_the_sweep_down() -> None:
     to an error, not the whole observation. The store keys a path one
     way, and repairing the answer here would key it two."""
 
-    paths, _missing, errors = process_command_lookups(
+    paths, builtins, _missing, errors = process_command_lookups(
         [_lookup("awk", "/usr/bin//awk"), _lookup("cat", "/bin/cat")], UID
     )
 

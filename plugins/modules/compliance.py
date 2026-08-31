@@ -448,11 +448,10 @@ paths:
   description: >-
     What the probes observed about the paths they touched, keyed by
     the canonical absolute path. A command that resolved is an entry
-    at the file it resolved to; a command that did not is a C(null) -
-    confirmed absent - at its name in each directory the resolutions
-    show were searched; and the aliases and builtins the shell
-    answered with are fields on that shell's own entry, because they
-    describe the shell and not the names it was asked about.
+    at the file it resolved to and a command that did not is a
+    C(null) - confirmed absent - at its name in each directory the
+    resolutions show were searched. A command the shell answers itself
+    resolved to no file at all, so it is not here; see C(shells).
   returned: always
   type: dict
   contains:
@@ -464,17 +463,29 @@ paths:
         shell was running as.
       type: dict
       sample: {'0': true}
-    aliases:
-      description: >-
-        For the shell that answered the probes, the aliases it
-        reported, mapping the alias name to what it expands to
-      type: dict
-      sample:
-        ls: ls --color=auto
+  sample:
+    /bin/sh: {}
+    /usr/bin/grep:
+      executable:
+        '0': true
+    /usr/bin/pax: null
+shells:
+  description: >-
+    What the probes learned about the shell that answered them, keyed
+    by that shell's path, in the shape of the C(o0_shells) fact. A
+    builtin resolves to no file, so it is not a fact about a path but
+    about the shell binary itself, and it sits here rather than in
+    C(paths).
+  returned: always
+  type: dict
+  contains:
     builtins:
       description: >-
-        For the shell that answered the probes, the probed commands it
-        answers itself rather than by running a file, sorted
+        The probed commands the shell answers itself rather than by
+        running a file, sorted. Intrinsic to the shell binary: no
+        home changes which commands a shell is built out of, which is
+        why this sits at the shell rather than in one of the per-home
+        rows M(o0_o.posix.facts) files beside it.
       type: list
       elements: str
       sample:
@@ -483,15 +494,10 @@ paths:
         - test
   sample:
     /bin/sh:
-      aliases: {}
       builtins:
         - "["
         - command
         - test
-    /usr/bin/grep:
-      executable:
-        '0': true
-    /usr/bin/pax: null
 missing_commands:
   description: >-
     The probed commands C(command -v) could not find, sorted, derived

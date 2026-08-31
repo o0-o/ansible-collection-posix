@@ -144,19 +144,38 @@
         | list | length == 0
     fail_msg: 'o0_os.config is not the shape getconf answers: {{ config }}'
 
-# What a shell answers about itself is a fact about the shell, so it
-# is filed on that shell's own entry in the path store rather than in
-# a namespace of its own.
-- name: Assert the aliases and builtins /bin/sh answers with
+# A builtin is intrinsic to the shell binary, so it sits at the shell
+# in o0_shells rather than on the path store entry for its file, and
+# no home changes it.
+- name: Assert the builtins /bin/sh answers with sit on the shell
   vars:
-    shell: "{{ facts_all_reg['ansible_facts']['o0_paths']['/bin/sh'] }}"
+    shell: "{{ facts_all_reg['ansible_facts']['o0_shells']['/bin/sh'] }}"
+    entry: "{{ facts_all_reg['ansible_facts']['o0_paths']['/bin/sh'] }}"
   ansible.builtin.assert:
     that:
-      - shell is mapping
-      - shell['aliases'] is mapping
       - shell['builtins'] is sequence
       - shell['builtins'] is not string
-    fail_msg: 'o0_paths does not describe /bin/sh: {{ shell }}'
+      - "'command' in shell['builtins']"
+      - "'builtins' not in entry"
+      - "'aliases' not in entry"
+    fail_msg: 'o0_shells does not describe /bin/sh: {{ shell }}'
+
+# An alias comes out of a rc file, so it belongs to a shell and a home
+# together and rides in the row's config beside the env, the umask and
+# the locale that same probe answered with.
+- name: Assert an alias belongs to the pair that produced it
+  vars:
+    rows: >-
+      {{ facts_all_reg['ansible_facts']['o0_shells']['/bin/sh']
+         | dict2items | selectattr('key', 'match', '^/')
+         | map(attribute='value') | list }}
+  ansible.builtin.assert:
+    that:
+      - rows | length > 0
+      - >-
+        rows | selectattr('config.aliases', 'defined')
+        | rejectattr('config.aliases', 'mapping') | list | length == 0
+    fail_msg: 'a shell row reports aliases that are not a mapping'
 
 # A command the sweep found is a fact about the file it found, filed
 # at the path it resolved to and recorded as executable: command -v
@@ -566,10 +585,10 @@
       omits it on a host that has one: has_getent
       {{ facts_has_getent }}, resolved {{ resolved | length }}
 
-# A home is a path, so it is an entry of the flat path store rather
-# than a namespace of its own: tagged home, carrying the UIDs that
-# live there, and keyed by the path it is.
-- name: Assert homes and shell files are keyed by the path they are
+# A home is a path and so is a shell, so both are entries of the flat
+# path store rather than namespaces of their own, keyed by the path
+# each of them is.
+- name: Assert homes and shells are keyed by the path they are
   vars:
     paths: "{{ facts_all_reg['ansible_facts']['o0_paths'] }}"
     homes: >-
@@ -578,8 +597,11 @@
          | selectattr('value.tags', 'defined')
          | selectattr('value.tags', 'contains', 'home')
          | items2dict }}
-    shell_files: >-
-      {{ facts_all_reg['ansible_facts']['o0_shell_files'] }}
+    shells: >-
+      {{ facts_all_reg['ansible_facts']['o0_users'] | dict2items
+         | selectattr('value.shell', 'defined')
+         | map(attribute='value.shell') | select('string')
+         | unique | list }}
   ansible.builtin.assert:
     that:
       - homes | length > 0
@@ -597,13 +619,16 @@
         | map(attribute='value.home') | select('string')
         | reject('in', paths.keys() | list) | list | length == 0
       - facts_all_reg['ansible_facts']['o0_homes'] is not defined
-      - shell_files | length > 0
-      - shell_files.keys() | reject('match', '^/')
-        | list | length == 0
-      - shell_files | dict2items | rejectattr('value.tags',
-        'contains', 'shell') | list | length == 0
+      - facts_all_reg['ansible_facts']['o0_shell_files'] is not defined
+      # A shell is a path too, so every shell a passwd line named is a
+      # key of the same store, described as the file it is
+      - shells | length > 0
+      - shells | reject('in', paths.keys() | list) | list | length == 0
+      - >-
+        shells | map('extract', paths) | selectattr('type', 'defined')
+        | list | length == shells | length
     fail_msg: >-
-      the homes in o0_paths or o0_shell_files is not keyed by path
+      the homes or the shells in o0_paths are not keyed by path
 
 # A shell's configuration is code, so the only honest way to know what
 # it does is to run it and watch. The pair decides the answer and
@@ -623,9 +648,12 @@
       # The keys are the answer /etc/shells gave, which is what makes
       # user.shell in o0_shells a question a host can answer
       - named | reject('in', shells) | list | length == 0
-      # Rows under a shell are keyed by the home it was run out of
+      # Rows under a shell are keyed by the home it was run out of.
+      # The one key that is not a path is builtins, which is a fact
+      # about the shell binary rather than about any pair
       - shells | dict2items | map(attribute='value') | map('list')
-        | flatten | reject('match', '^/') | list | length == 0
+        | flatten | reject('match', '^/') | reject('eq', 'builtins')
+        | list | length == 0
     fail_msg: >-
       o0_shells is not keyed by shell path, or does not carry the
       shells /etc/shells named: {{ shells.keys() | list }}
@@ -640,8 +668,9 @@
     shells: "{{ facts_all_reg['ansible_facts']['o0_shells'] }}"
     rows: >-
       {{ shells | dict2items | map(attribute='value')
-         | map('dict2items') | flatten | map(attribute='value')
-         | list }}
+         | map('dict2items') | flatten
+         | selectattr('key', 'match', '^/')
+         | map(attribute='value') | list }}
   ansible.builtin.assert:
     that:
       - rows | length > 0
@@ -717,6 +746,9 @@
 
 # Only shells a producer was asked about are run. Nothing walks
 # /etc/shells running each one on the chance somebody logs in with it.
+# A shell carrying nothing but builtins was not run either - the sweep
+# learned those from the probes it ran through /bin/sh - and /bin/sh
+# is asked about by name anyway.
 - name: Assert no shell was run that the gather was not asked about
   vars:
     shells: "{{ facts_all_reg['ansible_facts']['o0_shells'] }}"

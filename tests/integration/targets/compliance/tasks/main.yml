@@ -27,13 +27,13 @@
       - compliance_result_reg['missing_commands'] is defined
       - compliance_result_reg['missing_commands'] is sequence
       # What the shell says about itself is on the shell's own entry
-      - compliance_result_reg['shells'] is not defined
+      - compliance_result_reg['shells'] is mapping
     fail_msg: 'Compliance module did not return expected structure'
 
-# A command that resolved is a fact about the file it resolved to; a
-# command that did not is a null at its name in each directory the
-# resolutions show were searched; and the aliases and builtins the
-# shell answered with are fields on that shell's own entry.
+# A command that resolved is a fact about the file it resolved to and
+# a command that did not is a null at its name in each directory the
+# resolutions show were searched. A command the shell answers itself
+# resolved to no file, so it is a fact about the shell instead.
 - name: Verify the path store holds what the probes observed
   vars:
     paths: "{{ compliance_result_reg['paths'] }}"
@@ -43,13 +43,29 @@
   ansible.builtin.assert:
     that:
       - paths.keys() | reject('match', '^/') | list | length == 0
+      # The shell ran the probes, so it is never one of the misses
       - paths['/bin/sh'] is mapping
-      - paths['/bin/sh']['aliases'] is mapping
-      - paths['/bin/sh']['builtins'] is sequence
-      - paths['/bin/sh']['builtins'] is not string
+      - "'builtins' not in paths['/bin/sh']"
+      - "'aliases' not in paths['/bin/sh']"
       - resolved | length > 0
       - resolved | rejectattr('value.executable') | list | length == 0
     fail_msg: 'the path store is not what the probes observed'
+
+# A builtin resolves to no file, so it is intrinsic to the shell
+# binary rather than a fact about any path.
+- name: Verify the builtins land on the shell that answers them
+  vars:
+    shells: "{{ compliance_result_reg['shells'] }}"
+  ansible.builtin.assert:
+    that:
+      - shells.keys() | list == ['/bin/sh']
+      - shells['/bin/sh']['builtins'] is sequence
+      - shells['/bin/sh']['builtins'] is not string
+      - "'command' in shells['/bin/sh']['builtins']"
+      - >-
+        shells['/bin/sh']['builtins'] | sort
+        == shells['/bin/sh']['builtins']
+    fail_msg: 'the builtins are not on the shell that answered them'
 
 # The commands a host lacks are read back out of the standards that
 # require them, rather than stored a second time.

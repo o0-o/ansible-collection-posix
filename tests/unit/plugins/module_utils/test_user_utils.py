@@ -29,7 +29,7 @@ from ansible_collections.o0_o.posix.plugins.module_utils.path_utils import (
 from ansible_collections.o0_o.posix.plugins.module_utils.user_utils import (
     batch_read,
     compose_homes,
-    compose_shell_files,
+    compose_shell_paths,
     compose_users_groups,
     lookup_group,
     lookup_user,
@@ -819,8 +819,8 @@ def test_compose_homes_files_a_dangling_link_target_as_a_null() -> None:
     assert homes["/home/o0-o"]["residents"] == [1000]
 
 
-def test_compose_shell_files_describes_held_shells() -> None:
-    """Test the shells users hold are described, keyed by path."""
+def test_compose_shell_paths_describes_held_shells() -> None:
+    """Test the shells users hold are entries of the path store."""
     read, asked = _reader(
         {
             "/bin/sh": {"type": "regular"},
@@ -828,38 +828,110 @@ def test_compose_shell_files_describes_held_shells() -> None:
         }
     )
 
-    shell_files = compose_shell_files(USERS, read)
+    shells = compose_shell_paths(USERS, read)
 
-    assert set(shell_files) == {"/bin/sh", "/bin/zsh"}
-    assert shell_files["/bin/sh"]["tags"] == ["posix", "shell"]
+    assert set(shells) == {"/bin/sh", "/bin/zsh"}
+    assert shells["/bin/sh"] == {"type": "regular"}
     assert len(asked) == 1
 
 
-def test_compose_shell_files_keeps_what_is_known() -> None:
-    """Test a shell a previous gather described is kept as it stands
-    and is not read again."""
+def test_compose_shell_paths_files_every_hop_of_a_chain() -> None:
+    """Test a shell that is a link puts what it resolves to in the
+    store beside it, which is what the question about /bin/sh is."""
+    read, asked = _reader(
+        {
+            "/bin/sh": {
+                "type": "link",
+                "target": "bash",
+                "resolution": ["/bin/sh", "/usr/bin/sh", "/usr/bin/bash"],
+            },
+            "/bin/zsh": {"type": "regular"},
+            "/usr/bin/sh": {"type": "link", "target": "bash"},
+            "/usr/bin/bash": {"type": "regular"},
+        }
+    )
+
+    shells = compose_shell_paths(USERS, read)
+
+    assert set(shells) == {
+        "/bin/sh",
+        "/bin/zsh",
+        "/usr/bin/sh",
+        "/usr/bin/bash",
+    }
+    assert shells["/usr/bin/bash"] == {"type": "regular"}
+    # The shells first, then every step of every chain, in one batch
+    assert asked == [
+        ["/bin/sh", "/bin/zsh"],
+        ["/usr/bin/bash", "/usr/bin/sh"],
+    ]
+
+
+def test_compose_shell_paths_reads_no_hop_twice() -> None:
+    """Test a step the store or the batch already describes is not
+    read again."""
+    read, asked = _reader(
+        {
+            "/bin/sh": {
+                "type": "link",
+                "resolution": ["/bin/sh", "/usr/bin/bash"],
+            },
+            "/bin/zsh": {
+                "type": "link",
+                "resolution": ["/bin/zsh", "/usr/bin/bash"],
+            },
+            "/usr/bin/bash": {"type": "regular"},
+        }
+    )
+
+    compose_shell_paths(USERS, read)
+
+    assert asked[1] == ["/usr/bin/bash"]
+    assert len(asked) == 2
+
+
+def test_compose_shell_paths_keeps_what_the_store_describes() -> None:
+    """Test a shell the store already describes is left alone and is
+    not read again."""
     read, asked = _reader({"/bin/zsh": {"type": "regular"}})
 
-    shell_files = compose_shell_files(
+    shells = compose_shell_paths(
         USERS, read, {"/bin/sh": {"type": "regular", "known": True}}
     )
 
-    assert shell_files["/bin/sh"]["known"] is True
+    assert set(shells) == {"/bin/zsh"}
     assert asked == [["/bin/zsh"]]
 
 
-def test_compose_shell_files_reads_nothing_new() -> None:
-    """Test a run with every shell already known reads no paths."""
+def test_compose_shell_paths_reads_nothing_new() -> None:
+    """Test a run with every shell already described reads no paths."""
     read, asked = _reader({})
 
-    shell_files = compose_shell_files(
+    shells = compose_shell_paths(
         USERS,
         read,
         {"/bin/sh": {"type": "regular"}, "/bin/zsh": {"type": "regular"}},
     )
 
-    assert set(shell_files) == {"/bin/sh", "/bin/zsh"}
+    assert shells == {}
     assert asked == []
+
+
+def test_a_key_without_a_type_is_not_a_description() -> None:
+    """Test a null the command sweep filed, and an entry carrying
+    only an executable row, are not a shell the store has read."""
+    read, asked = _reader(
+        {"/bin/sh": {"type": "regular"}, "/bin/zsh": {"type": "regular"}}
+    )
+
+    shells = compose_shell_paths(
+        USERS,
+        read,
+        {"/bin/sh": None, "/bin/zsh": {"executable": {"0": True}}},
+    )
+
+    assert set(shells) == {"/bin/sh", "/bin/zsh"}
+    assert asked == [["/bin/sh", "/bin/zsh"]]
 
 
 def test_composition_is_what_renames_the_util_shapes() -> None:
@@ -906,7 +978,7 @@ def test_batch_read_reads_homes_and_shells_together() -> None:
 
     batched = batch_read(USERS, read)
     compose_homes(USERS, batched)
-    compose_shell_files(USERS, batched)
+    compose_shell_paths(USERS, batched)
 
     # The batch, then only the linked home's target
     assert asked[0] == ["/bin/sh", "/bin/zsh", "/home/o0-o", "/var/root"]
@@ -919,15 +991,15 @@ def test_batch_read_composes_what_an_unbatched_read_composes() -> None:
     reach when each does its own read."""
     plain, plain_asked = _reader(BATCH_ANSWERS)
     plain_homes = compose_homes(USERS, plain)
-    plain_shells = compose_shell_files(USERS, plain)
+    plain_shells = compose_shell_paths(USERS, plain)
 
     read, asked = _reader(BATCH_ANSWERS)
     batched = batch_read(USERS, read)
     homes = compose_homes(USERS, batched)
-    shell_files = compose_shell_files(USERS, batched)
+    shells = compose_shell_paths(USERS, batched)
 
     assert homes == plain_homes
-    assert shell_files == plain_shells
+    assert shells == plain_shells
     # Same facts, fewer reads
     assert len(asked) < len(plain_asked)
 
@@ -960,11 +1032,11 @@ def test_batch_read_leaves_known_shells_out_of_the_batch() -> None:
     read, asked = _reader(BATCH_ANSWERS)
 
     batched = batch_read(USERS, read, known)
-    shell_files = compose_shell_files(USERS, batched, known)
+    shells = compose_shell_paths(USERS, batched, known)
 
     assert "/bin/sh" not in asked[0]
-    assert shell_files["/bin/sh"]["known"] is True
-    assert shell_files["/bin/zsh"]["tags"] == ["posix", "shell"]
+    assert set(shells) == {"/bin/zsh"}
+    assert shells["/bin/zsh"] == {"type": "regular"}
 
 
 def test_batch_read_reads_nothing_without_paths() -> None:
@@ -975,7 +1047,7 @@ def test_batch_read_reads_nothing_without_paths() -> None:
     batched = batch_read({"0": {"uid": 0}}, read)
 
     assert compose_homes({"0": {"uid": 0}}, batched) == {}
-    assert compose_shell_files({"0": {"uid": 0}}, batched) == {}
+    assert compose_shell_paths({"0": {"uid": 0}}, batched) == {}
     assert asked == []
 
 
@@ -992,17 +1064,18 @@ def test_batch_read_falls_through_when_the_batch_fails() -> None:
 
     batched = batch_read(USERS, read)
     homes = compose_homes(USERS, batched)
-    shell_files = compose_shell_files(USERS, batched)
+    shells = compose_shell_paths(USERS, batched)
 
     assert asked[1] == ["/var/root", "/home/o0-o"]
     assert sorted(homes) == ["/Users/o0-o", "/home/o0-o", "/var/root"]
-    assert set(shell_files) == {"/bin/sh", "/bin/zsh"}
+    assert set(shells) == {"/bin/sh", "/bin/zsh"}
 
 
 def test_batch_read_answers_each_composition_its_own_copy() -> None:
-    """Test one path serving as both a home and a shell is tagged
-    twice over rather than once, which sharing the batch's entry
-    between the two compositions would cost."""
+    """Test one path serving as both a home and a shell gets an
+    entry each rather than one the two compositions share, which is
+    what writing a home's residents onto a shell's entry would look
+    like."""
     users = {"0": {"uid": 0, "home": "/opt/box", "shell": "/opt/box"}}
     answers = {"/opt/box": {"type": "directory"}}
 
@@ -1011,9 +1084,8 @@ def test_batch_read_answers_each_composition_its_own_copy() -> None:
 
     batched = batch_read(users, read)
     homes = compose_homes(users, batched)
-    shell_files = compose_shell_files(users, batched)
+    shells = compose_shell_paths(users, batched)
 
-    assert homes["/opt/box"]["tags"] == ["posix", "home"]
     assert homes["/opt/box"]["residents"] == [0]
-    assert shell_files["/opt/box"]["tags"] == ["posix", "shell"]
-    assert "residents" not in shell_files["/opt/box"]
+    assert shells["/opt/box"] == {"type": "directory"}
+    assert "residents" not in shells["/opt/box"]

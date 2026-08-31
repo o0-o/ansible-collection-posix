@@ -141,9 +141,11 @@ def test_users_action_returns_canonical_fact_names(plugin) -> None:
         "o0_users",
         "o0_groups",
         "o0_paths",
-        "o0_shell_files",
         "o0_shells",
     }
+    # A shell is a path, so it is an entry of the path store rather
+    # than a fact of its own
+    assert "o0_shell_files" not in result
     assert "users" not in result
     assert "groups" not in result
     assert "homes" not in result
@@ -386,10 +388,10 @@ def test_users_action_homes_resident_uids(monkeypatch, plugin) -> None:
     ]
 
 
-def test_users_action_shell_files_extend_prior_gather(
+def test_users_action_shells_extend_prior_gather(
     monkeypatch, plugin
 ) -> None:
-    """Test previously gathered shell file metadata is preserved."""
+    """Test a shell a prior gather described is not read again."""
     monkeypatch.setattr(
         plugin,
         "_read",
@@ -406,11 +408,13 @@ def test_users_action_shell_files_extend_prior_gather(
     )
 
     result = plugin.run(
-        task_vars={"o0_shell_files": {"/bin/ksh": {"type": "file"}}}
+        task_vars={"o0_paths": {"/bin/sh": {"type": "file", "old": True}}}
     )
 
-    assert "/bin/ksh" in result["o0_shell_files"]
-    assert result["o0_shell_files"]["/bin/zsh"]["tags"] == ["posix", "shell"]
+    # The shell the store already described is not read again, so the
+    # observation carries only what this run learned
+    assert "/bin/sh" not in result["o0_paths"]
+    assert result["o0_paths"]["/bin/zsh"] == {"type": "file"}
 
 
 READ_TYPES = {
@@ -472,8 +476,5 @@ def test_users_action_batch_leaves_the_facts_alone(
         "residents": [1000],
     }
     assert result["o0_paths"]["/var/root"]["residents"] == [0]
-    assert result["o0_shell_files"]["/bin/zsh"] == {
-        "type": "regular",
-        "tags": ["posix", "shell"],
-    }
-    assert set(result["o0_shell_files"]) == {"/bin/sh", "/bin/zsh"}
+    assert result["o0_paths"]["/bin/zsh"] == {"type": "regular"}
+    assert result["o0_paths"]["/bin/sh"] == {"type": "regular"}

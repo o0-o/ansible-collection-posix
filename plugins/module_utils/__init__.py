@@ -161,7 +161,7 @@ from ansible_collections.o0_o.posix.plugins.module_utils.uname_utils import (
 from ansible_collections.o0_o.posix.plugins.module_utils.user_utils import (
     batch_read,
     compose_homes,
-    compose_shell_files,
+    compose_shell_paths,
     compose_users_groups,
     lookup_group,
     lookup_user,
@@ -228,7 +228,7 @@ __all__ = [
     "process_effective_uid_results",
     "batch_read",
     "compose_homes",
-    "compose_shell_files",
+    "compose_shell_paths",
     "compose_users_groups",
     "get_limits_command_requests",
     "process_limits_command_results",

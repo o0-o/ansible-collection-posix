@@ -101,10 +101,13 @@ PRODUCER_FACTS = {
     },
     "compliance": {
         "o0_os": {"compliance": {"posix": {"supported": True}}},
+        # The shell ran the probes, so it is not a miss; nothing was
+        # learned about the file itself, so its entry says as much
         "o0_paths": {
-            "/bin/sh": {"aliases": {}, "builtins": ["cd", "exec"]},
-            "/usr/bin/awk": {"executable": True},
+            "/bin/sh": {},
+            "/usr/bin/awk": {"executable": {"0": True}},
         },
+        "o0_shells": {"/bin/sh": {"builtins": ["cd", "exec"]}},
     },
     # The environment processor answers with the raw variables; run()
     # is what keys them under the effective uid.
@@ -747,12 +750,12 @@ class TestGatherUsers:
             "o0_users",
             "o0_groups",
             "o0_paths",
-            "o0_shell_files",
             "o0_shells",
         }
-        # A home is a path, so it is an entry of the path store rather
-        # than a namespace of its own, and it accumulates there beside
-        # the shells file rather than replacing it
+        # A home is a path and so is a shell, so both are entries of
+        # the path store rather than namespaces of their own, and both
+        # accumulate there beside the shells file rather than
+        # replacing it
         assert facts["o0_paths"]["/home/o0-o"]["residents"] == [1000]
         assert facts["o0_paths"]["/var/root"]["residents"] == [0]
         assert facts["o0_paths"]["/home/o0-o"]["tags"] == ["posix", "home"]
@@ -760,12 +763,10 @@ class TestGatherUsers:
             "/bin/sh",
             "/bin/zsh",
         ]
-        assert facts["o0_shell_files"]["/bin/zsh"]["tags"] == [
-            "posix",
-            "shell",
-        ]
+        assert facts["o0_paths"]["/bin/zsh"]["type"] == "regular"
+        assert "o0_shell_files" not in facts
 
-    def test_shell_files_extend_a_prior_gather(
+    def test_shells_extend_a_prior_gather(
         self, monkeypatch, plugin
     ) -> None:
         """Test the accumulate-across-calls loop closes now that the
@@ -785,14 +786,13 @@ class TestGatherUsers:
         facts = _gather(
             plugin,
             "users",
-            task_vars={"o0_shell_files": {"/bin/ksh": {"type": "regular"}}},
+            task_vars={"o0_paths": {"/bin/sh": {"type": "regular"}}},
         )
 
-        assert set(facts["o0_shell_files"]) == {
-            "/bin/ksh",
-            "/bin/sh",
-            "/bin/zsh",
-        }
+        # The shell the store already describes is not read again, so
+        # this gather's observation covers only the other one
+        assert "/bin/sh" not in facts["o0_paths"]
+        assert facts["o0_paths"]["/bin/zsh"]["type"] == "regular"
 
     def test_one_round_trip(self, monkeypatch, plugin) -> None:
         """Test all three files are read in a single batch, the one
@@ -947,10 +947,7 @@ class TestGatherUsers:
 
         assert asked == [["/bin/sh", "/bin/zsh", "/home/o0-o", "/var/root"]]
         assert facts["o0_paths"]["/home/o0-o"]["residents"] == [1000]
-        assert facts["o0_shell_files"]["/bin/zsh"]["tags"] == [
-            "posix",
-            "shell",
-        ]
+        assert facts["o0_paths"]["/bin/zsh"]["type"] == "regular"
 
     def test_needs_both_files(self, monkeypatch, plugin) -> None:
         """Test a failed /etc/group read leaves the cross-referenced
@@ -1155,11 +1152,23 @@ class TestDefaultGather:
         read compose into one store rather than each replacing the
         others' paths."""
         paths = gathered["o0_paths"]
-        assert paths["/bin/sh"]["builtins"] == ["cd", "exec"]
-        assert paths["/usr/bin/awk"]["executable"] is True
+        assert paths["/usr/bin/awk"]["executable"] == {"0": True}
         assert paths["/etc/shells"]["content"] == ETC_SHELLS
         assert paths["/etc/fstab"]["content"] == ETC_FSTAB
         assert paths["/home/o0-o"]["tags"] == ["posix", "home"]
+        # The users read describes the shell as a file; the compliance
+        # sweep's own entry for it says only that the file is there,
+        # and neither of them replaces the other
+        assert paths["/bin/sh"]["type"] == "regular"
+
+    def test_a_builtin_is_a_fact_about_the_shell(self, gathered) -> None:
+        """Test the commands the shell answers itself sit on the shell
+        rather than on the path store entry for its binary."""
+        assert gathered["o0_shells"]["/bin/sh"]["builtins"] == [
+            "cd",
+            "exec",
+        ]
+        assert "builtins" not in gathered["o0_paths"]["/bin/sh"]
 
     def test_the_retired_namespaces_are_gone(self, gathered) -> None:
         """Test the namespaces the path store absorbed are not
@@ -1277,7 +1286,6 @@ class TestUsersProducersAgree:
             "o0_users",
             "o0_groups",
             "o0_paths",
-            "o0_shell_files",
             "o0_shells",
         }
         for fact, value in gathered.items():

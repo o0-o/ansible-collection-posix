@@ -58,6 +58,7 @@ from ansible_collections.o0_o.posix.plugins.module_utils.mount_utils import (
     _parse_mount,
 )
 from ansible_collections.o0_o.posix.plugins.module_utils.shells_utils import (
+    SHELL_ALIAS_MARKER,
     SHELL_END_MARKER,
     SHELL_ENV_MARKER,
     SHELL_LOCALE_MARKER,
@@ -235,6 +236,7 @@ SHELL_COMMAND_SPEC = {
                 f"echo {SHELL_UMASK_MARKER}; umask;"
                 f" echo {SHELL_ENV_MARKER}; env;"
                 f" echo {SHELL_LOCALE_MARKER}; locale 2>/dev/null;"
+                f" echo {SHELL_ALIAS_MARKER}; alias 2>/dev/null;"
                 f" echo {SHELL_END_MARKER}",
             ),
             "parser": _parse_shell_config,

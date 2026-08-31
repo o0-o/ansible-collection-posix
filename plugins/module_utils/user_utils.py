@@ -20,11 +20,11 @@ view - what ``getent`` answers, where the host has a getent worth
 believing - overlays them, so a host that resolves names beyond its
 files says so and a host that does not composes what it always did.
 ``compose_homes`` and
-``compose_shell_files`` define what follows from them, the
+``compose_shell_paths`` define what follows from them, the
 directories users live in and the shells they log in with, each
-taking the caller's own way of reading a path's metadata.  Homes are
-paths, so they are entries of the ``o0_paths`` store rather than a
-namespace of their own, and ``compose_homes`` answers in the shape
+taking the caller's own way of reading a path's metadata.  Both are
+paths, so both are entries of the ``o0_paths`` store rather than
+namespaces of their own, and both answer in the shape
 ``compose_paths`` takes.
 ``batch_read`` wraps that way of reading so the two compositions
 share one round trip instead of spending one apiece.  Every producer
@@ -341,15 +341,30 @@ def _residents_by_home(
     return residents_by_home
 
 
+def _described(store: dict[str, Any], path: str) -> bool:
+    """Whether the store already holds a path's file metadata.
+
+    A key the store holds for some other reason - the null a command
+    lookup files where it missed, the executable row a resolution
+    files where it did not - is not a description of the file, so the
+    test is for the type a read publishes rather than for the key.
+
+    :param dict[str, Any] store: The o0_paths store as it stands
+    :param str path: The path to test
+    :returns bool: True where a read has already described the path
+    """
+    entry = store.get(path)
+    return isinstance(entry, dict) and "type" in entry
+
+
 def _unread_shells(
     users: dict[str, dict[str, Any]],
-    shell_files: dict[str, dict[str, Any]],
+    store: dict[str, Any],
 ) -> set[str]:
     """The shells users hold that no gather has described yet.
 
     :param dict[str, dict[str, Any]] users: The o0_users mapping
-    :param dict[str, dict[str, Any]] shell_files: Shell files already
-        described
+    :param dict[str, Any] store: The o0_paths store as it stands
     :returns set[str]: Shell paths still to read
     """
     return {
@@ -357,18 +372,18 @@ def _unread_shells(
         for user in users.values()
         if isinstance(user.get("shell"), str)
         and user["shell"]
-        and user["shell"] not in shell_files
+        and not _described(store, user["shell"])
     }
 
 
 def batch_read(
     users: dict[str, dict[str, Any]],
     read: ReadPaths,
-    known: Optional[dict[str, dict[str, Any]]] = None,
+    known: Optional[dict[str, Any]] = None,
 ) -> ReadPaths:
     """Read for both compositions at once and serve them from it.
 
-    ``compose_homes`` and ``compose_shell_files`` each read the paths
+    ``compose_homes`` and ``compose_shell_paths`` each read the paths
     they need, and on a remote host each read is round trips of its
     own, even though both sets of paths are settled before either
     composition runs.  This reads their union once, up front, and
@@ -382,14 +397,14 @@ def batch_read(
     that falls through in practice, because a link is only known to
     have one once it has been read.
 
-    ``known`` has to be the same mapping ``compose_shell_files`` will
-    be given, or the batch reads shells that composition never asks
+    ``known`` has to be the same store ``compose_shell_paths`` will be
+    given, or the batch reads shells that composition never asks
     about.
 
     :param dict[str, dict[str, Any]] users: The o0_users mapping
     :param ReadPaths read: How to read a path's metadata
-    :param Optional[dict[str, dict[str, Any]]] known: Shell files a
-        previous gather already described
+    :param Optional[dict[str, Any]] known: The o0_paths store a
+        previous gather already published
     :returns ReadPaths: A read answering from the batch, falling
         through for whatever the batch does not cover
     """
@@ -417,9 +432,8 @@ def batch_read(
         if not covered.issuperset(wanted):
             return read(wanted)
 
-        # A composition writes its tags and residents onto what it is
-        # handed, so each answer is its own copy rather than the
-        # batch's entry
+        # A composition writes onto what it is handed, so each answer
+        # is its own copy rather than the batch's entry
         return {
             "paths": {
                 path: deepcopy(batch[path]) for path in wanted if path in batch
@@ -452,21 +466,6 @@ def _read_entries(
         path: data
         for path, data in result["paths"].items()
         if data or data is None
-    }
-
-
-def _read_paths(read: ReadPaths, paths: list[str]) -> dict[str, Any]:
-    """Read metadata for paths that are there, dropping the rest.
-
-    :param ReadPaths read: The caller's read
-    :param list[str] paths: Paths to inspect
-    :returns dict[str, Any]: Metadata per path, empty when the read
-        failed
-    """
-    return {
-        path: data
-        for path, data in _read_entries(read, paths).items()
-        if data is not None
     }
 
 
@@ -627,40 +626,88 @@ def compose_homes(
     return homes
 
 
-def compose_shell_files(
+def compose_shell_paths(
     users: dict[str, dict[str, Any]],
     read: ReadPaths,
-    known: Optional[dict[str, dict[str, Any]]] = None,
-) -> dict[str, dict[str, Any]]:
-    """Compose the canonical o0_shell_files fact.
+    known: Optional[dict[str, Any]] = None,
+) -> dict[str, Optional[dict[str, Any]]]:
+    """Compose the shell entries of the o0_paths store.
 
-    Shell files are keyed by the path of the shell binary and carry
-    that path's metadata.  A shell already described in ``known`` is
-    kept as it stands rather than read again, so a run adds to what an
-    earlier gather published instead of replacing it.
+    A login shell is a file, so it is an entry of the one flat path
+    store the way a home is: keyed by the canonical absolute path and
+    carrying what a read of that path says - its type, its mode and
+    the bits of it, who owns it, when it changed, and for a link the
+    target the listing reported.  The shells users actually hold are
+    what is read, named in ``/etc/shells`` or not; that file's own
+    list is the ``config`` of its own entry, which is a different
+    claim.
 
-    Distinct from the login shells /etc/shells names, which are the
-    ``config`` of that path in ``o0_paths``: this fact describes the
-    shells users actually hold, named or not.
+    Every hop the shell resolves through gets an entry of its own, for
+    the reason a linked home's target does: the question a consumer
+    has about ``/bin/sh`` is what it really is, and a chain that named
+    ``/usr/bin/bash`` without describing it would answer half of it.
+    The hops are read in one batch after the shells, because a chain
+    is not known until the shell has been read.
+
+    A shell the store already describes is left as it stands rather
+    than read again, so a run adds to what an earlier gather published
+    instead of paying for it twice.
 
     :param dict[str, dict[str, Any]] users: The o0_users mapping
     :param ReadPaths read: How to read a path's metadata
-    :param Optional[dict[str, dict[str, Any]]] known: Shell files a
-        previous gather already described
-    :returns dict[str, dict[str, Any]]: The o0_shell_files mapping
+    :param Optional[dict[str, Any]] known: The o0_paths store a
+        previous gather already published
+    :returns dict[str, Optional[dict[str, Any]]]: The shell entries,
+        keyed by canonical absolute path
     """
-    shell_files: dict[str, dict[str, Any]] = dict(known or {})
-
-    unread = _unread_shells(users, shell_files)
+    store = dict(known or {})
+    unread = _unread_shells(users, store)
 
     if not unread:
-        return shell_files
+        return {}
 
-    for path, data in _read_paths(read, sorted(unread)).items():
-        data["tags"] = ["posix", "shell"]
-        shell_files[path] = data
+    shells: dict[str, Optional[dict[str, Any]]] = {}
 
-    return shell_files
+    for path, data in _read_entries(read, sorted(unread)).items():
+        key = _store_key(path)
+        if key is not None:
+            shells[key] = data
+
+    # Every step of every chain, read once, in one batch. A step the
+    # store or this composition already describes is not read again
+    hops = sorted(
+        {
+            hop
+            for entry in shells.values()
+            if isinstance(entry, dict)
+            for hop in _chain_keys(entry)
+            if hop not in shells and not _described(store, hop)
+        }
+    )
+
+    if hops:
+        for path, data in _read_entries(read, hops).items():
+            key = _store_key(path)
+            if key is not None and key not in shells:
+                shells[key] = data
+
+    return shells
+
+
+def _chain_keys(entry: dict[str, Any]) -> list[str]:
+    """The o0_paths keys a resolution chain names.
+
+    :param dict[str, Any] entry: A read's entry for one path
+    :returns list[str]: The keys the chain's steps file under
+    """
+    chain = entry.get("resolution")
+
+    if not isinstance(chain, list):
+        return []
+
+    keys = [_store_key(step) for step in chain]
+
+    return [key for key in keys if key is not None]
 
 
 def lookup_user(
@@ -723,7 +770,7 @@ def _lookup(
 __all__ = [
     "batch_read",
     "compose_homes",
-    "compose_shell_files",
+    "compose_shell_paths",
     "compose_users_groups",
     "lookup_group",
     "lookup_user",

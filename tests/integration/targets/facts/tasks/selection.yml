@@ -56,7 +56,6 @@
       - entry['shell'] is not defined
       - gathered['o0_storage'] is not defined
       - gathered['o0_groups'] is not defined
-      - gathered['o0_shell_files'] is not defined
       - gathered['o0_os']['config'] is not defined
       - entry['limits'] is not defined
       - entry['umask'] is not defined
@@ -216,8 +215,7 @@
   vars:
     gathered: "{{ facts_users_reg['ansible_facts'] }}"
     expected: >-
-      {{ ['o0_groups', 'o0_paths', 'o0_shell_files', 'o0_shells',
-          'o0_users'] }}
+      {{ ['o0_groups', 'o0_paths', 'o0_shells', 'o0_users'] }}
   ansible.builtin.assert:
     that:
       - gathered.keys() | list | sort == expected | sort
@@ -281,12 +279,14 @@
     gathered: "{{ facts_compliance_reg['ansible_facts'] }}"
   ansible.builtin.assert:
     that:
-      - gathered.keys() | list | sort == ['o0_os', 'o0_paths']
+      - >-
+        gathered.keys() | list | sort
+        == ['o0_os', 'o0_paths', 'o0_shells']
       - gathered['o0_os'].keys() | list == ['compliance']
-      # The shell that answered the probes, carrying what it said
-      # about itself rather than a namespace of its own
-      - gathered['o0_paths']['/bin/sh']['builtins'] is sequence
-      - gathered['o0_paths']['/bin/sh']['aliases'] is mapping
+      # A builtin resolves to no file, so it is a fact about the shell
+      # that answers it rather than about any path
+      - gathered['o0_shells']['/bin/sh']['builtins'] is sequence
+      - "'builtins' not in gathered['o0_paths']['/bin/sh']"
       - gathered['compliance'] is not defined
       - gathered['shells'] is not defined
       - gathered['paths'] is not defined
@@ -445,7 +445,6 @@
     that:
       - gathered['o0_storage']['mounts'] is mapping
       - gathered['o0_groups'] is not defined
-      - gathered['o0_shell_files'] is not defined
       - gathered['o0_paths']['/etc/shells'] is not defined
       - homes | length == 0
       # environment is still selected, and it is what keys o0_users

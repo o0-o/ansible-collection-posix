@@ -142,6 +142,7 @@ class ActionModule(PosixActionBase, ActionBase):
             {
                 "compliance": compliance,
                 "paths": facts["o0_paths"],
+                "shells": facts["o0_shells"],
                 "missing_commands": missing_commands(compliance),
             }
         )

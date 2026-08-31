@@ -21,7 +21,7 @@ from ansible_collections.o0_o.posix.plugins.module_utils import (
     batch_read,
     compose_homes,
     compose_paths,
-    compose_shell_files,
+    compose_shell_paths,
     compose_shells,
     compose_users_groups,
     get_file_command_requests,
@@ -57,7 +57,7 @@ class ActionModule(ReadPosixActionBase, ActionBase):
         :param Optional[dict[str, Any]] task_vars: Available Ansible
             variables
         :returns dict[str, Any]: Result dictionary with o0_users,
-            o0_groups, o0_shell_files, and o0_paths data
+            o0_groups, o0_shells, and o0_paths data
         """
         task_vars = task_vars or {}
         self._def_inventory_hostname(task_vars)
@@ -109,29 +109,34 @@ class ActionModule(ReadPosixActionBase, ActionBase):
         )
 
         def read_paths(paths: list[str]) -> dict[str, Any]:
-            return self._read(paths=paths, task_vars=task_vars)
+            # Every read resolves, because the question a consumer has
+            # about a shell is what it really is, and a home reached
+            # through a link is the same question
+            return self._read(
+                paths=paths, task_vars=task_vars, resolve=True
+            )
 
-        # Homes and shell files are both metadata reads over paths the
+        # Homes and shells are both metadata reads over paths the
         # passwd entries already named, so they are read together
-        known_shell_files = task_vars.get("o0_shell_files")
-        read = batch_read(users, read_paths, known_shell_files)
+        known_paths = task_vars.get("o0_paths")
+        read = batch_read(users, read_paths, known_paths)
 
         result.update(
             {
                 "changed": False,
                 "o0_users": users,
                 "o0_groups": groups,
-                "o0_shell_files": compose_shell_files(
-                    users, read, known_shell_files
-                ),
             }
         )
 
-        # A home is a path, so it is an entry of the one flat path
-        # store: tagged home, carrying the UIDs that live there, and
-        # composed in beside everything else the module observed
-        # rather than published as a namespace of its own.
+        # A home is a path and so is a shell, so both are entries of
+        # the one flat path store, composed in beside everything else
+        # the module observed rather than published as namespaces of
+        # their own.
         paths = compose_paths(None, compose_homes(users, read))
+        paths = compose_paths(
+            paths, compose_shell_paths(users, read, known_paths)
+        )
 
         # A single file parsed on its own lands at its own path: the
         # bytes under content, the login shells they name under

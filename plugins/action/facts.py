@@ -28,7 +28,7 @@ from ansible_collections.o0_o.posix.plugins.module_utils import (
     compose_homes,
     compose_mount_config,
     compose_paths,
-    compose_shell_files,
+    compose_shell_paths,
     compose_shells,
     compose_users_groups,
     fstab,
@@ -553,34 +553,35 @@ class ActionModule(ReadPosixActionBase, ActionBase):
         parsed, and a path is only known to be there once it has been
         read.
 
-        A home is a path, so it is an entry of ``o0_paths`` rather
-        than a namespace of its own, tagged home and carrying the UIDs
-        that live there.
+        A home is a path and so is a shell, so both are entries of
+        ``o0_paths`` rather than namespaces of their own, and a shell
+        that resolves through links puts every step of the chain in
+        the store beside it.
 
         :param dict[str, Any] users: The o0_users mapping the batch
             composed
         :param Optional[dict[str, Any]] task_vars: Task variables
-        :returns dict[str, Any]: The shell files, and the home entries
-            of the path store
+        :returns dict[str, Any]: The home and shell entries of the
+            path store
         """
 
         def read_paths(paths: list[str]) -> dict[str, Any]:
-            return self._read(paths=paths, task_vars=task_vars)
-
-        known_shell_files = (task_vars or {}).get("o0_shell_files")
-        read = batch_read(users, read_paths, known_shell_files)
-
-        facts: dict[str, Any] = {
-            "o0_shell_files": compose_shell_files(
-                users, read, known_shell_files
+            # Every read resolves, because the question a consumer has
+            # about a shell is what it really is, and a home reached
+            # through a link is the same question
+            return self._read(
+                paths=paths, task_vars=task_vars, resolve=True
             )
-        }
 
-        homes = compose_paths(None, compose_homes(users, read))
-        if homes:
-            facts["o0_paths"] = homes
+        known_paths = (task_vars or {}).get("o0_paths")
+        read = batch_read(users, read_paths, known_paths)
 
-        return facts
+        paths = compose_paths(None, compose_homes(users, read))
+        paths = compose_paths(
+            paths, compose_shell_paths(users, read, known_paths)
+        )
+
+        return {"o0_paths": paths} if paths else {}
 
     def _expand_group(self, group: str) -> set[str]:
         """Expand a subset group into the subsets it names.

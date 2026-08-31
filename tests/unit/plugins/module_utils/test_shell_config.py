@@ -385,3 +385,123 @@ def test_the_canonical_home_and_shell_are_what_they_are_documented_as(
     """Test the two constants the docs name by value."""
     assert SHELL_SYSTEM_HOME == "/dev/null"
     assert SHELL_DEFAULT == "/bin/sh"
+
+
+# What each of these captures had in the home it was run out of. The
+# shells were run out of a home holding a dot file that defines them,
+# because an alias is what a rc file makes and there is no other way
+# to see one
+ALIAS_SHELLS = ("macos_aliases", "macos_bash_aliases", "macos_zsh_aliases")
+DEFINED_ALIASES = {"ll": "ls -l", "gs": "git status"}
+
+
+@pytest.mark.parametrize("shell", ALIAS_SHELLS)
+def test_an_alias_belongs_to_the_pair_that_made_it(shell: str) -> None:
+    """Test the aliases a login shell had land in the row's config.
+
+    An alias comes out of a rc file, so it is a fact about the shell
+    and the home together, and it rides beside the environment, the
+    mask and the locale that same probe answered with.
+    """
+    parsed = config(shell)
+
+    assert parsed["aliases"]["ll"] == "ls -l"
+    assert parsed["aliases"]["gs"] == "git status"
+
+
+def test_both_spellings_of_an_alias_listing_are_read() -> None:
+    """Test the two forms a real shell prints both parse.
+
+    What ``alias`` prints is unspecified beyond being re-inputtable.
+    bash prints ``alias ll='ls -l'`` and macOS's /bin/sh, which is the
+    same bash in POSIX mode, prints ``ll='ls -l'``.
+    """
+    posix_mode = config("macos_aliases")["aliases"]
+    bash_mode = config("macos_bash_aliases")["aliases"]
+
+    assert posix_mode == DEFINED_ALIASES
+    assert bash_mode == DEFINED_ALIASES
+
+
+def test_a_shell_s_own_aliases_are_kept_with_the_home_s() -> None:
+    """Test what the shell defines for itself is an alias too.
+
+    zsh ships two of its own, one of them named with a hyphen and
+    valued without quotes, which is a name and a value the parser has
+    to take as it finds them.
+    """
+    aliases = config("macos_zsh_aliases")["aliases"]
+
+    assert aliases["run-help"] == "man"
+    assert aliases["which-command"] == "whence"
+    assert aliases["ll"] == "ls -l"
+
+
+@pytest.mark.parametrize("shell", SHELLS)
+def test_a_capture_without_the_alias_section_still_parses(
+    shell: str,
+) -> None:
+    """Test a probe that answered before the alias marker existed.
+
+    These captures predate the alias section, so they end at the end
+    marker with no alias block at all: the locale is still read to its
+    own end and no aliases are claimed, which is what a shell that
+    would not answer for them means.
+    """
+    parsed = config(shell)
+
+    assert "aliases" not in parsed
+    if shell not in NO_LOCALE:
+        assert "@END@" not in str(parsed["locale"])
+
+
+def test_a_shell_with_no_aliases_claims_none() -> None:
+    """Test an empty alias listing is no aliases rather than an empty
+    mapping, the way every other field the shell would not answer for
+    is left out."""
+    parsed, _errors = _parse_shell_config(
+        0,
+        "@UMASK@\n0022\n@ENV@\nPATH=/bin\n@LOCALE@\n@ALIAS@\n@END@\n",
+        "",
+    )
+
+    assert "aliases" not in parsed
+
+
+class TestBuiltinsSitOnTheShell:
+    """Tests for where the commands a shell answers itself land."""
+
+    def test_a_builtin_is_beside_the_rows_and_not_in_one(self) -> None:
+        """Test builtins key the shell rather than a home.
+
+        A builtin is intrinsic to the shell binary and no home changes
+        which commands a shell is built out of, so it sits at the
+        shell; every row's key is an absolute path and this one is a
+        bare name, so the two never collide.
+        """
+        shells = compose_shells(
+            ["/bin/sh"],
+            {"/bin/sh": {"/dev/null": {"umask": "0022"}}},
+            {"commands": ["env"]},
+            {"/bin/sh": ["exec", "cd", "cd"]},
+        )
+
+        assert shells["/bin/sh"]["builtins"] == ["cd", "exec"]
+        assert shells["/bin/sh"]["/dev/null"]["config"] == {"umask": "0022"}
+        assert "builtins" not in shells["/bin/sh"]["/dev/null"]
+
+    def test_a_shell_known_only_by_its_builtins_is_a_key(self) -> None:
+        """Test a shell nothing else named still gets a key.
+
+        The sweep ran its probes through it, which is the host
+        answering for that shell as surely as naming it would be.
+        """
+        shells = compose_shells(builtins={"/bin/sh": ["command"]})
+
+        assert shells == {"/bin/sh": {"builtins": ["command"]}}
+
+    def test_a_shell_with_no_builtins_named_carries_none(self) -> None:
+        """Test a composition handed no builtins claims none."""
+        shells = compose_shells(["/bin/sh"])
+
+        assert shells == {"/bin/sh": {}}
