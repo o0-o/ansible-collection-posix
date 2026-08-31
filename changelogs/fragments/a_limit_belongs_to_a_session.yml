@@ -1,0 +1,27 @@
+# vim: ts=2:sw=2:sts=2:et:ft=yaml.ansible
+# -*- mode: yaml; yaml-indent-offset: 2; indent-tabs-mode: nil; -*-
+---
+minor_changes:
+  - >-
+    limits - a new module answers what the session it runs in is
+    limited to, keyed by resource with the soft ceiling in force, the
+    hard ceiling it may be raised to and the unit the shell printed
+    them in. An inquiry rather than a gather: the answer comes back as
+    a result and the play reads it where it asked, and whose session
+    gets asked is the play's to choose with ``become`` and
+    ``become_user``. The effective uid comes back beside the limits,
+    because a become chain means the identity in the play is not
+    always the identity that answered
+    (https://github.com/o0-o/ansible-collection-posix/pull/XXX).
+breaking_changes:
+  - >-
+    facts - the ``limits`` gather subset is retired with no successor,
+    and ``o0_users[uid].limits`` and ``o0_users[uid].umask`` go with
+    it. A resource limit is a property of the session that answered
+    rather than of the host or the user - PAM sets a base per service
+    and each step of a become chain overlays the last - so it does not
+    outlive the task that read it and was never a fact. Ask
+    ``o0_o.posix.limits`` where the answer is wanted. The mask is
+    unaffected and stays where the shell probes file it, on the
+    ``o0_shells`` home row that produced it
+    (https://github.com/o0-o/ansible-collection-posix/pull/XXX).

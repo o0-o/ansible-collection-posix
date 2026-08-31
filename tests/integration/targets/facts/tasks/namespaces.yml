@@ -407,9 +407,9 @@
       o0_storage carries something besides what is mounted and what
       named it: {{ storage.keys() | list }}
 
-# Three subsets answer under o0_users and the merge keys all of them
-# on the uid. The environment and limits subsets know an identity by
-# the uid they ran as, which /etc/passwd need not describe at all:
+# Two subsets answer under o0_users and the merge keys both of them
+# on the uid. The environment subset knows an identity by the uid it
+# ran as, which /etc/passwd need not describe at all:
 # macOS keeps its local users in a directory service and names only
 # the system ones in the file. So a uid keys every entry, and the
 # fields a passwd line composes are asserted of the entries that came
@@ -436,48 +436,27 @@
         | flatten | reject('integer') | list | length == 0
     fail_msg: 'o0_users is not keyed by a stringified uid'
 
-# Limits and a umask are what the shell says about the process it
-# handed the gather, so they describe the one user the gather ran as
-# and no other. Another user's are a delegated run's answer.
-- name: Assert only the connecting user carries limits and a mask
+# A limit is a property of the session that answered and a mask is a
+# product of the rc files a shell read, so neither is a field of a
+# user. The mask lives on the shell home row that produced it and the
+# limits are asked for by o0_o.posix.limits, where the session that
+# answers is the session the play chose.
+- name: Assert no user carries limits or a mask
   vars:
     users: "{{ facts_all_reg['ansible_facts']['o0_users'] }}"
-    entry: "{{ users[facts_uid] }}"
     limited: >-
       {{ users | dict2items | selectattr('value.limits', 'defined')
          | map(attribute='key') | list }}
     masked: >-
       {{ users | dict2items | selectattr('value.umask', 'defined')
          | map(attribute='key') | list }}
-    ceilings: >-
-      {{ entry['limits'] | dict2items | map(attribute='value')
-         | map('dict2items') | flatten
-         | rejectattr('key', 'eq', 'unit')
-         | map(attribute='value') | list }}
-    units: >-
-      {{ entry['limits'] | dict2items | map(attribute='value')
-         | selectattr('unit', 'defined') | map(attribute='unit')
-         | list }}
   ansible.builtin.assert:
     that:
-      - limited == [facts_uid]
-      - masked == [facts_uid]
-      - entry['umask'] is match('^0[0-7]{3}$')
-      # Every resource names both ceilings, whether or not it caps
-      - entry['limits'] | dict2items
-        | rejectattr('value.soft', 'defined') | list | length == 0
-      - entry['limits'] | dict2items
-        | rejectattr('value.hard', 'defined') | list | length == 0
-      # A ceiling is a count or it is null, and never a flag
-      - ceilings | select('boolean') | list | length == 0
-      - ceilings | reject('integer') | reject('none')
-        | list | length == 0
-      # A unit is the shell's own word for it
-      - units | length > 0
-      - units | reject('string') | list | length == 0
+      - limited == []
+      - masked == []
     fail_msg: >-
-      the limits and mask are not the connecting user's alone:
-      {{ limited }} and {{ masked }} against {{ facts_uid }}
+      a user entry carries limits or a mask: {{ limited }} and
+      {{ masked }}
 
 - name: Assert root is the user every POSIX host has
   vars:

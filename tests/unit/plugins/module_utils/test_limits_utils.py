@@ -234,49 +234,64 @@ def test_a_mask_that_is_not_octal_is_not_a_mask(printed: str) -> None:
     assert _parse_umask(printed, "test: ") == (None, None)
 
 
-def test_the_probe_asks_a_shell_because_both_are_builtins() -> None:
-    """Test both commands run through sh rather than being exec'd."""
+def test_the_probe_names_the_builtin_it_asks() -> None:
+    """Test the request names ulimit rather than the shell reading it.
+
+    The probe is a script, so argv names sh and sh is not what was
+    asked.  A builtin is a command a fact may name like any other, so
+    the request declares the one it asked.
+    """
     requests = {
         request["type"]: request for request in get_limits_command_requests()
     }
 
-    assert set(requests) == {"ulimit", "umask"}
+    assert set(requests) == {"ulimit", "effective_uid"}
 
-    for request in requests.values():
-        assert request["command"][:2] == ("sh", "-c")
-
-    script = requests["ulimit"]["command"][2]
-    assert "ulimit -aS" in script
-    assert "ulimit -aH" in script
-    assert requests["umask"]["command"][2] == "umask"
+    script = requests["ulimit"]["command"]
+    assert script[:2] == ("sh", "-c")
+    assert "ulimit -aS" in script[2]
+    assert "ulimit -aH" in script[2]
+    assert requests["ulimit"]["evidence"] == ["ulimit"]
 
 
-def test_the_spec_names_the_two_shell_facts() -> None:
-    """Test the spec holds the probes and nothing else."""
-    assert set(LIMITS_COMMAND_SPEC) == {"posix"}
-    assert set(LIMITS_COMMAND_SPEC["posix"]) == {"ulimit", "umask"}
+def test_the_uid_rides_with_the_limits() -> None:
+    """Test who answered is asked for beside what they are limited to.
 
-
-def test_the_fields_are_the_users_own_rather_than_a_subsets() -> None:
-    """Test the processor answers with fields to file on the entry.
-
-    A user's limits and a user's umask are two facts about that user,
-    not two parts of a thing called limits, so they arrive as the
-    fields themselves.
+    A limit is a property of one session, and the answer says nothing
+    without the identity it applies to, so the probe that names the
+    identity travels with it.
     """
-    results = []
-    for request in get_limits_command_requests():
-        if request["type"] == "ulimit":
-            stdout = corpus("ulimit_macos.txt")
-        else:
-            stdout = "0022\n"
-        results.append({**request, "rc": 0, "stdout": stdout})
+    requests = {
+        request["type"]: request for request in get_limits_command_requests()
+    }
+
+    assert requests["effective_uid"]["command"] == ("id", "-u")
+
+
+def test_the_spec_names_the_limits_probe_alone() -> None:
+    """Test the mask is not asked for here.
+
+    A umask is a product of the rc files a shell read and belongs to
+    the shell and home that produced it, which is where the shell
+    probes file it.  Asking twice would put two answers to one
+    question in two namespaces.
+    """
+    assert set(LIMITS_COMMAND_SPEC) == {"posix"}
+    assert set(LIMITS_COMMAND_SPEC["posix"]) == {"ulimit"}
+
+
+def test_the_processor_answers_with_the_limits_alone() -> None:
+    """Test the mask does not come back from the limits probe."""
+    results = [
+        {**request, "rc": 0, "stdout": corpus("ulimit_macos.txt")}
+        for request in get_limits_command_requests()
+        if request["type"] == "ulimit"
+    ]
 
     fields, errors = process_limits_command_results(results)
 
     assert errors == []
-    assert set(fields) == {"limits", "umask"}
-    assert fields["umask"] == "0022"
+    assert set(fields) == {"limits"}
     assert fields["limits"]["processes"]["soft"] == 10666
 
 

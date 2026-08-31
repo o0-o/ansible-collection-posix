@@ -289,35 +289,56 @@ def _parse_umask(
 
 
 def get_limits_command_requests() -> list[dict[str, Any]]:
-    """Build command requests for the user-scoped shell facts.
+    """Build the request that asks a session what it is limited to.
+
+    The effective uid rides with it, because a limit is a fact about
+    one session and the answer is worth nothing without knowing whose
+    session answered.
 
     :returns list[dict[str, Any]]: Command requests for run plugin
     """
     from ansible_collections.o0_o.posix.plugins.module_utils.command_spec import (  # noqa: E501
         LIMITS_COMMAND_SPEC,
     )
+    from ansible_collections.o0_o.posix.plugins.module_utils.evidence_utils import (  # noqa: E501
+        EVIDENCE,
+    )
+    from ansible_collections.o0_o.posix.plugins.module_utils.id_utils import (
+        get_effective_uid_command_requests,
+    )
 
     from ansible_collections.o0_o.core.plugins.module_utils import (
         process_command_spec,
     )
 
-    return process_command_spec(LIMITS_COMMAND_SPEC)
+    requests = process_command_spec(LIMITS_COMMAND_SPEC)
+
+    # The probe is a script, so argv names the shell that read it back
+    # and the shell is not the subject: what was asked is ulimit, a
+    # builtin, which is a command a fact may name like any other
+    for request in requests:
+        request[EVIDENCE] = ["ulimit"]
+
+    return requests + get_effective_uid_command_requests()
 
 
 def process_limits_command_results(
     cmds_completed: list[dict[str, Any]],
 ) -> tuple[dict[str, Any], list[Exception]]:
-    """Read the user-scoped shell facts out of a batch's results.
+    """Read what a session said it is limited to.
 
-    Answers with the fields to file on the user's entry rather than
-    with one field named for the subset, because a user's limits and
-    a user's umask are two facts about that user and not two parts of
-    a thing called limits.  A probe that answered nothing leaves its
-    field out.
+    A probe that answered nothing leaves its field out: a session with
+    no ``ulimit`` to ask is not a session with no limits.
+
+    The mask does not come back here.  A umask is a product of the rc
+    files a shell read, stable for as long as those files say what
+    they say, so it belongs to the shell and the home that produced it
+    - which is where the shell probes file it.  A limit is a property
+    of one session and is not.
 
     :param list[dict[str, Any]] cmds_completed: Command results
     :returns tuple[dict[str, Any], list[Exception]]: Tuple of
-        (fields, errors) to merge into the user's entry
+        (fields, errors)
     """
     processed = process_all_command_results(cmds_completed)
 
@@ -326,10 +347,6 @@ def process_limits_command_results(
     limits = (processed.get("ulimit") or {}).get("parsed")
     if limits:
         fields["limits"] = limits
-
-    umask = (processed.get("umask") or {}).get("parsed")
-    if umask is not None:
-        fields["umask"] = umask
 
     return fields, []
 

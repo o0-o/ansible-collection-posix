@@ -31,13 +31,11 @@ share one round trip instead of spending one apiece.  Every producer
 of these facts composes them here so consumers see one shape.
 
 Not everything filed under a uid is composed from a file.  A user's
-environment, locale, resource limits and umask are user-scoped facts,
-and the only user a run can observe them for is the one it is running
-as: ``pam_limits`` grants limits per user and per group, BSD hands
-them out by login class, root's ceiling is not anyone else's, and an
-environment is whatever that user's own login files made it.  Reading
-them once and filing them under every uid would be one user's answer
-wearing everyone's name.
+environment and locale are user-scoped facts, and the only user a run
+can observe them for is the one it is running as: an environment is
+whatever that user's own login files made it.  Reading it once and
+filing it under every uid would be one user's answer wearing
+everyone's name.
 
 So a producer files them under the effective uid alone, and another
 user's are answered by asking as that user - a task with

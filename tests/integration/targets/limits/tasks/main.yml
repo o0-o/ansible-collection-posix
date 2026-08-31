@@ -1,0 +1,121 @@
+# vim: ts=2:sw=2:sts=2:et:ft=yaml.ansible
+# -*- mode: yaml; yaml-indent-offset: 2; indent-tabs-mode: nil; -*-
+---
+# GNU General Public License v3.0+
+# SPDX-License-Identifier: GPL-3.0-or-later
+# (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
+#
+# Copyright (c) 2025 oØ.o (@o0-o)
+#
+# This file is part of the o0_o.posix Ansible Collection.
+
+- name: Ask this session what it is limited to
+  o0_o.posix.limits:
+  register: limits_reg
+
+- name: Ask the host whose session that was
+  o0_o.posix.command:
+    argv:
+      - id
+      - -u
+  register: limits_uid_reg
+
+- name: Assert the answer is the shape the module documents
+  vars:
+    limits: "{{ limits_reg['limits'] }}"
+    ceilings: >-
+      {{ limits | dict2items | map(attribute='value')
+         | map('dict2items') | flatten
+         | rejectattr('key', 'eq', 'unit')
+         | map(attribute='value') | list }}
+    units: >-
+      {{ limits | dict2items | map(attribute='value')
+         | selectattr('unit', 'defined') | map(attribute='unit')
+         | list }}
+  ansible.builtin.assert:
+    that:
+      - limits_reg is not changed
+      - limits is mapping
+      # Every shell that has ulimit answers for something
+      - limits | length > 0
+      # Every resource names both ceilings, whether or not it caps
+      - >-
+        limits | dict2items | rejectattr('value.soft', 'defined')
+        | list | length == 0
+      - >-
+        limits | dict2items | rejectattr('value.hard', 'defined')
+        | list | length == 0
+      # A ceiling is a count or it is null, and never a flag
+      - ceilings | select('boolean') | list | length == 0
+      - >-
+        ceilings | reject('integer') | reject('none')
+        | list | length == 0
+      # A unit is the shell's own word for it, kept because the same
+      # resource comes back in blocks from one shell and kbytes from
+      # another
+      - units | length > 0
+      - units | reject('string') | list | length == 0
+    fail_msg: >-
+      the limits module did not answer the shape it documents:
+      {{ limits }}
+
+- name: Assert the answer names the session it came from
+  ansible.builtin.assert:
+    that:
+      - limits_reg['uid'] is integer
+      - >-
+        limits_reg['uid'] == limits_uid_reg['stdout'] | trim | int
+    fail_msg: >-
+      the answer names uid {{ limits_reg['uid'] }} and the session is
+      {{ limits_uid_reg['stdout'] | trim }}
+
+- name: Assert the result names the builtin it asked
+  ansible.builtin.assert:
+    that:
+      # ulimit is a builtin and it is still what answered: the probe
+      # is a script, so the sh that read it back is not the subject
+      - limits_reg['evidence']['commands'] == ['id', 'ulimit']
+      - "'files' not in limits_reg['evidence']"
+      - "'config' not in limits_reg['evidence']"
+    fail_msg: >-
+      the limits module named something other than what it asked:
+      {{ limits_reg['evidence'] }}
+
+# A limit does not outlive the task that read it, so the module
+# publishes no fact and no gather has one to publish either.
+- name: Assert nothing is published as a fact
+  o0_o.posix.facts:
+    gather_subset: [all]
+  register: limits_facts_reg
+
+- name: Assert neither the module nor a gather makes a limit a fact
+  vars:
+    users: "{{ limits_facts_reg['ansible_facts']['o0_users'] }}"
+  ansible.builtin.assert:
+    that:
+      - limits_reg['ansible_facts'] is not defined
+      - limits_reg['o0_users'] is not defined
+      - >-
+        users | dict2items | selectattr('value.limits', 'defined')
+        | list | length == 0
+    fail_msg: >-
+      a limit was published as a fact
+
+# The mask is not this module's to answer. It is a product of the rc
+# files a shell read, so it belongs to the shell and the home that
+# produced it, and that is the one place it is written.
+- name: Assert the mask is not answered here
+  vars:
+    shells: "{{ limits_facts_reg['ansible_facts']['o0_shells'] }}"
+  ansible.builtin.assert:
+    that:
+      - limits_reg['umask'] is not defined
+      - limits_reg['limits']['umask'] is not defined
+      # And it is still asked, on the row that produced it: the shell
+      # the task named, run out of the one home every POSIX host has
+      - >-
+        shells['/bin/sh']['homes']['/dev/null']['umask']
+        is match('^0[0-7]{3}$')
+    fail_msg: >-
+      the mask is answered in the wrong place:
+      {{ shells['/bin/sh'] | default({}) }}

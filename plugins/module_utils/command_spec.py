@@ -49,7 +49,6 @@ from ansible_collections.o0_o.posix.plugins.module_utils.limits_utils import (
     LIMITS_HARD_MARKER,
     LIMITS_SOFT_MARKER,
     _parse_ulimit,
-    _parse_umask,
 )
 from ansible_collections.o0_o.posix.plugins.module_utils.locale_utils import (
     _parse_locale,
@@ -184,10 +183,6 @@ LIMITS_COMMAND_SPEC = {
                 f" echo {LIMITS_HARD_MARKER}; ulimit -aH 2>/dev/null",
             ),
             "parser": _parse_ulimit,
-        },
-        "umask": {
-            "command": ("sh", "-c", "umask"),
-            "parser": _parse_umask,
         },
     },
 }

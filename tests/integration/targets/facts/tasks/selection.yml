@@ -11,9 +11,9 @@
 
 # What a gather_subset selects, asserted by the names each selection
 # publishes and the names it leaves alone. Every subset is asked for
-# by the name the module resolves: uname, environment, limits,
-# timezone, compliance, config, dmidecode, mounts, fstab, users, and
-# the groups min, all and storage.
+# by the name the module resolves: uname, environment, timezone,
+# compliance, config, dmidecode, mounts, fstab, users, and the groups
+# min, all and storage.
 
 - name: Gather the smallest useful subset
   o0_o.posix.facts:
@@ -57,6 +57,8 @@
       - gathered['o0_storage'] is not defined
       - gathered['o0_groups'] is not defined
       - gathered['o0_os']['config'] is not defined
+      # Limits are no subset's to publish: they belong to the session
+      # that answered, so o0_o.posix.limits answers them where asked
       - entry['limits'] is not defined
       - entry['umask'] is not defined
       # The compliance sweep fills the path store, so the store is
@@ -183,36 +185,30 @@
     fail_msg: >-
       the config subset published something else: {{ gathered }}
 
-- name: Gather the limits and mask of the connecting user alone
-  o0_o.posix.facts:
-    gather_subset: [limits]
-  register: facts_limits_reg
+# The limits subset is gone and nothing succeeded it. A resource
+# limit is a property of the session that answered rather than of the
+# host or the user, and it does not outlive the task that read it, so
+# o0_o.posix.limits answers it where the play asks.
+- name: Ask for a subset the module no longer has
+  block:
+    - name: Ask for the retired subset
+      o0_o.posix.facts:
+        gather_subset: [limits]
+      register: facts_retired_reg
 
-# A user-scoped subset, so it publishes one entry under one uid and
-# files its two facts as fields of that entry rather than nesting the
-# mask inside the limits.
-- name: Assert the limits subset publishes one user's two shell facts
-  vars:
-    gathered: "{{ facts_limits_reg['ansible_facts'] }}"
-    entry: "{{ gathered['o0_users'][facts_uid] }}"
-  ansible.builtin.assert:
-    that:
-      - gathered.keys() | list == ['o0_users']
-      - gathered['o0_users'].keys() | list == [facts_uid]
-      - entry.keys() | list | sort
-        == ['evidence', 'limits', 'origins', 'uid', 'umask']
-      - entry['evidence']['commands'] == ['id', 'sh']
-      - entry['uid'] == facts_uid | int
-      - entry['umask'] is match('^0[0-7]{3}$')
-      - entry['limits'] is mapping
-      - entry['limits'] | length > 0
-      # The mask is a field of the user, not a part of the limits
-      - entry['limits']['umask'] is not defined
-      # Nothing the users subset reads from a file is here
-      - entry['name'] is not defined
-      - entry['shell'] is not defined
-    fail_msg: >-
-      the limits subset published something else: {{ gathered }}
+    - name: Assert the retired subset did not resolve
+      ansible.builtin.fail:
+        msg: >-
+          the limits subset still resolves:
+          {{ facts_retired_reg['ansible_facts'] | default({}) }}
+  rescue:
+    - name: Assert the retired subset is refused by name
+      ansible.builtin.assert:
+        that:
+          - "'limits' in ansible_failed_result['msg']"
+        fail_msg: >-
+          the limits subset failed for another reason:
+          {{ ansible_failed_result['msg'] }}
 
 - name: Gather the users of the host alone
   o0_o.posix.facts:
