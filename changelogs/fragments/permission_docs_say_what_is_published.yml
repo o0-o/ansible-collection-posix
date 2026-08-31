@@ -1,0 +1,24 @@
+# vim: ts=2:sw=2:sts=2:et:ft=yaml.ansible
+# -*- mode: yaml; yaml-indent-offset: 2; indent-tabs-mode: nil; -*-
+---
+bugfixes:
+  - >-
+    read, facts, which, compliance - the return documentation for
+    C(readable), C(writable) and C(executable) says what those fields
+    hold. It described each of them as a boolean saying whether the
+    path was readable, writable or executable "for the remote user",
+    which was untrue on two counts even before the fields changed
+    shape: the value was the owner bit of the mode, so it was about
+    the file's owner rather than about the remote user, and it was
+    what the mode claimed rather than what the host would do. The
+    documented shape is now the published one - a mapping of uid to
+    what that uid was told - and the prose says which question was
+    asked, who was asked it, and why an ACL, a read-only mount or a
+    MAC policy can make the answer differ from the mode
+    (https://github.com/o0-o/ansible-collection-posix/pull/XXX).
+  - >-
+    read, facts - the mode's own bits are documented where they are
+    published, so a consumer reading C(rusr) or C(isgid) off an entry
+    can find out what it is looking at and how it differs from the
+    triple beside it
+    (https://github.com/o0-o/ansible-collection-posix/pull/XXX).

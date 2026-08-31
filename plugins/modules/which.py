@@ -63,13 +63,18 @@ o0_paths:
   contains:
     executable:
       description: >-
-        Whether the path is executable. C(command -v) names a pathname
-        the shell would run, which is that shell answering the
-        question a C(test -x) answers.
-      type: bool
+        Whether the path can be run, keyed by the uid the lookup ran
+        as. C(command -v) names a pathname the shell running it would
+        run, which is that shell answering the question C(test -x)
+        answers, and the answer belongs to whoever the shell was
+        running as. A host that would not say who that was leaves the
+        key off and the entry holds the path and nothing else.
+      type: dict
+      sample: {'0': true}
   sample:
     /bin/date:
-      executable: true
+      executable:
+        '0': true
 """
 from ansible.module_utils.basic import AnsibleModule
 

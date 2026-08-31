@@ -40,9 +40,12 @@ options:
   attributes:
     description:
       - Include basic metadata and extended filesystem attributes such as
-        type, mode, uid, gid, size, readable, writable, executable,
-        hardlinks, inode, timestamps (modified, created, changed), ACL,
-        filesystem flags, and SELinux context.
+        type, mode and its individual bits, uid, gid, size, hardlinks,
+        inode, timestamps (modified, created, changed), ACL, filesystem
+        flags, and SELinux context.
+      - Also asks the host whether each path can be read, written and
+        run, and publishes the answers under C(readable), C(writable)
+        and C(executable), keyed by the uid that asked.
       - Does not include extended attributes (xattrs); use I(extended)
         for those.
       - Defaults to C(false) when I(content) or I(lines) is requested and
@@ -347,16 +350,62 @@ paths:
           returned: when the path is a regular file
           sample: {bytes: 1024, pretty: '1 KiB'}
         readable:
-          description: Whether the path is readable for the remote user
-          type: bool
-          sample: true
+          description:
+            - Whether the path can be read, as the kernel answered
+              whoever asked. One key per uid that asked, keyed as a
+              string the way C(o0_users) keys a uid, mapping to what
+              that uid was told by C(test -r).
+            - There is no answer to key by nobody. Whether a file can
+              be read is a question about a file and a user together,
+              so a consumer names the user whose answer it wants.
+            - The gathering user always answers. Where C(become) put
+              the play on root and the connection user is somebody
+              else, that user answers too, so a play can see what it
+              will get when it drops back.
+            - A uid whose probe would not run is left out rather than
+              guessed at, so a mapping may hold fewer rows than there
+              were identities to ask as, and an entry may carry no
+              such key at all.
+          type: dict
+          returned: with the attributes, where a probe answered
+          sample: {'0': true, '1000': false}
         writable:
-          description: Whether the path is writable for the remote user
-          type: bool
-          sample: true
+          description:
+            - Whether the path can be written, as C(test -w) answered
+              each uid that asked. Keyed and qualified exactly as
+              C(readable) is.
+            - Not derived from the mode, and deliberately so. An ACL,
+              a read-only mount and a MAC policy each make what a file
+              will do differ from what its mode claims, and root
+              writes what the mode refuses everybody.
+          type: dict
+          returned: with the attributes, where a probe answered
+          sample: {'0': true, '1000': false}
         executable:
-          description: Whether the path is executable for the remote user
+          description:
+            - Whether the path can be run, as C(test -x) answered each
+              uid that asked. Keyed and qualified exactly as
+              C(readable) is.
+            - For a directory this is the search permission, which is
+              what C(test -x) answers about one.
+          type: dict
+          returned: with the attributes, where a probe answered
+          sample: {'0': true, '1000': true}
+        rusr:
+          description:
+            - The mode's own bits, as the C(ls) listing carries them:
+              C(rusr), C(wusr), C(xusr) for the owner, C(rgrp),
+              C(wgrp), C(xgrp) for the group, C(roth), C(woth),
+              C(xoth) for everybody else, and C(isuid) and C(isgid)
+              for the two set-id bits.
+            - These are what the filesystem asserts about the file.
+              What it will actually do is C(readable), C(writable) and
+              C(executable), and the two are allowed to disagree.
+            - The sticky bit is read into C(xoth) the way C(ls) prints
+              it - C(t) sets it, C(T) does not.
           type: bool
+          returned: with the attributes, where the listing carried a
+            mode
           sample: true
         hardlinks:
           description:

@@ -84,10 +84,12 @@ class ActionModule(ReadPosixActionBase, ActionBase):
                 "default": True,
                 "description": (
                     "Include basic file attributes and extended filesystem "
-                    "metadata: type, mode, owner, group, size, writable, "
-                    "hardlinks, inode, timestamps (modified, created, "
-                    "changed), ACL, filesystem flags, and SELinux context "
-                    "(but NOT xattrs)"
+                    "metadata: type, mode and its individual bits, owner, "
+                    "group, size, hardlinks, inode, timestamps (modified, "
+                    "created, changed), ACL, filesystem flags, and SELinux "
+                    "context (but NOT xattrs). Also asks the host whether "
+                    "each path is readable, writable and executable, keyed "
+                    "by the uid that asked"
                 ),
             },
             "extended": {

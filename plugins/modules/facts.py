@@ -965,9 +965,36 @@ ansible_facts:
             For a home, the UIDs that call the path home
           type: list
           elements: int
+        readable:
+          description: >-
+            Whether the path can be read, as the kernel answered
+            whoever asked, keyed by the uid that asked and typed as a
+            string the way C(o0_users) keys one. Not derived from the
+            mode: an ACL, a read-only mount and a MAC policy each make
+            what a file will do differ from what its mode claims, and
+            root reads what the mode refuses everybody.
+          type: dict
+          sample: {'0': true, '1000': false}
+        writable:
+          description: >-
+            Whether the path can be written, keyed the same way
+          type: dict
+          sample: {'0': true, '1000': false}
         executable:
           description: >-
-            Whether the path is executable
+            Whether the path can be run - for a directory, searched -
+            keyed the same way. A path a command resolved to carries
+            this from the C(command -v) that named it, which is the
+            shell answering the same question for the uid it was
+            running as.
+          type: dict
+          sample: {'0': true}
+        rusr:
+          description: >-
+            The mode's own bits, as the listing carries them - C(rusr),
+            C(wusr), C(xusr), C(rgrp), C(wgrp), C(xgrp), C(roth),
+            C(woth), C(xoth), C(isuid), C(isgid). What the filesystem
+            asserts, beside what it will actually do.
           type: bool
         aliases:
           description: >-
@@ -1001,7 +1028,8 @@ ansible_facts:
             - command
             - test
         /usr/bin/grep:
-          executable: true
+          executable:
+            '0': true
         /usr/bin/pax: null
         /home/o0-o:
           type: directory

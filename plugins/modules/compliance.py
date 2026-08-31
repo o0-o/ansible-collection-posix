@@ -458,9 +458,12 @@ paths:
   contains:
     executable:
       description: >-
-        Whether the path is executable, as the C(command -v) that
-        named it answered
-      type: bool
+        Whether the path can be run, keyed by the uid the sweep's
+        lookups ran as. C(command -v) names a pathname the shell
+        running it would run, and that answer belongs to whoever the
+        shell was running as.
+      type: dict
+      sample: {'0': true}
     aliases:
       description: >-
         For the shell that answered the probes, the aliases it
@@ -486,7 +489,8 @@ paths:
         - command
         - test
     /usr/bin/grep:
-      executable: true
+      executable:
+        '0': true
     /usr/bin/pax: null
 missing_commands:
   description: >-
