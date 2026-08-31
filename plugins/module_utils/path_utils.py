@@ -25,6 +25,14 @@ is null was asked about and does not exist; a typed empty (``''``,
 ``[]``, ``{}``) exists and is empty.  Nothing here converts one of
 those answers into another.
 
+Every composed entry names who composed it, in ``origin``: a sorted
+list of the module FQCNs that contributed it.  One field, one meaning
+- the provenance of the entry itself - and a collection contributing
+to this store names itself there rather than inventing a field of its
+own.  It is the one thing a later observation adds to rather than
+replaces, because two producers that both described a path both put
+it here.
+
 ``canonicalize`` reduces an absolute path to the one form the store
 keys it by, for the producers and consumers that have to write a key
 rather than read one, and ``flags_to_octal_mode`` parses the
@@ -38,6 +46,9 @@ from __future__ import annotations
 import posixpath
 
 from typing import Any, Optional
+
+# The key an entry names the producers that composed it under
+ORIGIN = "origin"
 
 
 def canonicalize(path: str) -> str:
@@ -245,6 +256,18 @@ def _validate_entry(path: str, entry: Any) -> Optional[dict[str, Any]]:
 
     composed = dict(entry)
 
+    if ORIGIN in composed:
+        named = composed[ORIGIN]
+        if not isinstance(named, list) or not all(
+            isinstance(name, str) for name in named
+        ):
+            raise ValueError(
+                f"The origin of {path!r} must be a list of the module"
+                f" names that composed the entry, got"
+                f" {type(named).__name__}: {named!r}"
+            )
+        composed[ORIGIN] = sorted(set(named))
+
     if "children" in composed:
         children = composed["children"]
         if not isinstance(children, list):
@@ -290,9 +313,32 @@ def _validate_paths(source: Any, role: str) -> dict[str, Any]:
     return composed
 
 
+def _name_origin(entry: Any, origin: Optional[str]) -> Any:
+    """Put a producer's name on an entry it composed.
+
+    A null carries no fields, so a path confirmed absent names no
+    producer; what it says is that somebody asked, and the entry that
+    says who is the one that describes something.
+
+    :param Any entry: The entry as the producer composed it
+    :param Optional[str] origin: The producer's module FQCN, or None
+        where the caller composes on somebody else's behalf
+    :returns Any: The entry, named
+    """
+    if origin is None or not isinstance(entry, dict):
+        return entry
+
+    named = list(entry.get(ORIGIN) or [])
+    named.append(origin)
+    entry[ORIGIN] = sorted(set(named))
+
+    return entry
+
+
 def compose_paths(
     store: Optional[dict[str, Any]] = None,
     observation: Optional[dict[str, Any]] = None,
+    origin: Optional[str] = None,
 ) -> dict[str, Optional[dict[str, Any]]]:
     """Compose the canonical o0_paths fact store.
 
@@ -323,10 +369,20 @@ def compose_paths(
     one path does not report the rest of the filesystem as gone, and
     a null is never rounded to an empty mapping in either direction.
 
+    ``origin`` is the exception the rule needs.  It names the
+    producers an entry was composed by, and two producers that both
+    described a path both belong in it, so it accumulates where every
+    other field is replaced.  A caller passing its own module FQCN
+    names itself on every entry it just observed; a caller composing
+    on somebody else's behalf passes none and the entries keep
+    whatever names they arrived with.
+
     :param Optional[dict[str, Any]] store: The o0_paths fact as it
         stands, or None before anything has been observed
     :param Optional[dict[str, Any]] observation: What was just
         observed about some paths, keyed the same way
+    :param Optional[str] origin: The FQCN of the module composing the
+        observation, named on every entry it describes
     :returns dict[str, Optional[dict[str, Any]]]: The composed store
     :raises ValueError: If either mapping is keyed by anything but a
         flat absolute path, carries an entry that is neither null nor
@@ -334,11 +390,23 @@ def compose_paths(
         entry
     """
     composed = _validate_paths(store, "store")
-    composed.update(_validate_paths(observation, "observation"))
+
+    for path, entry in _validate_paths(observation, "observation").items():
+        known = composed.get(path)
+        entry = _name_origin(entry, origin)
+        if isinstance(known, dict) and isinstance(entry, dict):
+            named = sorted(
+                set(known.get(ORIGIN) or []) | set(entry.get(ORIGIN) or [])
+            )
+            if named:
+                entry[ORIGIN] = named
+        composed[path] = entry
+
     return composed
 
 
 __all__ = [
+    "ORIGIN",
     "canonicalize",
     "compose_paths",
     "flags_to_octal_mode",

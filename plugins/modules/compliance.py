@@ -455,6 +455,16 @@ paths:
   returned: always
   type: dict
   contains:
+    origin:
+      description: >-
+        The modules that contributed the entry, by FQCN, sorted. The
+        one thing a later observation adds to rather than replaces, so
+        a path this sweep and another producer both described names
+        both of them.
+      type: list
+      elements: str
+      sample:
+        - o0_o.posix.compliance
     executable:
       description: >-
         Whether the path can be run, keyed by the uid the sweep's

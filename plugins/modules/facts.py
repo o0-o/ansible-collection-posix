@@ -937,15 +937,16 @@ ansible_facts:
           apart - a path that is absent from the store was never asked
           about, a path whose entry is C(null) was asked about and
           does not exist, and a typed empty exists and is empty.
-        - The directories users call home are entries here, tagged
-          C(home) and carrying C(residents), the UIDs that live there.
-          A home two users share is one entry with two residents, and
-          where a home is a symlink the target gets an entry of its
-          own carrying the same residents, because that is where their
-          files are. A home the gather read and found is not there is
-          C(null), a dangling home, which the C(o0_o.posix.homes)
-          lookup surfaces by reading C(o0_users) back against the
-          store.
+        - The directories users call home are entries here, carrying
+          what a read of that path said and nothing about who lives
+          there. A home two users share is one entry, and every step a
+          home resolves through gets an entry of its own, because that
+          is where their files are. Who calls a path home is the join
+          between C(o0_users) and this store rather than a field
+          either of them keeps, and the C(o0_o.posix.homes) lookup is
+          what makes it. A home the gather read and found is not there
+          is C(null), a dangling home, which that same lookup
+          surfaces.
         - The login shells users hold are entries here too, with the
           file metadata of the shell itself and, for a link, the
           target the listing reported. Every step a shell resolves
@@ -967,17 +968,19 @@ ansible_facts:
         when the compliance, fstab or users subset is gathered
       type: dict
       contains:
-        tags:
+        origin:
           description: >-
-            What the path is to the collection - C(home) for a
-            directory a user lives in
+            The modules that contributed the entry, by FQCN, sorted.
+            One field, one meaning - the provenance of the entry
+            itself - and it is the one thing a later observation adds
+            to rather than replaces, so a path the compliance sweep
+            and the users read both described names both of them. A
+            collection gathering into this store names itself here
+            rather than inventing a field of its own.
           type: list
           elements: str
-        residents:
-          description: >-
-            For a home, the UIDs that call the path home
-          type: list
-          elements: int
+          sample:
+            - o0_o.posix.facts
         resolution:
           description: >-
             The chain the path resolves through, an ordered list of
@@ -1051,11 +1054,8 @@ ansible_facts:
           type: directory
           uid: 1000
           gid: 20
-          tags:
-            - posix
-            - home
-          residents:
-            - 1000
+          origin:
+            - o0_o.posix.facts
         /etc/shells:
           content: "/bin/sh\n/bin/zsh\n"
           config:

@@ -22,10 +22,13 @@ description:
     store knows about that path - without running anything on the
     host.
   - A home is a path, so it is an entry of C(o0_paths) rather than a
-    namespace of its own, tagged C(home) and carrying C(residents),
-    the UIDs that call it home. This lookup is the audit view of
-    that - it reads the users back against the store, which no single
-    fact does.
+    namespace of its own, carrying what a read of that path said and
+    nothing about who lives there. This lookup is the audit view - it
+    reads the users back against the store, which no single fact
+    does - and it is where C(residents) comes from, derived from
+    C(o0_users) at the moment it is asked rather than stored beside
+    the path. A stored copy of a join is a copy that can drift from
+    the field it was copied out of.
   - The answer is four-state, and the first three are the collection's
     absence contract read off the C(entry) key. It is B(present) where
     the store describes the home, and C(entry) is what it observed. It
@@ -73,9 +76,10 @@ notes:
     the path it names. C(path) carries that key and C(home) carries
     the field as it was written, which are not always the same string.
   - Two users sharing a home get one answer each, both naming the one
-    path. Where a home is a symlink, the store also holds the target,
-    carrying the same residents; this lookup answers for the home the
-    passwd entry names, and C(entry.target) leads to the rest.
+    path and both carrying the same C(residents). Where a home is a
+    symlink, the store also holds every step it resolves through; this
+    lookup answers for the home the passwd entry names, and
+    C(entry.resolution) leads to the rest.
 seealso:
   - module: o0_o.posix.facts
     description: Gather POSIX facts, C(o0_paths) among them
@@ -207,11 +211,22 @@ _raw:
       returned: when the state is not C(unnamed)
       type: str
       sample: /home/o0-o
+    residents:
+      description:
+        - The UIDs that call this path home, in order, derived from
+          C(o0_users) rather than read off the store. A home two users
+          share answers the same list to both of them.
+        - Absent from the answer where the state is C(unnamed), which
+          is a user who named no path for anyone to live at.
+      returned: when the state is not C(unnamed)
+      type: list
+      elements: int
+      sample:
+        - 1000
     entry:
       description:
-        - What the store observed about the home - its metadata, the
-          C(home) tag, and C(residents), the UIDs that call it home -
-          or C(null) where the home does not exist.
+        - What the store observed about the home, or C(null) where the
+          home does not exist.
         - Absent from the answer where the state is C(unknown) or
           C(unnamed).
       returned: when the state is C(present) or C(dangling)
@@ -220,37 +235,37 @@ _raw:
         type: directory
         uid: 1000
         gid: 20
-        tags:
-          - posix
-          - home
-        residents:
-          - 1000
+        origin:
+          - o0_o.posix.users
   sample:
     - uid: 0
       name: root
       home: /var/root
       state: present
       path: /var/root
+      residents:
+        - 0
       entry:
         type: directory
         uid: 0
         gid: 0
-        tags:
-          - posix
-          - home
-        residents:
-          - 0
+        origin:
+          - o0_o.posix.users
     - uid: 1000
       name: o0-o
       home: /home/o0-o
       state: dangling
       path: /home/o0-o
+      residents:
+        - 1000
       entry: null
     - uid: 1001
       name: ghost
       home: /home/ghost
       state: unknown
       path: /home/ghost
+      residents:
+        - 1001
 """
 
 from typing import Any, Optional
@@ -312,17 +327,55 @@ class LookupModule(LookupBase, VarsLookupBase):
                 f"{type(paths).__name__}"
             )
 
+        # Who lives where, derived at the moment it is asked. The
+        # store holds what a path is; who calls it home is the join
+        # between these two facts, and a copy of a join kept beside
+        # the path is a copy that can drift from the field it came out
+        # of
+        residents = self._residents(users)
+
         if not terms:
-            return [self._answer(entry, paths) for entry in self._every(users)]
+            return [
+                self._answer(entry, paths, residents)
+                for entry in self._every(users)
+            ]
 
         ret = []
         for term in terms:
             # Template the term to resolve any Jinja2 expressions
             term = self._templar.template(term)
 
-            ret.append(self._answer(self._user(term, users), paths))
+            ret.append(
+                self._answer(self._user(term, users), paths, residents)
+            )
 
         return ret
+
+    @staticmethod
+    def _residents(users: dict[str, Any]) -> dict[str, list[int]]:
+        """Map each home the users name to the UIDs that call it home.
+
+        Keyed the way the store keys a path, so an answer reads its
+        own residents off the key it was answered at, and two users
+        who spelled one home two ways are one key with two of them.
+
+        :param dict[str, Any] users: The o0_users mapping
+        :returns dict[str, list[int]]: Resident UIDs per home path
+        """
+        residents: dict[str, list[int]] = {}
+
+        for entry in users.values():
+            if not isinstance(entry, dict):
+                continue
+            home = entry.get("home")
+            uid = entry.get("uid")
+            if not (isinstance(home, str) and home.startswith("/")):
+                continue
+            if not isinstance(uid, int) or isinstance(uid, bool):
+                continue
+            residents.setdefault(canonicalize(home), []).append(uid)
+
+        return {path: sorted(set(uids)) for path, uids in residents.items()}
 
     @staticmethod
     def _every(users: dict[str, Any]) -> list[dict[str, Any]]:
@@ -381,7 +434,10 @@ class LookupModule(LookupBase, VarsLookupBase):
         )
 
     def _answer(
-        self, user: dict[str, Any], paths: dict[str, Any]
+        self,
+        user: dict[str, Any],
+        paths: dict[str, Any],
+        residents: dict[str, list[int]],
     ) -> dict[str, Any]:
         """Answer for one user's home from the store, in four states.
 
@@ -393,8 +449,10 @@ class LookupModule(LookupBase, VarsLookupBase):
 
         :param dict[str, Any] user: One o0_users entry
         :param dict[str, Any] paths: The o0_paths store
+        :param dict[str, list[int]] residents: Who lives at each home,
+            derived from the same users
         :returns dict[str, Any]: The answer, keyed uid, name, home,
-            state, path and entry
+            state, path, residents and entry
         :raises AnsibleLookupError: If the store's entry for the home
             is neither null nor a mapping of observed facts
         """
@@ -419,6 +477,7 @@ class LookupModule(LookupBase, VarsLookupBase):
         path = canonicalize(home)
         answer["state"] = UNKNOWN
         answer["path"] = path
+        answer["residents"] = list(residents.get(path, []))
 
         if path not in paths:
             return answer

@@ -47,6 +47,11 @@
       - paths['/bin/sh'] is mapping
       - "'builtins' not in paths['/bin/sh']"
       - "'aliases' not in paths['/bin/sh']"
+      # Every entry names the module that composed it
+      - >-
+        paths | dict2items | selectattr('value', 'mapping')
+        | map(attribute='value.origin') | flatten | unique | list
+        == ['o0_o.posix.compliance']
       - resolved | length > 0
       - resolved | rejectattr('value.executable') | list | length == 0
     fail_msg: 'the path store is not what the probes observed'

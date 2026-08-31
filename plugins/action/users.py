@@ -31,6 +31,10 @@ from ansible_collections.o0_o.posix.plugins.module_utils import (
     process_getent_command_results,
 )
 
+# What this module is called, which is what a path entry names as
+# having contributed it
+FQCN = "o0_o.posix.users"
+
 
 class ActionModule(ReadPosixActionBase, ActionBase):
     """Gather user and group information from POSIX hosts.
@@ -133,9 +137,13 @@ class ActionModule(ReadPosixActionBase, ActionBase):
         # the one flat path store, composed in beside everything else
         # the module observed rather than published as namespaces of
         # their own.
-        paths = compose_paths(None, compose_homes(users, read))
         paths = compose_paths(
-            paths, compose_shell_paths(users, read, known_paths)
+            None, compose_homes(users, read), origin=FQCN
+        )
+        paths = compose_paths(
+            paths,
+            compose_shell_paths(users, read, known_paths),
+            origin=FQCN,
         )
 
         # A single file parsed on its own lands at its own path: the
@@ -155,6 +163,7 @@ class ActionModule(ReadPosixActionBase, ActionBase):
                         "config": named,
                     }
                 },
+                origin=FQCN,
             )
             # The same answer keyed by shell path, which is what makes
             # user.shell in o0_shells a question a host can answer.

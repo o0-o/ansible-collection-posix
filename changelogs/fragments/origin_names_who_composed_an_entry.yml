@@ -1,0 +1,47 @@
+# vim: ts=2:sw=2:sts=2:et:ft=yaml.ansible
+# -*- mode: yaml; yaml-indent-offset: 2; indent-tabs-mode: nil; -*-
+---
+breaking_changes:
+  - >-
+    users, facts - ``tags`` retires from ``o0_paths``. It named what a
+    path was to this collection - ``["posix", "home"]`` on a home,
+    ``["posix", "shell"]`` on a shell - which is a role rather than a
+    fact about the file, and the role is already stated where it
+    belongs: ``o0_users[uid].home`` and ``o0_users[uid].shell`` say it
+    of the user whose role it is, and a consumer joins through the
+    path key. A store of facts about files carrying a second store's
+    vocabulary is one that has to be kept in step with it. The field
+    never appeared in a release, so it is removed inside the 2.0.0
+    window
+    (https://github.com/o0-o/ansible-collection-posix/pull/XXX).
+  - >-
+    users, facts, homes lookup - ``residents`` retires as stored data.
+    It listed the UIDs that call a path home, which is the join
+    between ``o0_users`` and ``o0_paths`` written down a second time,
+    and a stored join drifts from the field it was copied out of the
+    moment either side changes. The ``o0_o.posix.homes`` lookup
+    derives it live instead, from the ``home`` field ``o0_users``
+    already carries, and answers it under ``residents`` beside the
+    entry - so the audit view gains the field the store loses, and
+    every user gets it whatever state their home is in
+    (https://github.com/o0-o/ansible-collection-posix/pull/XXX).
+minor_changes:
+  - >-
+    users, facts, which, compliance - every composed ``o0_paths``
+    entry names the modules that contributed it, in ``origin``: a
+    sorted list of FQCNs. One field, one meaning - the provenance of
+    the entry itself - and it is the one thing a later observation
+    adds to rather than replaces, so a path the compliance sweep and
+    the users read both described names both of them where every other
+    field is replaced whole. A path confirmed absent carries no fields
+    and so names nobody; what a null says is that somebody asked. A
+    collection gathering into this store names itself here rather than
+    inventing a field of its own
+    (https://github.com/o0-o/ansible-collection-posix/pull/XXX).
+  - >-
+    homes lookup - an answer carries ``residents``, the UIDs that call
+    the path home, on every state but ``unnamed``, which is a user who
+    named no path for anyone to live at. Two users who spelled one
+    home two ways get the same list, because it is keyed the way the
+    store keys a path
+    (https://github.com/o0-o/ansible-collection-posix/pull/XXX).

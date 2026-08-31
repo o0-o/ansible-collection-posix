@@ -93,7 +93,10 @@ def test_which_files_the_resolution_under_its_path(
     result = plugin.run(task_vars={})
 
     assert result["o0_paths"] == {
-        "/bin/date": {"executable": {"1000": True}}
+        "/bin/date": {
+            "executable": {"1000": True},
+            "origin": ["o0_o.posix.which"],
+        }
     }
 
 
@@ -109,7 +112,9 @@ def test_a_resolution_with_no_uid_claims_nothing(monkeypatch, plugin) -> None:
     plugin._task.args = {"command": "date"}
     result = plugin.run(task_vars={})
 
-    assert result["o0_paths"] == {"/bin/date": {}}
+    assert result["o0_paths"] == {
+        "/bin/date": {"origin": ["o0_o.posix.which"]}
+    }
 
 
 def test_which_not_found(monkeypatch, plugin) -> None:

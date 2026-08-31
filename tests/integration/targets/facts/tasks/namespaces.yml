@@ -592,11 +592,10 @@
   vars:
     paths: "{{ facts_all_reg['ansible_facts']['o0_paths'] }}"
     homes: >-
-      {{ paths | dict2items
-         | rejectattr('value', 'none')
-         | selectattr('value.tags', 'defined')
-         | selectattr('value.tags', 'contains', 'home')
-         | items2dict }}
+      {{ facts_all_reg['ansible_facts']['o0_users'] | dict2items
+         | selectattr('value.home', 'defined')
+         | map(attribute='value.home') | select('string')
+         | unique | list }}
     shells: >-
       {{ facts_all_reg['ansible_facts']['o0_users'] | dict2items
          | selectattr('value.shell', 'defined')
@@ -604,20 +603,18 @@
          | unique | list }}
   ansible.builtin.assert:
     that:
+      # The home every user names is a key of the store, described as
+      # the path it is and carrying nothing about who lives there:
+      # that is the join the homes lookup makes, not a field
       - homes | length > 0
-      - homes.keys() | reject('match', '^/') | list | length == 0
-      - homes | dict2items | map(attribute='value.residents')
-        | flatten | reject('integer') | list | length == 0
-      - homes | dict2items | rejectattr('value.residents', 'defined')
-        | list | length == 0
-      # The home every user names is a key of the store. Only the
-      # entries a passwd line described name one: the environment
-      # subset keys its entry on the uid the gather ran as, and
-      # /etc/passwd need not describe that user at all.
-      - facts_all_reg['ansible_facts']['o0_users'] | dict2items
-        | selectattr('value.home', 'defined')
-        | map(attribute='value.home') | select('string')
-        | reject('in', paths.keys() | list) | list | length == 0
+      - homes | reject('match', '^/') | list | length == 0
+      - homes | reject('in', paths.keys() | list) | list | length == 0
+      - >-
+        homes | map('extract', paths) | select('mapping')
+        | selectattr('residents', 'defined') | list | length == 0
+      - >-
+        homes | map('extract', paths) | select('mapping')
+        | selectattr('tags', 'defined') | list | length == 0
       - facts_all_reg['ansible_facts']['o0_homes'] is not defined
       - facts_all_reg['ansible_facts']['o0_shell_files'] is not defined
       # A shell is a path too, so every shell a passwd line named is a
@@ -629,6 +626,33 @@
         | list | length == shells | length
     fail_msg: >-
       the homes or the shells in o0_paths are not keyed by path
+
+# One field, one meaning: origin is the provenance of the entry
+# itself, and it is the one thing a later observation adds to rather
+# than replaces, so a path two subsets described names both of them.
+- name: Assert every composed entry names the modules that composed it
+  vars:
+    paths: "{{ facts_all_reg['ansible_facts']['o0_paths'] }}"
+    described: >-
+      {{ paths | dict2items | selectattr('value', 'mapping') | list }}
+    named: >-
+      {{ described | map(attribute='value.origin') | flatten
+         | unique | list }}
+  ansible.builtin.assert:
+    that:
+      - described | length > 0
+      # Every entry a gather composed names this gather and nothing
+      # else, since one module composed the whole store
+      - >-
+        described | rejectattr('value.origin', 'defined')
+        | list | length == 0
+      - named == ['o0_o.posix.facts']
+      # A path confirmed absent carries no fields, origin included
+      - >-
+        paths | dict2items | rejectattr('value', 'mapping')
+        | rejectattr('value', 'none') | list | length == 0
+    fail_msg: >-
+      an o0_paths entry does not name what composed it: {{ named }}
 
 # A shell's configuration is code, so the only honest way to know what
 # it does is to run it and watch. The pair decides the answer and

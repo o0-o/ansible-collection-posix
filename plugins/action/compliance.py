@@ -21,10 +21,15 @@ from ansible_collections.o0_o.utils.plugins.module_utils.typeguard_compat import
 
 from ansible_collections.o0_o.posix.plugins.module_utils import (
     PosixActionBase,
+    compose_paths,
     get_compliance_command_requests,
     missing_commands,
     process_all_compliance_command_results,
 )
+
+# What this module is called, which is what a path entry names as
+# having contributed it
+FQCN = "o0_o.posix.compliance"
 
 
 class ActionModule(PosixActionBase, ActionBase):
@@ -138,6 +143,11 @@ class ActionModule(PosixActionBase, ActionBase):
         # standards that already record it.
         facts, errors = process_all_compliance_command_results(commands_result)
         compliance = facts["o0_os"]["compliance"]
+        # The processor composes on this module's behalf, so this is
+        # where the entries learn whose observation they are
+        facts["o0_paths"] = compose_paths(
+            None, facts["o0_paths"], origin=FQCN
+        )
         result.update(
             {
                 "compliance": compliance,

@@ -364,6 +364,10 @@ class ActionModule(ReadPosixActionBase, ActionBase):
     # The namespace that has a composer of its own
     PATHS_NAMESPACE = "o0_paths"
 
+    # What this module is called, which is what a path entry names as
+    # having contributed it
+    FQCN = "o0_o.posix.facts"
+
     def _merge_facts(
         self,
         all_facts: dict[str, Any],
@@ -398,7 +402,9 @@ class ActionModule(ReadPosixActionBase, ActionBase):
         """
         for ns, ns_facts in subset_facts.items():
             if ns == self.PATHS_NAMESPACE:
-                all_facts[ns] = compose_paths(all_facts.get(ns), ns_facts)
+                all_facts[ns] = compose_paths(
+                    all_facts.get(ns), ns_facts, origin=self.FQCN
+                )
                 continue
             if not isinstance(ns_facts, dict):
                 all_facts[ns] = ns_facts

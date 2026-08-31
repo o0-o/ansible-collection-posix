@@ -30,10 +30,10 @@
     gathered: "{{ facts_min_reg['ansible_facts'] }}"
     entry: "{{ gathered['o0_users'][facts_uid] }}"
     homes: >-
-      {{ gathered['o0_paths'] | dict2items
-         | rejectattr('value', 'none')
-         | selectattr('value.tags', 'defined')
-         | selectattr('value.tags', 'contains', 'home') | list }}
+      {{ gathered['o0_users'] | dict2items
+         | selectattr('value.home', 'defined')
+         | map(attribute='value.home') | select('string')
+         | select('in', gathered['o0_paths'].keys() | list) | list }}
   ansible.builtin.assert:
     that:
       - gathered['o0_os']['kernel'] is mapping
@@ -437,10 +437,10 @@
   vars:
     gathered: "{{ facts_no_users_reg['ansible_facts'] }}"
     homes: >-
-      {{ gathered['o0_paths'] | dict2items
-         | rejectattr('value', 'none')
-         | selectattr('value.tags', 'defined')
-         | selectattr('value.tags', 'contains', 'home') | list }}
+      {{ gathered['o0_users'] | dict2items
+         | selectattr('value.home', 'defined')
+         | map(attribute='value.home') | select('string')
+         | select('in', gathered['o0_paths'].keys() | list) | list }}
   ansible.builtin.assert:
     that:
       - gathered['o0_storage']['mounts'] is mapping

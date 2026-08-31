@@ -484,3 +484,87 @@ def test_normalize_mode_refuses_what_is_not_a_mode(mode: Any) -> None:
 
     with pytest.raises(ValueError, match="octal string or an integer"):
         normalize_mode(mode)
+
+
+def test_an_entry_names_the_producer_that_composed_it() -> None:
+    """Test a caller naming itself lands on every entry it observed."""
+
+    composed = compose_paths(
+        None,
+        {"/bin/sh": {"type": "regular"}, "/bin/zsh": {"type": "regular"}},
+        origin="o0_o.posix.users",
+    )
+
+    assert composed["/bin/sh"]["origin"] == ["o0_o.posix.users"]
+    assert composed["/bin/zsh"]["origin"] == ["o0_o.posix.users"]
+
+
+def test_two_producers_that_named_a_path_both_stay_in_it() -> None:
+    """Test origin is the one field a later observation adds to.
+
+    Every other field is replaced whole, because an entry is one
+    observation of one path; the origins are not one observation but
+    the record of who made them.
+    """
+    store = compose_paths(
+        None, {"/bin/sh": {}}, origin="o0_o.posix.compliance"
+    )
+
+    composed = compose_paths(
+        store, {"/bin/sh": {"type": "link"}}, origin="o0_o.posix.facts"
+    )
+
+    assert composed["/bin/sh"] == {
+        "type": "link",
+        "origin": ["o0_o.posix.compliance", "o0_o.posix.facts"],
+    }
+
+
+def test_one_producer_naming_itself_twice_is_named_once() -> None:
+    """Test the list holds one of each name, sorted."""
+
+    store = compose_paths(None, {"/bin/sh": {}}, origin="o0_o.posix.facts")
+    composed = compose_paths(
+        store, {"/bin/sh": {"type": "regular"}}, origin="o0_o.posix.facts"
+    )
+
+    assert composed["/bin/sh"]["origin"] == ["o0_o.posix.facts"]
+
+
+def test_a_composition_on_nobody_s_behalf_names_nobody() -> None:
+    """Test a caller composing without naming itself adds no origin
+    and leaves the names an entry arrived with alone."""
+
+    store = compose_paths(None, {"/bin/sh": {}}, origin="o0_o.posix.which")
+
+    composed = compose_paths(store, {"/bin/zsh": {"type": "regular"}})
+
+    assert composed["/bin/sh"]["origin"] == ["o0_o.posix.which"]
+    assert "origin" not in composed["/bin/zsh"]
+
+
+def test_a_confirmed_absence_names_no_producer() -> None:
+    """Test a null carries no fields, origin included.
+
+    What a null says is that somebody asked and the path is not
+    there; the entry that says who is the one that describes
+    something.
+    """
+    composed = compose_paths(
+        None, {"/usr/bin/pax": None}, origin="o0_o.posix.compliance"
+    )
+
+    assert composed["/usr/bin/pax"] is None
+
+
+def test_an_origin_that_is_not_a_list_of_names_is_refused() -> None:
+    """Test the store keeps its own shape rather than repairing one.
+
+    A producer that wrote a bare string meant one name, and guessing
+    that is how a store starts holding two spellings of a field.
+    """
+    with pytest.raises(ValueError, match="must be a list of the module"):
+        compose_paths(None, {"/bin/sh": {"origin": "o0_o.posix.facts"}})
+
+    with pytest.raises(ValueError, match="must be a list of the module"):
+        compose_paths(None, {"/bin/sh": {"origin": [1]}})

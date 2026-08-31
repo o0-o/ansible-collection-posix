@@ -324,21 +324,26 @@ def _add_member(
         merge_evidence(entry["evidence"], evidence)
 
 
-def _residents_by_home(
-    users: dict[str, dict[str, Any]],
-) -> dict[str, list[int]]:
-    """Map each home path to the UIDs that call it home.
+def _homes_named(users: dict[str, dict[str, Any]]) -> list[str]:
+    """The homes the passwd entries name, as they were written.
+
+    Who lives at each of them is not composed anywhere.  It is the
+    join between ``o0_users`` and the store, and a consumer that wants
+    it reads the users back against the store - which is what the
+    homes lookup does - rather than reading a copy that can drift from
+    the field it was copied out of.
 
     :param dict[str, dict[str, Any]] users: The o0_users mapping
-    :returns dict[str, list[int]]: Resident UIDs per home path
+    :returns list[str]: The home paths, one of each, in a settled
+        order
     """
-    residents_by_home: dict[str, list[int]] = {}
-    for user in users.values():
-        home = user.get("home")
-        uid = user.get("uid")
-        if isinstance(home, str) and home and isinstance(uid, int):
-            residents_by_home.setdefault(home, []).append(uid)
-    return residents_by_home
+    return sorted(
+        {
+            user["home"]
+            for user in users.values()
+            if isinstance(user.get("home"), str) and user["home"]
+        }
+    )
 
 
 def _described(store: dict[str, Any], path: str) -> bool:
@@ -409,8 +414,7 @@ def batch_read(
         through for whatever the batch does not cover
     """
     paths = sorted(
-        set(_residents_by_home(users))
-        | _unread_shells(users, dict(known or {}))
+        set(_homes_named(users)) | _unread_shells(users, dict(known or {}))
     )
 
     batch: dict[str, Any] = {}
@@ -508,50 +512,33 @@ def _link_key(link: str, target: Any) -> Optional[str]:
     return _store_key(target)
 
 
-def _add_residents(entry: dict[str, Any], residents: list[int]) -> None:
-    """Record UIDs as living at a path they already share.
-
-    :param dict[str, Any] entry: The home entry to add to
-    :param list[int] residents: The UIDs to record
-    """
-    known = entry.get("residents") or []
-    entry["residents"] = sorted(set(known) | set(residents))
-
-
 def _file_home(
     homes: dict[str, Optional[dict[str, Any]]],
     key: str,
     data: Optional[dict[str, Any]],
-    residents: list[int],
 ) -> None:
     """File one read of a home under the key the store gives it.
 
-    Two spellings of one home are one entry, and everyone who wrote
-    either of them lives there.  A read that confirmed the home is not
-    there files a null, because a dangling home is an answer the store
-    keeps rather than a silence - but never over an entry describing a
-    home that is there, since a null cannot carry residents and the
-    two spellings name one path either way.
+    Two spellings of one home are one entry, however each of them was
+    written.  A read that confirmed the home is not there files a
+    null, because a dangling home is an answer the store keeps rather
+    than a silence - but never over an entry describing a home that is
+    there, since the two spellings name one path either way and the
+    path either is there or is not.
 
     :param dict[str, Optional[dict[str, Any]]] homes: The entries so
         far
     :param str key: The canonical path the entry is filed under
     :param Optional[dict[str, Any]] data: The path's metadata, or None
         where the read confirmed the path is not there
-    :param list[int] residents: The UIDs that call the path home
     """
-    known = homes.get(key)
-
-    if isinstance(known, dict):
-        _add_residents(known, residents)
+    if isinstance(homes.get(key), dict):
         return
 
     if data is None:
         homes.setdefault(key, None)
         return
 
-    data["tags"] = ["posix", "home"]
-    data["residents"] = residents
     homes[key] = data
 
 
@@ -563,12 +550,15 @@ def compose_homes(
 
     A home is a path, so it is an entry of the one flat path store
     rather than a namespace of its own: keyed by the canonical
-    absolute path, carrying the path's own metadata, tagged ``home``,
-    and carrying ``residents``, the UIDs that call it home.  Two users
+    absolute path and carrying the path's own metadata.  Two users
     sharing a home share an entry, however each of them spelled it.
-    Where a home is a symlink, the target gets an entry of its own
-    carrying the same residents, because that is where their files
-    actually are.
+    Who lives there is not stored: it is the join between the users
+    and the store, and the homes lookup makes it from the field
+    ``o0_users`` already carries.
+
+    Every step a home resolves through gets an entry of its own, the
+    way a shell's does, because a home reached through a link is where
+    the user's files actually are.
 
     The answer is an observation ``compose_paths`` takes as it stands,
     and it holds to the same three answers the store does.  A home the
@@ -585,45 +575,59 @@ def compose_homes(
     :returns dict[str, Optional[dict[str, Any]]]: The home entries,
         keyed by canonical absolute path
     """
-    residents_by_home = _residents_by_home(users)
+    named = _homes_named(users)
 
-    if not residents_by_home:
+    if not named:
         return {}
 
     homes: dict[str, Optional[dict[str, Any]]] = {}
 
-    for home, data in _read_entries(read, list(residents_by_home)).items():
+    for home, data in _read_entries(read, named).items():
         key = _store_key(home)
         if key is not None:
-            _file_home(homes, key, data, residents_by_home.get(home, []))
+            _file_home(homes, key, data)
 
-    # A home that is a symlink houses its residents at the target
-    for home in list(homes):
-        entry = homes[home]
-        if not isinstance(entry, dict):
-            continue
+    # Whatever a home is reached through is a path the user's files
+    # are behind, so every step of the chain is an entry too. The
+    # steps are read in one batch, because a chain is not known until
+    # the home has been read
+    hops = sorted(
+        {
+            hop
+            for home, entry in homes.items()
+            if isinstance(entry, dict)
+            for hop in _home_hops(home, entry)
+            if hop not in homes
+        }
+    )
 
-        if entry.get("type") != "link" or "target" not in entry:
-            continue
-
-        target = _link_key(home, entry["target"])
-        residents = entry.get("residents") or []
-
-        if target is None:
-            continue
-
-        if target in homes:
-            known = homes[target]
-            if isinstance(known, dict):
-                _add_residents(known, residents)
-            continue
-
-        for path, data in _read_entries(read, [target]).items():
+    if hops:
+        for path, data in _read_entries(read, hops).items():
             key = _store_key(path)
             if key is not None:
-                _file_home(homes, key, data, residents)
+                _file_home(homes, key, data)
 
     return homes
+
+
+def _home_hops(home: str, entry: dict[str, Any]) -> list[str]:
+    """The paths a home is reached through, beyond the home itself.
+
+    A read that walked the chain says every step of it; one that did
+    not still reports a link's target, which is the one step it knows.
+
+    :param str home: The canonical path of the home
+    :param dict[str, Any] entry: What the read said about it
+    :returns list[str]: The keys the steps file under
+    """
+    steps = [step for step in _chain_keys(entry) if step != home]
+
+    if steps or entry.get("type") != "link":
+        return steps
+
+    target = _link_key(home, entry.get("target"))
+
+    return [target] if target is not None else []
 
 
 def compose_shell_paths(

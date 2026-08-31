@@ -124,8 +124,12 @@
           - root['state'] == 'present'
           - root['path'] is string
           - root['path'] is match('^/')
-          - root['entry']['tags'] is contains('home')
-          - 0 in root['entry']['residents']
+          # Who lives at a home is derived from o0_users when the
+          # lookup is asked, not stored beside the path
+          - 0 in root['residents']
+          - "'residents' not in root['entry']"
+          - "'tags' not in root['entry']"
+          - root['entry']['origin'] is contains('o0_o.posix.users')
         fail_msg: "root's home did not audit as a home root lives in"
 
     - name: Answer for one user by name and by UID

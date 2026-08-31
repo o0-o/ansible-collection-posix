@@ -251,11 +251,13 @@ o0_paths:
     - What the module observed about the paths it read, keyed by the
       canonical absolute path. The store is flat - a path is a key of
       its own and nothing about a path is filed under another path.
-    - The homes users live in are entries here, tagged C(home) and
-      carrying C(residents), the UIDs that call the path home. Two
-      users sharing a home share one entry, and where a home is a
-      symlink the target gets an entry of its own carrying the same
-      residents, because that is where their files are.
+    - The homes users live in are entries here, carrying what a read
+      of that path said and nothing about who lives there. Two users
+      sharing a home share one entry, and every step a home resolves
+      through gets an entry of its own, because that is where their
+      files are. Who calls a path home is the join between C(o0_users)
+      and this store, which the C(o0_o.posix.homes) lookup makes from
+      the field C(o0_users) already carries.
     - A home the module read and found is not there is C(null), a
       dangling home, which the C(o0_o.posix.homes) lookup surfaces by
       reading C(o0_users) back against this store. A home no read
@@ -279,17 +281,18 @@ o0_paths:
   returned: when the module observed a path
   type: dict
   contains:
-    tags:
+    origin:
       description: >-
-        What the path is to the collection - C(home) for a directory
-        a user lives in
+        The modules that contributed the entry, by FQCN, sorted. One
+        field, one meaning - the provenance of the entry itself - and
+        it is the one thing a later observation adds to rather than
+        replaces, so a path two producers described names both of
+        them. A collection gathering into this store names itself here
+        rather than inventing a field of its own.
       type: list
       elements: str
-    residents:
-      description: >-
-        For a home, the UIDs that call the path home
-      type: list
-      elements: int
+      sample:
+        - o0_o.posix.users
     resolution:
       description: >-
         The chain the path resolves through, an ordered list of the
@@ -311,11 +314,8 @@ o0_paths:
       type: directory
       uid: 1000
       gid: 20
-      tags:
-        - posix
-        - home
-      residents:
-        - 1000
+      origin:
+        - o0_o.posix.users
     /etc/shells:
       content: "/bin/sh\n/bin/zsh\n"
       config:

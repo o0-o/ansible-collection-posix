@@ -118,6 +118,7 @@ def test_a_home_the_store_describes_is_present(joined) -> None:
             "home": "/home/o0-o",
             "state": "present",
             "path": "/home/o0-o",
+            "residents": [1000],
             "entry": USER_HOME,
         }
     ]
@@ -136,6 +137,7 @@ def test_a_home_the_store_holds_as_absent_is_dangling(joined) -> None:
             "home": "/home/o0-o",
             "state": "dangling",
             "path": "/home/o0-o",
+            "residents": [1000],
             "entry": None,
         }
     ]
@@ -155,6 +157,7 @@ def test_an_ungathered_home_carries_no_entry_key_at_all(joined) -> None:
         "home": "/home/o0-o",
         "state": "unknown",
         "path": "/home/o0-o",
+        "residents": [1000],
     }
     assert "entry" not in answer
 
@@ -505,6 +508,7 @@ def test_another_host_s_facts_answer_for_it(make_lookup) -> None:
             "home": "/home/deploy",
             "state": "dangling",
             "path": "/home/deploy",
+            "residents": [1001],
             "entry": None,
         }
     ]
@@ -521,3 +525,45 @@ def test_a_host_that_gathered_nothing_audits_to_nothing(make_lookup) -> None:
     )
 
     assert lookup.run([], None, host="webserver1") == []
+
+
+def test_residents_are_derived_rather_than_read_off_the_store(
+    make_lookup,
+) -> None:
+    """Test who lives at a home comes from the users, not the entry.
+
+    The store holds what a path is. Who calls it home is the join
+    between these two facts, and a copy of a join kept beside the path
+    is a copy that can drift from the field it came out of.
+    """
+    lookup = make_lookup(
+        o0_users={
+            "0": {"name": "root", "uid": 0, "home": "/shared"},
+            "1000": {"name": "o0-o", "uid": 1000, "home": "/shared/"},
+        },
+        o0_paths={"/shared": {"type": "directory"}},
+    )
+
+    answers = lookup.run([], None)
+
+    assert [answer["residents"] for answer in answers] == [
+        [0, 1000],
+        [0, 1000],
+    ]
+    assert "residents" not in answers[0]["entry"]
+
+
+def test_a_user_who_names_no_home_has_no_residents_key(make_lookup) -> None:
+    """Test an unnamed home is a fact about the user rather than an
+    absence in the store, so it carries neither a path nor a list of
+    who lives at one."""
+    lookup = make_lookup(
+        o0_users={"1000": {"name": "o0-o", "uid": 1000, "home": ""}},
+        o0_paths={},
+    )
+
+    (answer,) = lookup.run([], None)
+
+    assert answer["state"] == "unnamed"
+    assert "residents" not in answer
+    assert "path" not in answer

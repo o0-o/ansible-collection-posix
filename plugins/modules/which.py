@@ -61,6 +61,16 @@ o0_paths:
   returned: when the command resolved to a path
   type: dict
   contains:
+    origin:
+      description: >-
+        The modules that contributed the entry, by FQCN, sorted. The
+        one thing a later observation adds to rather than replaces, so
+        a path this module and a gather both described names both of
+        them.
+      type: list
+      elements: str
+      sample:
+        - o0_o.posix.which
     executable:
       description: >-
         Whether the path can be run, keyed by the uid the lookup ran

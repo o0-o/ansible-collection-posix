@@ -21,6 +21,10 @@ from ansible_collections.o0_o.posix.plugins.module_utils import (
     process_effective_uid_results,
 )
 
+# What this module is called, which is what a path entry names as
+# having contributed it
+FQCN = "o0_o.posix.which"
+
 
 class ActionModule(PosixActionBase, ActionBase):
     """Resolve a command's full path on POSIX systems.
@@ -84,7 +88,9 @@ class ActionModule(PosixActionBase, ActionBase):
             if uid is not None:
                 observation[path] = {"executable": {str(uid): True}}
             try:
-                result["o0_paths"] = compose_paths(None, observation)
+                result["o0_paths"] = compose_paths(
+                    None, observation, origin=FQCN
+                )
             except ValueError as exc:
                 self._display.warning(f"[{self.inventory_hostname}] {exc}")
 

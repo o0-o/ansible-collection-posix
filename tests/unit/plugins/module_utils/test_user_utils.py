@@ -586,8 +586,13 @@ def _reader(
     return read, asked
 
 
-def test_compose_homes_records_residents_as_uids() -> None:
-    """Test each home carries the UIDs that call it home."""
+def test_compose_homes_describes_the_home_and_nothing_else() -> None:
+    """Test a home entry is what the read said and nothing added.
+
+    Who lives at a home is the join between the users and the store,
+    not a field either of them stores, and what a path is to this
+    collection is not a fact about the path at all.
+    """
     read, asked = _reader(
         {
             "/var/root": {"type": "directory"},
@@ -598,9 +603,8 @@ def test_compose_homes_records_residents_as_uids() -> None:
 
     homes = compose_homes(USERS, read)
 
-    assert homes["/var/root"]["residents"] == [0]
-    assert homes["/home/o0-o"]["residents"] == [1000]
-    assert homes["/var/root"]["tags"] == ["posix", "home"]
+    assert homes["/var/root"] == {"type": "directory"}
+    assert homes["/home/o0-o"] == {"type": "directory"}
     # One round trip for every home
     assert len(asked) == 1
     assert sorted(asked[0]) == ["/home/o0-o", "/var/root"]
@@ -617,12 +621,12 @@ def test_compose_homes_shares_one_entry() -> None:
     homes = compose_homes(users, read)
 
     assert list(homes) == ["/shared"]
-    assert homes["/shared"]["residents"] == [0, 1]
+    assert homes["/shared"] == {"type": "directory"}
 
 
 def test_compose_homes_follows_a_linked_home() -> None:
-    """Test a home that is a symlink houses its residents at the
-    target, which is where their files are."""
+    """Test a home that is a symlink gets the target an entry too,
+    because that is where the user's files are."""
     users = {"1000": {"uid": 1000, "home": "/home/o0-o"}}
     read, _asked = _reader(
         {
@@ -634,18 +638,52 @@ def test_compose_homes_follows_a_linked_home() -> None:
     homes = compose_homes(users, read)
 
     assert set(homes) == {"/home/o0-o", "/Users/o0-o"}
-    assert homes["/Users/o0-o"]["residents"] == [1000]
-    assert homes["/Users/o0-o"]["tags"] == ["posix", "home"]
+    assert homes["/Users/o0-o"] == {"type": "directory"}
+
+
+def test_compose_homes_files_every_step_of_a_chain() -> None:
+    """Test a read that walked the chain puts every step in the store,
+    not only the one the link's own text names."""
+    users = {"1000": {"uid": 1000, "home": "/home/o0-o"}}
+    read, asked = _reader(
+        {
+            "/home/o0-o": {
+                "type": "link",
+                "target": "o0-o",
+                "resolution": [
+                    "/home/o0-o",
+                    "/Users/o0-o",
+                    "/Volumes/data/o0-o",
+                ],
+            },
+            "/Users/o0-o": {"type": "link", "target": "o0-o"},
+            "/Volumes/data/o0-o": {"type": "directory"},
+        }
+    )
+
+    homes = compose_homes(users, read)
+
+    assert set(homes) == {
+        "/home/o0-o",
+        "/Users/o0-o",
+        "/Volumes/data/o0-o",
+    }
+    assert homes["/Volumes/data/o0-o"] == {"type": "directory"}
+    # The homes first, then every step of every chain, in one batch
+    assert asked == [
+        ["/home/o0-o"],
+        ["/Users/o0-o", "/Volumes/data/o0-o"],
+    ]
 
 
 def test_compose_homes_link_to_a_known_home() -> None:
-    """Test a link whose target is another user's home adds to that
-    target's residents rather than replacing them."""
+    """Test a link whose target is another user's home leaves that
+    target's own entry as it stands rather than reading it again."""
     users = {
         "0": {"uid": 0, "home": "/shared"},
         "1000": {"uid": 1000, "home": "/link"},
     }
-    read, _asked = _reader(
+    read, asked = _reader(
         {
             "/shared": {"type": "directory"},
             "/link": {"type": "link", "target": "/shared"},
@@ -654,7 +692,8 @@ def test_compose_homes_link_to_a_known_home() -> None:
 
     homes = compose_homes(users, read)
 
-    assert homes["/shared"]["residents"] == [0, 1000]
+    assert homes["/shared"] == {"type": "directory"}
+    assert asked == [["/link", "/shared"]]
 
 
 def test_compose_homes_without_homes() -> None:
@@ -675,7 +714,7 @@ def test_compose_homes_keys_a_home_the_way_the_store_does() -> None:
     homes = compose_homes(users, read)
 
     assert list(homes) == ["/home/o0-o"]
-    assert homes["/home/o0-o"]["residents"] == [1000]
+    assert homes["/home/o0-o"] == {"type": "directory"}
 
 
 def test_compose_homes_two_spellings_are_one_home() -> None:
@@ -695,7 +734,7 @@ def test_compose_homes_two_spellings_are_one_home() -> None:
     homes = compose_homes(users, read)
 
     assert list(homes) == ["/shared"]
-    assert homes["/shared"]["residents"] == [0, 1]
+    assert homes["/shared"] == {"type": "directory"}
 
 
 def test_compose_homes_drops_a_home_the_store_cannot_key() -> None:
@@ -722,12 +761,12 @@ def test_compose_homes_resolves_a_relative_link_target() -> None:
     homes = compose_homes(users, read)
 
     assert set(homes) == {"/home/o0-o", "/Users/o0-o"}
-    assert homes["/Users/o0-o"]["residents"] == [1000]
+    assert homes["/Users/o0-o"] == {"type": "directory"}
 
 
 def test_compose_homes_relative_link_to_a_known_home() -> None:
-    """Test a relative target that resolves onto another home adds to
-    that home's residents rather than making a second entry."""
+    """Test a relative target that resolves onto another home is that
+    home rather than a second entry for the same path."""
     users = {
         "0": {"uid": 0, "home": "/home/shared"},
         "1000": {"uid": 1000, "home": "/home/o0-o"},
@@ -742,7 +781,7 @@ def test_compose_homes_relative_link_to_a_known_home() -> None:
     homes = compose_homes(users, read)
 
     assert set(homes) == {"/home/shared", "/home/o0-o"}
-    assert homes["/home/shared"]["residents"] == [0, 1000]
+    assert homes["/home/shared"] == {"type": "directory"}
 
 
 def test_compose_homes_drops_a_target_that_keys_nothing() -> None:
@@ -802,7 +841,7 @@ def test_compose_homes_null_never_covers_a_home_that_is_there() -> None:
 
     homes = compose_homes(users, read)
 
-    assert homes["/shared"]["residents"] == [1]
+    assert homes["/shared"] == {"type": "directory"}
 
 
 def test_compose_homes_files_a_dangling_link_target_as_a_null() -> None:
@@ -816,7 +855,7 @@ def test_compose_homes_files_a_dangling_link_target_as_a_null() -> None:
     homes = compose_homes(users, read)
 
     assert homes["/Users/o0-o"] is None
-    assert homes["/home/o0-o"]["residents"] == [1000]
+    assert homes["/home/o0-o"]["type"] == "link"
 
 
 def test_compose_shell_paths_describes_held_shells() -> None:
@@ -1021,7 +1060,7 @@ def test_batch_read_keeps_the_merge_of_a_linked_home() -> None:
 
     homes = compose_homes(users, batch_read(users, read))
 
-    assert homes["/shared"]["residents"] == [0, 1000]
+    assert homes["/shared"] == {"type": "directory"}
     assert asked == [["/bin/sh", "/link", "/shared"]]
 
 
@@ -1066,16 +1105,15 @@ def test_batch_read_falls_through_when_the_batch_fails() -> None:
     homes = compose_homes(USERS, batched)
     shells = compose_shell_paths(USERS, batched)
 
-    assert asked[1] == ["/var/root", "/home/o0-o"]
+    assert asked[1] == ["/home/o0-o", "/var/root"]
     assert sorted(homes) == ["/Users/o0-o", "/home/o0-o", "/var/root"]
     assert set(shells) == {"/bin/sh", "/bin/zsh"}
 
 
 def test_batch_read_answers_each_composition_its_own_copy() -> None:
-    """Test one path serving as both a home and a shell gets an
-    entry each rather than one the two compositions share, which is
-    what writing a home's residents onto a shell's entry would look
-    like."""
+    """Test one path serving as both a home and a shell gets an entry
+    each rather than one mapping the two compositions share, so that
+    what either of them writes cannot reach the other."""
     users = {"0": {"uid": 0, "home": "/opt/box", "shell": "/opt/box"}}
     answers = {"/opt/box": {"type": "directory"}}
 
@@ -1086,6 +1124,6 @@ def test_batch_read_answers_each_composition_its_own_copy() -> None:
     homes = compose_homes(users, batched)
     shells = compose_shell_paths(users, batched)
 
-    assert homes["/opt/box"]["residents"] == [0]
+    assert homes["/opt/box"] == {"type": "directory"}
     assert shells["/opt/box"] == {"type": "directory"}
-    assert "residents" not in shells["/opt/box"]
+    assert homes["/opt/box"] is not shells["/opt/box"]

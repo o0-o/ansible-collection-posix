@@ -171,6 +171,7 @@ def test_users_action_files_the_shells_file_at_its_path(plugin) -> None:
     assert result["o0_paths"]["/etc/shells"] == {
         "content": SHELLS,
         "config": ["/bin/sh", "/bin/zsh"],
+        "origin": ["o0_o.posix.users"],
     }
 
 
@@ -358,9 +359,11 @@ def test_users_action_rejects_key_option(plugin) -> None:
         plugin.run(task_vars={})
 
 
-def test_users_action_homes_resident_uids(monkeypatch, plugin) -> None:
-    """Test home residents are recorded as UIDs, at the home's own key
-    in the path store."""
+def test_users_action_files_a_home_at_its_own_key(
+    monkeypatch, plugin
+) -> None:
+    """Test a home is an entry of the path store keyed by the path it
+    is, naming this module as what composed it."""
     monkeypatch.setattr(
         plugin,
         "_read",
@@ -378,8 +381,13 @@ def test_users_action_homes_resident_uids(monkeypatch, plugin) -> None:
 
     result = plugin.run(task_vars={})
 
-    assert result["o0_paths"]["/home/o0-o"]["residents"] == [1000]
-    assert result["o0_paths"]["/var/root"]["residents"] == [0]
+    assert result["o0_paths"]["/home/o0-o"] == {
+        "type": "directory",
+        "origin": ["o0_o.posix.users"],
+    }
+    assert result["o0_paths"]["/var/root"]["type"] == "directory"
+    assert "residents" not in result["o0_paths"]["/var/root"]
+    assert "tags" not in result["o0_paths"]["/var/root"]
     # The homes and the shells file accumulate in the one store
     # rather than either replacing the other
     assert result["o0_paths"]["/etc/shells"]["config"] == [
@@ -414,7 +422,10 @@ def test_users_action_shells_extend_prior_gather(
     # The shell the store already described is not read again, so the
     # observation carries only what this run learned
     assert "/bin/sh" not in result["o0_paths"]
-    assert result["o0_paths"]["/bin/zsh"] == {"type": "file"}
+    assert result["o0_paths"]["/bin/zsh"] == {
+        "type": "file",
+        "origin": ["o0_o.posix.users"],
+    }
 
 
 READ_TYPES = {
@@ -472,9 +483,11 @@ def test_users_action_batch_leaves_the_facts_alone(
 
     assert result["o0_paths"]["/home/o0-o"] == {
         "type": "directory",
-        "tags": ["posix", "home"],
-        "residents": [1000],
+        "origin": ["o0_o.posix.users"],
     }
-    assert result["o0_paths"]["/var/root"]["residents"] == [0]
-    assert result["o0_paths"]["/bin/zsh"] == {"type": "regular"}
-    assert result["o0_paths"]["/bin/sh"] == {"type": "regular"}
+    assert result["o0_paths"]["/var/root"]["type"] == "directory"
+    assert result["o0_paths"]["/bin/zsh"] == {
+        "type": "regular",
+        "origin": ["o0_o.posix.users"],
+    }
+    assert result["o0_paths"]["/bin/sh"]["type"] == "regular"

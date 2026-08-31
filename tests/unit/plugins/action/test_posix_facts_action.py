@@ -478,14 +478,17 @@ class TestMergeFacts:
         """Test o0_paths merges through its own composer: a path one
         subset observed stands beside a path another one did, and both
         keep the whole of what was seen."""
-        acc = {"o0_paths": {"/bin/sh": {"builtins": ["cd"]}}}
+        acc = {"o0_paths": {"/bin/sh": {"type": "regular"}}}
         plugin._merge_facts(
             acc,
             {"o0_paths": {"/etc/shells": {"config": ["/bin/sh"]}}},
         )
         assert acc["o0_paths"] == {
-            "/bin/sh": {"builtins": ["cd"]},
-            "/etc/shells": {"config": ["/bin/sh"]},
+            "/bin/sh": {"type": "regular"},
+            "/etc/shells": {
+                "config": ["/bin/sh"],
+                "origin": ["o0_o.posix.facts"],
+            },
         }
 
     def test_merge_replaces_a_path_entry_whole(self, plugin) -> None:
@@ -494,7 +497,30 @@ class TestMergeFacts:
         size read after it would describe a file that never existed."""
         acc = {"o0_paths": {"/bin/sh": {"mode": "0755", "size": 100}}}
         plugin._merge_facts(acc, {"o0_paths": {"/bin/sh": {"size": 200}}})
-        assert acc["o0_paths"]["/bin/sh"] == {"size": 200}
+        assert acc["o0_paths"]["/bin/sh"] == {
+            "size": 200,
+            "origin": ["o0_o.posix.facts"],
+        }
+
+    def test_merge_keeps_every_producer_that_named_a_path(
+        self, plugin
+    ) -> None:
+        """Test origin is the one field a later observation adds to.
+
+        Two producers that both described a path both belong in it,
+        and a merge that let the later one win would publish an entry
+        claiming half of what put it there.
+        """
+        acc = {
+            "o0_paths": {
+                "/bin/sh": {"origin": ["o0_o.posix.compliance"]}
+            }
+        }
+        plugin._merge_facts(acc, {"o0_paths": {"/bin/sh": {"type": "link"}}})
+        assert acc["o0_paths"]["/bin/sh"] == {
+            "type": "link",
+            "origin": ["o0_o.posix.compliance", "o0_o.posix.facts"],
+        }
 
     def test_merge_keeps_a_confirmed_absence(self, plugin) -> None:
         """Test a path observed as absent is published as null, not as
@@ -756,9 +782,11 @@ class TestGatherUsers:
         # the path store rather than namespaces of their own, and both
         # accumulate there beside the shells file rather than
         # replacing it
-        assert facts["o0_paths"]["/home/o0-o"]["residents"] == [1000]
-        assert facts["o0_paths"]["/var/root"]["residents"] == [0]
-        assert facts["o0_paths"]["/home/o0-o"]["tags"] == ["posix", "home"]
+        assert facts["o0_paths"]["/home/o0-o"] == {
+            "type": "directory",
+            "origin": ["o0_o.posix.facts"],
+        }
+        assert facts["o0_paths"]["/var/root"]["type"] == "directory"
         assert facts["o0_paths"]["/etc/shells"]["config"] == [
             "/bin/sh",
             "/bin/zsh",
@@ -946,7 +974,7 @@ class TestGatherUsers:
         facts = _gather(plugin, "users")
 
         assert asked == [["/bin/sh", "/bin/zsh", "/home/o0-o", "/var/root"]]
-        assert facts["o0_paths"]["/home/o0-o"]["residents"] == [1000]
+        assert facts["o0_paths"]["/home/o0-o"]["type"] == "directory"
         assert facts["o0_paths"]["/bin/zsh"]["type"] == "regular"
 
     def test_needs_both_files(self, monkeypatch, plugin) -> None:
@@ -996,6 +1024,7 @@ class TestGatherUsers:
         assert facts["o0_paths"]["/etc/shells"] == {
             "content": ETC_SHELLS,
             "config": ["/bin/sh", "/bin/zsh"],
+            "origin": ["o0_o.posix.facts"],
         }
 
     def test_missing_shells_file(self, monkeypatch, plugin) -> None:
@@ -1019,7 +1048,7 @@ class TestGatherUsers:
         # The homes the same gather read are still in the store; the
         # file it could not read is the one path missing from it
         assert "/etc/shells" not in facts["o0_paths"]
-        assert facts["o0_paths"]["/home/o0-o"]["tags"] == ["posix", "home"]
+        assert facts["o0_paths"]["/home/o0-o"]["type"] == "directory"
         assert facts["o0_users"]["1000"]["shell"] == "/bin/zsh"
 
 
@@ -1155,7 +1184,7 @@ class TestDefaultGather:
         assert paths["/usr/bin/awk"]["executable"] == {"0": True}
         assert paths["/etc/shells"]["content"] == ETC_SHELLS
         assert paths["/etc/fstab"]["content"] == ETC_FSTAB
-        assert paths["/home/o0-o"]["tags"] == ["posix", "home"]
+        assert paths["/home/o0-o"]["origin"] == ["o0_o.posix.facts"]
         # The users read describes the shell as a file; the compliance
         # sweep's own entry for it says only that the file is there,
         # and neither of them replaces the other
@@ -1288,7 +1317,34 @@ class TestUsersProducersAgree:
             "o0_paths",
             "o0_shells",
         }
+
+        def unnamed(paths: dict) -> dict:
+            """The store with the producers' own names taken off."""
+            return {
+                path: (
+                    {
+                        field: value
+                        for field, value in entry.items()
+                        if field != "origin"
+                    }
+                    if isinstance(entry, dict)
+                    else entry
+                )
+                for path, entry in paths.items()
+            }
+
         for fact, value in gathered.items():
+            if fact == "o0_paths":
+                # The one thing the two producers must disagree on:
+                # each names itself as what composed the entry
+                assert unnamed(value) == unnamed(standalone[fact])
+                assert value["/home/o0-o"]["origin"] == [
+                    "o0_o.posix.facts"
+                ]
+                assert standalone[fact]["/home/o0-o"]["origin"] == [
+                    "o0_o.posix.users"
+                ]
+                continue
             assert value == standalone[fact], fact
 
 
