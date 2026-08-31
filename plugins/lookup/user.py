@@ -145,7 +145,7 @@ _raw:
 from ansible.errors import AnsibleLookupError
 from ansible.plugins.lookup import LookupBase
 
-from ansible_collections.o0_o.utils.plugins.module_utils import (
+from ansible_collections.o0_o.core.plugins.module_utils import (
     VarsLookupBase,
 )
 from ansible_collections.o0_o.posix.plugins.module_utils import lookup_user

@@ -1,0 +1,17 @@
+# vim: ts=2:sw=2:sts=2:et:ft=yaml.ansible
+# -*- mode: yaml; yaml-indent-offset: 2; indent-tabs-mode: nil; -*-
+---
+minor_changes:
+  - >-
+    lookups - all five import ``VarsLookupBase`` from ``o0_o.core``
+    rather than ``o0_o.utils``, which is where it now lives: utils'
+    one testable property is that it imports nothing from the Ansible
+    runtime, and lookup machinery was the one file that broke it.
+    Nothing about the lookups themselves changes
+    (https://github.com/o0-o/ansible-collection-posix/pull/XXX).
+  - >-
+    The dependency floors move with it - ``o0_o.core >=1.1.0`` for the
+    base class and ``o0_o.utils >=4.0.0`` for the release that removed
+    it. A module_util has no redirect mechanism, so the floors are what
+    keeps an install coherent
+    (https://github.com/o0-o/ansible-collection-posix/pull/XXX).
