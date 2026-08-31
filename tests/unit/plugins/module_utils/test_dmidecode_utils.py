@@ -22,6 +22,8 @@ from ansible_collections.o0_o.posix.plugins.module_utils.dmidecode_utils import 
     _parse_dmidecode,
     _process_bios,
     _process_processors,
+    get_dmidecode_command_requests,
+    process_dmidecode_command_results,
 )
 
 
@@ -259,3 +261,26 @@ def test_identical_processors_keep_separate_records() -> None:
     assert processors["cpu2"]["serial"] == "CPU001SERIAL002"
     assert processors["cpu1"]["model"] == processors["cpu2"]["model"]
     assert sorted(sockets) == ["cpu1", "cpu2"]
+
+
+def test_hardware_names_the_command_that_answered(
+    test_data_dir: Path,
+) -> None:
+    """The namespace says dmidecode was consulted, by name alone."""
+    output = (test_data_dir / "dmidecode_memory_asrock_x570.txt").read_text()
+    completed = [
+        dict(
+            request,
+            rc=0,
+            stdout=output,
+            stdout_lines=output.splitlines(),
+            stderr="",
+            stderr_lines=[],
+        )
+        for request in get_dmidecode_command_requests()
+    ]
+
+    facts, errors = process_dmidecode_command_results(completed)
+
+    assert errors == []
+    assert facts["o0_hardware"]["evidence"] == {"commands": ["dmidecode"]}

@@ -26,6 +26,10 @@ from ansible_collections.o0_o.core.plugins.module_utils import (
     process_command_spec,
 )
 
+from ansible_collections.o0_o.posix.plugins.module_utils.evidence_utils import (  # noqa: E501
+    commands_run,
+    compose_evidence,
+)
 from ansible_collections.o0_o.posix.plugins.module_utils.jc_utils import (
     jc_parse,
 )
@@ -1757,5 +1761,9 @@ def process_dmidecode_command_results(
 
     if not hw_facts:
         return {}, errors
+
+    hw_facts["evidence"] = compose_evidence(
+        commands=commands_run(cmds_completed, "dmidecode")
+    )
 
     return {"o0_hardware": hw_facts}, errors
