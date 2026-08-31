@@ -28,6 +28,7 @@ from ansible_collections.o0_o.posix.plugins.module_utils import (
     compose_users_groups,
     get_file_command_requests,
     name_origins,
+    name_shell_binaries,
     get_getent_command_requests,
     parse_shells,
     process_file_command_results,
@@ -201,6 +202,11 @@ class ActionModule(ReadPosixActionBase, ActionBase):
             result["o0_shells"] = name_origins(
                 compose_shells(named), FQCN
             )
+
+        # A shell entry points at the file its name resolves to,
+        # copied from the chain the path store already walked
+        if result.get("o0_shells"):
+            name_shell_binaries(result["o0_shells"], paths)
 
         if paths:
             result["o0_paths"] = paths

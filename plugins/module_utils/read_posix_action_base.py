@@ -20,7 +20,7 @@ from typing import Any, Optional
 
 from ansible_collections.o0_o.posix.plugins.module_utils.evidence_utils import (  # noqa: E501
     EVIDENCE,
-    command_name,
+    command_names,
     compose_evidence,
     name_origins,
 )
@@ -908,17 +908,7 @@ class ReadPosixActionBase(PosixActionBase):
         :param Any command: A request as the batch carried it
         :returns list[str]: The names it contributes
         """
-        if isinstance(command, dict):
-            declared = command.get(EVIDENCE)
-            if declared is not None:
-                return [
-                    name
-                    for name in declared
-                    if isinstance(name, str) and name
-                ]
-            command = command.get("command")
-
-        return [name for name in [command_name(command)] if name]
+        return command_names(command)
 
     def _ls_file_type(self, entry: dict[str, Any]) -> str:
         """

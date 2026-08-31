@@ -165,8 +165,13 @@ EXAMPLES = r"""
 - name: Read the mask a login shell out of /dev/null actually set
   ansible.builtin.debug:
     msg: >-
-      {{ ansible_facts.o0_shells['/bin/sh']['/dev/null'].config.umask }}
-  when: ansible_facts.o0_shells['/bin/sh']['/dev/null'] is defined
+      {{ ansible_facts.o0_shells['/bin/sh'].homes['/dev/null'].umask }}
+  when: ansible_facts.o0_shells['/bin/sh'].homes['/dev/null'] is defined
+
+- name: Name the file a shell's name resolves to
+  ansible.builtin.debug:
+    msg: "/bin/sh is {{ ansible_facts.o0_shells['/bin/sh'].binary }}"
+  when: ansible_facts.o0_shells['/bin/sh'].binary is defined
 
 - name: Display compliance status
   ansible.builtin.debug:
@@ -842,22 +847,30 @@ ansible_facts:
         - The login shells the host names, keyed by shell path, and
           under each of them what running it out of a given home
           actually produced. C(user.shell in o0_shells) reads as it
-          always did - the keys are the login shells - and the rows
-          underneath say what was observed rather than what was
-          configured.
+          always did - the keys are the login shells.
         - A shell's configuration is code, so running it is the only
           honest way to know what it does. The pair decides the answer
           and neither half decides it alone - two users sharing a
           shell get whatever their own dot files make, and one user's
           two shells read two different sets of files - so the home is
-          a key and not a field.
+          a key and not a field. Those keys live under C(homes), a
+          mapping of its own, so a home path is never a key beside a
+          field of the shell.
         - The system layer is the C(shell) option's shell run out of
-          C(/dev/null), the row keyed by that literal path. Every
-          POSIX host has C(/dev/null) and none of them has it as a
-          directory, so C(~/.profile) fails to resolve identically
+          C(/dev/null), keyed by that literal path under C(homes).
+          Every POSIX host has C(/dev/null) and none of them has it as
+          a directory, so C(~/.profile) fails to resolve identically
           everywhere and the row means the same thing on every host.
-          The user layer is the connecting user's own login shell run
-          out of their own home, where C(/etc/passwd) named both.
+        - Beside C(homes), the shell's own facts. C(builtins) is what
+          the shell answers itself rather than by running a file,
+          intrinsic to the binary because no home changes what a shell
+          is built out of. C(binary) is the file the name finally
+          resolves to.
+        - A key is the name the host uses, and the name is what
+          decides behavior - C(bash) invoked as C(sh) is in POSIX mode
+          and invoked as C(rbash) is restricted, so C(/bin/sh) and
+          C(/usr/bin/bash) are two observations of one file and both
+          are kept. What they share is C(binary).
         - A shell with an empty mapping under it was named and not
           run. Nothing probes every shell a host names, because a
           probe is a shell run, and running each one on the chance
@@ -865,72 +878,78 @@ ansible_facts:
           The file metadata of these same paths is in C(o0_paths),
           along with every step each of them resolves through, and the
           join is the path string.
-        - Beside the rows, C(builtins) - the commands the shell
-          answers itself rather than by running a file. A builtin is
-          intrinsic to the shell binary and no home changes it, so it
-          sits at the shell rather than in a row. Every row's key is
-          an absolute path and this one is a bare name, so the two
-          never collide.
       returned: >-
         when the users subset is gathered, or a shell context was
         observed
       type: dict
       contains:
+        homes:
+          description: >-
+            What running this shell out of each home produced, keyed
+            by home. Each holds the POSIX C(env) it had set, the
+            C(umask) it would create files under, the C(locale) it
+            reported and the C(aliases) it had defined, directly - an
+            alias comes out of a rc file, so it belongs to the shell
+            and the home together the way everything else here does. A
+            field the shell would not answer is left out rather than
+            nulled.
+          type: dict
         builtins:
           description: >-
             The commands the shell answers itself rather than by
             running a file, sorted. A fact about the shell binary, so
-            it sits beside the per-home rows rather than in one.
+            it sits beside C(homes) rather than inside it.
           type: list
           elements: str
-        config:
+        binary:
           description: >-
-            What the combination produced - the POSIX C(env) it had
-            set, the C(umask) it would create files under, the
-            C(locale) it reported, and the C(aliases) it had defined.
-            An alias comes out of a rc file, so it belongs to the
-            shell and the home together the way everything else here
-            does. A field the shell would not answer is left out
-            rather than nulled.
-          type: dict
+            The file this name finally resolves to - the last step of
+            the chain C(o0_paths) already walked, copied rather than
+            walked again. A convenience join: the full chain lives on
+            the path entry and this names only its endpoint. A shell
+            that is nothing but itself points at itself; a shell no
+            read reached carries no pointer, because nothing walked it.
+          type: str
+          sample: /usr/bin/bash
         evidence:
           description: >-
-            What produced the row. Provenance sits on the row because
-            the row is where a probe happened - one shell observed out
-            of two homes is two observations - and it names the
-            command the shell was run through. A shell with an empty
-            mapping under it carries none, because nothing was run for
-            it and there is no observation for evidence to support;
-            the host's claim that it is a login shell is the
-            C(/etc/shells) entry of C(o0_paths).
+            What was consulted about this shell, in the collection's
+            one provenance vocabulary. One record per shell, the union
+            of everything asked of it - the login probe out of each
+            home, and whatever enumerated the builtins - because a
+            shell asked three ways was asked about one shell. A shell
+            nothing was asked of carries none; the host's claim that
+            it is a login shell is the C(/etc/shells) entry of
+            C(o0_paths).
           type: dict
       sample:
         /bin/bash: {}
         /bin/sh:
+          binary: /usr/bin/bash
           builtins:
             - '['
             - command
             - test
-          /dev/null:
-            config:
+          evidence:
+            commands:
+              - alias
+              - command
+              - env
+              - locale
+              - sh
+              - umask
+          homes:
+            /dev/null:
               env:
                 PATH: /usr/bin:/bin
               umask: '0022'
               locale:
                 language: en_US.UTF-8
               aliases: {}
-            evidence:
-              commands:
-                - env
-          /home/o0-o:
-            config:
+            /home/o0-o:
               env:
-                HOME: /home/o0-o
                 PATH: /home/o0-o/bin:/usr/bin:/bin
               umask: '0077'
-            evidence:
-              commands:
-                - env
     o0_paths:
       description:
         - What the gather observed about the paths it touched, keyed

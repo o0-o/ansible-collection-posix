@@ -238,7 +238,9 @@
         ]['members'] is sequence
       - gathered['o0_os'] is not defined
       # The subset that reads /etc/shells is the one that runs one
-      - gathered['o0_shells']['/bin/sh']['/dev/null'] is mapping
+      - >-
+        gathered['o0_shells']['/bin/sh']['homes']['/dev/null']
+        is mapping
     fail_msg: >-
       the users subset did not publish its five facts:
       {{ gathered.keys() | list | sort }}

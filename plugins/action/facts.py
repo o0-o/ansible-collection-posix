@@ -48,6 +48,7 @@ from ansible_collections.o0_o.posix.plugins.module_utils import (
     merge_entry,
     merge_evidence,
     name_origins,
+    name_shell_binaries,
     parse_shells,
     process_all_compliance_command_results,
     process_dmidecode_command_results,
@@ -889,6 +890,14 @@ class ActionModule(ReadPosixActionBase, ActionBase):
                     task_vars,
                     sorted(user_facts.get("o0_shells") or {}),
                 ),
+            )
+
+        # A shell entry points at the file its name resolves to. The
+        # chain is on the path entry and both facts are settled by
+        # now, so it is copied rather than walked again
+        if all_facts.get("o0_shells"):
+            name_shell_binaries(
+                all_facts["o0_shells"], all_facts.get("o0_paths")
             )
 
         result["ansible_facts"] = all_facts

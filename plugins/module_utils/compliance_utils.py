@@ -45,10 +45,12 @@ from ansible_collections.o0_o.posix.plugins.module_utils.command_spec import (
 )
 from ansible_collections.o0_o.posix.plugins.module_utils.command_utils import (
     ANSWERING_SHELL,
+    LOOKUP_COMMAND,
     process_command_lookups,
 )
 from ansible_collections.o0_o.posix.plugins.module_utils.evidence_utils import (  # noqa: E501
     command_name,
+    compose_evidence,
     merge_evidence,
     name_origins,
 )
@@ -533,7 +535,14 @@ def process_all_compliance_command_results(
     facts: dict[str, Any] = {
         "o0_os": {"compliance": compliance},
         "o0_paths": paths,
-        "o0_shells": compose_shells(builtins={ANSWERING_SHELL: builtins}),
+        # What enumerated the builtins is part of the shell's record,
+        # so the sweep that asked names itself there
+        "o0_shells": compose_shells(
+            builtins={ANSWERING_SHELL: builtins},
+            builtins_evidence=compose_evidence(
+                commands=[LOOKUP_COMMAND]
+            ),
+        ),
     }
 
     return name_origins(facts, FQCN), errors

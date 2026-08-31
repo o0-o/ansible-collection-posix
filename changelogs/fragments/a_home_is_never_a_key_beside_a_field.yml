@@ -1,0 +1,53 @@
+# vim: ts=2:sw=2:sts=2:et:ft=yaml.ansible
+# -*- mode: yaml; yaml-indent-offset: 2; indent-tabs-mode: nil; -*-
+---
+breaking_changes:
+  - >-
+    users, facts, compliance - the homes a shell was observed out of
+    move under ``homes``. ``o0_shells[shell]`` mixed home paths as keys
+    with fields of the shell - ``builtins`` beside ``/dev/null`` - so a
+    consumer walking the entry had to know which keys were paths and
+    which were facts, and every producer adding a field had to pick a
+    name no home could collide with. Read a row as
+    ``o0_shells[shell].homes[home]``; the shell's own facts sit beside
+    ``homes`` and nothing there is a path
+    (https://github.com/o0-o/ansible-collection-posix/pull/XXX).
+  - >-
+    facts - the ``config`` key under each home is gone. What the
+    combination produced sits directly under the home: ``env``,
+    ``umask``, ``locale`` and ``aliases``. The wrapper named a
+    category the row is entirely made of, so it said nothing the row
+    did not
+    (https://github.com/o0-o/ansible-collection-posix/pull/XXX).
+  - >-
+    facts - ``evidence`` on an ``o0_shells`` entry is one record per
+    shell rather than one per home. A shell observed out of two homes
+    was asked the same way twice about one shell, so the record is the
+    union of everything asked of it, and it now includes what
+    enumerated the ``builtins`` - which carried no provenance at all
+    before. Read it as ``o0_shells[shell].evidence``
+    (https://github.com/o0-o/ansible-collection-posix/pull/XXX).
+minor_changes:
+  - >-
+    users, facts - each ``o0_shells`` entry carries ``binary``, the
+    file its name finally resolves to. The keys stay the names the
+    host uses, because the name is what decides behavior - ``bash``
+    invoked as ``sh`` is in POSIX mode and as ``rbash`` is restricted,
+    so ``/bin/sh`` and ``/usr/bin/bash`` are two observations of one
+    file and both are worth keeping - and ``binary`` is what the two
+    have in common. It is the last step of the chain ``o0_paths``
+    already walked, copied rather than walked again: a convenience
+    join, with the full chain on the path entry. A shell that is
+    nothing but itself points at itself, so a consumer reads one field
+    without an existence check; a shell no read reached carries no
+    pointer, because nothing walked it
+    (https://github.com/o0-o/ansible-collection-posix/pull/XXX).
+  - >-
+    facts - the login probe names what it asks the shell. It is a
+    script, so argv named the ``env(1)`` that set ``HOME`` and nothing
+    about the question; the request declares the shell - which is the
+    subject when the question is what a shell's own configuration
+    does - beside the four things the script asks it: ``alias``,
+    ``env``, ``locale`` and ``umask``. The umask and the locale had no
+    evidence anywhere before
+    (https://github.com/o0-o/ansible-collection-posix/pull/XXX).

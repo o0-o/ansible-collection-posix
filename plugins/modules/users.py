@@ -236,16 +236,19 @@ o0_shells:
       what makes C(user.shell in o0_shells) a question a host can
       answer. The same answer C(o0_paths['/etc/shells']['config'])
       lists, keyed rather than ordered.
-    - Every key is empty here. Under each shell, M(o0_o.posix.facts)
-      files a row per home it observed that shell run out of, holding
-      the C(config) that combination produced. This module names the
-      shells and runs none of them, because what a shell's
-      configuration does is only knowable by running it.
+    - Each key carries C(binary), the file the name finally resolves
+      to, copied from the chain C(o0_paths) already walked, and
+      nothing else - M(o0_o.posix.facts) files what running each shell
+      out of a home produced, under C(homes). This module names the shells and
+      runs none of them, because what a shell's configuration does is
+      only knowable by running it.
   returned: when the host names its login shells
   type: dict
   sample:
-    /bin/sh: {}
-    /bin/zsh: {}
+    /bin/sh:
+      binary: /usr/bin/bash
+    /bin/zsh:
+      binary: /bin/zsh
 o0_paths:
   description:
     - What the module observed about the paths it read, keyed by the

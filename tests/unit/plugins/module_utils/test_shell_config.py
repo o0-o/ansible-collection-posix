@@ -46,6 +46,7 @@ from ansible_collections.o0_o.posix.plugins.module_utils.shells_utils import (
     _parse_shell_config,
     compose_shells,
     get_shell_command_requests,
+    name_shell_binaries,
     process_shell_command_results,
 )
 
@@ -316,7 +317,7 @@ def test_an_observed_shell_the_host_did_not_name_is_a_key_too() -> None:
 
     assert set(shells) == {"/bin/sh", "/usr/local/bin/fish"}
     assert shells["/bin/sh"] == {}
-    assert shells["/usr/local/bin/fish"]["/home/o0-o"]["config"] == {
+    assert shells["/usr/local/bin/fish"]["homes"]["/home/o0-o"] == {
         "umask": "0022"
     }
 
@@ -334,16 +335,21 @@ def test_a_shell_named_and_observed_carries_its_rows() -> None:
     )
 
     assert set(shells) == {"/bin/sh", "/bin/zsh"}
-    assert list(shells["/bin/sh"]) == ["/dev/null", "/home/o0-o"]
-    assert shells["/bin/sh"]["/home/o0-o"]["config"]["umask"] == "0077"
+    # Homes are a mapping of their own, so a home path is never a key
+    # beside a field of the shell
+    assert list(shells["/bin/sh"]) == ["homes"]
+    assert list(shells["/bin/sh"]["homes"]) == ["/dev/null", "/home/o0-o"]
+    assert shells["/bin/sh"]["homes"]["/home/o0-o"]["umask"] == "0077"
     assert shells["/bin/zsh"] == {}
 
 
-def test_a_row_names_the_probe_that_made_it() -> None:
-    """Test provenance sits on the row, because the row is where a
-    probe happened: one shell observed out of two homes is two
-    observations. A shell nothing was run for carries nothing, since
-    there is no observation for evidence to support.
+def test_one_record_per_shell_names_everything_asked_of_it() -> None:
+    """Test the shell carries the provenance, not each home.
+
+    A shell observed out of two homes was asked the same way twice
+    about one shell, and a shell whose builtins were enumerated was
+    asked a second way about the same shell, so the record is one
+    union at the shell rather than a copy under each home.
     """
     shells = compose_shells(
         ["/bin/sh", "/bin/zsh"],
@@ -353,27 +359,28 @@ def test_a_row_names_the_probe_that_made_it() -> None:
                 "/home/o0-o": {"umask": "0077"},
             }
         },
-        {"commands": ["env"]},
+        {"commands": ["env", "sh"]},
+        {"/bin/sh": ["cd"]},
+        {"commands": ["command"]},
     )
 
+    assert shells["/bin/sh"]["evidence"] == {
+        "commands": ["command", "env", "sh"]
+    }
     for home in ("/dev/null", "/home/o0-o"):
-        assert shells["/bin/sh"][home]["evidence"] == {"commands": ["env"]}
+        assert "evidence" not in shells["/bin/sh"]["homes"][home]
 
     assert shells["/bin/zsh"] == {}
 
-    # Each row's record is its own rather than one record shared
-    shells["/bin/sh"]["/dev/null"]["evidence"]["commands"].append("sh")
-    assert shells["/bin/sh"]["/home/o0-o"]["evidence"]["commands"] == ["env"]
 
-
-def test_a_row_composed_without_a_probe_named_carries_none() -> None:
-    """Test a caller that names nothing gets a row with no evidence
-    rather than a row claiming an origin it was never given."""
+def test_a_shell_composed_without_a_probe_named_carries_none() -> None:
+    """Test a caller that names nothing gets no evidence rather than a
+    record claiming an origin it was never given."""
     shells = compose_shells(
         None, {"/bin/sh": {SHELL_SYSTEM_HOME: {"umask": "0022"}}}
     )
 
-    assert shells["/bin/sh"]["/dev/null"] == {"config": {"umask": "0022"}}
+    assert shells["/bin/sh"] == {"homes": {"/dev/null": {"umask": "0022"}}}
 
 
 def test_a_host_that_named_no_shells_and_ran_none_composes_nothing() -> None:
@@ -490,8 +497,8 @@ class TestBuiltinsSitOnTheShell:
         )
 
         assert shells["/bin/sh"]["builtins"] == ["cd", "exec"]
-        assert shells["/bin/sh"]["/dev/null"]["config"] == {"umask": "0022"}
-        assert "builtins" not in shells["/bin/sh"]["/dev/null"]
+        assert shells["/bin/sh"]["homes"]["/dev/null"] == {"umask": "0022"}
+        assert "builtins" not in shells["/bin/sh"]["homes"]["/dev/null"]
 
     def test_a_shell_known_only_by_its_builtins_is_a_key(self) -> None:
         """Test a shell nothing else named still gets a key.
@@ -526,10 +533,101 @@ def test_a_row_names_who_composed_it_beside_what_ran() -> None:
 
     name_origins(shells, "o0_o.posix.facts")
 
-    row = shells["/bin/sh"]["/dev/null"]
-    assert row["origins"] == ["o0_o.posix.facts"]
-    # The shell above the row says nothing was consulted for it - the
-    # builtins came from another producer's sweep - so it claims none
-    assert "origins" not in shells["/bin/sh"]
+    # The record sits at the shell now, so the producer is named there
+    assert shells["/bin/sh"]["origins"] == ["o0_o.posix.facts"]
+    assert "origins" not in shells["/bin/sh"]["homes"]["/dev/null"]
     # and a shell named but never run has no observation to attribute
     assert compose_shells(["/bin/zsh"])["/bin/zsh"] == {}
+
+
+class TestShellBinaries:
+    """Tests for the file a shell's name finally resolves to."""
+
+    STORE = {
+        "/bin/sh": {
+            "type": "link",
+            "resolution": ["/bin/sh", "/usr/bin/sh", "/usr/bin/bash"],
+        },
+        "/bin/rbash": {
+            "type": "link",
+            "resolution": ["/bin/rbash", "/usr/bin/bash"],
+        },
+        "/bin/zsh": {"type": "regular", "resolution": ["/bin/zsh"]},
+        "/usr/bin/bash": {"type": "regular"},
+    }
+
+    def test_a_shell_points_at_the_end_of_its_chain(self) -> None:
+        """Test the pointer is the chain's last step, not a new walk."""
+        shells = name_shell_binaries(
+            compose_shells(["/bin/sh", "/bin/rbash"]), self.STORE
+        )
+
+        assert shells["/bin/sh"]["binary"] == "/usr/bin/bash"
+        assert shells["/bin/rbash"]["binary"] == "/usr/bin/bash"
+
+    def test_two_names_for_one_file_stay_two_entries(self) -> None:
+        """Test the keys are the names the host uses.
+
+        Behavior follows the invoked name - bash as sh is in POSIX
+        mode and as rbash is restricted - so two names for one file
+        are two observations, and what they share is the file.
+        """
+        shells = name_shell_binaries(
+            compose_shells(["/bin/sh", "/bin/rbash", "/usr/bin/bash"]),
+            self.STORE,
+        )
+
+        assert set(shells) == {"/bin/sh", "/bin/rbash", "/usr/bin/bash"}
+        assert (
+            shells["/bin/sh"]["binary"]
+            == shells["/bin/rbash"]["binary"]
+            == shells["/usr/bin/bash"]["binary"]
+        )
+
+    def test_a_shell_that_is_only_itself_points_at_itself(self) -> None:
+        """Test a described non-link resolves to itself.
+
+        Which is what a path that is nothing but itself resolves to, so
+        a consumer reads one field without an existence check.
+        """
+        shells = name_shell_binaries(
+            compose_shells(["/bin/zsh", "/usr/bin/bash"]), self.STORE
+        )
+
+        assert shells["/bin/zsh"]["binary"] == "/bin/zsh"
+        assert shells["/usr/bin/bash"]["binary"] == "/usr/bin/bash"
+
+    def test_a_shell_nothing_described_gets_no_pointer(self) -> None:
+        """Test a shell no read reached claims no resolution.
+
+        Nothing walked it, and a self-pointer would assert an answer
+        nobody checked.
+        """
+        shells = name_shell_binaries(
+            compose_shells(["/bin/ksh"]), self.STORE
+        )
+
+        assert "binary" not in shells["/bin/ksh"]
+
+    def test_a_store_with_nothing_in_it_points_at_nothing(self) -> None:
+        """Test a gather that read no path names no binary."""
+        shells = name_shell_binaries(compose_shells(["/bin/sh"]), None)
+
+        assert shells["/bin/sh"] == {}
+
+    def test_a_null_at_the_path_is_not_a_description(self) -> None:
+        """Test a shell the store holds as absent gets no pointer."""
+        shells = name_shell_binaries(
+            compose_shells(["/bin/gone"]), {"/bin/gone": None}
+        )
+
+        assert "binary" not in shells["/bin/gone"]
+
+    def test_a_name_the_store_keys_differently_still_finds_it(self) -> None:
+        """Test the pointer is looked up the way the store keys a path."""
+        shells = name_shell_binaries(
+            compose_shells(["/bin//sh"]),
+            {"/bin/sh": {"type": "regular"}},
+        )
+
+        assert shells["/bin//sh"]["binary"] == "/bin/sh"

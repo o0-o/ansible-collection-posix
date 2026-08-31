@@ -48,6 +48,7 @@ value says nothing has been observed of it.
 
 from __future__ import annotations
 
+import posixpath
 import re
 
 from typing import Any, Iterable, Optional, Sequence, Union
@@ -60,11 +61,18 @@ from ansible_collections.o0_o.core.plugins.module_utils import (
 from ansible_collections.o0_o.posix.plugins.module_utils.env_utils import (
     POSIX_ENV_VARS,
 )
+from ansible_collections.o0_o.posix.plugins.module_utils.evidence_utils import (  # noqa: E501
+    EVIDENCE,
+    merge_evidence,
+)
 from ansible_collections.o0_o.posix.plugins.module_utils.filter_utils import (
     decode_declared_content,
 )
 from ansible_collections.o0_o.posix.plugins.module_utils.locale_utils import (
     _parse_locale,
+)
+from ansible_collections.o0_o.posix.plugins.module_utils.path_utils import (
+    canonicalize,
 )
 from ansible_collections.o0_o.utils.plugins.module_utils import strip_comments
 
@@ -74,6 +82,13 @@ SHELL_SYSTEM_HOME = "/dev/null"
 
 # The shell a producer probes when it was not told which
 SHELL_DEFAULT = "/bin/sh"
+
+# What the login probe asks the shell.  The shell itself is named
+# beside these, because a probe of what a shell's own configuration
+# does is a question about the shell: here the interpreter IS the
+# subject, so it is evidence and not merely the thing that read the
+# script.
+SHELL_PROBE_QUESTIONS = ("alias", "env", "locale", "umask")
 
 # What the probe prints between the three things it asks for, and
 # after the last of them.  A login shell may print anything it likes
@@ -319,14 +334,21 @@ def get_shell_command_requests(
 
     requests = []
     for shell, home in pairs:
-        requests.extend(
-            process_command_spec(
-                SHELL_COMMAND_SPEC,
-                cmd_type="shell_config",
-                shell=shell,
-                home=home,
-            )
+        asked = process_command_spec(
+            SHELL_COMMAND_SPEC,
+            cmd_type="shell_config",
+            shell=shell,
+            home=home,
         )
+        # The probe is a script, so argv names the env(1) that set
+        # HOME rather than what was asked. What was asked is the shell
+        # - which is the subject here - and the four questions the
+        # script puts to it
+        for request in asked:
+            request[EVIDENCE] = sorted(
+                {posixpath.basename(shell), *SHELL_PROBE_QUESTIONS}
+            )
+        requests.extend(asked)
 
     return requests
 
@@ -369,6 +391,7 @@ def compose_shells(
     observed: Optional[dict[str, dict[str, dict[str, Any]]]] = None,
     evidence: Optional[dict[str, Any]] = None,
     builtins: Optional[dict[str, Sequence[str]]] = None,
+    builtins_evidence: Optional[dict[str, Any]] = None,
 ) -> dict[str, dict[str, Any]]:
     """Compose the canonical shells fact from both halves.
 
@@ -377,17 +400,20 @@ def compose_shells(
     shell that was probed without being named is a key too, because
     the host answered for it.
 
-    Under each shell, a row per home probed, holding the ``config``
-    that combination produced and the ``evidence`` for it, plus the
-    ``builtins`` the shell answers itself.  A builtin is intrinsic to
-    the shell binary - no home changes which commands a shell is built
-    out of - so it sits at the shell, beside the rows rather than in
-    one, and its key is a bare name where every row's key is an
-    absolute path.  An alias is the opposite: it comes from a rc file,
-    so it belongs to the pair and rides in the row's ``config``
-    alongside the environment, the umask and the locale that same
-    probe answered with.  A row is where the provenance sits because a
-    row is where a probe happened:
+    Under each shell, the homes it was observed out of, keyed by home
+    under ``homes`` - a mapping of its own, so a home path is never a
+    key beside a field of the shell.  Each home holds what that
+    combination produced directly: the ``env`` it had set, the
+    ``umask`` it would create files under, the ``locale`` it reported
+    and the ``aliases`` it had defined.  Beside ``homes``, the shell's
+    own facts: the ``builtins`` it answers itself, intrinsic to the
+    binary because no home changes what a shell is built out of, and
+    ``binary``, the file its name finally resolves to.
+
+    One ``evidence`` record per shell, the union of everything asked
+    of it - the login probes out of each home and whatever enumerated
+    the builtins - because a shell asked three ways was asked about
+    one shell.  A shell nothing was asked of has none:
     one shell may be observed out of two homes, and the fact is a fact
     about the pair.  A shell nothing was observed of keeps its key
     with an empty mapping under it - the key is the host's claim that
@@ -401,10 +427,12 @@ def compose_shells(
         names, as ``/etc/shells`` gave them
     :param Optional[dict[str, dict[str, dict[str, Any]]]] observed:
         What each probed combination produced, keyed by shell and home
-    :param Optional[dict[str, Any]] evidence: What the observations
-        were made with, named on every row they produced
+    :param Optional[dict[str, Any]] evidence: What the shell was asked
+        with, folded into the shell's own record
     :param Optional[dict[str, Sequence[str]]] builtins: The commands
         each shell answers itself, keyed by shell
+    :param Optional[dict[str, Any]] builtins_evidence: What enumerated
+        the builtins, folded into the same record
     :returns dict[str, dict[str, Any]]: The shells fact
     """
     observed = observed or {}
@@ -414,23 +442,85 @@ def compose_shells(
     }
 
     for shell in sorted(observed):
-        rows = shells.setdefault(shell, {})
+        entry = shells.setdefault(shell, {})
+        homes = entry.setdefault("homes", {})
         for home in sorted(observed[shell]):
-            row: dict[str, Any] = {"config": observed[shell][home]}
-            if evidence is not None:
-                row["evidence"] = {
-                    kind: list(origins) for kind, origins in evidence.items()
-                }
-            rows[home] = row
+            homes[home] = dict(observed[shell][home])
+        _consulted(entry, evidence)
 
     # A builtin is the shell binary answering for itself, so it sits
-    # at the shell rather than in a row: no home changes which
-    # commands a shell is built out of. The key is a bare name and
-    # every row's key is an absolute path, so the two never collide
+    # at the shell rather than under a home: no home changes which
+    # commands a shell is built out of
     for shell in sorted(builtins or {}):
-        shells.setdefault(shell, {})["builtins"] = sorted(
-            set(builtins[shell])
-        )
+        entry = shells.setdefault(shell, {})
+        entry["builtins"] = sorted(set(builtins[shell]))
+        _consulted(entry, builtins_evidence)
+
+    return shells
+
+
+def _consulted(
+    entry: dict[str, Any], evidence: Optional[dict[str, Any]]
+) -> None:
+    """Fold what a probe consulted into the shell's own record.
+
+    One record per shell, the union of everything asked of it.  A
+    shell observed out of two homes was asked the same way twice and a
+    shell whose builtins were enumerated was asked a second way, and
+    all of it is provenance for the one entry.
+
+    :param dict[str, Any] entry: The shell's entry, edited in place
+    :param Optional[dict[str, Any]] evidence: What was consulted, or
+        None where the caller has nothing to add
+    """
+    if evidence is None:
+        return
+
+    merge_evidence(
+        entry.setdefault(EVIDENCE, {}),
+        {
+            kind: (list(named) if isinstance(named, list) else dict(named))
+            for kind, named in evidence.items()
+        },
+    )
+
+
+def name_shell_binaries(
+    shells: dict[str, dict[str, Any]],
+    paths: Optional[dict[str, Any]] = None,
+) -> dict[str, dict[str, Any]]:
+    """Point each shell at the file its name finally resolves to.
+
+    A key here is the name the host uses, and the name is what decides
+    behavior: bash invoked as ``sh`` is in POSIX mode and invoked as
+    ``rbash`` is restricted, so ``/bin/sh`` and ``/usr/bin/bash`` are
+    two observations of one file and both are worth keeping.  What the
+    two have in common is the file, and ``binary`` names it - the last
+    step of the chain the path store already walked, copied rather
+    than walked again.
+
+    A shell the store describes without a chain resolves to itself,
+    which is what a path that is nothing but itself resolves to.  A
+    shell the store never described gets no pointer: nothing walked
+    it, and a self-pointer would assert a resolution nobody checked.
+
+    :param dict[str, dict[str, Any]] shells: The shells fact, edited
+        in place
+    :param Optional[dict[str, Any]] paths: The o0_paths store
+    :returns dict[str, dict[str, Any]]: The shells fact
+    """
+    store = paths or {}
+
+    for shell, entry in shells.items():
+        described = store.get(canonicalize(shell))
+        if not isinstance(described, dict):
+            continue
+
+        chain = described.get("resolution")
+        if isinstance(chain, list) and chain:
+            entry["binary"] = chain[-1]
+        elif "type" in described:
+            entry["binary"] = canonicalize(shell)
 
     return shells
 
@@ -446,6 +536,7 @@ __all__ = [
     "SHELL_UMASK_MARKER",
     "compose_shells",
     "get_shell_command_requests",
+    "name_shell_binaries",
     "parse_shells",
     "process_shell_command_results",
 ]

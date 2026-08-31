@@ -161,20 +161,19 @@
     fail_msg: 'o0_shells does not describe /bin/sh: {{ shell }}'
 
 # An alias comes out of a rc file, so it belongs to a shell and a home
-# together and rides in the row's config beside the env, the umask and
-# the locale that same probe answered with.
+# together and sits under the home beside the env, the umask and the
+# locale that same probe answered with.
 - name: Assert an alias belongs to the pair that produced it
   vars:
     rows: >-
-      {{ facts_all_reg['ansible_facts']['o0_shells']['/bin/sh']
-         | dict2items | selectattr('key', 'match', '^/')
-         | map(attribute='value') | list }}
+      {{ facts_all_reg['ansible_facts']['o0_shells']['/bin/sh']['homes']
+         | dict2items | map(attribute='value') | list }}
   ansible.builtin.assert:
     that:
       - rows | length > 0
       - >-
-        rows | selectattr('config.aliases', 'defined')
-        | rejectattr('config.aliases', 'mapping') | list | length == 0
+        rows | selectattr('aliases', 'defined')
+        | rejectattr('aliases', 'mapping') | list | length == 0
     fail_msg: 'a shell row reports aliases that are not a mapping'
 
 # A command the sweep found is a fact about the file it found, filed
@@ -735,11 +734,9 @@
          | selectattr('value', 'mapping')
          | selectattr('value.evidence', 'defined')
          | map(attribute='value') | list }}
-    rows: >-
+    probed: >-
       {{ facts['o0_shells'] | dict2items | map(attribute='value')
-         | map('dict2items') | flatten
-         | selectattr('key', 'match', '^/')
-         | map(attribute='value') | list }}
+         | selectattr('evidence', 'defined') | list }}
   ansible.builtin.assert:
     that:
       # Section level: one gather produced the whole of it
@@ -793,10 +790,9 @@
       - >-
         'o0_o.posix.compliance' in
         facts['o0_os']['compliance']['origins']
-      # An o0_shells row is one shell observed out of one home, so the
-      # row is where both records sit
-      - rows | length > 0
-      - rows | rejectattr('origins', 'defined') | list | length == 0
+      # One record per shell, so the shell is where both sit
+      - probed | length > 0
+      - probed | rejectattr('origins', 'defined') | list | length == 0
       # And nothing claims a producer where nothing was consulted
       - "'origins' not in facts['o0_os']['kernel']"
     fail_msg: >-
@@ -860,12 +856,23 @@
       # The keys are the answer /etc/shells gave, which is what makes
       # user.shell in o0_shells a question a host can answer
       - named | reject('in', shells) | list | length == 0
-      # Rows under a shell are keyed by the home it was run out of.
-      # The one key that is not a path is builtins, which is a fact
-      # about the shell binary rather than about any pair
-      - shells | dict2items | map(attribute='value') | map('list')
-        | flatten | reject('match', '^/') | reject('eq', 'builtins')
+      # A home is never a key beside a field of the shell: the homes
+      # a shell was run out of live under a mapping of their own
+      - >-
+        shells | dict2items | map(attribute='value') | map('list')
+        | flatten | unique
+        | reject('in', ['binary', 'builtins', 'evidence', 'homes',
+        'origins']) | list | length == 0
+      - >-
+        shells | dict2items | map(attribute='value')
+        | selectattr('homes', 'defined') | map(attribute='homes')
+        | map('list') | flatten | reject('match', '^/')
         | list | length == 0
+      # A shell points at the file its name resolves to
+      - >-
+        shells | dict2items | map(attribute='value')
+        | selectattr('binary', 'defined') | map(attribute='binary')
+        | reject('match', '^/') | list | length == 0
     fail_msg: >-
       o0_shells is not keyed by shell path, or does not carry the
       shells /etc/shells named: {{ shells.keys() | list }}
@@ -878,26 +885,33 @@
 - name: Assert every shell observation names the probe that made it
   vars:
     shells: "{{ facts_all_reg['ansible_facts']['o0_shells'] }}"
-    rows: >-
+    probed: >-
       {{ shells | dict2items | map(attribute='value')
-         | map('dict2items') | flatten
-         | selectattr('key', 'match', '^/')
-         | map(attribute='value') | list }}
+         | selectattr('evidence', 'defined') | list }}
+    consulted: >-
+      {{ probed | map(attribute='evidence.commands') | flatten
+         | unique | sort }}
   ansible.builtin.assert:
     that:
-      - rows | length > 0
-      - rows | rejectattr('evidence', 'defined') | list | length == 0
-      - rows | map(attribute='evidence.commands') | flatten
-        | reject('eq', 'env') | list | length == 0
+      - probed | length > 0
+      # A probe of what a shell's own configuration does is a question
+      # about the shell, so the shell is named beside the four
+      # questions the script puts to it
+      - "'sh' in consulted"
+      - "'env' in consulted"
+      - "'umask' in consulted"
+      - "'alias' in consulted"
       # A shell is run, not read, and it reads no variable the fact
-      # does not already publish under config
-      - rows | selectattr('evidence.files', 'defined')
+      # does not already publish
+      - >-
+        probed | selectattr('evidence.files', 'defined')
         | list | length == 0
-      - rows | selectattr('evidence.config', 'defined')
+      - >-
+        probed | selectattr('evidence.config', 'defined')
         | list | length == 0
     fail_msg: >-
       an o0_shells observation does not name what produced it:
-      {{ rows }}
+      {{ consulted }}
 
 # The system layer: the shell the task named, run out of the one home
 # every POSIX host has and none of them has as a directory, so that
@@ -905,10 +919,10 @@
 - name: Assert the system layer was observed out of /dev/null
   vars:
     shells: "{{ facts_all_reg['ansible_facts']['o0_shells'] }}"
-    config: "{{ shells['/bin/sh']['/dev/null']['config'] }}"
+    config: "{{ shells['/bin/sh']['homes']['/dev/null'] }}"
   ansible.builtin.assert:
     that:
-      - shells['/bin/sh']['/dev/null'] is mapping
+      - shells['/bin/sh']['homes']['/dev/null'] is mapping
       - config is mapping
       # What the login files made of the mask and the environment
       - config['umask'] is match('^0[0-7]{3}$')
@@ -945,10 +959,10 @@
   vars:
     shells: "{{ facts_all_reg['ansible_facts']['o0_shells'] }}"
     config: >-
-      {{ shells[facts_own_shell][facts_own_home]['config'] }}
+      {{ shells[facts_own_shell]['homes'][facts_own_home] }}
   ansible.builtin.assert:
     that:
-      - shells[facts_own_shell][facts_own_home] is mapping
+      - shells[facts_own_shell]['homes'][facts_own_home] is mapping
       - config['umask'] is match('^0[0-7]{3}$')
       # The shell was run out of that home and not out of another
       - config['env']['HOME'] == facts_own_home
@@ -958,14 +972,14 @@
 
 # Only shells a producer was asked about are run. Nothing walks
 # /etc/shells running each one on the chance somebody logs in with it.
-# A shell carrying nothing but builtins was not run either - the sweep
-# learned those from the probes it ran through /bin/sh - and /bin/sh
-# is asked about by name anyway.
+# A shell that was run is one with a home under it: the builtins came
+# from a sweep rather than a run, and every named shell carries a
+# binary pointer whether or not anything ran it.
 - name: Assert no shell was run that the gather was not asked about
   vars:
     shells: "{{ facts_all_reg['ansible_facts']['o0_shells'] }}"
     observed: >-
-      {{ shells | dict2items | selectattr('value')
+      {{ shells | dict2items | selectattr('value.homes', 'defined')
          | map(attribute='key') | list }}
     asked: >-
       {{ ['/bin/sh', facts_own_shell] | select | list }}

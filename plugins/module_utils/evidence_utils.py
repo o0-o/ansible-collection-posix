@@ -138,6 +138,33 @@ def compose_evidence(
     return record
 
 
+def command_names(request: Any) -> list[str]:
+    """The names one request contributes to a record of what was asked.
+
+    Derived from argv, which is what a command was asked as, and that
+    is the default for every request there is.  A request that
+    declares its own names under ``evidence`` overrides the
+    derivation, and there is one reason to: the request is a script,
+    so argv names the interpreter that read it back rather than the
+    question the script asks.  Where the interpreter is itself the
+    subject - a probe of what a shell does, a test of whether one
+    exists - the derived answer is the true one and nothing is
+    declared.
+
+    :param Any request: A request or a result, as a batch carried it
+    :returns list[str]: The names it contributes, in the order given
+    """
+    if isinstance(request, dict):
+        declared = request.get(EVIDENCE)
+        if isinstance(declared, list):
+            return [
+                name for name in declared if isinstance(name, str) and name
+            ]
+        request = request.get("command")
+
+    return [name for name in [command_name(request)] if name]
+
+
 def commands_run(
     cmds_completed: Iterable[Any],
     *types: str,
@@ -161,8 +188,7 @@ def commands_run(
             name
             for result in cmds_completed
             if isinstance(result, dict) and result.get("type") in wanted
-            for name in [command_name(result.get("command"))]
-            if name
+            for name in command_names(result)
         }
     )
 
@@ -270,6 +296,7 @@ __all__ = [
     "EVIDENCE_KINDS",
     "ORIGINS",
     "command_name",
+    "command_names",
     "commands_run",
     "compose_evidence",
     "merge_entry",
