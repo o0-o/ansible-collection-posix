@@ -1,0 +1,12 @@
+# vim: ts=2:sw=2:sts=2:et:ft=yaml.ansible
+# -*- mode: yaml; yaml-indent-offset: 2; indent-tabs-mode: nil; -*-
+---
+minor_changes:
+  - >-
+    dmidecode, facts - a boundary is ``min`` or ``max`` wherever the
+    hardware facts write one. A memory module's speed carried ``max``
+    while its voltage carried ``maximum`` and ``minimum``, so one
+    device spelled the same idea two ways one key apart. Voltage
+    bounds are ``min`` and ``max`` now, beside the ``current`` a
+    processor's speed reports
+    (https://github.com/o0-o/ansible-collection-posix/pull/XXX).

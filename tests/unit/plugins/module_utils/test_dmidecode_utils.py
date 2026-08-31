@@ -348,3 +348,19 @@ def test_bios_placeholder_vendor_is_null() -> None:
     )
 
     assert bios["make"] is None
+
+
+def test_voltage_bounds_named_like_speed_bounds(casa_memory: dict) -> None:
+    """A boundary is min or max wherever this parser writes one.
+
+    speed carried max while voltage carried maximum and minimum, so a
+    consumer comparing the two bounds of one device spelled the same
+    idea two ways.
+    """
+    module = casa_memory["memory"]["m391a4g43mb1-ctd"]
+
+    assert module["voltage"] == {
+        "min": {"v": 1.2, "pretty": "1.2 V"},
+        "max": {"v": 1.2, "pretty": "1.2 V"},
+    }
+    assert list(module["speed"]) == ["max"]

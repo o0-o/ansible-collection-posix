@@ -1012,19 +1012,20 @@ def _process_memory_modules(
                 if parsed:
                     module["speed"] = {"max": parsed}
 
-            # Voltage (minimum and maximum)
+            # Voltage bounds, named the way speed names its bound:
+            # a boundary is min or max wherever this parser writes one
             voltage = {}
             min_voltage = values.get("minimum_voltage")
             if min_voltage and not _is_meaningless_value(min_voltage):
                 parsed = parse_si(min_voltage)
                 if parsed:
-                    voltage["minimum"] = parsed
+                    voltage["min"] = parsed
 
             max_voltage = values.get("maximum_voltage")
             if max_voltage and not _is_meaningless_value(max_voltage):
                 parsed = parse_si(max_voltage)
                 if parsed:
-                    voltage["maximum"] = parsed
+                    voltage["max"] = parsed
 
             if voltage:
                 module["voltage"] = voltage
