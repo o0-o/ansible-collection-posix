@@ -104,6 +104,8 @@ class ActionModule(ReadPosixActionBase, ActionBase):
             self._content(files, group_path),
             resolved.get("passwd"),
             resolved.get("group"),
+            passwd_path=passwd_path,
+            group_path=group_path,
         )
 
         def read_paths(paths: list[str]) -> dict[str, Any]:

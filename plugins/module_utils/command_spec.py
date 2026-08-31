@@ -38,6 +38,7 @@ from ansible_collections.o0_o.posix.plugins.module_utils.getconf_utils import (
     _parse_getconf,
 )
 from ansible_collections.o0_o.posix.plugins.module_utils.getent_utils import (
+    GETENT_COMMANDS,
     GETENT_RCS,
     _parse_getent,
 )
@@ -100,13 +101,13 @@ FILE_COMMAND_SPEC = {
 GETENT_COMMAND_SPEC = {
     "posix": {
         "getent_passwd": {
-            "command": ("getent", "passwd"),
+            "command": GETENT_COMMANDS["passwd"],
             "parser": _parse_getent,
             "parser_kwargs": {"database": "passwd"},
             "non_error_codes": GETENT_RCS,
         },
         "getent_group": {
-            "command": ("getent", "group"),
+            "command": GETENT_COMMANDS["group"],
             "parser": _parse_getent,
             "parser_kwargs": {"database": "group"},
             "non_error_codes": GETENT_RCS,

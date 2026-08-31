@@ -54,8 +54,11 @@ from __future__ import annotations
 import posixpath
 
 from copy import deepcopy
-from typing import Any, Callable, Optional, Union
+from typing import Any, Callable, Optional, Sequence, Union
 
+from ansible_collections.o0_o.posix.plugins.module_utils.getent_utils import (
+    GETENT_COMMANDS,
+)
 from ansible_collections.o0_o.posix.plugins.module_utils.group_utils import (
     group_info,
 )
@@ -68,15 +71,48 @@ from ansible_collections.o0_o.posix.plugins.module_utils.path_utils import (
 
 Source = Union[str, dict[str, Any], list[dict[str, Any]]]
 
+# Where an entry's record came from, by kind of origin: literal paths
+# under ``files``, and under ``commands`` the argv of each command,
+# which is the command as it was executed rather than a rendering of
+# it
+Origins = dict[str, list[Any]]
+
 # How a producer reads metadata for a list of paths: the read action's
 # result, carrying one entry per path under its ``paths`` key
 ReadPaths = Callable[[list[str]], dict[str, Any]]
 
 
+def _copy_origins(origins: Origins) -> Origins:
+    """Copy an origins record so a caller writing to it writes alone.
+
+    :param Origins origins: The record to copy
+    :returns Origins: A copy sharing nothing with the original
+    """
+    return {
+        "files": list(origins["files"]),
+        "commands": [list(command) for command in origins["commands"]],
+    }
+
+
+def _merge_origins(into: Origins, origins: Origins) -> None:
+    """Fold one origins record into another, base first and once each.
+
+    :param Origins into: The record to add to, modified in place
+    :param Origins origins: The record whose origins are added
+    """
+    for kind, named in origins.items():
+        known = into.setdefault(kind, [])
+        for origin in named:
+            if origin not in known:
+                known.append(origin)
+
+
 def _overlay(
     files: dict[str, dict[str, Any]],
     resolved: dict[str, dict[str, Any]],
-) -> tuple[dict[str, dict[str, Any]], dict[str, list[str]]]:
+    path: str,
+    command: Sequence[str],
+) -> tuple[dict[str, dict[str, Any]], dict[str, Origins]]:
     """Lay the resolved view over the files parse, keeping provenance.
 
     The flat files are the base and getent is the overlay, so a host
@@ -93,17 +129,26 @@ def _overlay(
     field at all, which is no answer to prefer - so the base keeps
     what it had rather than losing it to a null.
 
+    Each entry's origins name the two concretely: the path that was
+    read and the command that was run, rather than the kind of thing
+    either was.  Both kinds are always attempted, so a kind that
+    contributed nothing to an entry is empty rather than absent.
+
     :param dict[str, dict[str, Any]] files: Entries the flat file
         named, keyed by stringified numeric ID
     :param dict[str, dict[str, Any]] resolved: Entries getent named,
         keyed the same, empty where the host has no getent
-    :returns tuple[dict[str, dict[str, Any]], dict[str, list[str]]]:
-        The merged entries, and the sources each of them came from
+    :param str path: The flat file that was read
+    :param Sequence[str] command: The enumeration that was run, as
+        argv
+    :returns tuple[dict[str, dict[str, Any]], dict[str, Origins]]: The
+        merged entries, and the origins each of them came from
     """
     merged = {key: dict(entry) for key, entry in files.items()}
-    sources = {key: ["files"] for key in files}
+    origins = {key: {"files": [path], "commands": []} for key in files}
 
     for key, entry in resolved.items():
+        argv = [list(command)]
         if key in merged:
             merged[key].update(
                 {
@@ -112,12 +157,12 @@ def _overlay(
                     if value is not None
                 }
             )
-            sources[key] = ["files", "getent"]
+            origins[key]["commands"] = argv
         else:
             merged[key] = dict(entry)
-            sources[key] = ["getent"]
+            origins[key] = {"files": [], "commands": argv}
 
-    return merged, sources
+    return merged, origins
 
 
 def compose_users_groups(
@@ -125,6 +170,8 @@ def compose_users_groups(
     group: Source,
     getent_passwd: Optional[Source] = None,
     getent_group: Optional[Source] = None,
+    passwd_path: str = "/etc/passwd",
+    group_path: str = "/etc/group",
 ) -> tuple[dict[str, dict[str, Any]], dict[str, dict[str, Any]]]:
     """Compose the canonical o0_users and o0_groups facts.
 
@@ -136,18 +183,25 @@ def compose_users_groups(
     member, including those who hold the group as their primary), and
     ``sources``.
 
-    ``sources`` names where the entry's own record came from, in the
-    order it was laid down: ``files`` for the flat file that named it,
-    ``getent`` for the host's resolved view of it, both where both
-    did.  It is always there and never empty, so a consumer reads
-    provenance rather than inferring it from a field's absence - and
-    a host with no getent says ``["files"]`` rather than saying
-    nothing.  Membership does not enter into it: a group's sources are
-    where its own record came from, not where its members' did.  The
-    exception is a group no group source named at all, which exists
-    only because a passwd entry claimed it as a primary; that one
-    borrows the sources of the users claiming it, because they are the
-    whole of why it is here.
+    ``sources`` names the concrete origins the entry's own record came
+    from, by kind: ``files`` holds the path of the flat file that
+    named it, which is a key of ``o0_paths`` and joins against it;
+    ``commands`` holds the enumeration that resolved it, as the argv
+    it was run with rather than a string, because argv is the executed
+    form and a string implies a shell reading it.  Both kinds are
+    always present, and a kind that contributed nothing to an entry is
+    empty rather than absent, because both are always attempted - so a
+    host with no getent says ``commands: []`` rather than saying
+    nothing.  At least one origin is named across the two.  Origins
+    are listed base first where order exists.
+
+    Membership does not enter into it: a group's sources are where its
+    own record came from, not where its members' did.  The exception
+    is a group no group source named at all, which exists only because
+    a passwd entry claimed it as a primary; that one borrows the
+    origins of the users claiming it - the passwd file and the passwd
+    enumeration, not the group ones - because they are the whole of
+    why it is here.
 
     getent is optional, and a host without one is not a host with a
     problem: passing nothing for it composes the files-only facts,
@@ -162,16 +216,24 @@ def compose_users_groups(
         enumeration, or None where the host has none
     :param Optional[Source] getent_group: ``getent group``
         enumeration, or None where the host has none
+    :param str passwd_path: The path the passwd content was read
+        from, which is what its entries name as their origin
+    :param str group_path: The path the group content was read from,
+        named the same way
     :returns tuple[dict[str, dict[str, Any]], dict[str, dict[str,
         Any]]]: The o0_users and o0_groups mappings
     """
-    parsed_groups, group_sources = _overlay(
+    parsed_groups, group_origins = _overlay(
         group_info(group, key="id"),
         {} if getent_group is None else group_info(getent_group, key="id"),
+        group_path,
+        GETENT_COMMANDS["group"],
     )
-    parsed_users, user_sources = _overlay(
+    parsed_users, user_origins = _overlay(
         passwd_info(passwd, key="id"),
         {} if getent_passwd is None else passwd_info(getent_passwd, key="id"),
+        passwd_path,
+        GETENT_COMMANDS["passwd"],
     )
 
     # A group a group source named owns its own provenance; one only a
@@ -183,7 +245,7 @@ def compose_users_groups(
             "name": entry.get("name"),
             "gid": int(gid_str),
             "members": [],
-            "sources": list(group_sources[gid_str]),
+            "sources": _copy_origins(group_origins[gid_str]),
         }
         for gid_str, entry in parsed_groups.items()
     }
@@ -195,7 +257,7 @@ def compose_users_groups(
         uid = int(uid_str)
         gid = entry.get("gid")
         name = entry.get("name")
-        sources = list(user_sources[uid_str])
+        sources = _copy_origins(user_origins[uid_str])
 
         users[uid_str] = {
             "name": name,
@@ -234,7 +296,7 @@ def _add_member(
     groups: dict[str, dict[str, Any]],
     gid: int,
     uid: int,
-    sources: list[str],
+    sources: Origins,
     named: set[str],
 ) -> None:
     """Record a UID as a member of a GID, creating the group entry.
@@ -242,30 +304,33 @@ def _add_member(
     A primary group that no group source named still exists as far as
     its members are concerned, so it gets an entry with a null name
     rather than being dropped.  Such an entry is here only because a
-    user claimed it, so it is that user's sources it carries, unioned
-    with every other claimant's.  A group that was named carries its
-    own provenance and is left alone.
+    user claimed it, so it is that user's origins it carries - their
+    passwd file and their passwd enumeration - folded together with
+    every other claimant's.  A group that was named carries its own
+    provenance and is left alone.
 
     :param dict[str, dict[str, Any]] groups: Group mapping to augment
     :param int gid: Group ID gaining the member
     :param int uid: User ID to record
-    :param list[str] sources: Where the record of the user came from
+    :param Origins sources: Where the record of the user came from
     :param set[str] named: The GIDs a group source named, as
         stringified keys
     """
     gid_str = str(gid)
     entry = groups.setdefault(
-        gid_str, {"name": None, "gid": gid, "members": [], "sources": []}
+        gid_str,
+        {
+            "name": None,
+            "gid": gid,
+            "members": [],
+            "sources": {"files": [], "commands": []},
+        },
     )
     if uid not in entry["members"]:
         entry["members"].append(uid)
 
     if gid_str not in named:
-        entry["sources"] = [
-            source
-            for source in ("files", "getent")
-            if source in set(entry["sources"]) | set(sources)
-        ]
+        _merge_origins(entry["sources"], sources)
 
 
 def _residents_by_home(

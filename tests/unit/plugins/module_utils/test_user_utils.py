@@ -58,6 +58,31 @@ SAMPLE_GETENT_GROUP = SAMPLE_GROUP
 
 FILES = os.path.join(os.path.dirname(__file__), "files")
 
+# The origins the composition names for the samples above, by the kind
+# of thing each one is: a path that was read, and a command as it was
+# run.  A kind that contributed nothing is empty rather than absent.
+FROM_PASSWD: dict[str, list[Any]] = {
+    "files": ["/etc/passwd"],
+    "commands": [],
+}
+FROM_PASSWD_AND_GETENT: dict[str, list[Any]] = {
+    "files": ["/etc/passwd"],
+    "commands": [["getent", "passwd"]],
+}
+FROM_GETENT_PASSWD: dict[str, list[Any]] = {
+    "files": [],
+    "commands": [["getent", "passwd"]],
+}
+FROM_GROUP: dict[str, list[Any]] = {"files": ["/etc/group"], "commands": []}
+FROM_GROUP_AND_GETENT: dict[str, list[Any]] = {
+    "files": ["/etc/group"],
+    "commands": [["getent", "group"]],
+}
+FROM_GETENT_GROUP: dict[str, list[Any]] = {
+    "files": [],
+    "commands": [["getent", "group"]],
+}
+
 
 def _corpus(name: str) -> str:
     """Read a captured enumeration verbatim.
@@ -79,7 +104,7 @@ USERS = {
         "home": "/var/root",
         "shell": "/bin/sh",
         "groups": [0],
-        "sources": ["files"],
+        "sources": FROM_PASSWD,
     },
     "1000": {
         "name": "o0-o",
@@ -89,7 +114,7 @@ USERS = {
         "home": "/home/o0-o",
         "shell": "/bin/zsh",
         "groups": [20, 0, 101],
-        "sources": ["files"],
+        "sources": FROM_PASSWD,
     },
 }
 
@@ -98,19 +123,19 @@ GROUPS = {
         "name": "wheel",
         "gid": 0,
         "members": [0, 1000],
-        "sources": ["files"],
+        "sources": FROM_GROUP,
     },
     "20": {
         "name": "staff",
         "gid": 20,
         "members": [1000],
-        "sources": ["files"],
+        "sources": FROM_GROUP,
     },
     "101": {
         "name": "access_bpf",
         "gid": 101,
         "members": [1000],
-        "sources": ["files"],
+        "sources": FROM_GROUP,
     },
 }
 
@@ -198,7 +223,7 @@ def test_compose_users_groups_invents_unnamed_primary_group() -> None:
         "name": None,
         "gid": 600,
         "members": [1002],
-        "sources": ["files"],
+        "sources": FROM_PASSWD,
     }
 
 
@@ -220,12 +245,12 @@ def test_a_host_without_getent_composes_what_it_always_did() -> None:
 
     assert users == without[0]
     assert groups == without[1]
-    assert users["1000"]["sources"] == ["files"]
-    assert groups["20"]["sources"] == ["files"]
+    assert users["1000"]["sources"] == FROM_PASSWD
+    assert groups["20"]["sources"] == FROM_GROUP
 
 
 def test_a_resolved_view_that_only_repeats_the_files_says_both() -> None:
-    """Test agreement is still two sources, not one.
+    """Test agreement is still two origins, not one.
 
     A files-only host with a real getent gets the same bytes twice.
     Both answered, so both are named: sources reports what was asked
@@ -238,8 +263,8 @@ def test_a_resolved_view_that_only_repeats_the_files_says_both() -> None:
         SAMPLE_GETENT_GROUP,
     )
 
-    assert users["1000"]["sources"] == ["files", "getent"]
-    assert groups["20"]["sources"] == ["files", "getent"]
+    assert users["1000"]["sources"] == FROM_PASSWD_AND_GETENT
+    assert groups["20"]["sources"] == FROM_GROUP_AND_GETENT
 
     # And the facts themselves are what the files alone composed
     files_only = compose_users_groups(SAMPLE_PASSWD, SAMPLE_GROUP)[0]
@@ -262,7 +287,7 @@ def test_the_resolved_view_wins_a_field_the_files_disagree_on() -> None:
     )[0]
 
     assert users["1000"]["shell"] == "/usr/local/bin/fish"
-    assert users["1000"]["sources"] == ["files", "getent"]
+    assert users["1000"]["sources"] == FROM_PASSWD_AND_GETENT
 
 
 def test_an_empty_field_the_resolved_view_reported_wins() -> None:
@@ -313,8 +338,8 @@ def test_a_user_only_getent_knows_is_added_and_says_so() -> None:
     )
 
     assert users["4000"]["name"] == "ldap"
-    assert users["4000"]["sources"] == ["getent"]
-    assert groups["4000"]["sources"] == ["getent"]
+    assert users["4000"]["sources"] == FROM_GETENT_PASSWD
+    assert groups["4000"]["sources"] == FROM_GETENT_GROUP
 
 
 def test_a_group_only_a_resolved_user_implies_borrows_their_sources() -> None:
@@ -322,7 +347,9 @@ def test_a_group_only_a_resolved_user_implies_borrows_their_sources() -> None:
 
     Such a group is in no group source at all - it exists because a
     passwd entry claimed it as a primary - so the only honest thing
-    to say about where it came from is where they came from.
+    to say about where it came from is where they came from: the
+    passwd enumeration that named them, never the group one nobody
+    heard it from.
     """
     groups = compose_users_groups(
         SAMPLE_PASSWD,
@@ -333,7 +360,7 @@ def test_a_group_only_a_resolved_user_implies_borrows_their_sources() -> None:
 
     assert groups["900"]["name"] is None
     assert groups["900"]["members"] == [4000]
-    assert groups["900"]["sources"] == ["getent"]
+    assert groups["900"]["sources"] == FROM_GETENT_PASSWD
 
 
 def test_membership_does_not_change_a_named_group_s_sources() -> None:
@@ -351,11 +378,16 @@ def test_membership_does_not_change_a_named_group_s_sources() -> None:
     )[1]
 
     assert 4000 in groups["20"]["members"]
-    assert groups["20"]["sources"] == ["files"]
+    assert groups["20"]["sources"] == FROM_GROUP
 
 
-def test_sources_is_always_present_and_never_empty() -> None:
-    """Test the field holds to the absence discipline everywhere."""
+def test_both_kinds_of_origin_are_always_present() -> None:
+    """Test the field holds to the absence discipline everywhere.
+
+    Both a file and a command are attempted for every entry, so a
+    kind that contributed nothing to one is gathered and empty rather
+    than absent - and no entry is here without an origin naming it.
+    """
     users, groups = compose_users_groups(
         SAMPLE_PASSWD,
         SAMPLE_GROUP,
@@ -364,14 +396,41 @@ def test_sources_is_always_present_and_never_empty() -> None:
     )
 
     for entry in list(users.values()) + list(groups.values()):
-        assert entry["sources"]
-        assert set(entry["sources"]) <= {"files", "getent"}
-        # Named in the order they are laid down, base first
-        assert entry["sources"] == [
-            source
-            for source in ("files", "getent")
-            if source in entry["sources"]
-        ]
+        sources = entry["sources"]
+        assert set(sources) == {"files", "commands"}
+        assert sources["files"] + sources["commands"]
+        # A path is a string, and a command is the argv it was run
+        # with rather than a rendering of it
+        assert all(isinstance(path, str) for path in sources["files"])
+        assert all(
+            isinstance(command, list)
+            and all(isinstance(word, str) for word in command)
+            for command in sources["commands"]
+        )
+
+
+def test_a_file_names_the_path_it_was_actually_read_from() -> None:
+    """Test the origin is the path read, not the path usually read.
+
+    M(o0_o.posix.users) takes the files to read as options, and an
+    origin that named /etc/passwd for a file that was never opened
+    would be a key joining against the wrong entry of o0_paths.
+    """
+    users, groups = compose_users_groups(
+        SAMPLE_PASSWD,
+        SAMPLE_GROUP,
+        passwd_path="/etc/master.passwd",
+        group_path="/usr/local/etc/group",
+    )
+
+    assert users["1000"]["sources"] == {
+        "files": ["/etc/master.passwd"],
+        "commands": [],
+    }
+    assert groups["20"]["sources"] == {
+        "files": ["/usr/local/etc/group"],
+        "commands": [],
+    }
 
 
 def test_one_half_of_the_resolved_view_overlays_alone() -> None:
@@ -385,8 +444,8 @@ def test_one_half_of_the_resolved_view_overlays_alone() -> None:
         SAMPLE_PASSWD, SAMPLE_GROUP, SAMPLE_GETENT_PASSWD, None
     )
 
-    assert users["1000"]["sources"] == ["files", "getent"]
-    assert groups["20"]["sources"] == ["files"]
+    assert users["1000"]["sources"] == FROM_PASSWD_AND_GETENT
+    assert groups["20"]["sources"] == FROM_GROUP
 
 
 def test_the_captured_platforms_compose_the_same_shape() -> None:
@@ -409,8 +468,8 @@ def test_the_captured_platforms_compose_the_same_shape() -> None:
         users, groups = compose_users_groups(passwd, group, passwd, group)
 
         assert users["0"]["uid"] == 0
-        assert users["0"]["sources"] == ["files", "getent"]
-        assert groups["0"]["sources"] == ["files", "getent"]
+        assert users["0"]["sources"] == FROM_PASSWD_AND_GETENT
+        assert groups["0"]["sources"] == FROM_GROUP_AND_GETENT
         assert all(user["uid"] == int(uid) for uid, user in users.items())
         assert all(group["gid"] == int(gid) for gid, group in groups.items())
         # A group nobody is a secondary member of is a group with no
@@ -438,9 +497,9 @@ def test_a_bsd_group_line_with_no_members_still_composes() -> None:
         "name": "bin",
         "gid": 7,
         "members": [],
-        "sources": ["getent"],
+        "sources": FROM_GETENT_GROUP,
     }
-    assert users["0"]["sources"] == ["files", "getent"]
+    assert users["0"]["sources"] == FROM_PASSWD_AND_GETENT
 
 
 def test_lookup_user_by_uid() -> None:

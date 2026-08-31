@@ -615,14 +615,22 @@ ansible_facts:
           sample: [20, 101]
         sources:
           description:
-            - Where the entry's own record came from, base first -
-              C(files) for the flat file that named the user,
-              C(getent) for the host's resolved view of them, both
-              where both did.
-            - Always present and never empty. A host with no
+            - The concrete origins the entry's own record came from,
+              by kind, base first within each kind.
+            - C(files) names the paths that were read. Each is a key
+              of C(o0_paths), so an entry joins against the file it
+              came out of.
+            - C(commands) names the enumerations that were run, each
+              as the argv it was run with rather than as a string.
+              Argv is the form a command was executed in, and a string
+              would imply a shell reading it back.
+            - Both kinds are always present, because both are always
+              attempted. A kind that contributed nothing to the entry
+              is empty rather than absent, so a host with no
               C(getent) - macOS has none, and C(o0_o.posix) does not
-              speak Darwin's Directory Services - says C(["files"]),
-              which is a correct gather rather than a degraded one.
+              speak Darwin's Directory Services - names no command,
+              which is a correct gather rather than a degraded one. At
+              least one origin is named across the two.
             - Where C(getent) is present, what it enumerates is what
               the host's name service switch resolves, which is not
               always everything it can resolve. An SSSD-backed host
@@ -631,9 +639,25 @@ ansible_facts:
               resolves them by name. This field names what answered,
               not what exists.
           returned: when the users subset is gathered
-          type: list
-          elements: str
-          sample: ["files", "getent"]
+          type: dict
+          contains:
+            files:
+              description: >-
+                The paths that were read, as C(o0_paths) keys
+              type: list
+              elements: str
+              sample: ["/etc/passwd"]
+            commands:
+              description: The commands that were run, each as argv
+              type: list
+              elements: list
+              sample: [["getent", "passwd"]]
+          sample:
+            files:
+              - /etc/passwd
+            commands:
+              - - getent
+                - passwd
         environment:
           description: >-
             The environment variables IEEE Std 1003.1 names, as the
@@ -700,13 +724,15 @@ ansible_facts:
       description: >-
         Groups keyed by stringified GID, each with its C(name), its
         integer C(gid), the UIDs of every C(members) entry, and the
-        C(sources) its own record came from. Membership does not enter
-        into C(sources) - a group's sources are where its record came
-        from, not where its members' did - except for a group no group
+        C(sources) its own record came from, in the same shape
+        C(o0_users) names them. Membership does not enter into
+        C(sources) - a group's sources are where its record came from,
+        not where its members' did - except for a group no group
         source named at all, which exists only because a passwd entry
-        claimed it as a primary and so carries the sources of the
-        users claiming it. M(o0_o.posix.users) publishes the same
-        shape under the same name.
+        claimed it as a primary and so carries the origins of the
+        users claiming it, the passwd file and the passwd enumeration
+        rather than the group ones. M(o0_o.posix.users) publishes the
+        same shape under the same name.
       returned: when the users subset is gathered
       type: dict
       sample:
@@ -717,8 +743,11 @@ ansible_facts:
             - 0
             - 1000
           sources:
-            - files
-            - getent
+            files:
+              - /etc/group
+            commands:
+              - - getent
+                - group
     o0_shell_files:
       description: >-
         The login shells users actually hold, keyed by path, each with

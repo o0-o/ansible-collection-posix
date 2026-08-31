@@ -230,6 +230,8 @@ def _process_users_results(
             group,
             resolved.get("passwd"),
             resolved.get("group"),
+            passwd_path=PASSWD_PATH,
+            group_path=GROUP_PATH,
         )
         facts["o0_users"] = users
         facts["o0_groups"] = groups

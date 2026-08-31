@@ -313,6 +313,41 @@ def test_users_action_composes_canonical_groups(plugin) -> None:
     assert result["o0_groups"]["101"]["members"] == [1000]
 
 
+def test_users_action_names_the_files_it_was_told_to_read(
+    monkeypatch, plugin
+) -> None:
+    """Test an entry's origin is the path the option named.
+
+    The paths are options, and an entry naming /etc/passwd for a file
+    the module never opened would be a key joining against the wrong
+    entry of o0_paths.
+    """
+    _mock_run(
+        monkeypatch,
+        plugin,
+        {
+            "/etc/master.passwd": PASSWD,
+            "/usr/local/etc/group": GROUP,
+            "/etc/shells": SHELLS,
+        },
+    )
+    plugin._task.args = {
+        "passwd_path": "/etc/master.passwd",
+        "group_path": "/usr/local/etc/group",
+    }
+
+    result = plugin.run(task_vars={})
+
+    assert result["o0_users"]["1000"]["sources"] == {
+        "files": ["/etc/master.passwd"],
+        "commands": [],
+    }
+    assert result["o0_groups"]["20"]["sources"] == {
+        "files": ["/usr/local/etc/group"],
+        "commands": [],
+    }
+
+
 def test_users_action_rejects_key_option(plugin) -> None:
     """Test the retired key option is no longer accepted."""
     plugin._task.args = {"key": "name"}

@@ -38,7 +38,7 @@ as the shim does.
 Nothing here can prove the answer came through the name service
 switch rather than off the disk, and on a files-only host the two are
 the same bytes.  ``sources`` claims only what was asked and answered:
-that getent said so.
+that this command, run this way, said so.
 """
 
 from __future__ import annotations
@@ -59,6 +59,15 @@ from ansible_collections.o0_o.posix.plugins.module_utils.passwd_utils import (
 
 # The databases the canonical user facts are composed from
 GETENT_DATABASES = ("passwd", "group")
+
+# What each database is asked with, as argv rather than as a string.
+# This is the one definition: the spec runs it and the composition
+# names it, so what an entry says answered for it is the command as
+# executed rather than a rendering of it.
+GETENT_COMMANDS = {
+    "passwd": ("getent", "passwd"),
+    "group": ("getent", "group"),
+}
 
 # Every return code the probe reads as an answer rather than a fault,
 # so that the parser is the one deciding what the candidate is.  0 is
@@ -171,6 +180,7 @@ def process_getent_command_results(
 
 
 __all__ = [
+    "GETENT_COMMANDS",
     "GETENT_DATABASES",
     "GETENT_RCS",
     "get_getent_command_requests",

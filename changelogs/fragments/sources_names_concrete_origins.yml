@@ -1,0 +1,26 @@
+# vim: ts=2:sw=2:sts=2:et:ft=yaml.ansible
+# -*- mode: yaml; yaml-indent-offset: 2; indent-tabs-mode: nil; -*-
+---
+minor_changes:
+  - >-
+    users, facts - ``sources`` names concrete origins rather than
+    categories of origin. An entry's provenance is now a mapping of
+    two kinds: ``files`` holds the paths that were read, each of them
+    a key of ``o0_paths`` and so a key an entry joins against, and
+    ``commands`` holds the enumerations that were run, each as the
+    argv it was run with. Argv rather than a string because argv is
+    the form a command was executed in - the raw quoting contract's
+    lesson, that a command written as a string implies a shell reading
+    it back - and because membership answers on list elements without
+    a consumer having to parse anything. Both kinds are always
+    present, since both are always attempted, so a kind that
+    contributed nothing to an entry is empty rather than absent; at
+    least one origin is named across the two. The list form this
+    replaces - ``["files", "getent"]``, naming what kind of thing
+    answered rather than which one - appeared in no release. Nothing
+    about the merge changes: the resolved view still wins a field the
+    two disagree on, an empty field still wins like any other, a null
+    still leaves the base what it had, and a group no group source
+    named still borrows its claimants' provenance, which is now the
+    passwd file and the passwd enumeration by name
+    (https://github.com/o0-o/ansible-collection-posix/pull/XXX).

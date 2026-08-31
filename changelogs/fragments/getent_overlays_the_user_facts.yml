@@ -9,10 +9,9 @@ minor_changes:
     them keyed by uid and gid, so a host that resolves names beyond
     ``/etc/passwd`` gains the users it resolves and a host that does
     not composes exactly what it composed before. Every ``o0_users``
-    and ``o0_groups`` entry carries ``sources``, always present and
-    never empty, naming the flat file, the resolved view, or both.
-    Both producers publish it, because the overlay lives in the one
-    composition they share
+    and ``o0_groups`` entry carries ``sources``, always present,
+    naming where its own record came from. Both producers publish it,
+    because the overlay lives in the one composition they share
     (https://github.com/o0-o/ansible-collection-posix/pull/XXX).
   - >-
     users, facts - a ``getent`` is believed only once it has behaved

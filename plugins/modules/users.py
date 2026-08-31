@@ -26,8 +26,9 @@ description:
     The C(o0_o.posix.facts) module publishes the same shape under the
     same names, along with C(o0_shell_files) and the C(o0_paths)
     entries for the homes users live in and the login shells file.
-  - Every entry names where it came from in C(sources), so a consumer
-    reads provenance rather than guessing at it.
+  - Every entry names where it came from in C(sources) - the paths
+    that were read and the commands that were run, named concretely -
+    so a consumer reads provenance rather than guessing at it.
 options:
   passwd_path:
     description:
@@ -162,24 +163,49 @@ o0_users:
       sample: [20, 101]
     sources:
       description:
-        - Where the entry's own record came from, base first -
-          C(files) for the flat file that named the user, C(getent)
-          for the host's resolved view of them, both where both did.
-        - Always present and never empty. A host with no C(getent)
-          says C(["files"]) rather than leaving the field off.
-      type: list
-      elements: str
-      sample: ["files", "getent"]
+        - The concrete origins the entry's own record came from, by
+          kind, base first within each kind.
+        - C(files) names the paths that were read. Each is a key of
+          C(o0_paths), so an entry joins against the file it came out
+          of.
+        - C(commands) names the enumerations that were run, each as
+          the argv it was run with rather than as a string. Argv is
+          the form a command was executed in, and a string would imply
+          a shell reading it back.
+        - Both kinds are always present, because both are always
+          attempted. A kind that contributed nothing to the entry is
+          empty rather than absent, so a host with no C(getent)
+          names no command rather than leaving the field off. At least
+          one origin is named across the two.
+      type: dict
+      contains:
+        files:
+          description: The paths that were read, as C(o0_paths) keys
+          type: list
+          elements: str
+          sample: ["/etc/passwd"]
+        commands:
+          description: The commands that were run, each as argv
+          type: list
+          elements: list
+          sample: [["getent", "passwd"]]
+      sample:
+        files:
+          - /etc/passwd
+        commands:
+          - - getent
+            - passwd
 o0_groups:
   description: >-
     Mapping of groups keyed by stringified GID. Each entry includes the
     group name when available, the GID, the UIDs of every member, and
-    the sources the group's own record came from. Membership does not
-    enter into C(sources) - a group's sources are where its record came
-    from, not where its members' did - except for a group no group
-    source named at all, which exists only because a passwd entry
-    claimed it as a primary and so carries the sources of the users
-    claiming it.
+    the origins the group's own record came from, in the same shape
+    C(o0_users) names them. Membership does not enter into C(sources) -
+    a group's sources are where its record came from, not where its
+    members' did - except for a group no group source named at all,
+    which exists only because a passwd entry claimed it as a primary
+    and so carries the origins of the users claiming it, the passwd
+    file and the passwd enumeration rather than the group ones.
   returned: always
   type: dict
   sample:
@@ -190,8 +216,11 @@ o0_groups:
         - 0
         - 1000
       sources:
-        - files
-        - getent
+        files:
+          - /etc/group
+        commands:
+          - - getent
+            - group
 o0_shell_files:
   description: >-
     Mapping of the login shell paths users actually hold to their file

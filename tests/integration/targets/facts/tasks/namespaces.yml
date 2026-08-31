@@ -454,11 +454,13 @@
         | flatten | reject('integer') | list | length == 0
     fail_msg: 'o0_groups is not keyed by a stringified gid'
 
-# Every entry a passwd or group line composed names where it came
-# from. The environment subset's entries are not composed from either,
-# so they carry no sources and are not asked for any - which is why
-# the users below are the ones a name describes.
-- name: Assert every composed entry names its sources, legally
+# Every entry a passwd or group line composed names the concrete
+# origins it came from: the paths that were read, and the commands
+# that were run as the argv they were run with. The environment
+# subset's entries are not composed from either, so they carry no
+# sources and are not asked for any - which is why the users below are
+# the ones a name describes.
+- name: Assert every composed entry names its origins, legally
   vars:
     users: >-
       {{ facts_all_reg['ansible_facts']['o0_users'] | dict2items
@@ -467,48 +469,63 @@
     host_groups: >-
       {{ facts_all_reg['ansible_facts']['o0_groups'].values() | list }}
     composed: "{{ users + host_groups }}"
+    named_files: >-
+      {{ composed | map(attribute='sources.files') | flatten }}
+    named_commands: >-
+      {{ composed | map(attribute='sources.commands')
+         | flatten(levels=1) }}
   ansible.builtin.assert:
     that:
       - composed | length > 0
-      # Always there, and never empty: a host says where an entry came
-      # from rather than leaving it to be inferred from a missing field
-      - composed | rejectattr('sources', 'defined')
+      # Both kinds are always there, because both are always
+      # attempted: a kind that answered for nothing is empty rather
+      # than left out to be inferred from a missing field
+      - composed | rejectattr('sources.files', 'defined')
         | list | length == 0
-      - composed | selectattr('sources', 'falsy') | list | length == 0
-      # Only the two names exist, and they are laid down base first
-      - composed | map(attribute='sources') | flatten
-        | reject('in', ['files', 'getent']) | list | length == 0
-      - composed | map(attribute='sources')
-        | reject('eq', ['files'])
-        | reject('eq', ['getent'])
-        | reject('eq', ['files', 'getent'])
+      - composed | rejectattr('sources.commands', 'defined')
         | list | length == 0
+      # And at least one origin across the two, so no entry is here
+      # without something that named it
+      - composed | selectattr('sources.files', 'falsy')
+        | selectattr('sources.commands', 'falsy')
+        | list | length == 0
+      # A file origin is the path that was read, and these are the
+      # two files a gather reads users out of
+      - named_files | reject('in', ['/etc/passwd', '/etc/group'])
+        | list | length == 0
+      # A command origin is argv - the command as executed - never a
+      # string that would imply a shell reading it back
+      - named_commands | select('string') | list | length == 0
+      - named_commands | reject('in', [['getent', 'passwd'],
+        ['getent', 'group']]) | list | length == 0
     fail_msg: >-
-      an entry of o0_users or o0_groups does not name its sources
+      an entry of o0_users or o0_groups does not name its origins
 
 # The probe the target ran and the probe the gather ran asked the same
 # host the same question, so their answers have to agree. A host with
 # no getent - macOS has none - composes from its files alone and says
-# so, which is a correct gather rather than a degraded one.
-- name: Assert the sources match what this host can actually resolve
+# so with an empty commands, which is a correct gather rather than a
+# degraded one.
+- name: Assert the origins match what this host can actually resolve
   vars:
     users: "{{ facts_all_reg['ansible_facts']['o0_users'] }}"
     described: >-
       {{ users | dict2items | selectattr('value.name', 'defined')
          | map(attribute='value') | list }}
     resolved: >-
-      {{ described | selectattr('sources', 'contains', 'getent')
-         | list }}
+      {{ described | selectattr('sources.commands', 'truthy') | list }}
   ansible.builtin.assert:
     that:
       - facts_has_getent | bool
         or resolved | length == 0
       # root is in the flat file on every POSIX host, so a host that
-      # resolves at all resolves root, and both sources named it
+      # resolves at all resolves root, and both origins named it
       - not facts_has_getent | bool
-        or users['0']['sources'] == ['files', 'getent']
+        or users['0']['sources']['files'] == ['/etc/passwd']
+      - not facts_has_getent | bool
+        or users['0']['sources']['commands'] == [['getent', 'passwd']]
     fail_msg: >-
-      o0_users names getent as a source on a host that has none, or
+      o0_users names a getent enumeration on a host that has none, or
       omits it on a host that has one: has_getent
       {{ facts_has_getent }}, resolved {{ resolved | length }}
 
