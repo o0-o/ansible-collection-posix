@@ -194,6 +194,27 @@ def _normalize_slot_type(slot_type: str) -> str:
     return "_".join(words)
 
 
+def _normalize_processor_model(version: str) -> str:
+    """Normalize a processor version string to a comparison name.
+
+    Drops the trademark symbols and the clock speed vendors append,
+    then lowercases what is left, the way ``name`` is derived from
+    ``pretty`` elsewhere. The vendor's string itself is kept verbatim
+    as ``pretty``, so nothing this discards is lost.
+
+    :param version: Raw version string (e.g., "Intel(R) Xeon(R) CPU
+        E5-2620 v3 @ 2.40GHz")
+    :returns: Normalized name (e.g., "intel_xeon_cpu_e5_2620_v3")
+    """
+    match = re.search(r"(.+?)\s*@\s*[\d.]+\s*[GM]Hz", version, re.IGNORECASE)
+    model_name = match.group(1).strip() if match else version
+
+    # Remove trademark symbols like (R), (TM), etc.
+    model_name = re.sub(r"\([RTM]+\)", "", model_name)
+
+    return re.sub(r"[^\w]+", "_", model_name.lower()).strip("_")
+
+
 def _normalize_device_name(device_name: str) -> str:
     """Normalize device name to lowercase key with underscores.
 
@@ -204,6 +225,33 @@ def _normalize_device_name(device_name: str) -> str:
     :returns: Normalized device key (e.g., "aspeed_video_ast2400")
     """
     return device_name.lower().replace(" ", "_")
+
+
+def _memory_device_key(values: dict[str, Any]) -> Optional[str]:
+    """Build the key that names one memory device.
+
+    A Locator is only unique within its bank. A multi-channel board
+    prints "DIMM 0" once per channel, so keying on the Locator alone
+    lets the second channel overwrite the first and a four DIMM host
+    reports two. Bank Locator and Locator together are the device's
+    identity, so the key is both, lowercased and joined. A board that
+    names no bank has nothing to qualify with and keys on the Locator
+    alone.
+
+    :param values: Memory device values from jc parser
+    :returns: Bank-qualified locator key, or None if no locator
+    """
+    locator = values.get("locator")
+    if not locator or _is_meaningless_value(locator):
+        return None
+
+    locator_key = locator.strip().lower()
+
+    bank = values.get("bank_locator")
+    if bank and not _is_meaningless_value(bank):
+        return f"{bank.strip().lower()}/{locator_key}"
+
+    return locator_key
 
 
 def _process_bios(bios_entry: dict[str, Any]) -> dict[str, Any]:
@@ -644,7 +692,7 @@ def _process_memory_devices(
     """Process Memory Device information.
 
     Extracts common memory properties and individual slot info grouped by
-    form factor, then by index.
+    form factor, then by bank-qualified locator.
 
     :param device_entries: List of memory device entries from jc parser
     :returns: Dict with type, synchronous, form_factor, and grouped slots
@@ -688,9 +736,9 @@ def _process_memory_devices(
         # Build slot entry
         slot = {}
 
-        # Index (from locator) - used as key
-        locator = values.get("locator")
-        if not locator or _is_meaningless_value(locator):
+        # Bank-qualified locator - used as key
+        slot_key = _memory_device_key(values)
+        if not slot_key:
             continue
 
         # Description (from bank_locator)
@@ -701,11 +749,11 @@ def _process_memory_devices(
         # Populated
         slot["populated"] = populated
 
-        # Group by normalized form factor, then by lowercase locator
+        # Group by normalized form factor, then by device key
         normalized_form_factor = _normalize_slot_type(form_factor)
         if normalized_form_factor not in slots_by_form_factor:
             slots_by_form_factor[normalized_form_factor] = {}
-        slots_by_form_factor[normalized_form_factor][locator.lower()] = slot
+        slots_by_form_factor[normalized_form_factor][slot_key] = slot
 
     # Set common properties (use most common value if multiple)
     if memory_types:
@@ -858,7 +906,8 @@ def _process_memory_modules(
 ) -> dict[str, dict[str, Any]]:
     """Process Memory Device entries into module-centric structure.
 
-    Groups memory by part number with locations for each installed module.
+    Groups memory by part number with locations for each installed
+    module, keyed by bank-qualified locator.
 
     :param device_entries: List of memory device entries from jc parser
     :returns: Dict with part numbers as keys, module info and locations
@@ -970,11 +1019,10 @@ def _process_memory_modules(
             modules[part_number_key] = module
 
         # Build location entry
-        locator = values.get("locator")
-        if not locator or _is_meaningless_value(locator):
+        locator_key = _memory_device_key(values)
+        if not locator_key:
             continue
 
-        locator_key = locator.lower()
         location = {}
 
         # Serial Number
@@ -1239,16 +1287,16 @@ def _process_processors(
 ) -> tuple[dict[str, dict[str, Any]], dict[str, dict[str, Any]]]:
     """Process Processor Information entries with associated caches.
 
-    Groups processors by model with locations for each installed CPU.
-    Also returns socket information for baseboard. Caches are associated
-    via DMI handle ordering (caches appear before their processor).
+    Keys processors by Socket Designation - the socket's own identity,
+    the way a Locator names a memory device - and carries the vendor's
+    strings as fields rather than folding them into the key. Also
+    returns socket information for baseboard. Caches are associated via
+    DMI handle ordering (caches appear before their processor).
 
     :param processor_entries: List of processor entries from jc parser
     :param cache_by_handle: Dict of cache info keyed by DMI handle
     :returns: Tuple of (processors dict, sockets dict)
     """
-    import re
-
     processors = {}
     sockets = {}
     socket_type = None
@@ -1290,7 +1338,7 @@ def _process_processors(
                     except (ValueError, TypeError):
                         continue
 
-        # Socket designation - used as location key
+        # Socket designation - the processor's identity, and its key
         socket_designation = values.get("socket_designation")
         if not socket_designation or _is_meaningless_value(socket_designation):
             continue
@@ -1321,155 +1369,21 @@ def _process_processors(
         if not make or _is_meaningless_value(make):
             continue
 
+        processor = {"make": make}
+
         # Family
         family = values.get("family")
-        if not family or _is_meaningless_value(family):
-            family = None
+        if family and not _is_meaningless_value(family):
+            processor["family"] = family
 
-        # Create normalized key from version
-        # E.g., "Intel(R) Xeon(R) CPU E5-2620 v3 @ 2.40GHz" ->
-        # "intel_xeon_cpu_e5_2620_v3"
-        model_key = None
-        # Try to extract model without speed
-        match = re.search(
-            r"(.+?)\s*@\s*[\d.]+\s*[GM]Hz", version, re.IGNORECASE
-        )
-        if match:
-            model_name = match.group(1).strip()
-        else:
-            model_name = version
+        # Model - the vendor's string as printed, and a normalized
+        # name to compare on
+        processor["model"] = {
+            "name": _normalize_processor_model(version),
+            "pretty": version,
+        }
 
-        # Remove trademark symbols like (R), (TM), etc.
-        model_name = re.sub(r"\([RTM]+\)", "", model_name)
-
-        # Normalize: lowercase, replace spaces/special chars with underscores
-        model_key = re.sub(r"[^\w]+", "_", model_name.lower()).strip("_")
-        if make:
-            # Prepend manufacturer if not already in model
-            if make.lower() not in model_key:
-                model_key = f"{make.lower()}_{model_key}"
-
-        # Initialize processor entry if first time seeing this model
-        if model_key not in processors:
-            processor = {}
-
-            # Manufacturer (make)
-            processor["make"] = make
-
-            # Family
-            if family:
-                processor["family"] = family
-
-            # Model (cleaned version string)
-            # Remove trademark symbols, @ speed suffix, make, family,
-            # CPU/Processor
-            cleaned_model = version
-            # Remove (R), (TM), etc.
-            cleaned_model = re.sub(r"\([RTM]+\)", "", cleaned_model)
-            # Remove @ speed suffix
-            cleaned_model = re.sub(
-                r"\s*@\s*[\d.]+\s*[GM]Hz",
-                "",
-                cleaned_model,
-                flags=re.IGNORECASE,
-            )
-            # Remove make if present
-            if make:
-                cleaned_model = re.sub(
-                    rf"\b{re.escape(make)}\b",
-                    "",
-                    cleaned_model,
-                    flags=re.IGNORECASE,
-                )
-            # Remove family if present
-            if family:
-                cleaned_model = re.sub(
-                    rf"\b{re.escape(family)}\b",
-                    "",
-                    cleaned_model,
-                    flags=re.IGNORECASE,
-                )
-            # Remove CPU/Processor
-            cleaned_model = re.sub(
-                r"\b(CPU|Processor)\b", "", cleaned_model, flags=re.IGNORECASE
-            )
-            # Clean up extra whitespace
-            cleaned_model = re.sub(r"\s+", " ", cleaned_model).strip()
-            processor["model"] = cleaned_model
-
-            # Signature moved to individual locations (per-socket)
-
-            # Cores (total)
-            core_count = values.get("core_count")
-            if core_count and not _is_meaningless_value(str(core_count)):
-                try:
-                    processor["cores"] = {"total": int(core_count)}
-                except (ValueError, TypeError):
-                    pass
-
-            # Threads - EXCLUDED: DMI thread count is unreliable and
-            # ambiguous (may be total spec or currently enabled threads,
-            # varies by implementation)
-
-            # Speed (max)
-            max_speed = values.get("max_speed")
-            if max_speed and not _is_meaningless_value(max_speed):
-                parsed = parse_si(max_speed)
-                if parsed:
-                    processor["speed"] = {"max": parsed}
-
-            # Voltage
-            voltage_str = values.get("voltage")
-            if voltage_str and not _is_meaningless_value(voltage_str):
-                parsed = parse_si(voltage_str)
-                if parsed:
-                    processor["voltage"] = parsed
-
-            # External Clock (flattened to just clock)
-            ext_clock = values.get("external_clock")
-            if ext_clock and not _is_meaningless_value(ext_clock):
-                parsed = parse_si(ext_clock)
-                if parsed:
-                    processor["clock"] = parsed
-
-            # Features (flags as abbreviation: description dict)
-            flags = values.get("flags")
-            if flags and isinstance(flags, list):
-                features = {}
-                for flag in flags:
-                    # Parse "FPU (Floating-point unit on-chip)"
-                    match = re.match(r"^([A-Z0-9\-]+)\s*\((.+)\)$", flag)
-                    if match:
-                        abbr = match.group(1)
-                        desc = match.group(2)
-                        features[abbr] = desc
-                    else:
-                        # No parentheses, use as-is
-                        features[flag] = flag
-                if features:
-                    processor["features"] = features
-
-            # Characteristics
-            characteristics = values.get("characteristics")
-            if characteristics and isinstance(characteristics, list):
-                # Clean characteristics similar to features
-                cleaned = []
-                for char in characteristics:
-                    # Remove trailing whitespace and common suffixes
-                    cleaned_char = char.strip()
-                    if cleaned_char:
-                        cleaned.append(cleaned_char)
-                if cleaned:
-                    processor["characteristics"] = cleaned
-
-            # Initialize locations dict
-            processor["locations"] = {}
-            processors[model_key] = processor
-
-        # Build location entry
-        location = {}
-
-        # Signature (type, family, model, stepping) - per-socket
+        # Signature (type, family, model, stepping)
         signature = values.get("signature")
         if signature:
             sig_dict = {}
@@ -1488,44 +1402,112 @@ def _process_processors(
             if step_match:
                 sig_dict["stepping"] = int(step_match.group(1))
             if sig_dict:
-                location["signature"] = sig_dict
+                processor["signature"] = sig_dict
 
-        # Cores enabled (can differ from total)
-        core_enabled = values.get("core_enabled")
-        if core_enabled and not _is_meaningless_value(str(core_enabled)):
+        # Cores (total and enabled, which can differ)
+        cores = {}
+        core_count = values.get("core_count")
+        if core_count and not _is_meaningless_value(str(core_count)):
             try:
-                location["cores"] = {"enabled": int(core_enabled)}
+                cores["total"] = int(core_count)
             except (ValueError, TypeError):
                 pass
 
-        # Current speed (per-socket, flattened)
+        core_enabled = values.get("core_enabled")
+        if core_enabled and not _is_meaningless_value(str(core_enabled)):
+            try:
+                cores["enabled"] = int(core_enabled)
+            except (ValueError, TypeError):
+                pass
+
+        if cores:
+            processor["cores"] = cores
+
+        # Threads - EXCLUDED: DMI thread count is unreliable and
+        # ambiguous (may be total spec or currently enabled threads,
+        # varies by implementation)
+
+        # Speed (rated maximum and what the socket runs at now)
+        speed = {}
+        max_speed = values.get("max_speed")
+        if max_speed and not _is_meaningless_value(max_speed):
+            parsed = parse_si(max_speed)
+            if parsed:
+                speed["max"] = parsed
+
         current_speed = values.get("current_speed")
         if current_speed and not _is_meaningless_value(current_speed):
             parsed = parse_si(current_speed)
             if parsed:
-                location["speed"] = parsed
+                speed["current"] = parsed
+
+        if speed:
+            processor["speed"] = speed
+
+        # Voltage
+        voltage_str = values.get("voltage")
+        if voltage_str and not _is_meaningless_value(voltage_str):
+            parsed = parse_si(voltage_str)
+            if parsed:
+                processor["voltage"] = parsed
+
+        # External Clock (flattened to just clock)
+        ext_clock = values.get("external_clock")
+        if ext_clock and not _is_meaningless_value(ext_clock):
+            parsed = parse_si(ext_clock)
+            if parsed:
+                processor["clock"] = parsed
 
         # Serial Number
         serial = values.get("serial_number")
         if serial and not _is_meaningless_value(serial):
-            location["serial"] = serial
+            processor["serial"] = serial
 
         # Asset Tag
         tag = values.get("asset_tag")
         if tag and not _is_meaningless_value(tag):
-            location["tag"] = tag
+            processor["tag"] = tag
 
         # Part Number
         part = values.get("part_number")
         if part and not _is_meaningless_value(part):
-            location["part"] = part
+            processor["part"] = part
 
-        # Add internal caches to location
+        # Features (flags as abbreviation: description dict)
+        flags = values.get("flags")
+        if flags and isinstance(flags, list):
+            features = {}
+            for flag in flags:
+                # Parse "FPU (Floating-point unit on-chip)"
+                match = re.match(r"^([A-Z0-9\-]+)\s*\((.+)\)$", flag)
+                if match:
+                    abbr = match.group(1)
+                    desc = match.group(2)
+                    features[abbr] = desc
+                else:
+                    # No parentheses, use as-is
+                    features[flag] = flag
+            if features:
+                processor["features"] = features
+
+        # Characteristics
+        characteristics = values.get("characteristics")
+        if characteristics and isinstance(characteristics, list):
+            # Clean characteristics similar to features
+            cleaned = []
+            for char in characteristics:
+                # Remove trailing whitespace and common suffixes
+                cleaned_char = char.strip()
+                if cleaned_char:
+                    cleaned.append(cleaned_char)
+            if cleaned:
+                processor["characteristics"] = cleaned
+
+        # Internal caches are the processor's own
         if proc_caches:
-            location["cache"] = proc_caches
+            processor["cache"] = proc_caches
 
-        # Add location to processor
-        processors[model_key]["locations"][socket_key] = location
+        processors[socket_key] = processor
 
         # Add external caches to socket in sockets dict
         if proc_external_caches and socket_key in sockets:

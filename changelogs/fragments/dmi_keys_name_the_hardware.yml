@@ -1,0 +1,35 @@
+---
+bugfixes:
+  - >-
+    dmidecode - A memory device was keyed by its Locator alone, but a
+    Locator only names a device within its bank. A multi-channel board
+    prints "DIMM 0" once per channel, so channel B overwrote channel A
+    and a four DIMM host reported two - beside a capacity counted from
+    the memory array, which still said 128 GiB. The fact contradicted
+    itself. Bank Locator and Locator together are the device's
+    identity, and both the module locations and the slot layout are
+    now keyed by the two joined
+    (https://github.com/o0-o/ansible-collection-posix/pull/XXX).
+breaking_changes:
+  - >-
+    dmidecode - Memory locations and DIMM slots are keyed by bank
+    locator and locator together, lowercased and joined with a slash,
+    where they were keyed by the locator alone. A playbook reading
+    hardware.memory[part].locations['p1-dimma1'] reads
+    'p0_node0_channel0_dimm0/p1-dimma1' instead. The two views of the
+    same devices share the key, so a slot and the module in it can be
+    read against each other
+    (https://github.com/o0-o/ansible-collection-posix/pull/XXX).
+  - >-
+    dmidecode - Processors are keyed by their DMI Socket Designation,
+    not by a normalized vendor and version string. The old key read
+    "advanced micro devices, inc._amd_ryzen_9_5900xt_16_core_
+    processor" - a marketing string mangled into an identifier, while
+    the socket the processor sits in was its own name all along. The
+    locations dict each model carried is gone: a socket is one
+    processor, so each socket is one record, with the descriptive data
+    as fields. Nothing is lost - make is the vendor as printed, model
+    is {name, pretty} with the version string verbatim as pretty, and
+    cores and speed carry what were the model's total and max beside
+    what were the location's enabled and current
+    (https://github.com/o0-o/ansible-collection-posix/pull/XXX).

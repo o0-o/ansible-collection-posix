@@ -208,9 +208,11 @@ _value:
               powered: true
     memory:
       description: >-
-        Memory modules grouped by part number (normalized to lowercase). Each
-        module contains specifications and a locations dict keyed by slot
-        identifier (also lowercase).
+        Memory modules grouped by part number (normalized to lowercase).
+        Each module contains specifications and a locations dict keyed
+        by bank locator and locator together, lowercased and joined
+        with a slash. A locator only names a device within its bank, so
+        a multi-channel board prints the same one once per channel.
       type: dict
       sample:
         m386a4g40dm0-cpb:
@@ -228,7 +230,7 @@ _value:
             pretty: "2.13 GT/s"
           rank: 4
           locations:
-            p2-dimme1:
+            "p1_node1_channel0_dimm0/p2-dimme1":
               serial: "405A430F"
               speed:
                 t/s: 1866000000
@@ -443,7 +445,9 @@ _value:
           description: >-
             All slots (expansion and memory) grouped by normalized type,
             then by index. Type keys are lowercase with underscores,
-            numbers removed. Index keys are the slot identifiers.
+            numbers removed. Expansion slots are keyed by their
+            identifiers; memory slots are keyed by bank locator and
+            locator together, the same keys the memory modules report.
           type: dict
           sample:
             pci_express:
@@ -457,10 +461,10 @@ _value:
                   - "3.3 V"
                   - "PME signal"
             dimm:
-              "P1-DIMMA1":
+              "p0_node0_channel0_dimm0/p1-dimma1":
                 description: "P0_Node0_Channel0_Dimm0"
                 populated: true
-              "P1-DIMMA2":
+              "p0_node0_channel0_dimm1/p1-dimma2":
                 description: "P0_Node0_Channel0_Dimm1"
                 populated: false
 """

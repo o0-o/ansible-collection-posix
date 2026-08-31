@@ -1,0 +1,153 @@
+# dmidecode 3.7
+Getting SMBIOS data from sysfs.
+SMBIOS 3.2.0 present.
+
+Handle 0x000F, DMI type 16, 23 bytes
+Physical Memory Array
+	Location: System Board Or Motherboard
+	Use: System Memory
+	Error Correction Type: Multi-bit ECC
+	Maximum Capacity: 128 GiB
+	Error Information Handle: 0x000E
+	Number Of Devices: 4
+
+Handle 0x0017, DMI type 17, 84 bytes
+Memory Device
+	Array Handle: 0x000F
+	Error Information Handle: 0x0016
+	Total Width: 72 bits
+	Data Width: 64 bits
+	Size: 32 GiB
+	Form Factor: DIMM
+	Set: None
+	Locator: DIMM 0
+	Bank Locator: P0 CHANNEL A
+	Type: DDR4
+	Type Detail: Synchronous Unbuffered (Unregistered)
+	Speed: 2667 MT/s
+	Manufacturer: Samsung
+	Serial Number: 0450F04F
+	Asset Tag: Not Specified
+	Part Number: M391A4G43MB1-CTD    
+	Rank: 2
+	Configured Memory Speed: 2667 MT/s
+	Minimum Voltage: 1.2 V
+	Maximum Voltage: 1.2 V
+	Configured Voltage: 1.2 V
+	Memory Technology: DRAM
+	Memory Operating Mode Capability: Volatile memory
+	Firmware Version: Unknown
+	Module Manufacturer ID: Bank 1, Hex 0xCE
+	Module Product ID: Unknown
+	Memory Subsystem Controller Manufacturer ID: Unknown
+	Memory Subsystem Controller Product ID: Unknown
+	Non-Volatile Size: None
+	Volatile Size: 32 GiB
+	Cache Size: None
+	Logical Size: None
+
+Handle 0x001A, DMI type 17, 84 bytes
+Memory Device
+	Array Handle: 0x000F
+	Error Information Handle: 0x0019
+	Total Width: 72 bits
+	Data Width: 64 bits
+	Size: 32 GiB
+	Form Factor: DIMM
+	Set: None
+	Locator: DIMM 1
+	Bank Locator: P0 CHANNEL A
+	Type: DDR4
+	Type Detail: Synchronous Unbuffered (Unregistered)
+	Speed: 2667 MT/s
+	Manufacturer: Samsung
+	Serial Number: 03C87C01
+	Asset Tag: Not Specified
+	Part Number: M391A4G43MB1-CTD    
+	Rank: 2
+	Configured Memory Speed: 2667 MT/s
+	Minimum Voltage: 1.2 V
+	Maximum Voltage: 1.2 V
+	Configured Voltage: 1.2 V
+	Memory Technology: DRAM
+	Memory Operating Mode Capability: Volatile memory
+	Firmware Version: Unknown
+	Module Manufacturer ID: Bank 1, Hex 0xCE
+	Module Product ID: Unknown
+	Memory Subsystem Controller Manufacturer ID: Unknown
+	Memory Subsystem Controller Product ID: Unknown
+	Non-Volatile Size: None
+	Volatile Size: 32 GiB
+	Cache Size: None
+	Logical Size: None
+
+Handle 0x001D, DMI type 17, 84 bytes
+Memory Device
+	Array Handle: 0x000F
+	Error Information Handle: 0x001C
+	Total Width: 72 bits
+	Data Width: 64 bits
+	Size: 32 GiB
+	Form Factor: DIMM
+	Set: None
+	Locator: DIMM 0
+	Bank Locator: P0 CHANNEL B
+	Type: DDR4
+	Type Detail: Synchronous Unbuffered (Unregistered)
+	Speed: 2667 MT/s
+	Manufacturer: Samsung
+	Serial Number: 03C87BCF
+	Asset Tag: Not Specified
+	Part Number: M391A4G43MB1-CTD    
+	Rank: 2
+	Configured Memory Speed: 2667 MT/s
+	Minimum Voltage: 1.2 V
+	Maximum Voltage: 1.2 V
+	Configured Voltage: 1.2 V
+	Memory Technology: DRAM
+	Memory Operating Mode Capability: Volatile memory
+	Firmware Version: Unknown
+	Module Manufacturer ID: Bank 1, Hex 0xCE
+	Module Product ID: Unknown
+	Memory Subsystem Controller Manufacturer ID: Unknown
+	Memory Subsystem Controller Product ID: Unknown
+	Non-Volatile Size: None
+	Volatile Size: 32 GiB
+	Cache Size: None
+	Logical Size: None
+
+Handle 0x0020, DMI type 17, 84 bytes
+Memory Device
+	Array Handle: 0x000F
+	Error Information Handle: 0x001F
+	Total Width: 72 bits
+	Data Width: 64 bits
+	Size: 32 GiB
+	Form Factor: DIMM
+	Set: None
+	Locator: DIMM 1
+	Bank Locator: P0 CHANNEL B
+	Type: DDR4
+	Type Detail: Synchronous Unbuffered (Unregistered)
+	Speed: 2667 MT/s
+	Manufacturer: Samsung
+	Serial Number: 044FA470
+	Asset Tag: Not Specified
+	Part Number: M391A4G43MB1-CTD    
+	Rank: 2
+	Configured Memory Speed: 2667 MT/s
+	Minimum Voltage: 1.2 V
+	Maximum Voltage: 1.2 V
+	Configured Voltage: 1.2 V
+	Memory Technology: DRAM
+	Memory Operating Mode Capability: Volatile memory
+	Firmware Version: Unknown
+	Module Manufacturer ID: Bank 1, Hex 0xCE
+	Module Product ID: Unknown
+	Memory Subsystem Controller Manufacturer ID: Unknown
+	Memory Subsystem Controller Product ID: Unknown
+	Non-Volatile Size: None
+	Volatile Size: 32 GiB
+	Cache Size: None
+	Logical Size: None
+

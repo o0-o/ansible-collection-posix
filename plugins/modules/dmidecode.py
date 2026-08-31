@@ -51,7 +51,7 @@ EXAMPLES = r"""
 
 - name: List processors
   ansible.builtin.debug:
-    msg: "{{ item.key }}: {{ item.value.make }} {{ item.value.model }}"
+    msg: "{{ item.key }}: {{ item.value.make }} {{ item.value.model.pretty }}"
   loop: "{{ hardware_info.hardware.processors | dict2items }}"
 
 - name: Show memory configuration
@@ -105,19 +105,28 @@ hardware:
                   type: str
                   sample: "3.4"
     processors:
-      description: Processors grouped by model
+      description: Processors keyed by socket designation
       type: dict
       sample:
-        intel_xeon_e5-2690_v3:
+        cpu1:
           make: "Intel"
-          model: "Xeon E5-2690 v3"
-          locations:
-            cpu1:
-              speed:
-                hz: 2600000000
-                pretty: "2.6 GHz"
+          model:
+            name: "intel_xeon_cpu_e5_2690_v3"
+            pretty: "Intel(R) Xeon(R) CPU E5-2690 v3 @ 2.60GHz"
+          cores:
+            total: 12
+            enabled: 12
+          speed:
+            max:
+              hertz: 3500000000
+              pretty: "3.5 GHz"
+            current:
+              hertz: 2600000000
+              pretty: "2.6 GHz"
     memory:
-      description: Memory modules grouped by part number
+      description: >-
+        Memory modules grouped by part number, each carrying the
+        locations it occupies keyed by bank locator and locator
       type: dict
     power:
       description: Power supplies grouped by model

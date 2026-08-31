@@ -386,8 +386,11 @@ ansible_facts:
               type: dict
             slots:
               description: >-
-                Slots grouped by type, then keyed by designation where
-                designations are unique and by index where they are not
+                Slots grouped by type. Expansion slots are keyed by
+                designation where designations are unique and by index
+                where they are not; memory slots are keyed by bank
+                locator and locator together, the same keys
+                C(o0_hardware.memory) reports
               returned: when dmidecode reported slots
               type: dict
             sockets:
@@ -412,15 +415,19 @@ ansible_facts:
           type: dict
         processors:
           description: >-
-            Installed processors grouped by model, each carrying the
-            sockets it occupies and the caches attached to it
+            Installed processors keyed by socket designation - the
+            socket names the processor the way a locator names a DIMM -
+            each carrying the vendor's C(make) and C(model) strings and
+            the caches attached to it
           returned: when dmidecode reported processors
           type: dict
         memory:
           description: >-
             Installed memory modules grouped by part number, each
             carrying the locators it occupies - the module's view of
-            the same devices C(baseboard.memory) summarizes
+            the same devices C(baseboard.memory) summarizes. A locator
+            only names a device within its bank, so the locations are
+            keyed by bank locator and locator together
           returned: when dmidecode reported memory devices
           type: dict
         power:

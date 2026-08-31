@@ -158,8 +158,10 @@ def test_dmidecode_parses_real_output(
     assert module["rank"] == 4
     assert "locations" in module
     assert isinstance(module["locations"], dict)
-    assert "p2-dimme1" in module["locations"]
-    location = module["locations"]["p2-dimme1"]
+    # Locations are keyed by bank and locator together - a Locator is
+    # only unique within its bank
+    assert "p1_node1_channel0_dimm0/p2-dimme1" in module["locations"]
+    location = module["locations"]["p1_node1_channel0_dimm0/p2-dimme1"]
     assert location["serial"] == "MEM001SERIAL003"
     assert "speed" in location
     assert location["speed"]["transfers/s"] == 1866000000
@@ -243,66 +245,49 @@ def test_dmidecode_parses_real_output(
     assert "cpu2" in sockets
     assert sockets["cpu2"]["populated"] is True
 
-    # Check processors at hardware level
+    # Check processors at hardware level - keyed by socket designation
     assert "processors" in result
     processors = result["processors"]
     assert isinstance(processors, dict)
-    # Model key is normalized from version string (trademark symbols removed)
-    assert "intel_xeon_cpu_e5_2620_v3" in processors
-    proc = processors["intel_xeon_cpu_e5_2620_v3"]
-    assert proc["make"] == "Intel"
-    assert proc["family"] == "Xeon"
-    # Model is cleaned: trademark symbols, @ speed, make, family,
-    # and CPU removed
-    assert proc["model"] == "E5-2620 v3"
-    # Signature is in individual locations, not in processor spec
-    assert "signature" not in proc
-    # Check cores (threads excluded due to DMI ambiguity)
-    assert "cores" in proc
-    assert proc["cores"]["total"] == 6
-    assert "threads" not in proc
-    # Check speed
-    assert "speed" in proc
-    assert proc["speed"]["max"]["hertz"] == 4000000000
-    assert proc["speed"]["max"]["pretty"] == "4 GHz"
-    # Check voltage (only present if SI utils parses it)
-    if "voltage" in proc:
-        assert "v" in proc["voltage"]
-        assert "pretty" in proc["voltage"]
-    # Check external clock (flattened)
-    assert "clock" in proc
-    assert proc["clock"]["hertz"] == 100000000
-    assert proc["clock"]["pretty"] == "100 MHz"
-    # Check features as dict with abbreviation: description
-    assert "features" in proc
-    assert isinstance(proc["features"], dict)
-    assert "FPU" in proc["features"]
-    assert proc["features"]["FPU"] == "Floating-point unit on-chip"
-    assert "VME" in proc["features"]
-    assert proc["features"]["VME"] == "Virtual mode extension"
-    # Check characteristics
-    assert "characteristics" in proc
-    assert isinstance(proc["characteristics"], list)
-    assert "64-bit capable" in proc["characteristics"]
-    assert "Multi-Core" in proc["characteristics"]
-    # Cache is now in individual locations (socket-specific)
-    assert "cache" not in proc
-    # Check locations
-    assert "locations" in proc
-    assert isinstance(proc["locations"], dict)
-    assert "cpu1" in proc["locations"]
-    cpu1 = proc["locations"]["cpu1"]
-    # Check signature (now in location, not processor spec)
-    assert "signature" in cpu1
+    assert sorted(processors) == ["cpu1", "cpu2"]
+    cpu1 = processors["cpu1"]
+    assert cpu1["make"] == "Intel"
+    assert cpu1["family"] == "Xeon"
+    # Model carries the vendor's string verbatim, with a normalized
+    # name beside it to compare on
+    assert cpu1["model"] == {
+        "name": "intel_xeon_cpu_e5_2620_v3",
+        "pretty": "Intel(R) Xeon(R) CPU E5-2620 v3 @ 2.40GHz",
+    }
+    # Check signature
     assert cpu1["signature"]["type"] == 0
     assert cpu1["signature"]["family"] == 6
     assert cpu1["signature"]["model"] == 63
     assert cpu1["signature"]["stepping"] == 2
-    assert cpu1["cores"]["enabled"] == 6
-    assert "speed" in cpu1
-    assert cpu1["speed"]["hertz"] == 2400000000
-    assert cpu1["speed"]["pretty"] == "2.4 GHz"
-    # Check cache (internal caches now in individual locations)
+    # Check cores (threads excluded due to DMI ambiguity)
+    assert cpu1["cores"] == {"total": 6, "enabled": 6}
+    assert "threads" not in cpu1
+    # Check speed - rated maximum and what the socket runs at now
+    assert cpu1["speed"]["max"]["hertz"] == 4000000000
+    assert cpu1["speed"]["max"]["pretty"] == "4 GHz"
+    assert cpu1["speed"]["current"]["hertz"] == 2400000000
+    assert cpu1["speed"]["current"]["pretty"] == "2.4 GHz"
+    # Check voltage (only present if SI utils parses it)
+    if "voltage" in cpu1:
+        assert "v" in cpu1["voltage"]
+        assert "pretty" in cpu1["voltage"]
+    # Check external clock (flattened)
+    assert cpu1["clock"]["hertz"] == 100000000
+    assert cpu1["clock"]["pretty"] == "100 MHz"
+    # Check features as dict with abbreviation: description
+    assert isinstance(cpu1["features"], dict)
+    assert cpu1["features"]["FPU"] == "Floating-point unit on-chip"
+    assert cpu1["features"]["VME"] == "Virtual mode extension"
+    # Check characteristics
+    assert isinstance(cpu1["characteristics"], list)
+    assert "64-bit capable" in cpu1["characteristics"]
+    assert "Multi-Core" in cpu1["characteristics"]
+    # Check cache (internal caches are the processor's own)
     assert "cache" in cpu1
     cache = cpu1["cache"]
     assert isinstance(cache, dict)
@@ -343,9 +328,10 @@ def test_dmidecode_parses_real_output(
     assert "parity" not in l3
     assert l3["associativity"] == 20
     assert l3["enabled"] is True
-    assert "cpu2" in proc["locations"]
-    cpu2 = proc["locations"]["cpu2"]
+    # The second socket is its own record, not a location under the first
+    cpu2 = processors["cpu2"]
     assert cpu2["cores"]["enabled"] == 6
+    assert cpu2["model"] == cpu1["model"]
 
     # Check slots - now grouped by type, then by index
     if "slots" in baseboard:
@@ -362,9 +348,9 @@ def test_dmidecode_parses_real_output(
             ]
             assert len(populated) == 4
             assert len(unpopulated) == 20
-            # Check first slot structure (lowercase key)
-            assert "p1-dimma1" in dimm_slots
-            slot = dimm_slots["p1-dimma1"]
+            # Check first slot structure (bank-qualified lowercase key)
+            assert "p0_node0_channel0_dimm0/p1-dimma1" in dimm_slots
+            slot = dimm_slots["p0_node0_channel0_dimm0/p1-dimma1"]
             assert slot["description"] == "P0_Node0_Channel0_Dimm0"
             assert slot["populated"] is True
             # Type is not in individual slots (defined at memory level)
