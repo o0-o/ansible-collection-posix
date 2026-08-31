@@ -50,6 +50,27 @@ LS_TYPE_MAP = {
 SINGLE_BYTE_ENCODINGS = frozenset({"us-ascii", "ascii", "unknown-8bit"})
 SINGLE_BYTE_ENCODING_PREFIXES = ("iso-8859", "iso8859", "windows-", "latin")
 
+# The three questions a permission probe asks, in the order the probe
+# prints its answers and in the order test(1) is asked them
+PERMISSION_FIELDS = ("readable", "writable", "executable")
+PERMISSION_LETTERS = "rwx"
+
+# Where a permission probe's answers are keyed in a batch.  Everything
+# else here is keyed by a path and every path starts with a slash, so
+# a key that does not start with one cannot be mistaken for one.
+PERMISSION_PROBE_PREFIX = "permissions_"
+
+# The shell a probe of another user runs in.  su(1) is asked for it by
+# name because the account's own shell may be nologin, and a probe is
+# not a login.
+PERMISSION_PROBE_SHELL = "/bin/sh"
+
+# The become user a drop back to the connection user is possible from.
+# su(1) asks root for no password and asks everyone else for one, on
+# a terminal a probe does not have, so a drop from anyone else would
+# hang rather than answer.
+PERMISSION_PROBE_DROPPER = "root"
+
 # What the resolution walk prints once nothing is left to follow, and
 # the ceiling that stops a walk that would never print it.  A chain
 # that reaches the ceiling has returned to somewhere it has been, and
@@ -417,7 +438,163 @@ class ReadPosixActionBase(PosixActionBase):
             if options.get("resolve", False):
                 commands[f"{path}_resolve"] = self._resolution_command(path)
 
+        # Whether a path can be read, written or run is the kernel's
+        # answer and nobody else's, so it is asked rather than derived,
+        # once per identity for every path at once
+        if include_attributes:
+            commands.update(self._get_permission_commands(paths))
+
         return commands
+
+    def _permission_probe_users(self) -> list[Optional[str]]:
+        """Whose answers a permission probe collects.
+
+        The user the play is already running as always answers, and
+        stands in the list as None because the probe is simply run.
+        Where become put the play on root and the connection user is
+        somebody else, that user answers too: become is exactly what
+        makes a task's answer about permissions not the answer the
+        play's own user would get, and one row is not two.
+
+        Nobody but root can drop.  su(1) asks root for no password and
+        asks everybody else for one, on a terminal a probe does not
+        have, so a drop from any other become user would hang rather
+        than answer and is not attempted.
+
+        :returns list[Optional[str]]: The users to ask as, None for
+            the one the play is already running as
+        """
+        users: list[Optional[str]] = [None]
+
+        play_ctx = getattr(self, "_play_context", None)
+        if not (play_ctx and getattr(play_ctx, "become", False)):
+            return users
+
+        become_user = getattr(play_ctx, "become_user", None)
+        if (become_user or PERMISSION_PROBE_DROPPER) != (
+            PERMISSION_PROBE_DROPPER
+        ):
+            return users
+
+        connection_user = getattr(play_ctx, "remote_user", None) or getattr(
+            play_ctx, "connection_user", None
+        )
+        if connection_user and str(connection_user) != (
+            PERMISSION_PROBE_DROPPER
+        ):
+            users.append(str(connection_user))
+
+        return users
+
+    def _permission_probe_script(self, paths: list[str]) -> str:
+        """The script that asks test(1) about every path at once.
+
+        One shell for all of them: an exec per path per identity is
+        the same three answers at the cost of a process each, and the
+        loop is POSIX so it answers in the raw lane too.  Each line
+        carries the path it is about, so what came back is matched by
+        name rather than by counting.
+
+        The uid the shell is running as is printed first, because the
+        row it produces is keyed by whoever asked and asking is the
+        only way to know who that turned out to be.
+
+        :param list[str] paths: The paths to ask about
+        :returns str: The script
+        """
+        listed = " ".join(shlex.quote(path) for path in paths)
+
+        return (
+            "id -u;"
+            f" for p in {listed}; do"
+            " r=-; w=-; x=-;"
+            ' test -r "$p" && r=r;'
+            ' test -w "$p" && w=w;'
+            ' test -x "$p" && x=x;'
+            ' printf "%s%s%s %s\\n" "$r" "$w" "$x" "$p";'
+            " done"
+        )
+
+    def _get_permission_commands(self, paths: list[str]) -> dict[str, Any]:
+        """Plan one permission probe per identity there is to ask as.
+
+        :param list[str] paths: The paths to ask about
+        :returns dict[str, Any]: Command dictionary, empty where there
+            is nothing to ask about
+        """
+        if not paths:
+            return {}
+
+        script = self._permission_probe_script(paths)
+        commands: dict[str, Any] = {}
+
+        for index, user in enumerate(self._permission_probe_users()):
+            key = f"{PERMISSION_PROBE_PREFIX}{index}"
+            if user is None:
+                commands[key] = ["sh", "-c", script]
+            else:
+                commands[key] = [
+                    "su",
+                    "-s",
+                    PERMISSION_PROBE_SHELL,
+                    user,
+                    "-c",
+                    script,
+                ]
+
+        return commands
+
+    def _process_permission_probes(
+        self,
+        results: dict[str, Any],
+        paths: list[str],
+    ) -> dict[str, dict[str, dict[str, bool]]]:
+        """Read the permission probes back into rows keyed by uid.
+
+        A row is one uid's answer about one path, and a probe that did
+        not answer contributes none: an identity whose su was refused,
+        or whose shell would not run, leaves the rows it would have
+        written out rather than having them guessed at.  A line that
+        does not parse is dropped the same way and for the same
+        reason.
+
+        :param dict[str, Any] results: The batch's command results
+        :param list[str] paths: The paths the probes were asked about
+        :returns dict[str, dict[str, dict[str, bool]]]: Per path, the
+            three fields, each mapping a uid to what it was told
+        """
+        wanted = set(paths)
+        probed: dict[str, dict[str, dict[str, bool]]] = {}
+
+        for key in sorted(results):
+            if not key.startswith(PERMISSION_PROBE_PREFIX):
+                continue
+
+            result = results[key]
+            if not isinstance(result, dict) or result.get("rc") != 0:
+                continue
+
+            lines = (result.get("stdout") or "").splitlines()
+            if not lines:
+                continue
+
+            uid = lines[0].strip()
+            if not uid.isdigit():
+                continue
+
+            for line in lines[1:]:
+                answers, _sep, path = line.partition(" ")
+                if path not in wanted or len(answers) != len(
+                    PERMISSION_LETTERS
+                ):
+                    continue
+                rows = probed.setdefault(path, {})
+                for index, field in enumerate(PERMISSION_FIELDS):
+                    rows.setdefault(field, {})[uid] = (
+                        answers[index] == PERMISSION_LETTERS[index]
+                    )
+
+        return probed
 
     def _resolution_command(self, path: str) -> list[str]:
         """The command that walks one path to what it finally names.
@@ -1113,6 +1290,10 @@ class ReadPosixActionBase(PosixActionBase):
         file_data: dict[str, Optional[dict[str, Any]]] = {}
         ls_facts: dict[str, dict[str, Any]] = {}
 
+        # One probe covered every path in the batch, so its rows are
+        # read once and handed out by path
+        probed = self._process_permission_probes(results, paths)
+
         for path in paths:
             ls_key = f"{path}_ls"
             if ls_key not in results:
@@ -1196,18 +1377,23 @@ class ReadPosixActionBase(PosixActionBase):
                     if "group" in entry:
                         attributes["gid"] = int(entry["group"])
 
-                    # Calculate permission flags. An executable claim
-                    # says where it came from wherever it is made: this
-                    # one read the permission itself, which is the
-                    # strongest evidence there is, and saying so keeps
-                    # it honest beside the one a lookup infers.
+                    # What the mode asserts, bit for bit. It is the
+                    # filesystem's own claim about the file and is
+                    # published as such; whether the file can actually
+                    # be read, written or run is a different question,
+                    # answered below by whoever asked it
                     if flags and len(flags) >= 10:
-                        perms = self._stat_permission_booleans(flags)
-                        attributes["readable"] = perms.get("readable", False)
-                        attributes["writable"] = perms.get("writable", False)
-                        attributes["executable"] = perms.get(
-                            "executable", False
+                        attributes.update(
+                            self._stat_permission_booleans(flags)
                         )
+
+                    # The kernel's answer, one row per uid that asked.
+                    # A permission is not a function of the mode: an
+                    # ACL, a read-only mount and a MAC policy each
+                    # overrule it, and root reads what the mode would
+                    # refuse anybody
+                    for field, rows in (probed.get(path) or {}).items():
+                        attributes[field] = rows
 
                 # Add content/hardlinks field based on file type
                 if file_type == "link" and include_attributes:
@@ -1743,7 +1929,13 @@ class ReadPosixActionBase(PosixActionBase):
         return file_data, ls_facts
 
     def _stat_permission_booleans(self, flags: str) -> dict[str, bool]:
-        """Parse permission booleans from flags string.
+        """Read the mode's own bits out of an ls flags string.
+
+        These are what the filesystem asserts about the file and
+        nothing more.  Whether the file can be read, written or run is
+        the kernel's answer to whoever asks, which an ACL, a read-only
+        mount or a MAC policy can each make differ from what the mode
+        says, so no such claim is derived here.
 
         :param str flags: Permission flags string (e.g., "-rw-r--r--")
         :returns dict[str, bool]: Permission boolean dictionary
@@ -1771,11 +1963,6 @@ class ReadPosixActionBase(PosixActionBase):
         # Special bits
         perms["isuid"] = flags[3] in ("s", "S")
         perms["isgid"] = flags[6] in ("s", "S")
-
-        # High-level permission flags (simplified)
-        perms["readable"] = perms["rusr"]
-        perms["writable"] = perms["wusr"]
-        perms["executable"] = perms["xusr"]
 
         return perms
 

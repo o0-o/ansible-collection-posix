@@ -25,19 +25,28 @@ from ansible_collections.o0_o.posix.plugins.lookup.commands import (
     canonicalize,
 )
 
-# What a producer files at a path a command resolved to. Either
-# producer settles the bit the same way and says the same thing about
-# it: the file will run
-INFERRED = {"executable": True}
-PROBED = {"executable": True}
+# What a producer files at a path a command resolved to. Whether a
+# file runs is the kernel's answer to whoever asked, so the field is a
+# mapping of uid to what that uid was told; either producer writes the
+# same shape and one uid told yes is a file the search stops at
+INFERRED = {"executable": {"1000": True}}
+PROBED = {"executable": {"1000": True}}
 
-# A file the store read and found will not run
-NOT_EXECUTABLE = {"executable": False}
+# The same file, answered for two uids, one of whom is root. A search
+# stops at a file that runs for anybody
+MIXED = {"executable": {"0": True, "1000": False}}
 
-# A path the store has an observation of that never settles the
-# executable bit. The mode is not read as one: the lookup answers off
-# the key the producers write, not off what a mode implies
+# A file every uid that asked was refused
+NOT_EXECUTABLE = {"executable": {"0": False, "1000": False}}
+
+# A path the store has an observation of that nobody asked about. The
+# mode is not read as one: the lookup answers off the rows the
+# producers write, not off what a mode implies
 UNSETTLED = {"type": "regular", "mode": "0755", "uid": 0, "gid": 0}
+
+# A path whose field is there and holds nobody's answer, which is the
+# same silence as no field at all
+UNANSWERED = {"executable": {}}
 
 # The search path the environment subset gathers for the connecting
 # user, and the entry it nests under
@@ -226,12 +235,16 @@ def test_a_term_is_templated_before_it_is_resolved(make_lookup) -> None:
     ]
 
 
-@pytest.mark.parametrize("entry", [INFERRED, PROBED])
-def test_either_evidence_settles_the_executable_bit(
+@pytest.mark.parametrize("entry", [INFERRED, PROBED, MIXED])
+def test_any_uid_told_yes_settles_the_search(
     gathered, entry: dict[str, Any]
 ) -> None:
-    """Test that how the bit was learned does not change the
-    answer."""
+    """Test the search stops at a file that runs for somebody.
+
+    Which producer wrote the row does not change the answer, and
+    neither does a second uid who was refused: the search is looking
+    for a file that runs, and one that runs for root runs.
+    """
 
     lookup = gathered({"/usr/local/bin/ls": entry})
 
@@ -241,6 +254,27 @@ def test_either_evidence_settles_the_executable_bit(
             "state": "resolved",
             "path": "/usr/local/bin/ls",
         }
+    ]
+
+
+def test_a_field_holding_nobody_s_answer_is_a_silence(gathered) -> None:
+    """Test an executable mapping with no rows settles nothing.
+
+    A field that is there and empty says the question was asked of
+    nobody, which is what leaves the answer unknown rather than a path
+    the host might not agree with.
+    """
+
+    lookup = gathered(
+        {
+            "/usr/local/bin/ls": UNANSWERED,
+            "/usr/bin/ls": INFERRED,
+            "/bin/ls": INFERRED,
+        }
+    )
+
+    assert lookup.run(["ls"], None) == [
+        {"command": "ls", "state": "unknown"}
     ]
 
 

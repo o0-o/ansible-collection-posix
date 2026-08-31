@@ -33,3 +33,6 @@
 
     - name: Execute the resolution walk tests
       ansible.builtin.include_tasks: read_resolve.yml
+
+    - name: Execute the permission probe tests
+      ansible.builtin.include_tasks: read_permissions.yml

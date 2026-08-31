@@ -39,6 +39,12 @@ BUILTIN_COMMANDS = {".", ":", "[", "cd", "exec"}
 ALIASED_COMMANDS = {"ls": "ls --color=auto"}
 MISSING_COMMANDS = {"pax"}
 
+# Whose answers the sweep's lookups are. command -v names a pathname
+# the shell running it would run, so the claim is keyed by the uid
+# that shell was running as
+EFFECTIVE_UID = 1000
+RESOLVED = {"executable": {str(EFFECTIVE_UID): True}}
+
 
 def _answer(request: dict[str, Any]) -> dict[str, Any]:
     """Answer one compliance request the way the run plugin does.
@@ -69,6 +75,8 @@ def _answer(request: dict[str, Any]) -> dict[str, Any]:
             stdout = f"/usr/bin/{cmd}"
     elif request["type"] == "sh_test":
         stdout = "posix sh"
+    elif request["type"] == "effective_uid":
+        stdout = str(EFFECTIVE_UID)
     else:
         stdout = GETCONF_ANSWERS[request["command"][1]]
 
@@ -157,7 +165,7 @@ class TestProcessAllComplianceCommandResults:
         pathname it would run."""
         facts = _process_fabricated_host()
 
-        assert facts["o0_paths"]["/usr/bin/awk"] == {"executable": True}
+        assert facts["o0_paths"]["/usr/bin/awk"] == RESOLVED
 
     def test_builtins_and_aliases_file_on_the_answering_shell(self) -> None:
         """Test what the shell answers about itself lands on the
@@ -186,7 +194,7 @@ class TestProcessAllComplianceCommandResults:
         other half to the next producer along."""
         facts = _process_fabricated_host()
 
-        assert facts["o0_paths"]["/usr/bin/sh"] == {"executable": True}
+        assert facts["o0_paths"]["/usr/bin/sh"] == RESOLVED
         assert set(facts["o0_paths"]["/bin/sh"]) == {"aliases", "builtins"}
 
     def test_the_missing_list_derives_from_the_standards(self) -> None:

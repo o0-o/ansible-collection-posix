@@ -109,9 +109,6 @@ class TestStatPermissionBooleans:
             "xoth": False,
             "isuid": False,
             "isgid": False,
-            "readable": True,
-            "writable": True,
-            "executable": False,
         }
 
     def test_setuid_setgid_and_sticky_bits(self, action) -> None:
@@ -128,9 +125,6 @@ class TestStatPermissionBooleans:
             "xoth": True,
             "isuid": True,
             "isgid": True,
-            "readable": True,
-            "writable": True,
-            "executable": True,
         }
 
     @pytest.mark.parametrize(
@@ -154,9 +148,23 @@ class TestStatPermissionBooleans:
         """Test an ls ACL '+' suffix does not disturb the parse."""
         perms = action._stat_permission_booleans("drwxr-xr-x+")
 
-        assert perms["readable"] is True
-        assert perms["executable"] is True
+        assert perms["rusr"] is True
+        assert perms["xusr"] is True
         assert perms["woth"] is False
+
+    def test_the_mode_settles_no_permission_of_its_own(self, action) -> None:
+        """Test the triple is not derived from the bits.
+
+        An ACL, a read-only mount and a MAC policy each make what a
+        file's mode says differ from what the kernel will do, and root
+        reads what the mode would refuse anybody, so the mode answers
+        for itself and nothing else.
+        """
+        perms = action._stat_permission_booleans("-rw-r--r--")
+
+        assert "readable" not in perms
+        assert "writable" not in perms
+        assert "executable" not in perms
 
     @pytest.mark.parametrize("flags", ["", "-rw-r--r", "x", "---------"])
     def test_short_or_empty_flags_return_empty(self, action, flags) -> None:
@@ -269,6 +277,7 @@ class TestGetReadCommands:
             "/f_selinux_ls",
             "/f_stat",
             "/f_stat_bsd",
+            "permissions_0",
         ]
         assert commands["/f_stat"] == ["stat", "-c", "%Y %Z %W", "/f"]
         assert commands["/f_stat_bsd"] == ["stat", "-f", "%m %c %B", "/f"]
@@ -319,6 +328,7 @@ class TestGetReadCommands:
             "/f_ls",
             "/f_stat_bsd",
             "/f_xattr_macos",
+            "permissions_0",
         ]
 
     @pytest.mark.parametrize(
@@ -884,16 +894,17 @@ class TestProcessReadResults:
         assert file_data["/f"]["type"] == "regular"
 
     @pytest.mark.parametrize(
-        "flags,executable",
+        "flags,xusr",
         [("-rwxr-xr-x", True), ("-rw-r--r--", False)],
     )
-    def test_an_executable_claim_is_the_bit_that_was_read(
-        self, action, flags, executable
+    def test_the_mode_bits_are_published_as_read(
+        self, action, flags, xusr
     ) -> None:
-        """Test the execute bit is published as it was observed.
+        """Test what the filesystem asserts is published bit for bit.
 
-        The store holds files that will not run as well as files that
-        will, and saying so is the whole use of the field.
+        The mode is the filesystem's own claim about the file, and it
+        is published as that rather than as an answer about whether
+        anybody can run it.
         """
         results = {"/f_ls": _ls_result(flags)}
 
@@ -901,7 +912,9 @@ class TestProcessReadResults:
             results, ["/f"], {"attributes": True}
         )
 
-        assert file_data["/f"]["executable"] is executable
+        assert file_data["/f"]["xusr"] is xusr
+        assert file_data["/f"]["rusr"] is True
+        assert "executable" not in file_data["/f"]
 
     def test_type_returned_without_being_published(self, action) -> None:
         """Test the caller is told the type the result withholds.
@@ -1141,3 +1154,252 @@ class TestResolutionIsPublished:
             )
 
         assert "never ends" in str(excinfo.value)
+
+
+class _PlayContext:
+    """The two things a probe reads off a play context."""
+
+    def __init__(
+        self,
+        become: bool = False,
+        become_user: Optional[str] = None,
+        remote_user: Optional[str] = None,
+    ) -> None:
+        self.become = become
+        self.become_user = become_user
+        self.remote_user = remote_user
+        self.connection_user = remote_user
+
+
+def _probe_result(uid: str, rows: dict[str, str]) -> dict[str, Any]:
+    """Build one permission probe's result out of the rows it printed."""
+    lines = [uid] + [f"{answers} {path}" for path, answers in rows.items()]
+    return {"rc": 0, "stdout": "\n".join(lines) + "\n"}
+
+
+class TestPermissionProbeUsers:
+    """Tests for whose answers a permission probe collects."""
+
+    def test_without_become_only_this_user_answers(self, action) -> None:
+        """Test a task running as itself asks as itself and stops."""
+        assert action._permission_probe_users() == [None]
+
+    def test_become_to_root_also_asks_as_the_connection_user(
+        self, action
+    ) -> None:
+        """Test become is exactly what makes one row not two."""
+        action._play_context = _PlayContext(
+            become=True, become_user="root", remote_user="o0-o"
+        )
+
+        assert action._permission_probe_users() == [None, "o0-o"]
+
+    def test_become_without_a_user_named_is_root(self, action) -> None:
+        """Test the Ansible default is read as the drop it is."""
+        action._play_context = _PlayContext(become=True, remote_user="o0-o")
+
+        assert action._permission_probe_users() == [None, "o0-o"]
+
+    def test_nobody_but_root_drops(self, action) -> None:
+        """Test a become to somebody else asks as itself and stops.
+
+        su asks everyone but root for a password, on a terminal a
+        probe does not have, so the drop would hang rather than
+        answer.
+        """
+        action._play_context = _PlayContext(
+            become=True, become_user="postgres", remote_user="o0-o"
+        )
+
+        assert action._permission_probe_users() == [None]
+
+    def test_a_root_connection_is_not_dropped_to(self, action) -> None:
+        """Test connecting as root and becoming root is one identity."""
+        action._play_context = _PlayContext(
+            become=True, become_user="root", remote_user="root"
+        )
+
+        assert action._permission_probe_users() == [None]
+
+
+class TestPermissionCommands:
+    """Tests for the probes _get_read_commands plans."""
+
+    def test_attributes_ask_the_kernel_rather_than_the_mode(
+        self, action
+    ) -> None:
+        """Test a read with attributes asks test about every path."""
+        commands = action._get_read_commands(
+            ["/a", "/b"],
+            {"attributes": True},
+            platform={"stat_variant": "gnu"},
+        )
+
+        assert commands["permissions_0"][:2] == ["sh", "-c"]
+        script = commands["permissions_0"][2]
+        assert script.startswith("id -u;")
+        assert "for p in /a /b; do" in script
+        assert 'test -r "$p"' in script
+        assert 'test -w "$p"' in script
+        assert 'test -x "$p"' in script
+
+    def test_one_shell_answers_for_every_path(self, action) -> None:
+        """Test the batch holds one probe, not one probe per path."""
+        commands = action._get_read_commands(
+            ["/a", "/b", "/c"],
+            {"attributes": True},
+            platform={"stat_variant": "gnu"},
+        )
+
+        probes = [key for key in commands if key.startswith("permissions_")]
+        assert probes == ["permissions_0"]
+
+    def test_a_read_without_attributes_asks_nothing(self, action) -> None:
+        """Test a content read pays for no permission probe."""
+        commands = action._get_read_commands(["/a"], {"content": True})
+
+        assert [
+            key for key in commands if key.startswith("permissions_")
+        ] == []
+
+    def test_a_dropped_probe_runs_the_same_script_through_su(
+        self, action
+    ) -> None:
+        """Test the second identity asks the same thing as the first."""
+        action._play_context = _PlayContext(
+            become=True, become_user="root", remote_user="o0-o"
+        )
+
+        commands = action._get_read_commands(
+            ["/a"], {"attributes": True}, platform={"stat_variant": "gnu"}
+        )
+
+        assert commands["permissions_1"][:4] == [
+            "su",
+            "-s",
+            "/bin/sh",
+            "o0-o",
+        ]
+        assert commands["permissions_1"][4] == "-c"
+        assert commands["permissions_1"][5] == commands["permissions_0"][2]
+
+    def test_no_paths_is_no_probe(self, action) -> None:
+        """Test an empty batch does not build a for loop over nothing."""
+        assert action._get_permission_commands([]) == {}
+
+
+class TestProcessPermissionProbes:
+    """Tests for reading the probes back into rows."""
+
+    def test_a_row_is_keyed_by_the_uid_that_asked(self, action) -> None:
+        """Test each answer is filed under whoever was told it."""
+        results = {"permissions_0": _probe_result("0", {"/f": "rw-"})}
+
+        assert action._process_permission_probes(results, ["/f"]) == {
+            "/f": {
+                "readable": {"0": True},
+                "writable": {"0": True},
+                "executable": {"0": False},
+            }
+        }
+
+    def test_two_identities_answer_side_by_side(self, action) -> None:
+        """Test root and the connection user both get a row.
+
+        Root reading what the mode would refuse everybody is the
+        expected answer and the reason the rows are kept apart.
+        """
+        results = {
+            "permissions_0": _probe_result("0", {"/f": "rw-"}),
+            "permissions_1": _probe_result("1000", {"/f": "---"}),
+        }
+
+        assert action._process_permission_probes(results, ["/f"]) == {
+            "/f": {
+                "readable": {"0": True, "1000": False},
+                "writable": {"0": True, "1000": False},
+                "executable": {"0": False, "1000": False},
+            }
+        }
+
+    def test_a_probe_that_did_not_run_writes_no_row(self, action) -> None:
+        """Test a refused su leaves its rows out rather than guessed."""
+        results = {
+            "permissions_0": _probe_result("0", {"/f": "rwx"}),
+            "permissions_1": {"rc": 1, "stdout": ""},
+        }
+
+        assert action._process_permission_probes(results, ["/f"]) == {
+            "/f": {
+                "readable": {"0": True},
+                "writable": {"0": True},
+                "executable": {"0": True},
+            }
+        }
+
+    def test_a_shell_that_would_not_say_who_it_is_answers_nothing(
+        self, action
+    ) -> None:
+        """Test a row with nobody's name on it is not a row."""
+        results = {
+            "permissions_0": {"rc": 0, "stdout": "who knows\nrwx /f\n"}
+        }
+
+        assert action._process_permission_probes(results, ["/f"]) == {}
+
+    def test_a_line_about_a_path_nobody_asked_about_is_dropped(
+        self, action
+    ) -> None:
+        """Test the probe answers for the batch and nothing else."""
+        results = {
+            "permissions_0": _probe_result(
+                "0", {"/f": "rwx", "/elsewhere": "rwx"}
+            )
+        }
+
+        assert list(action._process_permission_probes(results, ["/f"])) == [
+            "/f"
+        ]
+
+    def test_a_row_that_does_not_parse_is_dropped(self, action) -> None:
+        """Test a malformed answer is not read as three falses."""
+        results = {"permissions_0": {"rc": 0, "stdout": "0\nrw /f\n"}}
+
+        assert action._process_permission_probes(results, ["/f"]) == {}
+
+
+class TestPermissionsArePublished:
+    """Tests for where the rows land once they have been read."""
+
+    def test_the_triple_is_the_probe_and_not_the_mode(self, action) -> None:
+        """Test the published triple is what the kernel answered.
+
+        The mode here would say the owner can write; the probe says
+        nobody could, which is what a read-only mount looks like, and
+        the published answer is the probe's.
+        """
+        results = {
+            "/f_ls": _ls_result("-rw-r--r--"),
+            "permissions_0": _probe_result("0", {"/f": "r--"}),
+        }
+
+        file_data, _facts = action._process_read_results(
+            results, ["/f"], {"attributes": True}
+        )
+
+        assert file_data["/f"]["readable"] == {"0": True}
+        assert file_data["/f"]["writable"] == {"0": False}
+        assert file_data["/f"]["executable"] == {"0": False}
+        assert file_data["/f"]["wusr"] is True
+
+    def test_no_probe_leaves_the_triple_unmentioned(self, action) -> None:
+        """Test a path nobody asked about carries no answer at all."""
+        results = {"/f_ls": _ls_result("-rw-r--r--")}
+
+        file_data, _facts = action._process_read_results(
+            results, ["/f"], {"attributes": True}
+        )
+
+        assert "readable" not in file_data["/f"]
+        assert "writable" not in file_data["/f"]
+        assert "executable" not in file_data["/f"]

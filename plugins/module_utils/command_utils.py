@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import posixpath
 import shlex
+from copy import deepcopy
 from typing import Any, Optional, Union
 
 from ansible.module_utils.common.text.converters import to_native
@@ -159,14 +160,21 @@ def quote(s: str, shell: Optional[Any] = None) -> str:
 @typechecked
 def process_command_lookups(
     lookup_results_list: list[dict],
+    uid: Optional[int] = None,
 ) -> tuple[dict[str, Any], list[str], list[Exception]]:
     """Compose command lookups into one o0_paths observation.
 
     A command that resolved is a fact about the file it resolved to,
     so it files under that path rather than under the name it was
-    asked for, recording ``executable`` as true: ``command -v`` names
-    a pathname the shell would run, which is the shell answering the
-    same question ``test -x`` answers.
+    asked for, recording ``executable`` for the uid that asked:
+    ``command -v`` names a pathname the shell would run, which is that
+    shell answering the same question ``test -x`` answers, and the
+    answer belongs to whoever the shell was running as.
+
+    Which is why a sweep that could not learn its own uid records no
+    executable claim at all.  A row is one uid's answer, and a row
+    with nobody's name on it is not one; the entry is still filed,
+    because the path was reached and that much is known.
 
     A command that did not resolve was not found in any directory the
     lookups searched, and the resolutions themselves name those
@@ -185,6 +193,8 @@ def process_command_lookups(
 
     :param list[dict] lookup_results_list: List of lookup_command result
         dicts, each containing 'args' with 'cmd' key and 'parsed' output
+    :param Optional[int] uid: The uid the lookups ran as, where it was
+        determined
     :returns tuple[dict[str, Any], list[str], list[Exception]]: The
         o0_paths observation, the commands that did not resolve
         (sorted), and the errors the lookups raised
@@ -242,9 +252,11 @@ def process_command_lookups(
                     )
                 )
 
+    claim: dict[str, Any] = (
+        {"executable": {str(uid): True}} if uid is not None else {}
+    )
     entries: dict[str, Optional[dict[str, Any]]] = {
-        path: {"executable": True}
-        for path in resolved
+        path: deepcopy(claim) for path in resolved
     }
 
     # The shell answered, whatever it said about itself, so its entry

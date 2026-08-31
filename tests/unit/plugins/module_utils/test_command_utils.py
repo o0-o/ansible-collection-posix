@@ -20,7 +20,11 @@ from ansible_collections.o0_o.posix.plugins.module_utils.command_utils import (
     process_command_lookups,
 )
 
-INFERRED = {"executable": True}
+# Whose answer a resolution is. command -v names a pathname the shell
+# running it would run, so the claim is keyed by the uid that shell
+# was running as
+UID = 1000
+RESOLVED = {"executable": {str(UID): True}}
 
 
 def _lookup(cmd: str, parsed: Optional[str]) -> dict[str, Any]:
@@ -38,23 +42,51 @@ def test_a_resolution_files_under_the_path_it_resolved_to() -> None:
     """Test the fact is about the file, not about the name asked for."""
 
     paths, missing, errors = process_command_lookups(
-        [_lookup("awk", "/usr/bin/awk")]
+        [_lookup("awk", "/usr/bin/awk")], UID
     )
 
-    assert paths["/usr/bin/awk"] == INFERRED
+    assert paths["/usr/bin/awk"] == RESOLVED
     assert missing == []
     assert errors == []
 
 
-def test_the_executable_claim_names_where_it_came_from() -> None:
-    """Test a command that resolved is recorded as executable, which
-    is what the shell naming a pathname it would run says about it."""
+def test_the_executable_claim_is_keyed_by_the_uid_that_asked() -> None:
+    """Test a command that resolved is recorded as executable for
+    whoever the shell that named it was running as."""
+
+    paths, _missing, _errors = process_command_lookups(
+        [_lookup("awk", "/usr/bin/awk")], UID
+    )
+
+    assert paths["/usr/bin/awk"]["executable"] == {"1000": True}
+
+
+def test_a_sweep_with_no_uid_makes_no_executable_claim() -> None:
+    """Test a row with nobody's name on it is left out rather than
+    guessed at, while the path the command resolved to is still
+    filed: that much was reached and is known."""
 
     paths, _missing, _errors = process_command_lookups(
         [_lookup("awk", "/usr/bin/awk")]
     )
 
-    assert paths["/usr/bin/awk"]["executable"] is True
+    assert paths["/usr/bin/awk"] == {}
+
+
+def test_two_resolutions_do_not_share_one_claim() -> None:
+    """Test each entry carries its own mapping, so an observation
+    written on one path cannot reach another."""
+
+    paths, _missing, _errors = process_command_lookups(
+        [_lookup("awk", "/usr/bin/awk"), _lookup("cat", "/bin/cat")], UID
+    )
+
+    assert paths["/usr/bin/awk"] == RESOLVED
+    assert paths["/bin/cat"] == RESOLVED
+    assert (
+        paths["/usr/bin/awk"]["executable"]
+        is not paths["/bin/cat"]["executable"]
+    )
 
 
 def test_a_miss_files_null_at_each_candidate_path() -> None:
@@ -121,11 +153,11 @@ def test_the_shell_entry_is_whole_where_sh_resolved_to_it() -> None:
     since the store replaces an entry rather than blending fields."""
 
     paths, _missing, _errors = process_command_lookups(
-        [_lookup("sh", ANSWERING_SHELL), _lookup("cd", "cd")]
+        [_lookup("sh", ANSWERING_SHELL), _lookup("cd", "cd")], UID
     )
 
     assert paths[ANSWERING_SHELL] == {
-        "executable": True,
+        "executable": {"1000": True},
         "aliases": {},
         "builtins": ["cd"],
     }
@@ -176,10 +208,10 @@ def test_a_path_the_store_refuses_does_not_take_the_sweep_down() -> None:
     way, and repairing the answer here would key it two."""
 
     paths, _missing, errors = process_command_lookups(
-        [_lookup("awk", "/usr/bin//awk"), _lookup("cat", "/bin/cat")]
+        [_lookup("awk", "/usr/bin//awk"), _lookup("cat", "/bin/cat")], UID
     )
 
-    assert paths["/bin/cat"] == INFERRED
+    assert paths["/bin/cat"] == RESOLVED
     assert "/usr/bin//awk" not in paths
     assert len(errors) == 1
     assert "empty path component" in str(errors[0])

@@ -17,6 +17,8 @@ from ansible.plugins.action import ActionBase
 from ansible_collections.o0_o.posix.plugins.module_utils import (
     PosixActionBase,
     compose_paths,
+    get_effective_uid_command_requests,
+    process_effective_uid_results,
 )
 
 
@@ -28,7 +30,9 @@ class ActionModule(PosixActionBase, ActionBase):
 
     A resolution is a fact about the file it landed on, so it is also
     answered as an o0_paths observation keyed by that path, the same
-    store a compliance sweep fills.
+    store a compliance sweep fills.  What the lookup found is what the
+    shell running it would run, so the executable claim is keyed by
+    the uid that shell was running as, which the module asks for.
     """
 
     TRANSFERS_FILES = False
@@ -65,7 +69,20 @@ class ActionModule(PosixActionBase, ActionBase):
         # single lookup that missed names no path it was not at, so
         # both leave the store unmentioned rather than guessed at.
         if path and path.startswith("/"):
-            observation = {path: {"executable": True}}
+            uid = process_effective_uid_results(
+                self._run(
+                    get_effective_uid_command_requests(),
+                    task_vars=task_vars,
+                    check_mode=False,
+                )
+                or []
+            )
+            # A row is one uid's answer. Where the host would not say
+            # whose answer this is, the path is still what the command
+            # resolved to and the claim is what has to be left out
+            observation: dict[str, Any] = {path: {}}
+            if uid is not None:
+                observation[path] = {"executable": {str(uid): True}}
             try:
                 result["o0_paths"] = compose_paths(None, observation)
             except ValueError as exc:

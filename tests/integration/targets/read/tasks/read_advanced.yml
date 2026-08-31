@@ -457,7 +457,7 @@
         is number
       - >-
         read_include_all_reg['paths'][read_regular_path]['writable']
-        is boolean
+        == {read_uid: true}
       - >-
         read_include_all_reg['paths'][read_regular_path]['content']
         is defined

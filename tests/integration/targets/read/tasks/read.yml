@@ -43,12 +43,18 @@
       - >-
         read_regular_content_reg['paths'][read_regular_path]['size']['pretty']
         is defined
+      # 0640 and ours, so we may read and write it and nobody may
+      # run it - and root, who may read and write anything, agrees
+      # about the last of those because no execute bit is set at all
       - >-
         read_regular_content_reg['paths'][read_regular_path]['readable']
-        is boolean
+        == {read_uid: true}
       - >-
         read_regular_content_reg['paths'][read_regular_path]['writable']
-        is boolean
+        == {read_uid: true}
+      - >-
+        read_regular_content_reg['paths'][read_regular_path]['executable']
+        == {read_uid: false}
       - >-
         read_regular_content_reg['paths'][read_regular_path]['encoding']
         is defined
@@ -97,7 +103,13 @@
       - read_regular_meta_reg['paths'][read_regular_path]['hardlinks'] == 1
       - >-
         read_regular_meta_reg['paths'][read_regular_path]['writable']
-        is boolean
+        [read_uid] is true
+      # What the mode itself asserts, published beside what the kernel
+      # answered rather than standing in for it
+      - read_regular_meta_reg['paths'][read_regular_path]['rusr'] is true
+      - read_regular_meta_reg['paths'][read_regular_path]['wusr'] is true
+      - read_regular_meta_reg['paths'][read_regular_path]['xusr'] is false
+      - read_regular_meta_reg['paths'][read_regular_path]['roth'] is false
 
 - name: Read regular file as lines
   o0_o.posix.read:
@@ -210,7 +222,8 @@
       - "'lines' not in read_binary_reg['paths'][read_binary_path]"
       - "'hardlinks' not in read_binary_reg['paths'][read_binary_path]"
       - >-
-        read_binary_reg['paths'][read_binary_path]['writable'] is boolean
+        read_binary_reg['paths'][read_binary_path]['writable']
+        [read_uid] is true
 
 - name: Read symbolic link metadata
   o0_o.posix.read:
@@ -228,8 +241,11 @@
         == read_regular_path
       - "'realpath' not in read_symlink_reg['paths'][read_symlink_path]"
       - "'hardlinks' not in read_symlink_reg['paths'][read_symlink_path]"
+      # test follows the link, so the answer is about the file at the
+      # end of it and not about the link
       - >-
-        read_symlink_reg['paths'][read_symlink_path]['writable'] is boolean
+        read_symlink_reg['paths'][read_symlink_path]['readable']
+        == {read_uid: true}
 
 - name: Read symbolic link with follow enabled
   o0_o.posix.read:
@@ -281,9 +297,16 @@
       - read_directory_reg['paths'][read_directory_path]['mode'] == '0750'
       - "'content' not in read_directory_reg['paths'][read_directory_path]"
       - "'size' not in read_directory_reg['paths'][read_directory_path]"
+      # 0750 and ours: we may read it, write in it and search it
+      - >-
+        read_directory_reg['paths'][read_directory_path]['readable']
+        == {read_uid: true}
       - >-
         read_directory_reg['paths'][read_directory_path]['writable']
-        is boolean
+        == {read_uid: true}
+      - >-
+        read_directory_reg['paths'][read_directory_path]['executable']
+        == {read_uid: true}
 
 - name: Read FIFO metadata
   o0_o.posix.read:
@@ -296,8 +319,14 @@
       - read_fifo_reg is not changed
       - read_fifo_reg['paths'][read_fifo_path]['type'] == 'pipe'
       - "'hardlinks' not in read_fifo_reg['paths'][read_fifo_path]"
+      # test is an access check and does not open the pipe, so a FIFO
+      # with no writer answers rather than blocking
       - >-
-        read_fifo_reg['paths'][read_fifo_path]['writable'] is boolean
+        read_fifo_reg['paths'][read_fifo_path]['writable']
+        == {read_uid: true}
+      - >-
+        read_fifo_reg['paths'][read_fifo_path]['executable']
+        == {read_uid: false}
 
 # The FIFO leads so it is also the path platform detection runs on,
 # which is where cat used to go out alongside the ls that types it. The
@@ -356,7 +385,7 @@
         read_symlink_recursive_reg['paths'][read_regular_path]['content']
       - >-
         read_symlink_recursive_reg['paths'][read_regular_path]['writable']
-        is boolean
+        == {read_uid: true}
 
 - name: Read missing path returns none
   o0_o.posix.read:

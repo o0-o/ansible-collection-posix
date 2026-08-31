@@ -17,6 +17,32 @@ import pytest
 
 from ansible_collections.o0_o.posix.plugins.action.which import ActionModule
 
+# Whose answer a resolution is. command -v names a pathname the shell
+# running it would run, so the module asks that shell who it is
+UID = 1000
+
+
+def _answer_uid(uid: str = str(UID)):
+    """Stub _run so the batch that asks id -u answers with a uid.
+
+    :param str uid: What the host says the effective uid is
+    """
+
+    def _run(commands, **kwargs):
+        return [
+            dict(
+                request,
+                rc=0,
+                stdout=uid,
+                stdout_lines=[uid],
+                stderr="",
+                stderr_lines=[],
+            )
+            for request in commands
+        ]
+
+    return _run
+
 
 @pytest.fixture
 def plugin(base) -> Generator[ActionModule, None, None]:
@@ -45,6 +71,7 @@ def test_which_finds_command(monkeypatch, plugin) -> None:
     monkeypatch.setattr(
         plugin, "_which", lambda cmd, task_vars=None: "/bin/date"
     )
+    monkeypatch.setattr(plugin, "_run", _answer_uid())
     plugin._task.args = {"command": "date"}
     result = plugin.run(task_vars={})
     assert result["changed"] is False
@@ -55,16 +82,34 @@ def test_which_files_the_resolution_under_its_path(
     monkeypatch, plugin
 ) -> None:
     """Test a resolution is a fact about the file it landed on, filed
-    in the same store a compliance sweep fills, and marked as inferred
-    because a lookup is not a permission probe."""
+    in the same store a compliance sweep fills, with the executable
+    claim keyed by the uid whose shell named the path."""
 
     monkeypatch.setattr(
         plugin, "_which", lambda cmd, task_vars=None: "/bin/date"
     )
+    monkeypatch.setattr(plugin, "_run", _answer_uid())
     plugin._task.args = {"command": "date"}
     result = plugin.run(task_vars={})
 
-    assert result["o0_paths"] == {"/bin/date": {"executable": True}}
+    assert result["o0_paths"] == {
+        "/bin/date": {"executable": {"1000": True}}
+    }
+
+
+def test_a_resolution_with_no_uid_claims_nothing(monkeypatch, plugin) -> None:
+    """Test a host that would not say whose answer this is files the
+    path and leaves the claim out, rather than keying a row by
+    nobody."""
+
+    monkeypatch.setattr(
+        plugin, "_which", lambda cmd, task_vars=None: "/bin/date"
+    )
+    monkeypatch.setattr(plugin, "_run", _answer_uid("not a uid"))
+    plugin._task.args = {"command": "date"}
+    result = plugin.run(task_vars={})
+
+    assert result["o0_paths"] == {"/bin/date": {}}
 
 
 def test_which_not_found(monkeypatch, plugin) -> None:
@@ -119,6 +164,7 @@ def test_which_refuses_a_path_the_store_cannot_key(
     monkeypatch.setattr(
         plugin, "_which", lambda cmd, task_vars=None: "/usr/bin//date"
     )
+    monkeypatch.setattr(plugin, "_run", _answer_uid())
     plugin._task.args = {"command": "date"}
     result = plugin.run(task_vars={})
 

@@ -1,0 +1,166 @@
+# vim: ts=2:sw=2:sts=2:et:ft=yaml.ansible
+# -*- mode: yaml; yaml-indent-offset: 2; indent-tabs-mode: nil; -*-
+---
+# GNU General Public License v3.0+
+# SPDX-License-Identifier: GPL-3.0-or-later
+# (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
+# Copyright (c) 2025 oØ.o (@o0-o)
+#
+# This file is part of the o0_o.posix Ansible Collection.
+
+# readable, writable and executable are the kernel's answers to
+# whoever asked, one row per uid, and not a reading of the mode. The
+# mode is published beside them, bit for bit, as what the filesystem
+# asserts; the two are allowed to disagree and here they do, because
+# root reads and writes what the mode refuses everybody.
+
+- name: Make the directory the permission fixtures live in
+  o0_o.posix.write:
+    state: directory
+    dest: "{{ read_dir_path }}/perms"
+    mode: '0755'
+  check_mode: false
+
+# Laid down by hand rather than by write, because write reads a file
+# before it replaces it and a file whose mode refuses everybody is one
+# an ordinary user cannot read - which is the whole point of it
+- name: Put down a file whose mode refuses its owner everything
+  o0_o.posix.command:
+    argv:
+      - sh
+      - -c
+      - 'rm -f "$1" && printf refused >"$1" && chmod 0000 "$1"'
+      - sh
+      - "{{ read_dir_path }}/perms/refused.txt"
+  changed_when: true
+  check_mode: false
+
+- name: Put down a file the mode says anyone may run
+  o0_o.posix.write:
+    dest: "{{ read_dir_path }}/perms/runnable.sh"
+    content: "#!/bin/sh\nexit 0\n"
+    mode: '0755'
+  check_mode: false
+
+- name: Name the files the permission probes answer about
+  ansible.builtin.set_fact:
+    read_perms_refused: "{{ read_dir_path }}/perms/refused.txt"
+    read_perms_runnable: "{{ read_dir_path }}/perms/runnable.sh"
+
+- name: Read both files
+  o0_o.posix.read:
+    paths:
+      - "{{ read_perms_refused }}"
+      - "{{ read_perms_runnable }}"
+  register: read_perms_reg
+
+- name: Assert the mode is published as the mode
+  ansible.builtin.assert:
+    that:
+      - read_perms_reg is not changed
+      # Every bit of 0000, and every bit of 0755, said as the
+      # filesystem says it
+      - read_perms_reg['paths'][read_perms_refused]['rusr'] is false
+      - read_perms_reg['paths'][read_perms_refused]['wusr'] is false
+      - read_perms_reg['paths'][read_perms_refused]['xusr'] is false
+      - read_perms_reg['paths'][read_perms_refused]['roth'] is false
+      - read_perms_reg['paths'][read_perms_refused]['isuid'] is false
+      - read_perms_reg['paths'][read_perms_refused]['mode'] == '0000'
+      - read_perms_reg['paths'][read_perms_runnable]['rusr'] is true
+      - read_perms_reg['paths'][read_perms_runnable]['wusr'] is true
+      - read_perms_reg['paths'][read_perms_runnable]['xusr'] is true
+      - read_perms_reg['paths'][read_perms_runnable]['wgrp'] is false
+      - read_perms_reg['paths'][read_perms_runnable]['xoth'] is true
+      - read_perms_reg['paths'][read_perms_runnable]['mode'] == '0755'
+
+- name: Assert the triple is one row per uid that asked
+  ansible.builtin.assert:
+    that:
+      # A file anybody may run, which the kernel agrees with whoever
+      # asks
+      - >-
+        read_perms_reg['paths'][read_perms_runnable]['readable']
+        == {read_uid: true}
+      - >-
+        read_perms_reg['paths'][read_perms_runnable]['writable']
+        == {read_uid: true}
+      - >-
+        read_perms_reg['paths'][read_perms_runnable]['executable']
+        == {read_uid: true}
+
+- name: Assert root is answered what the mode would refuse anybody
+  ansible.builtin.assert:
+    that:
+      # The mode says nobody may read this file and root reads it
+      # anyway, which is the whole reason the triple is asked rather
+      # than derived
+      - >-
+        read_perms_reg['paths'][read_perms_refused]['readable']
+        == {read_uid: true}
+      - >-
+        read_perms_reg['paths'][read_perms_refused]['writable']
+        == {read_uid: true}
+      # Not even root runs a file with no execute bit anywhere on it
+      - >-
+        read_perms_reg['paths'][read_perms_refused]['executable']
+        == {read_uid: false}
+  when: read_am_root
+
+- name: Assert an ordinary user is answered what the mode says
+  ansible.builtin.assert:
+    that:
+      - >-
+        read_perms_reg['paths'][read_perms_refused]['readable']
+        == {read_uid: false}
+      - >-
+        read_perms_reg['paths'][read_perms_refused]['writable']
+        == {read_uid: false}
+      - >-
+        read_perms_reg['paths'][read_perms_refused]['executable']
+        == {read_uid: false}
+  when: not read_am_root
+
+- name: Read the same files asking for content instead of attributes
+  o0_o.posix.read:
+    paths:
+      - "{{ read_perms_runnable }}"
+    content: true
+  register: read_perms_content_reg
+
+- name: Assert a read that asks no attributes asks nobody anything
+  ansible.builtin.assert:
+    that:
+      - read_perms_content_reg is not changed
+      - >-
+        'readable' not in
+        read_perms_content_reg['paths'][read_perms_runnable]
+      - >-
+        'writable' not in
+        read_perms_content_reg['paths'][read_perms_runnable]
+      - >-
+        'executable' not in
+        read_perms_content_reg['paths'][read_perms_runnable]
+      - >-
+        'rusr' not in read_perms_content_reg['paths'][read_perms_runnable]
+
+- name: Read a directory full of files in one batch
+  o0_o.posix.read:
+    path: "{{ read_dir_path }}/perms"
+    children: true
+  register: read_perms_batch_reg
+
+- name: Assert every path in a batch gets its own row
+  ansible.builtin.assert:
+    that:
+      - read_perms_batch_reg is not changed
+      # One shell answered for all three paths and each of them has
+      # its own answer out of it
+      - >-
+        read_perms_batch_reg['paths'][read_dir_path ~ '/perms']['executable']
+        == {read_uid: true}
+      - >-
+        read_perms_batch_reg['paths'][read_perms_runnable]['executable']
+        == {read_uid: true}
+      - >-
+        read_perms_batch_reg['paths'][read_perms_refused]['executable']
+        == {read_uid: false}

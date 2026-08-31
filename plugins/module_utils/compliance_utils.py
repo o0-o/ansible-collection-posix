@@ -54,6 +54,10 @@ from ansible_collections.o0_o.posix.plugins.module_utils.getconf_utils import (
     _answered,
     _parse_getconf,
 )
+from ansible_collections.o0_o.posix.plugins.module_utils.id_utils import (
+    get_effective_uid_command_requests,
+    process_effective_uid_results,
+)
 
 # Standards metadata - used to initialize compliance dict with descriptions
 SUS = {
@@ -204,9 +208,15 @@ def get_compliance_command_requests() -> list[dict[str, Any]]:
     Generates one `command -v` request per required command using list
     kwargs, plus getconf and sh_test commands from COMPLIANCE_COMMAND_SPEC.
 
+    The effective uid rides with them, because what ``command -v``
+    answers is what the shell running it would run, and that answer
+    belongs to whoever the shell was running as.  One more command in
+    a batch of dozens is what it costs to key the claim by name rather
+    than by nobody.
+
     :returns list[dict[str, Any]]: Command requests for run plugin
     """
-    requests = []
+    requests = list(get_effective_uid_command_requests())
 
     # Command lookups - one request per command via list kwarg
     all_cmds = list(XCU_REQUIRED_COMMANDS | XSI_REQUIRED_COMMANDS)
@@ -333,10 +343,11 @@ def process_all_compliance_command_results(
     ``o0_os.compliance`` and ``o0_paths``.
 
     What the sweep learned about the commands it looked for is a set
-    of facts about paths, so it lands in the path store: an executable
-    under the path it resolved to, a miss as a null at each path it
-    was not at, and the builtins and aliases the probes answered with
-    on the entry of the shell that answered them.  A command the host
+    of facts about paths, so it lands in the path store: at the path a
+    command resolved to, an executable row keyed by the uid the
+    lookups ran as; a miss as a null at each path it was not at; and
+    the builtins and aliases the probes answered with on the entry of
+    the shell that answered them.  A command the host
     does not have is recorded once, in the ``missing`` list of the
     standard that requires it, and ``missing_commands`` derives the
     list back out.
@@ -387,7 +398,9 @@ def process_all_compliance_command_results(
 
     # Process command lookups
     lookup_results = processed_results["lookup_command"]
-    paths, missing, errors = process_command_lookups(lookup_results)
+    paths, missing, errors = process_command_lookups(
+        lookup_results, process_effective_uid_results(cmds_completed)
+    )
 
     # What each utility was looked for with, so a standard names the
     # lookup that decided a miss rather than a spelling of it

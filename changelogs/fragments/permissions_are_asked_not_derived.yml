@@ -1,0 +1,61 @@
+# vim: ts=2:sw=2:sts=2:et:ft=yaml.ansible
+# -*- mode: yaml; yaml-indent-offset: 2; indent-tabs-mode: nil; -*-
+---
+breaking_changes:
+  - >-
+    read, facts, users, which, compliance - ``readable``, ``writable``
+    and ``executable`` are the kernel's answers rather than a reading
+    of the mode, and each is a mapping of uid to what that uid was
+    told - ``writable: {"0": true, "1000": false}`` - keyed the way
+    ``o0_users`` keys a uid. They were three booleans derived from the
+    owner bits of the mode string, which is only the answer where
+    nothing else has a say: an ACL, a read-only mount, a MAC policy
+    and root's own exemption each make what a file will do differ from
+    what its mode claims, and the derived answer was silently wrong on
+    every one of them. They are now the result of ``test -r``,
+    ``test -w`` and ``test -x``, asked of the host, one shell
+    invocation per identity covering every path in the batch. None of
+    the three appeared in a release, so the shape is corrected inside
+    the 2.0.0 window
+    (https://github.com/o0-o/ansible-collection-posix/pull/XXX).
+  - >-
+    read, facts, users - the mode's own bits are published as they are
+    read - ``rusr``, ``wusr``, ``xusr``, ``rgrp``, ``wgrp``, ``xgrp``,
+    ``roth``, ``woth``, ``xoth``, ``isuid``, ``isgid`` - beside the
+    triple rather than standing in for it. They are what the
+    filesystem asserts about the file; the triple is what the kernel
+    told somebody who asked. The two are allowed to disagree, and a
+    consumer that wants the assertion reads the bits while one that
+    wants the answer reads the rows
+    (https://github.com/o0-o/ansible-collection-posix/pull/XXX).
+minor_changes:
+  - >-
+    read - the triple is asked as the uids the run actually is. The
+    gathering user always answers; where ``become`` put the play on
+    root and the connection user is somebody else, that user answers
+    too, through ``su -s /bin/sh``, because become is exactly what
+    makes a task's answer about permissions not the answer the play's
+    own user would get. Nobody but root drops - ``su`` asks everybody
+    else for a password on a terminal a probe does not have - and a
+    probe that would not run records no row rather than a guessed one.
+    Root's rows reading true nearly everywhere is the expected answer;
+    the exceptions are the value
+    (https://github.com/o0-o/ansible-collection-posix/pull/XXX).
+  - >-
+    which, compliance, facts - a path a command resolved to carries
+    its ``executable`` claim keyed by the uid the lookup ran as, in
+    the same shape a read publishes. ``command -v`` names a pathname
+    the shell running it would run, which is that shell answering the
+    same question ``test -x`` answers, and the answer belongs to
+    whoever the shell was running as; the compliance sweep and the
+    which module each ask ``id -u`` so the row has a name on it. A
+    host that would not say leaves the claim out and files the path it
+    reached
+    (https://github.com/o0-o/ansible-collection-posix/pull/XXX).
+  - >-
+    commands lookup - a candidate is a resolution when any uid was
+    told the file runs, is passed over when every uid that asked was
+    refused, and leaves the answer B(unknown) when nobody asked. A
+    field that is present and holds no rows is the same silence as no
+    field at all
+    (https://github.com/o0-o/ansible-collection-posix/pull/XXX).

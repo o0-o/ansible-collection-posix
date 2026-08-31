@@ -27,6 +27,20 @@
   ansible.builtin.set_fact:
     read_dir_path: "{{ read_tempdir_reg['stdout'] | trim }}"
 
+# The permission triple is one row per uid that asked, so every
+# expectation about it needs the key its own row is under
+- name: Ask the host whose answers these reads will be
+  o0_o.posix.command:
+    argv:
+      - id
+      - -u
+  register: read_uid_reg
+
+- name: Name the uid the reads answer for
+  ansible.builtin.set_fact:
+    read_uid: "{{ read_uid_reg['stdout'] | trim }}"
+    read_am_root: "{{ read_uid_reg['stdout'] | trim == '0' }}"
+
 - name: Define test paths
   ansible.builtin.set_fact:
     read_regular_path: "{{ read_dir_path }}/regular.txt"

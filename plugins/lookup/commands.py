@@ -29,6 +29,12 @@ description:
     candidate; and it is B(unknown) when a candidate that could have
     answered first was never gathered, because a store cannot report
     what it was never asked.
+  - C(executable) in the store is a mapping of uid to what that uid
+    was told, because whether a file will run is a question the kernel
+    answers per asker. A candidate any uid could run is a resolution,
+    since the search is looking for a file that runs; a candidate
+    every uid that asked was refused is passed over; and a candidate
+    nobody asked about is what leaves the answer unknown.
   - Those three are the collection's absence contract applied to an
     answer rather than to a store, and the C(path) key of each answer
     carries them the same way - absent, null, or a value. See the
@@ -124,14 +130,13 @@ notes:
     record an entry they cannot key; this lookup validates the search
     path it is asked to follow. A literal C(~) is inert as a fact and
     an error as a search path.
-  - One caveat can mislead the answer, and only one. Execute
-    permission is a property of a file, but reaching that file is a
-    property of the user reaching it, so a name the store resolves
-    for the user who gathered it may not resolve for another user who
-    cannot search one of the directories along the way, or whom an
-    ACL refuses where the mode does not. Per-user execute-bit
-    variance inside a search path directory is the whole of it;
-    everything else the search depends on is recorded.
+  - One caveat can mislead the answer, and only one. Reaching a file
+    is a property of the user reaching it, so a name the store
+    resolves may not resolve for a user who cannot search one of the
+    directories along the way. The store records which uids were told
+    the file itself will run; it records nothing about who can walk
+    the directories to get to it, and that is the whole of the
+    caveat.
 seealso:
   - module: o0_o.posix.facts
     description: Gather POSIX facts, C(o0_paths) among them
@@ -287,6 +292,34 @@ UNKNOWN = "unknown"
 PATH_ERRORS = ("strict", "warn", "ignore")
 
 __all__ = ["LookupModule", "canonicalize"]
+
+
+def _runs(executable: Any) -> Optional[bool]:
+    """Whether the store says a candidate will run, or will not say.
+
+    ``executable`` is a mapping of uid to the answer that uid was
+    given, because whether a file runs is the kernel's answer to
+    whoever asked rather than a property of the file alone.  The
+    search is looking for a file that runs, so one uid told yes is
+    enough to stop at; every uid that asked told no is a file to walk
+    past; and a mapping with nobody in it, or none at all, is nobody
+    having asked.
+
+    :param Any executable: The entry's executable field, whatever it
+        holds
+    :returns Optional[bool]: True where some uid was told the file
+        runs, False where every uid that asked was refused, and None
+        where nothing was asked
+    """
+    if not isinstance(executable, dict) or not executable:
+        return None
+
+    answers = [answer for answer in executable.values() if answer is not None]
+
+    if not answers:
+        return None
+
+    return any(answer is True for answer in answers)
 
 
 class LookupModule(LookupBase, VarsLookupBase):
@@ -588,16 +621,16 @@ class LookupModule(LookupBase, VarsLookupBase):
         first candidate the store calls executable, which is where
         the host's own search would stop.  A candidate the store
         holds as null is not there and the walk goes on; a candidate
-        the store holds as present but not executable is passed over
-        the same way, because a file that will not run is not what
-        the search is looking for.
+        every uid that asked was refused is passed over the same way,
+        because a file that will not run is not what the search is
+        looking for.
 
         A candidate the store has nothing to say about - never
-        gathered, or gathered without its executable bit being
-        settled - is why the third state exists.  Something may or
-        may not be there, ahead of whatever the walk finds later, so
-        the answer is unknown rather than a path the host might not
-        agree with.
+        gathered, or gathered without anybody having asked whether it
+        runs - is why the third state exists.  Something may or may
+        not be there, ahead of whatever the walk finds later, so the
+        answer is unknown rather than a path the host might not agree
+        with.
 
         :param str name: The command name
         :param Optional[list[str]] dirs: The directories to search in
@@ -631,7 +664,7 @@ class LookupModule(LookupBase, VarsLookupBase):
                     f" {type(entry).__name__}: {entry!r}"
                 )
 
-            executable = entry.get("executable")
+            executable = _runs(entry.get("executable"))
 
             if executable is True:
                 # An earlier candidate nobody settled could have
