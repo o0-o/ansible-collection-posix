@@ -861,6 +861,24 @@ ansible_facts:
           Every POSIX host has C(/dev/null) and none of them has it as
           a directory, so C(~/.profile) fails to resolve identically
           everywhere and the row means the same thing on every host.
+        - A run that is root asks every probe through a login C(su),
+          which resets the environment to what the user really gets.
+          It matters - run bare under C(become), a probe reports the
+          environment C(sudo) left it and files that as though it were
+          the shell's. So the system layer is forced to root and reads
+          one canonical answer whoever the play became, and the user
+          layer is asked of root and of the connecting user, each out
+          of their own home.
+        - A dropped user-layer probe is not told which shell to run.
+          The user's passwd entry decides, and the answer says which
+          shell and which home it turned out to be, so the row is
+          filed by what the probe itself reported rather than by a
+          passwd field read somewhere else.
+        - Only root can drop. C(su) asks everybody else for a password
+          on a terminal a probe does not have, so a run that is not
+          root asks the effective user's own pair instead, named from
+          the passwd entry, and reports whatever environment it was
+          handed.
         - Beside C(homes), the shell's own facts. C(builtins) is what
           the shell answers itself rather than by running a file,
           intrinsic to the binary because no home changes what a shell

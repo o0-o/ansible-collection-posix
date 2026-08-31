@@ -58,8 +58,14 @@ from ansible_collections.o0_o.core.plugins.module_utils import (
     process_command_spec,
 )
 
+from ansible_collections.o0_o.posix.plugins.module_utils.command_utils import (
+    format_command,
+)
+
 from ansible_collections.o0_o.posix.plugins.module_utils.evidence_utils import (  # noqa: E501
     EVIDENCE,
+    command_names,
+    compose_evidence,
     merge_evidence,
 )
 from ansible_collections.o0_o.posix.plugins.module_utils.filter_utils import (
@@ -107,6 +113,14 @@ SHELL_ENV_VARS = (
     "TERM",
     "TZ",
 )
+
+# Where the parser leaves what a probe said about its own placement.
+# A probe run through a login su is not told which shell to run - it
+# runs the user's own - so the answer is what says where the row
+# belongs.  The filer reads this and removes it; it never reaches a
+# fact, which is why it is spelled as a private key rather than a
+# field.
+SHELL_FILING = "_filing"
 
 # The variable a row is filed by rather than published with.  A row
 # belongs to the shell that produced it, and the shell's own path is
@@ -327,6 +341,13 @@ def _parse_shell_config(
 
     config: dict[str, Any] = {}
 
+    # What the probe said about its own placement, for the filer. A
+    # login su runs the user's own shell out of their own home and is
+    # not told either, so the answer is the only thing that knows.
+    placement = _parse_env_block(env_text, (SHELL_ENV_FILING, "HOME"))
+    if placement:
+        config[SHELL_FILING] = placement
+
     from ansible_collections.o0_o.posix.plugins.module_utils.limits_utils import (  # noqa: E501
         _parse_umask,
     )
@@ -355,8 +376,74 @@ def _parse_shell_config(
     return (config or None), None
 
 
+def _named(request: dict[str, Any], subject: str) -> dict[str, Any]:
+    """Name what a shell probe asks, the shell among it.
+
+    The probe is a script, so argv names whatever read the script back
+    - env(1), or the su that dropped identity first - and none of that
+    is the question.  What was asked is the shell, which is the
+    subject when the question is what a shell's own configuration
+    does, and the things the script puts to it.
+
+    :param dict[str, Any] request: The request to name, edited in
+        place
+    :param str subject: The shell being asked about, as a path or a
+        bare name
+    :returns dict[str, Any]: The request
+    """
+    request[EVIDENCE] = sorted(
+        {posixpath.basename(subject), *SHELL_PROBE_QUESTIONS}
+    )
+
+    return request
+
+
+def get_shell_login_requests(
+    users: Iterable[str],
+) -> list[dict[str, Any]]:
+    """Build probes of each named user's own login shell.
+
+    ``su`` with a login flag resets the environment to what the user
+    really gets, which is why the probe is worth the drop: run bare
+    under ``sudo`` it would report sudo's environment and call it the
+    shell's.  It is not told which shell to run - the user's passwd
+    entry decides - so the answer says which shell and which home it
+    turned out to be, and the row is filed by that.
+
+    Only root can drop.  ``su`` asks everybody else for a password on
+    a terminal a probe does not have, so a caller that is not root
+    passes no users here and asks bare instead.
+
+    :param Iterable[str] users: The users whose own login shells are
+        worth observing
+    :returns list[dict[str, Any]]: Command requests for run plugin
+    """
+    from ansible_collections.o0_o.posix.plugins.module_utils.command_spec import (  # noqa: E501
+        SHELL_COMMAND_SPEC,
+    )
+
+    requests = []
+    for user in users:
+        asked = process_command_spec(
+            SHELL_COMMAND_SPEC,
+            cmd_type="shell_login",
+            user=user,
+        )
+        for request in asked:
+            # No shell is named here, because none was asked for: the
+            # user's passwd entry decides which one runs and the
+            # answer says which it was, so the filer names it on the
+            # row it files. su is a command the probe execs to get
+            # there, so it is named as one
+            request[EVIDENCE] = sorted({*SHELL_PROBE_QUESTIONS, "su"})
+        requests.extend(asked)
+
+    return requests
+
+
 def get_shell_command_requests(
     pairs: Iterable[tuple[str, str]],
+    dropper: Optional[str] = None,
 ) -> list[dict[str, Any]]:
     """Build command requests for the combinations named.
 
@@ -367,6 +454,8 @@ def get_shell_command_requests(
 
     :param Iterable[tuple[str, str]] pairs: The (shell, home)
         combinations to observe
+    :param Optional[str] dropper: A user to run each probe as through
+        a login su, or None to run it bare
     :returns list[dict[str, Any]]: Command requests for run plugin
     """
     from ansible_collections.o0_o.posix.plugins.module_utils.command_spec import (  # noqa: E501
@@ -381,14 +470,20 @@ def get_shell_command_requests(
             shell=shell,
             home=home,
         )
-        # The probe is a script, so argv names the env(1) that set
-        # HOME rather than what was asked. What was asked is the shell
-        # - which is the subject here - and the four questions the
-        # script puts to it
         for request in asked:
-            request[EVIDENCE] = sorted(
-                {posixpath.basename(shell), *SHELL_PROBE_QUESTIONS}
-            )
+            _named(request, shell)
+            if dropper is not None:
+                # A login su first, so the shell is asked out of a
+                # reset environment rather than out of whatever the
+                # connection and the become left behind
+                request["command"] = (
+                    "su",
+                    "-",
+                    dropper,
+                    "-c",
+                    format_command(request["command"]),
+                )
+                request[EVIDENCE] = sorted({*request[EVIDENCE], "su"})
         requests.extend(asked)
 
     return requests
@@ -399,38 +494,77 @@ def process_shell_command_results(
 ) -> dict[str, dict[str, dict[str, Any]]]:
     """Read what each combination produced out of a batch's results.
 
+    Two kinds of probe answer here and they are filed differently for
+    one reason: whether the probe was told what it was running.  A
+    probe of a named shell out of a named home is filed by what it was
+    asked - we chose both, so we know both.  A probe run through a
+    login su runs the user's own shell out of their own home and is
+    told neither, so it is filed by what its own login environment
+    answered: the probe is the evidence for its own placement.
+
+    Either way the placement is removed before the row is published.
+    The shell is the entry key and the home is the row key, so a field
+    repeating one of them would echo the key it was filed under.
+
+    Each shell also gets the record of what was asked of it - of it,
+    not of the batch: a shell observed out of two homes was asked the
+    same way twice and a shell nobody probed was asked nothing, so a
+    record built from every probe in the batch and copied onto each
+    shell would tell one shell what another was asked. The shell the
+    probe turned out to run is named on its own row's record, which is
+    the only place that knows it.
+
     :param list[dict[str, Any]] cmds_completed: Command results
-    :returns dict[str, dict[str, dict[str, Any]]]: What was observed,
-        keyed by shell and then by home
+    :returns tuple[dict[str, dict[str, dict[str, Any]]],
+        dict[str, dict[str, Any]]]: What was observed, keyed by shell
+        and then by home, and what was consulted, keyed by shell
     """
     processed = process_all_command_results(cmds_completed)
 
-    results = processed.get("shell_config")
-    if results is None:
-        return {}
-    if isinstance(results, dict):
-        results = [results]
-
     observed: dict[str, dict[str, dict[str, Any]]] = {}
-    for result in results:
-        if not isinstance(result, dict):
-            continue
-        config = result.get("parsed")
-        if not config:
-            continue
-        args = result.get("args") or {}
-        shell = args.get("shell")
-        home = args.get("home")
-        if shell and home:
-            observed.setdefault(shell, {})[home] = config
+    consulted: dict[str, set[str]] = {}
 
-    return observed
+    for cmd_type in ("shell_config", "shell_login"):
+        results = processed.get(cmd_type)
+        if results is None:
+            continue
+        if isinstance(results, dict):
+            results = [results]
+
+        for result in results:
+            if not isinstance(result, dict):
+                continue
+            config = result.get("parsed")
+            if not config:
+                continue
+
+            placement = config.pop(SHELL_FILING, None) or {}
+            if cmd_type == "shell_login":
+                shell = placement.get(SHELL_ENV_FILING)
+                home = placement.get("HOME")
+            else:
+                args = result.get("args") or {}
+                shell = args.get("shell")
+                home = args.get("home")
+
+            if shell and home and config:
+                observed.setdefault(shell, {})[home] = config
+                # The shell a login probe turned out to run is named
+                # here, because here is where it became known
+                consulted.setdefault(shell, set()).update(
+                    command_names(result) + [posixpath.basename(shell)]
+                )
+
+    return observed, {
+        shell: compose_evidence(commands=names)
+        for shell, names in consulted.items()
+    }
 
 
 def compose_shells(
     named: Optional[Sequence[str]] = None,
     observed: Optional[dict[str, dict[str, dict[str, Any]]]] = None,
-    evidence: Optional[dict[str, Any]] = None,
+    evidence: Optional[dict[str, dict[str, Any]]] = None,
     builtins: Optional[dict[str, Sequence[str]]] = None,
     builtins_evidence: Optional[dict[str, Any]] = None,
 ) -> dict[str, dict[str, Any]]:
@@ -468,8 +602,9 @@ def compose_shells(
         names, as ``/etc/shells`` gave them
     :param Optional[dict[str, dict[str, dict[str, Any]]]] observed:
         What each probed combination produced, keyed by shell and home
-    :param Optional[dict[str, Any]] evidence: What the shell was asked
-        with, folded into the shell's own record
+    :param Optional[dict[str, dict[str, Any]]] evidence: What each
+        shell was asked with, keyed by shell, folded into that shell's
+        own record
     :param Optional[dict[str, Sequence[str]]] builtins: The commands
         each shell answers itself, keyed by shell
     :param Optional[dict[str, Any]] builtins_evidence: What enumerated
@@ -487,7 +622,7 @@ def compose_shells(
         homes = entry.setdefault("homes", {})
         for home in sorted(observed[shell]):
             homes[home] = dict(observed[shell][home])
-        _consulted(entry, evidence)
+        _consulted(entry, (evidence or {}).get(shell))
 
     # A builtin is the shell binary answering for itself, so it sits
     # at the shell rather than under a home: no home changes which
@@ -578,6 +713,7 @@ __all__ = [
     "SHELL_UMASK_MARKER",
     "compose_shells",
     "get_shell_command_requests",
+    "get_shell_login_requests",
     "name_shell_binaries",
     "parse_shells",
     "process_shell_command_results",

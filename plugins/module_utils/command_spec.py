@@ -224,6 +224,14 @@ MOUNT_COMMAND_SPEC = {
 # is the only reason to run it at all.  The script ends in an echo so
 # that a probe that ran exits 0 whatever the utilities inside it did,
 # leaving 126 and 127 to mean what they mean: no such shell.
+SHELL_PROBE_SCRIPT = (
+    f"echo {SHELL_UMASK_MARKER}; umask;"
+    f" echo {SHELL_ENV_MARKER}; env;"
+    f" echo {SHELL_LOCALE_MARKER}; locale 2>/dev/null;"
+    f" echo {SHELL_ALIAS_MARKER}; alias 2>/dev/null;"
+    f" echo {SHELL_END_MARKER}"
+)
+
 SHELL_COMMAND_SPEC = {
     "posix": {
         "shell_config": {
@@ -233,12 +241,19 @@ SHELL_COMMAND_SPEC = {
                 "{shell}",
                 "-l",
                 "-c",
-                f"echo {SHELL_UMASK_MARKER}; umask;"
-                f" echo {SHELL_ENV_MARKER}; env;"
-                f" echo {SHELL_LOCALE_MARKER}; locale 2>/dev/null;"
-                f" echo {SHELL_ALIAS_MARKER}; alias 2>/dev/null;"
-                f" echo {SHELL_END_MARKER}",
+                SHELL_PROBE_SCRIPT,
             ),
+            "parser": _parse_shell_config,
+            "non_error_codes": SHELL_RCS,
+        },
+        # The same questions put to a user's own login shell rather
+        # than to one we named.  su(1) with a login flag resets the
+        # environment to what that user really gets, which is the
+        # whole point of asking this way, and it is not told which
+        # shell to run - the user's passwd entry decides, and the
+        # answer says which it was.
+        "shell_login": {
+            "command": ("su", "-", "{user}", "-c", SHELL_PROBE_SCRIPT),
             "parser": _parse_shell_config,
             "non_error_codes": SHELL_RCS,
         },

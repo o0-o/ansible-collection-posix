@@ -186,6 +186,47 @@ class PosixActionBase(CoreActionBase):
 
         return run_result.get("commands")
 
+    def _login_identities(self) -> list[str]:
+        """Whose login environment this run is able to observe.
+
+        Observing one means resetting the environment to what that
+        user really gets, which ``su`` with a login flag does and
+        nothing else here can.  ``su`` asks root for no password and
+        asks everybody else for one, on a terminal a probe does not
+        have, so only a run that is already root can ask at all: any
+        other run gets an empty list and asks bare instead.
+
+        A run that is root asks about root, because that is the
+        identity the play is acting as, and about the user it
+        connected as, because that is the identity a person logs in
+        with and the two are rarely configured alike.  Connecting as
+        root directly is one identity, not two.
+
+        :returns list[str]: The users to ask as, empty where this run
+            cannot ask
+        """
+        play_ctx = getattr(self, "_play_context", None)
+        if not play_ctx:
+            return []
+
+        connection = getattr(play_ctx, "remote_user", None) or getattr(
+            play_ctx, "connection_user", None
+        )
+
+        if getattr(play_ctx, "become", False):
+            effective = getattr(play_ctx, "become_user", None) or "root"
+        else:
+            effective = connection
+
+        if str(effective or "") != "root":
+            return []
+
+        identities = ["root"]
+        if connection and str(connection) != "root":
+            identities.append(str(connection))
+
+        return identities
+
     def _which(
         self, cmd: str, task_vars: Optional[dict[str, Any]] = None
     ) -> Optional[str]:

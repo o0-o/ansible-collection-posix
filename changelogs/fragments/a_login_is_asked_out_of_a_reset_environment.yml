@@ -1,0 +1,40 @@
+# vim: ts=2:sw=2:sts=2:et:ft=yaml.ansible
+# -*- mode: yaml; yaml-indent-offset: 2; indent-tabs-mode: nil; -*-
+---
+bugfixes:
+  - >-
+    facts - a run that is root asks every shell probe through a login
+    ``su``, so the environment a row reports is the one that user
+    really gets. Run bare under ``become``, the probe reported the
+    environment ``sudo`` left it and filed that as though it belonged
+    to the shell. The system layer is forced to root now and reads one
+    canonical answer whoever the play became, rather than describing
+    whichever identity ``become`` happened to make
+    (https://github.com/o0-o/ansible-collection-posix/pull/XXX).
+  - >-
+    facts - the user layer is observed for root and for the connecting
+    user, each out of their own home. A become-root gather observed
+    root's pair and nothing of the person who logged in, and on a
+    gather narrower than ``all`` it observed no user layer at all - the
+    effective uid it keyed on is only determined when the
+    ``environment`` or ``limits`` subset runs, so ``gather_subset:
+    users`` published the system layer alone
+    (https://github.com/o0-o/ansible-collection-posix/pull/XXX).
+  - >-
+    facts - an ``o0_shells`` entry's ``evidence`` is what was asked of
+    that shell rather than of the batch. One record was built from
+    every probe in a run and copied onto each shell, so a ``zsh`` row
+    claimed the ``sh`` another probe had asked. The shell a login
+    probe turned out to run is named on its own record, which is the
+    only place that knows it
+    (https://github.com/o0-o/ansible-collection-posix/pull/XXX).
+minor_changes:
+  - >-
+    facts - a user-layer row is filed by what its own login
+    environment answered: the ``HOME`` names the home key and the
+    ``SHELL`` names which ``o0_shells`` entry it belongs to. A dropped
+    probe is not told which shell to run - the user's passwd entry
+    decides - so the probe is the evidence for its own placement, and
+    neither value is published inside the row, because each is the key
+    it was filed under
+    (https://github.com/o0-o/ansible-collection-posix/pull/XXX).

@@ -44,6 +44,7 @@ from ansible_collections.o0_o.posix.plugins.module_utils import (
     get_mount_command_requests,
     get_pathconf_command_requests,
     get_shell_command_requests,
+    get_shell_login_requests,
     get_timezone_command_requests,
     merge_entry,
     merge_evidence,
@@ -458,7 +459,7 @@ class ActionModule(ReadPosixActionBase, ActionBase):
     def _second_batch(
         self,
         mounts: dict[str, Any],
-        pairs: list[tuple[str, str]],
+        shells: list[dict[str, Any]],
         task_vars: Optional[dict[str, Any]] = None,
     ) -> dict[str, Any]:
         """Ask everything that had to wait for the first batch.
@@ -477,16 +478,14 @@ class ActionModule(ReadPosixActionBase, ActionBase):
 
         :param dict[str, Any] mounts: The composed mounts fact, or an
             empty mapping where the mounts subset did not run
-        :param list[tuple[str, str]] pairs: The (shell, home)
-            combinations to observe
+        :param list[dict[str, Any]] shells: The shell probes to run
         :param Optional[dict[str, Any]] task_vars: Task variables
         :returns dict[str, Any]: The namespaces the answers compose
         """
         requests = []
         if mounts:
             requests.extend(get_pathconf_command_requests(sorted(mounts)))
-        if pairs:
-            requests.extend(get_shell_command_requests(pairs))
+        requests.extend(shells)
 
         if not requests:
             return {}
@@ -494,7 +493,7 @@ class ActionModule(ReadPosixActionBase, ActionBase):
         self._display.vvv(
             f"Asking {len(requests)} command(s) of"
             f" {len(mounts)} mountpoint(s) and"
-            f" {len(pairs)} shell context(s)"
+            f" {len(shells)} shell context(s)"
         )
 
         run_results = self._run(
@@ -520,32 +519,43 @@ class ActionModule(ReadPosixActionBase, ActionBase):
                 ),
             }
 
-        if pairs:
-            shells = compose_shells(
-                None,
-                process_shell_command_results(run_results),
-                compose_evidence(
-                    commands=commands_run(run_results, "shell_config")
-                ),
-            )
-            if shells:
-                facts["o0_shells"] = shells
+        if shells:
+            probed, consulted = process_shell_command_results(run_results)
+            observed = compose_shells(None, probed, consulted)
+            if observed:
+                facts["o0_shells"] = observed
 
         return facts
 
-    def _shell_pairs(
+    def _shell_probes(
         self,
         shell: str,
         all_facts: dict[str, Any],
         uid: Optional[int],
-    ) -> list[tuple[str, str]]:
-        """Name the combinations this gather has reason to observe.
+    ) -> list[dict[str, Any]]:
+        """Plan the shell observations this gather has reason to make.
 
-        Two of them at most.  The system layer is the shell the task
-        named, run out of the canonical home no host has: what a login
+        Two layers.  The system layer is the shell the task named, run
+        out of the canonical home no host has, which is what a login
         shell does before any user's dot files enter into it.  The
-        user layer is the connecting user's own login shell run out of
-        their own home, which is what they actually get.
+        user layer is what a person actually gets when they log in.
+
+        A run that can drop asks both out of a reset environment, and
+        the difference is not cosmetic.  Run bare under become, the
+        probe reports the environment sudo left it - a truncated PATH,
+        the connection's working directory, the become target's mail
+        spool - and files all of it as though it were the shell's.  A
+        login su resets the environment to what the user really gets,
+        so the system layer is forced to root and reads one canonical
+        answer whoever the play became, and the user layer is asked of
+        root and of the connecting user, each out of their own home,
+        because those two are rarely configured alike.
+
+        A dropped user-layer probe is not told which shell to run: the
+        user's passwd entry decides and the answer says which it was.
+        A run that cannot drop asks the effective user's own pair
+        instead, named from the passwd entry, and reports whatever
+        environment it was handed.
 
         A shell the path store has confirmed absent is not probed.
         The store is consulted rather than trusted for a positive: a
@@ -558,27 +568,46 @@ class ActionModule(ReadPosixActionBase, ActionBase):
             so far
         :param Optional[int] uid: The effective uid, where one was
             determined
-        :returns list[tuple[str, str]]: The (shell, home) pairs to
-            observe
+        :returns list[dict[str, Any]]: The probes to run
         """
         paths = all_facts.get(self.PATHS_NAMESPACE) or {}
 
         def absent(path: str) -> bool:
             return path in paths and paths[path] is None
 
-        pairs = []
-        if shell and not absent(shell):
-            pairs.append((shell, SHELL_SYSTEM_HOME))
+        identities = self._login_identities()
+        dropper = identities[0] if identities else None
 
+        requests: list[dict[str, Any]] = []
+
+        if shell and not absent(shell):
+            requests.extend(
+                get_shell_command_requests(
+                    [(shell, SHELL_SYSTEM_HOME)], dropper=dropper
+                )
+            )
+
+        if identities:
+            requests.extend(get_shell_login_requests(identities))
+            return requests
+
+        # Nothing to drop with, so the one login this run can observe
+        # is the one it is already inside, named from the passwd entry
+        # rather than answered by the probe
         entry = (all_facts.get("o0_users") or {}).get(str(uid)) or {}
         user_shell = entry.get("shell")
         user_home = entry.get("home")
-        if user_shell and user_home and not absent(user_shell):
-            pair = (user_shell, user_home)
-            if pair not in pairs:
-                pairs.append(pair)
+        if (
+            user_shell
+            and user_home
+            and not absent(user_shell)
+            and (user_shell, user_home) != (shell, SHELL_SYSTEM_HOME)
+        ):
+            requests.extend(
+                get_shell_command_requests([(user_shell, user_home)])
+            )
 
-        return pairs
+        return requests
 
     def _read_user_paths(
         self,
@@ -868,7 +897,7 @@ class ActionModule(ReadPosixActionBase, ActionBase):
             self._second_batch(
                 (all_facts.get("o0_storage") or {}).get("mounts") or {},
                 (
-                    self._shell_pairs(
+                    self._shell_probes(
                         new_args["shell"], all_facts, effective_uid
                     )
                     if "users" in selected_subsets

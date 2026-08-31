@@ -948,21 +948,60 @@
       the /bin/sh system layer was not observed out of /dev/null:
       {{ shells['/bin/sh'] | default({}) }}
 
-# The user layer: the connecting user's own login shell run out of
-# their own home. Only a user /etc/passwd described has both, and
-# macOS keeps its local users in a directory service and names only
-# the system ones in the file, so the row is asserted where there is a
-# passwd entry to assert it of.
-- name: Name the connecting user's own shell and home, if the file did
+# The user layer: what a person actually gets when they log in. A run
+# that is root asks through a login su, which resets the environment
+# and is not told which shell to run, so the row is filed by what its
+# own login environment answered. A run that cannot drop asks the
+# effective user's own pair instead, named from the passwd entry.
+- name: Name whether this run could observe a login at all
   vars:
     entry: >-
-      {{ facts_all_reg['ansible_facts']['o0_users'][facts_uid] }}
+      {{ facts_all_reg['ansible_facts']['o0_users'][facts_uid]
+         | default({}) }}
   ansible.builtin.set_fact:
+    facts_am_root: "{{ facts_uid == '0' }}"
     facts_own_shell: "{{ entry['shell'] | default('') }}"
     facts_own_home: "{{ entry['home'] | default('') }}"
 
-- name: Assert the connecting user's own combination was observed
+# Proven live on casa (Arch, util-linux su); skipped where the run is
+# not root, because su asks everybody else for a password on a
+# terminal a probe does not have.
+- name: Assert a root run observed a login out of a reset environment
+  when: facts_am_root | bool
+  vars:
+    shells: "{{ facts_all_reg['ansible_facts']['o0_shells'] }}"
+    rows: >-
+      {{ shells | dict2items | selectattr('value.homes', 'defined')
+         | map(attribute='value.homes') | map('dict2items') | flatten
+         | list }}
+    homes: "{{ rows | map(attribute='key') | list }}"
+    envs: >-
+      {{ rows | map(attribute='value')
+         | selectattr('env', 'defined') | map(attribute='env') | list }}
+  ansible.builtin.assert:
+    that:
+      # The system layer, forced to root whoever the play became
+      - "'/dev/null' in homes"
+      # And a login of a real home beside it, which is what a login su
+      # buys: run bare under become there would be no such row
+      - homes | reject('eq', '/dev/null') | list | length > 0
+      # Every row is a login the shell itself built, so the locale the
+      # login files set is there rather than sudo's silence
+      - >-
+        envs | selectattr('PATH', 'defined') | list | length
+        == envs | length
+      # Nothing identifies whoever the probe ran as
+      - >-
+        envs | map('list') | flatten | unique
+        | select('in', ['HOME', 'LOGNAME', 'MAIL', 'PWD', 'SHELL',
+        'USER']) | list | length == 0
+    fail_msg: >-
+      a root run did not observe a login out of a reset environment:
+      homes {{ homes }}
+
+- name: Assert a run that cannot drop still observed its own login
   when:
+    - not facts_am_root | bool
     - facts_own_shell | length > 0
     - facts_own_home | length > 0
   vars:
@@ -973,13 +1012,9 @@
     that:
       - shells[facts_own_shell]['homes'][facts_own_home] is mapping
       - config['umask'] is match('^0[0-7]{3}$')
-      # The home the shell was run out of is the key, which is the
-      # only place it needs saying
-      - >-
-        facts_own_home in shells[facts_own_shell]['homes']
       - "'HOME' not in config['env'] | default({})"
     fail_msg: >-
-      the connecting user's own shell and home were not observed:
+      the effective user's own shell and home were not observed:
       {{ facts_own_shell }} in {{ facts_own_home }}
 
 # Only shells a producer was asked about are run. Nothing walks
@@ -993,8 +1028,15 @@
     observed: >-
       {{ shells | dict2items | selectattr('value.homes', 'defined')
          | map(attribute='key') | list }}
+    # A root run asks about root and about who connected, and their
+    # passwd entries decide which shells run, so what may appear is
+    # any shell a user in o0_users holds, plus the one the task named
     asked: >-
-      {{ ['/bin/sh', facts_own_shell] | select | list }}
+      {{ (['/bin/sh', facts_own_shell]
+          + (facts_all_reg['ansible_facts']['o0_users'] | dict2items
+             | selectattr('value.shell', 'defined')
+             | map(attribute='value.shell') | select('string')
+             | list)) | select | unique | list }}
   ansible.builtin.assert:
     that:
       - observed | length > 0

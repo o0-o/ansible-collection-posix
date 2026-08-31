@@ -176,3 +176,71 @@ def test_flags_to_octal_mode_empty_string() -> None:
 def test_flags_to_octal_mode_short_string() -> None:
     """Test that strings shorter than 10 chars return 0000."""
     assert flags_to_octal_mode("-rw-") == "0000"
+
+
+class TestLoginIdentities:
+    """Tests for whose login environment a run is able to observe."""
+
+    class _PlayContext:
+        """The three things the answer is read off."""
+
+        def __init__(self, become=False, become_user=None, remote_user=None):
+            self.become = become
+            self.become_user = become_user
+            self.remote_user = remote_user
+            self.connection_user = remote_user
+
+    def _base(self, play_context=None):
+        """A bare PosixActionBase carrying one play context."""
+        base = PosixActionBase.__new__(PosixActionBase)
+        base._play_context = play_context
+        return base
+
+    def test_become_to_root_can_ask_about_both(self) -> None:
+        """Test root asks about itself and about who connected.
+
+        The play acts as root and a person logs in as somebody else,
+        and the two are rarely configured alike.
+        """
+        base = self._base(
+            self._PlayContext(
+                become=True, become_user="root", remote_user="o0-o"
+            )
+        )
+
+        assert base._login_identities() == ["root", "o0-o"]
+
+    def test_become_without_a_user_named_is_root(self) -> None:
+        """Test the Ansible default is read as the root it is."""
+        base = self._base(
+            self._PlayContext(become=True, remote_user="o0-o")
+        )
+
+        assert base._login_identities() == ["root", "o0-o"]
+
+    def test_connecting_as_root_is_one_identity(self) -> None:
+        """Test root connecting directly asks about root alone."""
+        base = self._base(self._PlayContext(remote_user="root"))
+
+        assert base._login_identities() == ["root"]
+
+    def test_a_run_that_is_not_root_cannot_ask(self) -> None:
+        """Test only root can drop.
+
+        su asks everybody else for a password on a terminal a probe
+        does not have, so a run that is not root asks bare instead of
+        hanging.
+        """
+        connected = self._base(self._PlayContext(remote_user="o0-o"))
+        became = self._base(
+            self._PlayContext(
+                become=True, become_user="postgres", remote_user="o0-o"
+            )
+        )
+
+        assert connected._login_identities() == []
+        assert became._login_identities() == []
+
+    def test_no_play_context_asks_nothing(self) -> None:
+        """Test a run with no context to read makes no claim."""
+        assert self._base()._login_identities() == []

@@ -35,6 +35,7 @@ import pytest
 
 from ansible_collections.o0_o.posix.plugins.module_utils.command_spec import (
     SHELL_COMMAND_SPEC,
+    SHELL_PROBE_SCRIPT,
 )
 from ansible_collections.o0_o.posix.plugins.module_utils.evidence_utils import (  # noqa: E501
     name_origins,
@@ -47,6 +48,7 @@ from ansible_collections.o0_o.posix.plugins.module_utils.shells_utils import (
     _parse_shell_config,
     compose_shells,
     get_shell_command_requests,
+    get_shell_login_requests,
     name_shell_binaries,
     process_shell_command_results,
 )
@@ -115,7 +117,8 @@ def test_a_login_run_answers_a_mask_and_an_environment(shell: str) -> None:
 
     assert parsed["umask"] == "0022"
     assert parsed["env"]["PATH"]
-    assert set(parsed) <= {"env", "umask", "locale"}
+    # The placement the filer reads and removes travels beside them
+    assert set(parsed) <= {"env", "umask", "locale", "_filing"}
 
 
 @pytest.mark.parametrize("shell", SHELLS)
@@ -268,10 +271,17 @@ def test_nothing_is_probed_that_was_not_asked_for() -> None:
     assert len(get_shell_command_requests([("/bin/sh", "/dev/null")])) == 1
 
 
-def test_the_spec_names_one_probe() -> None:
-    """Test the shell spec holds the login run and nothing else."""
+def test_the_spec_names_the_two_ways_a_shell_is_asked() -> None:
+    """Test the spec holds the two login runs and nothing else.
+
+    One names the shell and the home; the other names a user and lets
+    their passwd entry decide both, which is what a login su does.
+    """
     assert set(SHELL_COMMAND_SPEC) == {"posix"}
-    assert set(SHELL_COMMAND_SPEC["posix"]) == {"shell_config"}
+    assert set(SHELL_COMMAND_SPEC["posix"]) == {
+        "shell_config",
+        "shell_login",
+    }
 
 
 def test_the_results_are_keyed_by_the_pair_that_decided_them() -> None:
@@ -290,12 +300,22 @@ def test_the_results_are_keyed_by_the_pair_that_decided_them() -> None:
         for request in get_shell_command_requests(pairs)
     ]
 
-    observed = process_shell_command_results(results)
+    observed, consulted = process_shell_command_results(results)
 
     assert set(observed) == {"/bin/sh", "/bin/zsh"}
     assert set(observed["/bin/sh"]) == {SHELL_SYSTEM_HOME}
     assert set(observed["/bin/zsh"]) == {"/home/o0-o"}
     assert observed["/bin/zsh"]["/home/o0-o"]["umask"] == "0022"
+    # Each shell's record is what was asked of it, not of the batch
+    assert consulted["/bin/sh"]["commands"] == [
+        "alias",
+        "env",
+        "locale",
+        "sh",
+        "umask",
+    ]
+    assert "zsh" in consulted["/bin/zsh"]["commands"]
+    assert "sh" not in consulted["/bin/zsh"]["commands"]
 
 
 def test_a_pair_that_answered_nothing_is_not_a_row() -> None:
@@ -307,8 +327,8 @@ def test_a_pair_that_answered_nothing_is_not_a_row() -> None:
         )
     ]
 
-    assert process_shell_command_results(results) == {}
-    assert process_shell_command_results([]) == {}
+    assert process_shell_command_results(results) == ({}, {})
+    assert process_shell_command_results([]) == ({}, {})
 
 
 def test_the_named_shells_are_the_keys_and_the_idiom_survives() -> None:
@@ -371,7 +391,7 @@ def test_one_record_per_shell_names_everything_asked_of_it() -> None:
                 "/home/o0-o": {"umask": "0077"},
             }
         },
-        {"commands": ["env", "sh"]},
+        {"/bin/sh": {"commands": ["env", "sh"]}},
         {"/bin/sh": ["cd"]},
         {"commands": ["command"]},
     )
@@ -504,7 +524,7 @@ class TestBuiltinsSitOnTheShell:
         shells = compose_shells(
             ["/bin/sh"],
             {"/bin/sh": {"/dev/null": {"umask": "0022"}}},
-            {"commands": ["env"]},
+            {"/bin/sh": {"commands": ["env"]}},
             {"/bin/sh": ["exec", "cd", "cd"]},
         )
 
@@ -539,7 +559,7 @@ def test_a_row_names_who_composed_it_beside_what_ran() -> None:
     shells = compose_shells(
         ["/bin/sh"],
         {"/bin/sh": {"/dev/null": {"umask": "0022"}}},
-        {"commands": ["env"]},
+        {"/bin/sh": {"commands": ["env"]}},
         {"/bin/sh": ["cd"]},
     )
 
@@ -643,3 +663,118 @@ class TestShellBinaries:
         )
 
         assert shells["/bin//sh"]["binary"] == "/bin/sh"
+
+
+class TestLoginProbeConstructions:
+    """Tests for how a shell is asked out of a reset environment."""
+
+    def test_a_login_probe_names_the_user_and_not_a_shell(self) -> None:
+        """Test the probe is not told which shell to run.
+
+        The user's passwd entry decides, which is the whole reason to
+        ask this way, so the request names the user and the answer
+        says which shell it turned out to be.
+        """
+        (request,) = get_shell_login_requests(["o0-o"])
+
+        assert request["command"] == (
+            "su",
+            "-",
+            "o0-o",
+            "-c",
+            SHELL_PROBE_SCRIPT,
+        )
+        assert request["type"] == "shell_login"
+
+    def test_a_login_probe_names_su_and_the_questions(self) -> None:
+        """Test no shell is named where none was asked for.
+
+        su is a command the probe execs to get there, so it is named;
+        the shell is named later, on the row the answer files.
+        """
+        (request,) = get_shell_login_requests(["root"])
+
+        assert request["evidence"] == [
+            "alias",
+            "env",
+            "locale",
+            "su",
+            "umask",
+        ]
+
+    def test_a_dropped_system_probe_wraps_the_named_shell(self) -> None:
+        """Test the shell we name is still the shell that runs.
+
+        The system layer names its shell and forces its home, and the
+        login su only decides whose environment it runs in.
+        """
+        (request,) = get_shell_command_requests(
+            [("/bin/sh", SHELL_SYSTEM_HOME)], dropper="root"
+        )
+
+        assert request["command"][:4] == ("su", "-", "root", "-c")
+        assert request["command"][4].startswith("env HOME=/dev/null /bin/sh")
+        assert "su" in request["evidence"]
+        assert "sh" in request["evidence"]
+
+    def test_an_undropped_probe_is_the_bare_one(self) -> None:
+        """Test a run that cannot drop asks exactly as it always did."""
+        (request,) = get_shell_command_requests(
+            [("/bin/sh", SHELL_SYSTEM_HOME)]
+        )
+
+        assert request["command"][0] == "env"
+        assert "su" not in request["evidence"]
+
+    def test_a_login_answer_files_itself(self) -> None:
+        """Test the probe is the evidence for its own placement.
+
+        Nobody told this probe which shell or which home, so the row
+        goes where its own login environment says it belongs.
+        """
+        (request,) = get_shell_login_requests(["o0-o"])
+        results = [
+            {
+                **request,
+                "rc": 0,
+                "stdout": (
+                    "@UMASK@\n0022\n@ENV@\n"
+                    "SHELL=/bin/zsh\nHOME=/home/o0-o\nPATH=/usr/bin\n"
+                    "@LOCALE@\n@ALIAS@\n@END@\n"
+                ),
+            }
+        ]
+
+        observed, consulted = process_shell_command_results(results)
+
+        assert set(observed) == {"/bin/zsh"}
+        assert set(observed["/bin/zsh"]) == {"/home/o0-o"}
+        # Neither the shell nor the home is published inside the row:
+        # each is the key it was filed under
+        row = observed["/bin/zsh"]["/home/o0-o"]
+        assert "SHELL" not in row["env"]
+        assert "HOME" not in row["env"]
+        assert "_filing" not in row
+        # The shell that turned out to run is named on its record
+        assert "zsh" in consulted["/bin/zsh"]["commands"]
+
+    def test_a_login_answer_that_named_no_placement_files_nothing(
+        self,
+    ) -> None:
+        """Test a probe whose environment named neither is not a row.
+
+        Without a shell and a home there is no key to file it under,
+        and a guessed key would claim an observation of something
+        nobody observed.
+        """
+        (request,) = get_shell_login_requests(["o0-o"])
+        results = [
+            {
+                **request,
+                "rc": 0,
+                "stdout": "@UMASK@\n0022\n@ENV@\nPATH=/usr/bin\n"
+                "@LOCALE@\n@ALIAS@\n@END@\n",
+            }
+        ]
+
+        assert process_shell_command_results(results) == ({}, {})
