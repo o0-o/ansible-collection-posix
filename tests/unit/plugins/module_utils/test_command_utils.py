@@ -24,7 +24,12 @@ from ansible_collections.o0_o.posix.plugins.module_utils.command_utils import (
 # running it would run, so the claim is keyed by the uid that shell
 # was running as
 UID = 1000
-RESOLVED = {"executable": {str(UID): True}}
+
+# What every entry these lookups compose was consulted with: one
+# command, asked once per name, reading no file
+CONSULTED = {"commands": ["command"]}
+RESOLVED = {"executable": {str(UID): True}, "evidence": CONSULTED}
+REACHED = {"evidence": CONSULTED}
 
 
 def _lookup(cmd: str, parsed: Optional[str]) -> dict[str, Any]:
@@ -59,6 +64,7 @@ def test_the_executable_claim_is_keyed_by_the_uid_that_asked() -> None:
     )
 
     assert paths["/usr/bin/awk"]["executable"] == {"1000": True}
+    assert paths["/usr/bin/awk"]["evidence"] == {"commands": ["command"]}
 
 
 def test_a_sweep_with_no_uid_makes_no_executable_claim() -> None:
@@ -70,7 +76,7 @@ def test_a_sweep_with_no_uid_makes_no_executable_claim() -> None:
         [_lookup("awk", "/usr/bin/awk")]
     )
 
-    assert paths["/usr/bin/awk"] == {}
+    assert paths["/usr/bin/awk"] == REACHED
 
 
 def test_two_resolutions_do_not_share_one_claim() -> None:
@@ -142,7 +148,7 @@ def test_a_builtin_is_answered_back_rather_than_filed() -> None:
     )
 
     assert builtins == ["[", "cd"]
-    assert paths[ANSWERING_SHELL] == {}
+    assert paths[ANSWERING_SHELL] == REACHED
 
 
 def test_an_alias_is_neither_a_path_nor_a_builtin() -> None:
@@ -160,7 +166,7 @@ def test_an_alias_is_neither_a_path_nor_a_builtin() -> None:
     assert builtins == []
     assert missing == []
     assert errors == []
-    assert paths == {ANSWERING_SHELL: {}}
+    assert paths == {ANSWERING_SHELL: REACHED}
 
 
 def test_the_shell_entry_is_whole_where_sh_resolved_to_it() -> None:
@@ -171,7 +177,7 @@ def test_the_shell_entry_is_whole_where_sh_resolved_to_it() -> None:
         [_lookup("sh", ANSWERING_SHELL), _lookup("cd", "cd")], UID
     )
 
-    assert paths[ANSWERING_SHELL] == {"executable": {"1000": True}}
+    assert paths[ANSWERING_SHELL] == RESOLVED
     assert builtins == ["cd"]
 
 
@@ -183,7 +189,7 @@ def test_the_shell_answered_even_where_sh_did_not_resolve() -> None:
         [_lookup("cat", "/bin/cat"), _lookup("sh", None)]
     )
 
-    assert paths[ANSWERING_SHELL] == {}
+    assert paths[ANSWERING_SHELL] == REACHED
     assert missing == ["sh"]
 
 
@@ -196,7 +202,7 @@ def test_a_missing_command_utility_stops_the_lookups() -> None:
     )
 
     assert missing == ["command"]
-    assert paths == {ANSWERING_SHELL: {}}
+    assert paths == {ANSWERING_SHELL: REACHED}
     assert builtins == []
     assert errors == []
 
@@ -210,7 +216,7 @@ def test_unexpected_lookup_output_is_an_error() -> None:
     )
 
     assert missing == []
-    assert paths == {ANSWERING_SHELL: {}}
+    assert paths == {ANSWERING_SHELL: REACHED}
     assert len(errors) == 1
     assert "Unexpected 'command -v awk' output" in str(errors[0])
 

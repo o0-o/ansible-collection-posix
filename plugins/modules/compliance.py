@@ -455,6 +455,15 @@ paths:
   returned: always
   type: dict
   contains:
+    evidence:
+      description: >-
+        What was consulted about this path. Only C(commands): the
+        lookups read no file, and every entry here came out of the one
+        command asked once per name.
+      type: dict
+      sample:
+        commands:
+          - command
     origin:
       description: >-
         The modules that contributed the entry, by FQCN, sorted. The

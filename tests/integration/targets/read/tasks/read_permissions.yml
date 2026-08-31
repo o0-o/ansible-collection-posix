@@ -142,6 +142,12 @@
         read_perms_content_reg['paths'][read_perms_runnable]
       - >-
         'rusr' not in read_perms_content_reg['paths'][read_perms_runnable]
+      # What was consulted for the entry arrives whatever the entry
+      # publishes, because it is a fact about the entry rather than
+      # one of the attributes
+      - >-
+        'cat' in read_perms_content_reg['paths'][read_perms_runnable]
+        ['evidence']['commands']
 
 - name: Read a directory full of files in one batch
   o0_o.posix.read:

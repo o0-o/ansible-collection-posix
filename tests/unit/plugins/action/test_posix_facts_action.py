@@ -1025,6 +1025,9 @@ class TestGatherUsers:
             "content": ETC_SHELLS,
             "config": ["/bin/sh", "/bin/zsh"],
             "origin": ["o0_o.posix.facts"],
+            # The file is the fact rather than evidence for itself, so
+            # the entry names the command that read it and no path
+            "evidence": {"commands": ["cat"]},
         }
 
     def test_missing_shells_file(self, monkeypatch, plugin) -> None:

@@ -568,3 +568,50 @@ def test_an_origin_that_is_not_a_list_of_names_is_refused() -> None:
 
     with pytest.raises(ValueError, match="must be a list of the module"):
         compose_paths(None, {"/bin/sh": {"origin": [1]}})
+
+
+def test_two_observations_of_a_path_name_everything_consulted() -> None:
+    """Test evidence accumulates the way origin does.
+
+    What produced an entry is the record of who looked, not part of
+    the observation, so a merge that let the later producer win would
+    publish an entry claiming half of what put it there.
+    """
+    store = compose_paths(
+        None,
+        {"/bin/sh": {"evidence": {"commands": ["command"]}}},
+        origin="o0_o.posix.compliance",
+    )
+
+    composed = compose_paths(
+        store,
+        {"/bin/sh": {"type": "link", "evidence": {"commands": ["ls"]}}},
+        origin="o0_o.posix.facts",
+    )
+
+    assert composed["/bin/sh"]["evidence"] == {"commands": ["command", "ls"]}
+    assert composed["/bin/sh"]["type"] == "link"
+
+
+def test_an_observation_that_names_nothing_keeps_what_was_named() -> None:
+    """Test a producer with no evidence of its own does not erase the
+    evidence the entry arrived with."""
+    store = compose_paths(None, {"/bin/sh": {"evidence": {"files": ["/x"]}}})
+
+    composed = compose_paths(store, {"/bin/sh": {"type": "regular"}})
+
+    assert composed["/bin/sh"]["evidence"] == {"files": ["/x"]}
+
+
+def test_evidence_kinds_stay_apart_when_they_merge() -> None:
+    """Test a kind one producer has and the other does not survives."""
+    store = compose_paths(None, {"/etc/x": {"evidence": {"files": ["/y"]}}})
+
+    composed = compose_paths(
+        store, {"/etc/x": {"evidence": {"commands": ["cat"]}}}
+    )
+
+    assert composed["/etc/x"]["evidence"] == {
+        "files": ["/y"],
+        "commands": ["cat"],
+    }

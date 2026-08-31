@@ -954,7 +954,10 @@ class TestProcessReadResults:
         )
 
         assert ls_facts["/l"] == {"type": "link", "target": "/target"}
-        assert file_data["/l"] == {}
+        # An entry names what was consulted for it whatever else it
+        # publishes, because that is a fact about the entry rather
+        # than one of the attributes
+        assert file_data["/l"] == {"evidence": {"commands": []}}
 
     def test_link_target_is_published_on_request(self, action) -> None:
         """Test attributes publishes the target it does not decide."""
@@ -1128,7 +1131,10 @@ class TestResolutionIsPublished:
             results, ["/l"], {"attributes": False, "resolve": True}
         )
 
-        assert file_data["/l"] == {"resolution": ["/l", "/target"]}
+        assert file_data["/l"] == {
+            "resolution": ["/l", "/target"],
+            "evidence": {"commands": []},
+        }
 
     def test_no_chain_key_where_none_was_asked_for(self, action) -> None:
         """Test a read that did not resolve publishes no chain."""
@@ -1403,3 +1409,99 @@ class TestPermissionsArePublished:
         assert "readable" not in file_data["/f"]
         assert "writable" not in file_data["/f"]
         assert "executable" not in file_data["/f"]
+
+
+class TestEntriesNameWhatWasConsulted:
+    """Tests for the evidence a read files on each entry."""
+
+    def test_an_entry_names_the_commands_asked_about_it(
+        self, action
+    ) -> None:
+        """Test what ran for a path is what that path's entry names."""
+        commands = action._get_read_commands(
+            ["/f"], {"attributes": True}, platform={"stat_variant": "gnu"}
+        )
+        results = {"/f_ls": _ls_result("-rw-r--r--")}
+
+        file_data, _facts = action._process_read_results(
+            results, ["/f"], {"attributes": True}, commands=commands
+        )
+
+        assert file_data["/f"]["evidence"] == {
+            "commands": ["ls", "sh", "stat"]
+        }
+
+    def test_a_read_reads_no_file_as_evidence(self, action) -> None:
+        """Test only commands are named.
+
+        Every probe here is run at the path itself, and the bytes of
+        the path are the fact rather than evidence for it, so files is
+        a kind this producer does not have rather than one it attempts
+        and fills with nothing.
+        """
+        commands = action._get_read_commands(["/f"], {})
+        results = {"/f_ls": _ls_result("-rw-r--r--")}
+
+        file_data, _facts = action._process_read_results(
+            results, ["/f"], {}, commands=commands
+        )
+
+        assert "files" not in file_data["/f"]["evidence"]
+
+    def test_each_path_names_what_was_asked_about_it(self, action) -> None:
+        """Test a batch's commands are sorted by the path each names.
+
+        The one that names no path is a probe that answered for every
+        path at once, and belongs to all of them.
+        """
+        commands = {
+            "/a_ls": ["ls", "-dn", "/a"],
+            "/b_ls": ["ls", "-dn", "/b"],
+            "/b_md5": ["md5sum", "/b"],
+            "permissions_0": ["sh", "-c", "id -u"],
+        }
+        results = {
+            "/a_ls": _ls_result("-rw-r--r--", "/a"),
+            "/b_ls": _ls_result("-rw-r--r--", "/b"),
+        }
+
+        file_data, _facts = action._process_read_results(
+            results, ["/a", "/b"], {"attributes": True}, commands=commands
+        )
+
+        assert file_data["/a"]["evidence"] == {"commands": ["ls", "sh"]}
+        assert file_data["/b"]["evidence"] == {
+            "commands": ["ls", "md5sum", "sh"]
+        }
+
+    def test_a_key_belongs_to_the_longest_path_that_prefixes_it(
+        self, action
+    ) -> None:
+        """Test a path whose name looks like another's key is its own.
+
+        A key is a path and a suffix, and a suffix never holds a
+        slash, so the longest path that prefixes a key is the path the
+        key is about.
+        """
+        by_path, shared = action._commands_by_path(
+            {
+                "/f_ls": ["ls", "-dn", "/f"],
+                "/f_ls_ls": ["ls", "-dn", "/f_ls"],
+                "permissions_0": ["sh", "-c", "id -u"],
+            },
+            ["/f", "/f_ls"],
+        )
+
+        assert by_path == {"/f": ["ls"], "/f_ls": ["ls"]}
+        assert shared == ["sh"]
+
+    def test_a_read_that_kept_no_batch_names_nothing(self, action) -> None:
+        """Test an entry says the kind was attempted and answered for
+        nothing rather than claiming a command nobody recorded."""
+        results = {"/f_ls": _ls_result("-rw-r--r--")}
+
+        file_data, _facts = action._process_read_results(
+            results, ["/f"], {"attributes": True}
+        )
+
+        assert file_data["/f"]["evidence"] == {"commands": []}

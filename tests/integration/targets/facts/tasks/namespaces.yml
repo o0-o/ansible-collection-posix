@@ -654,6 +654,40 @@
     fail_msg: >-
       an o0_paths entry does not name what composed it: {{ named }}
 
+# Provenance sits on the entry because it varies by entry: a home was
+# described by a metadata read, a resolved command by command -v, and
+# a file that was parsed by the cat that read it.
+- name: Assert every composed entry names what was consulted for it
+  vars:
+    paths: "{{ facts_all_reg['ansible_facts']['o0_paths'] }}"
+    described: >-
+      {{ paths | dict2items | selectattr('value', 'mapping') | list }}
+    consulted: >-
+      {{ described | map(attribute='value.evidence.commands') | flatten
+         | unique | sort }}
+  ansible.builtin.assert:
+    that:
+      - described | length > 0
+      - >-
+        described | rejectattr('value.evidence', 'defined')
+        | list | length == 0
+      # A read runs every probe at the path itself and the bytes of
+      # that path are the fact, so nothing here names a file
+      - >-
+        described | selectattr('value.evidence.files', 'defined')
+        | list | length == 0
+      # The commands are names rather than argv, so none of them is a
+      # path or carries an option
+      - consulted | length > 0
+      - consulted | select('match', '[/ -]') | list | length == 0
+      # The file the login shells are named in was read with cat, and
+      # the entry names that rather than naming itself
+      - >-
+        paths['/etc/shells']['evidence']['commands'] == ['cat']
+    fail_msg: >-
+      an o0_paths entry does not name what was consulted for it:
+      {{ consulted }}
+
 # A shell's configuration is code, so the only honest way to know what
 # it does is to run it and watch. The pair decides the answer and
 # neither half decides it alone, so o0_shells is keyed by shell and

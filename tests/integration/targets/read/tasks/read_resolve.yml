@@ -99,11 +99,12 @@
       - >-
         read_resolve_dir_reg['paths'][read_resolve_dir]['resolution']
         | first == read_resolve_dir
-      # attributes is off, so the chain is the whole entry: a chain was
-      # asked for by name and arrives on the strength of that question
+      # attributes is off, so the chain is the whole entry beside the
+      # record of what was consulted for it: a chain was asked for by
+      # name and arrives on the strength of that question
       - >-
-        read_resolve_dir_reg['paths'][read_resolve_dir] | list
-        == ['resolution']
+        read_resolve_dir_reg['paths'][read_resolve_dir] | list | sort
+        == ['evidence', 'resolution']
 
 - name: Resolve the canonical directory, which is nothing but itself
   o0_o.posix.read:

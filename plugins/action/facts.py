@@ -65,6 +65,12 @@ from ansible_collections.o0_o.posix.plugins.module_utils.uname_utils import (
     process_uname_command_results,
 )
 
+# What a file's own entry was consulted with.  The bytes under
+# ``content`` and the meaning under ``config`` both came out of one
+# read of that file, and the file is the fact rather than evidence for
+# itself, so the entry names the command that read it and no path.
+FILE_READ_COMMANDS = ("cat",)
+
 # The files a gather reads.  A gather reads the canonical paths; the
 # modules that take a path option are where another one is named.
 FSTAB_PATH = "/etc/fstab"
@@ -182,7 +188,11 @@ def _process_fstab_results(
 
     return {
         "o0_paths": {
-            FSTAB_PATH: {"content": content, "config": fstab(content)}
+            FSTAB_PATH: {
+                "content": content,
+                "config": fstab(content),
+                EVIDENCE: compose_evidence(commands=FILE_READ_COMMANDS),
+            }
         }
     }, []
 
@@ -254,6 +264,7 @@ def _process_users_results(
             SHELLS_PATH: {
                 "content": shells,
                 "config": named,
+                EVIDENCE: compose_evidence(commands=FILE_READ_COMMANDS),
             }
         }
         facts["o0_shells"] = compose_shells(named)

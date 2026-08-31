@@ -218,6 +218,8 @@ notes:
     no extra round trip.
   - Child entries are only expanded for the paths named in I(paths), not
     for directories added by I(parents).
+extends_documentation_fragment:
+  - o0_o.posix.evidence
 seealso:
   - module: ansible.builtin.stat
     description: Retrieve file or file system status
@@ -436,6 +438,29 @@ paths:
           type: str
           sample: /usr/share/zoneinfo/UTC
           returned: when I(follow=true) resolved a symlink
+        evidence:
+          description:
+            - What was consulted about this path, in the collection's
+              one provenance vocabulary. Provenance is per entry
+              because it varies per entry - a path read for its
+              content was read with commands a path read for its mode
+              was not.
+            - Only C(commands) here. Every probe a read runs is run at
+              the path itself, and the bytes of that path are the fact
+              rather than evidence for it, so C(files) is a kind this
+              module does not have rather than one it attempts and
+              fills with nothing.
+            - The commands are named, not spelled out, and the list is
+              sorted with one of each name. See the C(evidence) notes.
+          type: dict
+          returned: always
+          sample:
+            commands:
+              - cat
+              - file
+              - ls
+              - sh
+              - stat
         resolution:
           description:
             - The chain the path resolves through, as an ordered list of

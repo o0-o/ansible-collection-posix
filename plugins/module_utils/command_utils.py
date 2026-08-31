@@ -30,6 +30,10 @@ from ansible_collections.o0_o.utils.plugins.module_utils import (
     typechecked,
 )
 
+from ansible_collections.o0_o.posix.plugins.module_utils.evidence_utils import (  # noqa: E501
+    EVIDENCE,
+    compose_evidence,
+)
 from ansible_collections.o0_o.posix.plugins.module_utils.path_utils import (
     compose_paths,
 )
@@ -39,6 +43,11 @@ from ansible_collections.o0_o.posix.plugins.module_utils.path_utils import (
 # expands are facts about that file rather than about the command
 # name, and they file under its entry.
 ANSWERING_SHELL = "/bin/sh"
+
+# What every one of these entries was consulted with. The lookups are
+# one command asked once per name, so an entry that came out of them
+# names that command and nothing else.
+LOOKUP_COMMAND = "command"
 
 
 def format_command(cmd: Union[str, list[str]]) -> str:
@@ -260,17 +269,23 @@ def process_command_lookups(
                     )
                 )
 
-    claim: dict[str, Any] = (
-        {"executable": {str(uid): True}} if uid is not None else {}
-    )
+    # Every entry these lookups compose was reached the same way, so
+    # every one of them names the same command. Only commands: a
+    # lookup reads no file
+    consulted = compose_evidence(commands=[LOOKUP_COMMAND])
+
+    claim: dict[str, Any] = {EVIDENCE: consulted}
+    if uid is not None:
+        claim["executable"] = {str(uid): True}
+
     entries: dict[str, Optional[dict[str, Any]]] = {
         path: deepcopy(claim) for path in resolved
     }
 
     # The shell answered, so its entry is written before the misses
-    # and is not one of them, empty where the lookups learned nothing
-    # about the file itself
-    entries.setdefault(ANSWERING_SHELL, {})
+    # and is not one of them, saying nothing but that it answered
+    # where the lookups learned nothing else about the file
+    entries.setdefault(ANSWERING_SHELL, {EVIDENCE: deepcopy(consulted)})
 
     searched = sorted({posixpath.dirname(path) for path in resolved})
     for cmd in missing:

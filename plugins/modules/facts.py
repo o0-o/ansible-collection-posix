@@ -968,6 +968,22 @@ ansible_facts:
         when the compliance, fstab or users subset is gathered
       type: dict
       contains:
+        evidence:
+          description: >-
+            What was consulted about this path, in the collection's
+            one provenance vocabulary. Provenance sits on the entry
+            because it varies by entry - a home was described by a
+            metadata read, a resolved command by C(command -v), and a
+            file that was parsed by the C(cat) that read it. A file's
+            own entry names the command that read it and no path,
+            because the file is the fact rather than evidence for
+            itself.
+          type: dict
+          sample:
+            commands:
+              - ls
+              - sh
+              - stat
         origin:
           description: >-
             The modules that contributed the entry, by FQCN, sorted.

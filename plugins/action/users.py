@@ -17,8 +17,10 @@ from ansible.errors import AnsibleActionFail
 from ansible.plugins.action import ActionBase
 
 from ansible_collections.o0_o.posix.plugins.module_utils import (
+    EVIDENCE,
     ReadPosixActionBase,
     batch_read,
+    compose_evidence,
     compose_homes,
     compose_paths,
     compose_shell_paths,
@@ -34,6 +36,12 @@ from ansible_collections.o0_o.posix.plugins.module_utils import (
 # What this module is called, which is what a path entry names as
 # having contributed it
 FQCN = "o0_o.posix.users"
+
+# What a file's own entry was consulted with. The bytes and the
+# meaning parsed out of them came from one read of that file, and the
+# file is the fact rather than evidence for itself, so the entry names
+# the command that read it and no path.
+FILE_READ_COMMANDS = ("cat",)
 
 
 class ActionModule(ReadPosixActionBase, ActionBase):
@@ -161,6 +169,9 @@ class ActionModule(ReadPosixActionBase, ActionBase):
                     shells_path: {
                         "content": shells,
                         "config": named,
+                        EVIDENCE: compose_evidence(
+                            commands=FILE_READ_COMMANDS
+                        ),
                     }
                 },
                 origin=FQCN,

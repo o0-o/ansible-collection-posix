@@ -30,6 +30,8 @@ options:
       - The command to resolve (e.g. C(ls), C(date)).
     type: str
     required: true
+extends_documentation_fragment:
+  - o0_o.posix.evidence
 author:
   - oØ.o (@o0-o)
 notes:
@@ -61,6 +63,20 @@ o0_paths:
   returned: when the command resolved to a path
   type: dict
   contains:
+    evidence:
+      description: >-
+        What the resolution consulted, in the collection's one
+        provenance vocabulary. The lookup is a shell snippet rather
+        than an argv - C(unalias -a) and then C(command -v) - so the
+        shell that read it back is named beside the builtin it was
+        asked, and C(id) is the probe that says whose answer the
+        resolution is.
+      type: dict
+      sample:
+        commands:
+          - command
+          - id
+          - sh
     origin:
       description: >-
         The modules that contributed the entry, by FQCN, sorted. The

@@ -18,6 +18,11 @@ import shlex
 from os.path import join
 from typing import Any, Optional
 
+from ansible_collections.o0_o.posix.plugins.module_utils.evidence_utils import (  # noqa: E501
+    EVIDENCE,
+    command_name,
+    compose_evidence,
+)
 from ansible_collections.o0_o.posix.plugins.module_utils.jc_utils import (
     jc_parse,
 )
@@ -773,6 +778,7 @@ class ReadPosixActionBase(PosixActionBase):
         options: dict[str, Any],
         results: dict[str, Any],
         task_vars: Optional[dict[str, Any]] = None,
+        commands: Optional[dict[str, Any]] = None,
     ) -> dict[str, int]:
         """
         Read the content of the paths an earlier batch typed regular.
@@ -790,6 +796,9 @@ class ReadPosixActionBase(PosixActionBase):
             the paths, updated in place with the content results
         :param Optional[dict[str, Any]] task_vars: Task variables for
             the run action
+        :param Optional[dict[str, Any]] commands: The batch that typed
+            the paths, updated in place with the content commands so
+            the caller keeps one record of everything that was asked
         :returns dict[str, int]: The count and batches this pass ran,
             both zero when no batch was needed
         """
@@ -800,6 +809,9 @@ class ReadPosixActionBase(PosixActionBase):
         content_commands = self._get_content_commands(content_paths, options)
         if not content_commands:
             return {"count": 0, "batches": 0}
+
+        if commands is not None:
+            commands.update(content_commands)
 
         self._display.vvv(
             f"[{self.inventory_hostname}] Reading content of "
@@ -818,6 +830,46 @@ class ReadPosixActionBase(PosixActionBase):
             "count": content_result.get("count", 0),
             "batches": content_result.get("batches", 0),
         }
+
+    def _commands_by_path(
+        self,
+        commands: Optional[dict[str, Any]],
+        paths: list[str],
+    ) -> tuple[dict[str, list[str]], list[str]]:
+        """Sort a batch's commands by the path each was asked about.
+
+        A command is keyed by the path it names and a suffix that
+        never holds a slash, so a key belongs to the longest path that
+        prefixes it - which is what tells ``/f_ls`` the path from
+        ``/f`` the path with an ls to its name.  A key that names no
+        path at all is a probe that answered for every path in the
+        batch at once, and belongs to all of them.
+
+        :param Optional[dict[str, Any]] commands: The batch as it was
+            planned, or None where the caller did not keep it
+        :param list[str] paths: The paths the batch was about
+        :returns tuple[dict[str, list[str]], list[str]]: The command
+            names asked about each path, and the names asked about all
+            of them
+        """
+        by_path: dict[str, list[str]] = {path: [] for path in paths}
+        shared: list[str] = []
+        longest = sorted(paths, key=len, reverse=True)
+
+        for key, command in (commands or {}).items():
+            if isinstance(command, dict):
+                command = command.get("command")
+            name = command_name(command)
+            if name is None:
+                continue
+            for path in longest:
+                if key.startswith(f"{path}_"):
+                    by_path[path].append(name)
+                    break
+            else:
+                shared.append(name)
+
+        return by_path, shared
 
     def _ls_file_type(self, entry: dict[str, Any]) -> str:
         """
@@ -1256,6 +1308,7 @@ class ReadPosixActionBase(PosixActionBase):
         results: dict[str, Any],
         paths: list[str],
         options: Optional[dict[str, Any]] = None,
+        commands: Optional[dict[str, Any]] = None,
     ) -> tuple[dict[str, Optional[dict[str, Any]]], dict[str, dict[str, Any]]]:
         """
         Process raw command results into structured file data.
@@ -1278,6 +1331,8 @@ class ReadPosixActionBase(PosixActionBase):
         :param list[str] paths: Original paths that were inspected
         :param Optional[dict[str, bool]] options: Boolean options dict
             (attributes, extended, content, md5, sha1, sha256, sha512)
+        :param Optional[dict[str, Any]] commands: The batch as it was
+            planned, so each entry can name what was consulted for it
         :returns tuple[dict, dict]: (file_data, ls_facts); file_data
             maps each path to its parsed file data, or None when the
             path does not exist, and ls_facts maps each path whose
@@ -1293,6 +1348,10 @@ class ReadPosixActionBase(PosixActionBase):
         # One probe covered every path in the batch, so its rows are
         # read once and handed out by path
         probed = self._process_permission_probes(results, paths)
+
+        # What was consulted about each path, which is what the entry
+        # names as its own provenance
+        asked, asked_of_all = self._commands_by_path(commands, paths)
 
         for path in paths:
             ls_key = f"{path}_ls"
@@ -1917,6 +1976,14 @@ class ReadPosixActionBase(PosixActionBase):
                                 f"but all hash commands failed. Ensure "
                                 f"sha512sum, shasum, or sha512 is installed."
                             )
+
+                # An entry names what was consulted for it. Only
+                # commands: the read runs no probe that reads another
+                # file, and the bytes of the path itself are the fact
+                # rather than evidence for it
+                attributes[EVIDENCE] = compose_evidence(
+                    commands=asked.get(path, []) + asked_of_all
+                )
 
                 file_data[path] = attributes
 

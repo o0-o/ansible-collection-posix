@@ -172,6 +172,9 @@ def test_users_action_files_the_shells_file_at_its_path(plugin) -> None:
         "content": SHELLS,
         "config": ["/bin/sh", "/bin/zsh"],
         "origin": ["o0_o.posix.users"],
+        # The file is the fact rather than evidence for itself, so the
+        # entry names the command that read it and no path
+        "evidence": {"commands": ["cat"]},
     }
 
 

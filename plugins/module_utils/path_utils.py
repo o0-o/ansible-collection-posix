@@ -25,13 +25,16 @@ is null was asked about and does not exist; a typed empty (``''``,
 ``[]``, ``{}``) exists and is empty.  Nothing here converts one of
 those answers into another.
 
-Every composed entry names who composed it, in ``origin``: a sorted
-list of the module FQCNs that contributed it.  One field, one meaning
-- the provenance of the entry itself - and a collection contributing
-to this store names itself there rather than inventing a field of its
-own.  It is the one thing a later observation adds to rather than
-replaces, because two producers that both described a path both put
-it here.
+Every composed entry names who composed it and what they consulted.
+``origin`` is a sorted list of the module FQCNs that contributed it -
+one field, one meaning, and a collection contributing to this store
+names itself there rather than inventing a field of its own.
+``evidence`` is the collection's one provenance vocabulary, keyed by
+kind, naming the paths that were read and the commands that were run
+for this entry in particular, because what produced one path's entry
+is rarely what produced another's.  Both accumulate where every other
+field is replaced, because two producers that both described a path
+both belong in them.
 
 ``canonicalize`` reduces an absolute path to the one form the store
 keys it by, for the producers and consumers that have to write a key
@@ -46,6 +49,11 @@ from __future__ import annotations
 import posixpath
 
 from typing import Any, Optional
+
+from ansible_collections.o0_o.posix.plugins.module_utils.evidence_utils import (  # noqa: E501
+    EVIDENCE,
+    merge_evidence,
+)
 
 # The key an entry names the producers that composed it under
 ORIGIN = "origin"
@@ -369,13 +377,14 @@ def compose_paths(
     one path does not report the rest of the filesystem as gone, and
     a null is never rounded to an empty mapping in either direction.
 
-    ``origin`` is the exception the rule needs.  It names the
-    producers an entry was composed by, and two producers that both
-    described a path both belong in it, so it accumulates where every
-    other field is replaced.  A caller passing its own module FQCN
-    names itself on every entry it just observed; a caller composing
-    on somebody else's behalf passes none and the entries keep
-    whatever names they arrived with.
+    ``origin`` and ``evidence`` are the exceptions the rule needs.
+    They are the record of who looked and what they consulted, not
+    part of the observation, and two producers that both described a
+    path both belong in them, so both accumulate where every other
+    field is replaced.  A caller passing its own module FQCN names
+    itself on every entry it just observed; a caller composing on
+    somebody else's behalf passes none and the entries keep whatever
+    names they arrived with.
 
     :param Optional[dict[str, Any]] store: The o0_paths fact as it
         stands, or None before anything has been observed
@@ -400,6 +409,18 @@ def compose_paths(
             )
             if named:
                 entry[ORIGIN] = named
+            consulted = known.get(EVIDENCE)
+            if isinstance(consulted, dict):
+                merged = {
+                    kind: (
+                        list(named) if isinstance(named, list) else dict(named)
+                    )
+                    for kind, named in consulted.items()
+                }
+                found = entry.get(EVIDENCE)
+                if isinstance(found, dict):
+                    merge_evidence(merged, found)
+                entry[EVIDENCE] = merged
         composed[path] = entry
 
     return composed

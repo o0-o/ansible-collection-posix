@@ -52,6 +52,16 @@
         paths | dict2items | selectattr('value', 'mapping')
         | map(attribute='value.origin') | flatten | unique | list
         == ['o0_o.posix.compliance']
+      # and what was consulted for it, which for these lookups is the
+      # one command asked once per name, reading no file
+      - >-
+        paths | dict2items | selectattr('value', 'mapping')
+        | map(attribute='value.evidence.commands') | flatten | unique
+        | list == ['command']
+      - >-
+        paths | dict2items | selectattr('value', 'mapping')
+        | selectattr('value.evidence.files', 'defined')
+        | list | length == 0
       - resolved | length > 0
       - resolved | rejectattr('value.executable') | list | length == 0
     fail_msg: 'the path store is not what the probes observed'

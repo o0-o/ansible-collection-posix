@@ -43,7 +43,10 @@ MISSING_COMMANDS = {"pax"}
 # the shell running it would run, so the claim is keyed by the uid
 # that shell was running as
 EFFECTIVE_UID = 1000
-RESOLVED = {"executable": {str(EFFECTIVE_UID): True}}
+RESOLVED = {
+    "executable": {str(EFFECTIVE_UID): True},
+    "evidence": {"commands": ["command"]},
+}
 
 
 def _answer(request: dict[str, Any]) -> dict[str, Any]:
@@ -215,7 +218,9 @@ class TestProcessAllComplianceCommandResults:
         # The shell ran the probes, so it is not one of the misses;
         # nothing was learned about the file itself, so the entry
         # says exactly that
-        assert facts["o0_paths"]["/bin/sh"] == {}
+        assert facts["o0_paths"]["/bin/sh"] == {
+            "evidence": {"commands": ["command"]}
+        }
 
     def test_the_missing_list_derives_from_the_standards(self) -> None:
         """Test the commands a host lacks are read back out of the

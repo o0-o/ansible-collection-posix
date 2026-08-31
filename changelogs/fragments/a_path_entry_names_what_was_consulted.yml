@@ -1,0 +1,40 @@
+# vim: ts=2:sw=2:sts=2:et:ft=yaml.ansible
+# -*- mode: yaml; yaml-indent-offset: 2; indent-tabs-mode: nil; -*-
+---
+minor_changes:
+  - >-
+    read, users, facts, which, compliance - every composed
+    ``o0_paths`` entry names what was consulted for it, in
+    ``evidence``, the collection's one provenance vocabulary. The path
+    store was the section left out when every other fact learned to
+    name its origins. Provenance sits on the entry rather than on the
+    store because it varies by entry: a home was described by a
+    metadata read, a resolved command by the ``command -v`` that named
+    it, and a file that was parsed by the ``cat`` that read it, and a
+    consumer reading one entry has no way to tell which from a record
+    kept a level up
+    (https://github.com/o0-o/ansible-collection-posix/pull/XXX).
+  - >-
+    read - an entry names the commands that were actually asked about
+    that path, which is what the batch planned for it plus the probes
+    that answered for every path at once. A read that asked for a
+    checksum names the hash command and one that did not does not, so
+    the record is what happened rather than what the module can do.
+    Only ``commands``: every probe a read runs is run at the path
+    itself, and the bytes of that path are the fact rather than
+    evidence for it, so ``files`` is a kind this producer does not
+    have rather than one it attempts and fills with nothing. The same
+    holds for a file's own entry - ``/etc/shells`` and ``/etc/fstab``
+    name the ``cat`` that read them and no path, because a fact is not
+    evidence for itself
+    (https://github.com/o0-o/ansible-collection-posix/pull/XXX).
+  - >-
+    users, facts, which, compliance - ``evidence`` accumulates across
+    observations of one path, the way ``origin`` does, where every
+    other field is replaced whole. Two producers that both described a
+    path both consulted something, and a merge that let the later one
+    win would publish an entry claiming half of what put it there. The
+    ``o0_o.posix.evidence`` documentation fragment is extended by
+    C(read) and C(which) as the other publishing modules already
+    extend it
+    (https://github.com/o0-o/ansible-collection-posix/pull/XXX).

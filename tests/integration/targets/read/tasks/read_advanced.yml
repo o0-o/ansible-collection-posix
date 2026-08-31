@@ -241,15 +241,16 @@
         == [read_linktree_inner]
       # A followed link takes the target's data because the target is
       # there, which the ls settles; a directory read without
-      # attributes publishes nothing, and the realpath the action adds
-      # arrives all the same. The same entry, its attribute keys held
-      # back
+      # attributes publishes no attribute, and the realpath the action
+      # adds arrives all the same, as does the record of what was
+      # consulted, which is a fact about the entry rather than one of
+      # the attributes. The same entry, its attribute keys held back
       - >-
         read_dirlink_no_attrs_reg['paths'][read_linktree_link]['realpath']
         == read_dirlink_reg['paths'][read_linktree_link]['realpath']
       - >-
         read_dirlink_no_attrs_reg['paths'][read_linktree_link] | list
-        == ['realpath']
+        | sort == ['evidence', 'realpath']
 
 # follow=recursive walks to where the link points, and where it points
 # is what the ls reported, not what the result was allowed to show, so
@@ -292,10 +293,12 @@
       - >-
         'realpath' not in read_recursive_reg['paths'][read_linktree_link]
       # Both entries with every attribute key held back, the target
-      # among them: it is the ls the walk read, not the result
+      # among them - it is the ls the walk read, not the result - and
+      # nothing left but the record of what was consulted, which is a
+      # fact about the entry rather than one of the attributes
       - >-
         read_recursive_no_attrs_reg['paths'].values() | map('list')
-        | flatten | length == 0
+        | flatten | unique | list == ['evidence']
 
 # The other side of the same question: a followed link takes its
 # target's data because the ls found a target to take it from, and

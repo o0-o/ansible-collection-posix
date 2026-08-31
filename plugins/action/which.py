@@ -15,7 +15,9 @@ from typing import Any, Optional
 from ansible.plugins.action import ActionBase
 
 from ansible_collections.o0_o.posix.plugins.module_utils import (
+    EVIDENCE,
     PosixActionBase,
+    compose_evidence,
     compose_paths,
     get_effective_uid_command_requests,
     process_effective_uid_results,
@@ -24,6 +26,12 @@ from ansible_collections.o0_o.posix.plugins.module_utils import (
 # What this module is called, which is what a path entry names as
 # having contributed it
 FQCN = "o0_o.posix.which"
+
+# What the resolution consulted. The lookup is a shell snippet rather
+# than an argv - unalias -a and then command -v - so the shell that
+# read it back is named beside the builtin it was asked, and id is the
+# probe that says whose answer the resolution is.
+LOOKUP_COMMANDS = ("command", "sh")
 
 
 class ActionModule(PosixActionBase, ActionBase):
@@ -84,9 +92,14 @@ class ActionModule(PosixActionBase, ActionBase):
             # A row is one uid's answer. Where the host would not say
             # whose answer this is, the path is still what the command
             # resolved to and the claim is what has to be left out
-            observation: dict[str, Any] = {path: {}}
+            entry: dict[str, Any] = {
+                EVIDENCE: compose_evidence(
+                    commands=list(LOOKUP_COMMANDS) + ["id"]
+                )
+            }
             if uid is not None:
-                observation[path] = {"executable": {str(uid): True}}
+                entry["executable"] = {str(uid): True}
+            observation: dict[str, Any] = {path: entry}
             try:
                 result["o0_paths"] = compose_paths(
                     None, observation, origin=FQCN

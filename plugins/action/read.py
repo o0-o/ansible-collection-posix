@@ -424,6 +424,7 @@ class ActionModule(ReadPosixActionBase, ActionBase):
                 options,
                 detection_result["commands"],
                 task_vars=task_vars,
+                commands=detection_commands,
             )
             total_commands += content_counts["count"]
             total_batches += content_counts["batches"]
@@ -433,6 +434,7 @@ class ActionModule(ReadPosixActionBase, ActionBase):
                 results=detection_result["commands"],
                 paths=[first_path],
                 options=options,
+                commands=detection_commands,
             )
             file_data.update(first_file_data)
             ls_facts.update(first_ls_facts)
@@ -468,6 +470,7 @@ class ActionModule(ReadPosixActionBase, ActionBase):
                     options,
                     commands_result["commands"],
                     task_vars=task_vars,
+                    commands=commands,
                 )
                 total_commands += content_counts["count"]
                 total_batches += content_counts["batches"]
@@ -480,6 +483,7 @@ class ActionModule(ReadPosixActionBase, ActionBase):
                     results=commands_result["commands"],
                     paths=remaining_paths,
                     options=options,
+                    commands=commands,
                 )
                 file_data.update(remaining_file_data)
                 ls_facts.update(remaining_ls_facts)
@@ -587,6 +591,7 @@ class ActionModule(ReadPosixActionBase, ActionBase):
                             options,
                             child_result["commands"],
                             task_vars=task_vars,
+                            commands=child_commands,
                         )
                         total_commands += content_counts["count"]
                         total_batches += content_counts["batches"]
@@ -594,6 +599,7 @@ class ActionModule(ReadPosixActionBase, ActionBase):
                             results=child_result["commands"],
                             paths=new_children,
                             options=options,
+                            commands=child_commands,
                         )
                         file_data.update(child_data)
                         ls_facts.update(child_facts)
@@ -658,6 +664,7 @@ class ActionModule(ReadPosixActionBase, ActionBase):
                         options,
                         target_result["commands"],
                         task_vars=task_vars,
+                        commands=target_commands,
                     )
                     total_commands += content_counts["count"]
                     total_batches += content_counts["batches"]
@@ -665,6 +672,7 @@ class ActionModule(ReadPosixActionBase, ActionBase):
                         results=target_result["commands"],
                         paths=new_targets,
                         options=options,
+                        commands=target_commands,
                     )
                     file_data.update(target_data)
                     ls_facts.update(target_facts)
@@ -733,6 +741,7 @@ class ActionModule(ReadPosixActionBase, ActionBase):
                             options,
                             target_result["commands"],
                             task_vars=task_vars,
+                            commands=target_commands,
                         )
                         total_commands += content_counts["count"]
                         total_batches += content_counts["batches"]
@@ -743,6 +752,7 @@ class ActionModule(ReadPosixActionBase, ActionBase):
                             results=target_result["commands"],
                             paths=unique_targets,
                             options=options,
+                            commands=target_commands,
                         )
                         ls_facts.update(target_facts)
 
