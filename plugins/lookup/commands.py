@@ -21,8 +21,20 @@ description:
     search path in order the way the host's own command search walks
     it, without running anything on the host.
   - The C(o0_paths) fact is set by the C(o0_o.posix.facts) module and
-    returned by the C(o0_o.posix.which) and C(o0_o.posix.users)
-    modules.
+    returned by the C(o0_o.posix.which), C(o0_o.posix.shells) and
+    C(o0_o.posix.users) modules. The search path to follow is read
+    from C(o0_shells), which C(o0_o.posix.facts) and
+    C(o0_o.posix.shells) publish.
+  - This is a simulation, and a search path is session-scoped, so the
+    lookup says which session it simulates rather than leaving it to
+    be inferred. Every gathered answer here is a B(login) search path
+    - what a login shell built out of the files it read. It is not
+    what a C(become) session would search - C(sudo) replaces C(PATH)
+    with C(secure_path) where the sudoers file sets one and C(doas)
+    has its own rules, and neither file is gathered by anything here.
+    For the search a privileged session would really do, run
+    M(o0_o.posix.which) on the host, or read the resolutions
+    C(o0_paths) already holds from the gather that made them.
   - The answer is tri-state. A name is B(resolved) when the fact says
     the first candidate reached is executable; it is B(missing) when
     the fact answers null - asked about, does not exist - at every
@@ -57,8 +69,14 @@ options:
     description:
       - The search path to follow, either as a C(:)-separated string
         in the manner of C(PATH) or as a list of directories.
-      - Defaults to the C(PATH) the C(environment) subset gathered
-        for the user, read from C(o0_users).
+      - Defaults to the host's own login default - the C(PATH) the
+        shell probed out of C(/dev/null) reported, read from
+        C(o0_shells). Every POSIX host has C(/dev/null) and none of
+        them has it as a directory, so that row is what a login gets
+        before any user's dot files enter into it, which makes it a
+        fact about the host rather than a guess about a session.
+      - Two shells probed out of C(/dev/null) that report different
+        search paths are ambiguous and fail, naming them.
       - An empty string is one empty entry, not an empty path, and a
         list with no elements is a search path nothing can resolve
         in, so every name is a confirmed absence.
@@ -66,12 +84,21 @@ options:
     type: raw
   user:
     description:
-      - Whose gathered C(PATH) to follow, by UID (int) or username
+      - Whose login C(PATH) to follow, by UID (int) or username
         (str).
-      - Defaults to the one user whose facts carry an C(environment)
-        holding a C(PATH). A namespace where several users do is
-        ambiguous and fails, naming them; a namespace where none do
-        answers unknown for every name.
+      - The user's C(o0_users) entry names the pair - the C(shell)
+        they log in with and the C(home) it starts from - and the
+        C(o0_shells) row that pair was probed at is what says what
+        their login built. A user whose pair was never probed answers
+        unknown for every name, which is how a user with no gathered
+        environment answered before.
+      - A gather probes the login of root and of the user it connected
+        as. To have another user's, gather as them - a task with
+        C(become) and C(become_user) set to them - and their row is
+        there to join against, the same delegation any user-scoped
+        fact takes.
+      - This is that user's login path and not what they would search
+        under C(sudo). See the description.
       - Mutually exclusive with C(path).
     type: raw
   cwd:
@@ -113,19 +140,19 @@ options:
       - ignore
   host:
     description:
-      - Read C(o0_paths) and C(o0_users) from another host's
-        variables rather than the current host's.
+      - Read C(o0_paths), C(o0_shells) and C(o0_users) from another
+        host's variables rather than the current host's.
       - A host that has not gathered the facts answers unknown for
         every name.
     type: str
 notes:
-  - This lookup reads the C(o0_paths) and C(o0_users) facts from the
-    variable namespace and runs nothing on the host. Gather them
-    first; a namespace holding no C(o0_paths) was never asked about
-    anything, so every name answers unknown.
-  - The lookup does fail when C(o0_paths) or C(o0_users) is present
-    but is not a dictionary, and when an C(o0_paths) entry is neither
-    null nor a mapping.
+  - This lookup reads the C(o0_paths), C(o0_shells) and C(o0_users)
+    facts from the variable namespace and runs nothing on the host.
+    Gather them first; a namespace holding no C(o0_paths) was never
+    asked about anything, so every name answers unknown.
+  - The lookup does fail when C(o0_paths), C(o0_shells) or
+    C(o0_users) is present but is not a dictionary, and when an
+    C(o0_paths) entry is neither null nor a mapping.
   - Producers validate the search path they gather and refuse to
     record an entry they cannot key; this lookup validates the search
     path it is asked to follow. A literal C(~) is inert as a fact and
@@ -140,8 +167,14 @@ notes:
 seealso:
   - module: o0_o.posix.facts
     description: Gather POSIX facts, C(o0_paths) among them
+  - module: o0_o.posix.shells
+    description: >-
+      Run the host's login shells, which is what reports the search
+      paths this lookup follows
   - module: o0_o.posix.which
-    description: Resolve one command on the host and record the path
+    description: >-
+      Resolve one command on the host, in the session the task really
+      runs in
   - plugin: o0_o.posix.user
     plugin_type: lookup
     description: Look up user information by UID or username
@@ -194,7 +227,7 @@ EXAMPLES = r"""
       {{ lookup('o0_o.posix.commands', 'zfs',
                 path=['/sbin', '/usr/sbin']) }}
 
-- name: Follow another user's gathered PATH
+- name: Follow another user's login PATH
   ansible.builtin.debug:
     msg: "{{ lookup('o0_o.posix.commands', 'psql', user='postgres') }}"
 
@@ -277,6 +310,7 @@ from ansible_collections.o0_o.utils.plugins.module_utils import (
     VarsLookupBase,
 )
 from ansible_collections.o0_o.posix.plugins.module_utils import (
+    SHELL_SYSTEM_HOME,
     canonicalize,
     lookup_user,
 )
@@ -353,7 +387,7 @@ class LookupModule(LookupBase, VarsLookupBase):
         if path is not None and user is not None:
             raise AnsibleLookupError(
                 "'path' and 'user' are mutually exclusive: a search"
-                " path given outright is nobody's environment"
+                " path given outright is nobody's login"
             )
 
         # The store the answers are read from. The default makes an
@@ -471,20 +505,33 @@ class LookupModule(LookupBase, VarsLookupBase):
         )
 
     def _gathered_path(self, user: Any, **kwargs: Any) -> Optional[list[Any]]:
-        """Read the search path the environment subset gathered.
+        """Read the login search path the shell probes reported.
 
-        The environment is gathered for one user, the one the play
-        connects as, and it nests under that user's entry.  Naming a
-        user reads that user's; naming none reads the only one there
-        is, because a namespace where two users carry a PATH does not
-        say which of them a command would be run as.
+        A PATH is what a login shell built, out of the files it read
+        in the home it was started from, so the answer lives on the
+        ``o0_shells`` row for that pair and not on the user.  Naming a
+        user joins their passwd entry to their own row - their shell
+        and their home - and naming none reads the system row, the
+        shell the probe ran out of ``/dev/null``, which is the host's
+        own login default before anybody's dot files enter into it.
 
         :param Any user: UID (int) or username (str), or None
         :returns Optional[list[Any]]: The entries in search order, or
-            None where no gathered PATH answers
-        :raises AnsibleLookupError: If o0_users is not a dictionary,
-            or if no user was named and several carry a PATH
+            None where no probed row answers
+        :raises AnsibleLookupError: If a fact is not a dictionary, or
+            if no user was named and the system rows disagree
         """
+        shells = self.lookup_var("o0_shells", default={}, **kwargs)
+
+        if not isinstance(shells, dict):
+            raise AnsibleLookupError(
+                f"'o0_shells' fact is not a dictionary, got "
+                f"{type(shells).__name__}"
+            )
+
+        if user is None:
+            return self._system_path(shells)
+
         users = self.lookup_var("o0_users", default={}, **kwargs)
 
         if not isinstance(users, dict):
@@ -493,45 +540,103 @@ class LookupModule(LookupBase, VarsLookupBase):
                 f"{type(users).__name__}"
             )
 
-        if user is None:
-            candidates = [
-                entry
-                for entry in users.values()
-                if self._gathered_var(entry) is not None
-            ]
-            if len(candidates) > 1:
-                named = ", ".join(
-                    sorted(
-                        repr(entry.get("name") or entry.get("uid"))
-                        for entry in candidates
-                    )
-                )
-                raise AnsibleLookupError(
-                    f"Several users have a gathered PATH ({named}), so"
-                    f" which one a command would be run as is not"
-                    f" settled here. Name one with 'user', or give a"
-                    f" search path with 'path'"
-                )
-            entry = candidates[0] if candidates else None
-        else:
-            entry = lookup_user(user, users)
+        return self._login_path(shells, lookup_user(user, users))
 
-        gathered = self._gathered_var(entry)
+    def _system_path(
+        self, shells: dict[str, Any]
+    ) -> Optional[list[Any]]:
+        """Read the host's own login default out of the system rows.
 
-        return None if gathered is None else gathered.split(":")
+        Every POSIX host has ``/dev/null`` and none of them has it as
+        a directory, so a shell run out of it reports what a login
+        gets before any user's dot files are read.  That is a fact
+        about the host rather than a guess about a session, which is
+        what makes it the default here.
 
-    @staticmethod
-    def _gathered_var(entry: Any) -> Optional[str]:
-        """Read a user entry's gathered PATH, if it has one.
+        Two shells probed out of it can disagree, a gather having
+        named one shell and a later one another.  Which of them a
+        command would be run under is not settled here, so the caller
+        is asked to settle it.
 
-        :param Any entry: One o0_users entry, or None
-        :returns Optional[str]: The PATH as gathered, or None where
-            the entry carries no environment or no PATH in it
+        :param dict[str, Any] shells: The o0_shells fact
+        :returns Optional[list[Any]]: The entries in search order, or
+            None where no system row carries a PATH
+        :raises AnsibleLookupError: If two system rows disagree
+        """
+        found = {
+            shell: path
+            for shell, entry in shells.items()
+            for path in [self._row_path(entry, SHELL_SYSTEM_HOME)]
+            if path is not None
+        }
+
+        if len(set(found.values())) > 1:
+            named = ", ".join(sorted(repr(shell) for shell in found))
+            raise AnsibleLookupError(
+                f"The shells probed out of {SHELL_SYSTEM_HOME} report"
+                f" different search paths ({named}), so which one a"
+                f" command would be run under is not settled here."
+                f" Name a user with 'user', or give a search path with"
+                f" 'path'"
+            )
+
+        for path in found.values():
+            return path.split(":")
+
+        return None
+
+    def _login_path(
+        self, shells: dict[str, Any], entry: Any
+    ) -> Optional[list[Any]]:
+        """Read one user's login search path off their own row.
+
+        The passwd entry names the pair - the shell the user logs in
+        with and the home it starts from - and the row that pair was
+        probed at is the only place that says what the login built.  A
+        user whose pair was never probed answers nothing, the way a
+        user with no gathered environment used to.
+
+        :param dict[str, Any] shells: The o0_shells fact
+        :param Any entry: The user's o0_users entry, or None
+        :returns Optional[list[Any]]: The entries in search order, or
+            None where the pair names no probed row
         """
         if not isinstance(entry, dict):
             return None
 
-        environment = entry.get("environment")
+        shell = entry.get("shell")
+        home = entry.get("home")
+
+        if not isinstance(shell, str) or not isinstance(home, str):
+            return None
+
+        path = self._row_path(shells.get(shell), home)
+
+        return None if path is None else path.split(":")
+
+    @staticmethod
+    def _row_path(entry: Any, home: Any) -> Optional[str]:
+        """Read the PATH one probed row reported, if it has one.
+
+        :param Any entry: One o0_shells entry, whatever it holds
+        :param Any home: The home whose row to read
+        :returns Optional[str]: The PATH the row reported, or None
+            where the entry, the row, or the variable is not there
+        """
+        if not isinstance(entry, dict):
+            return None
+
+        homes = entry.get("homes")
+
+        if not isinstance(homes, dict):
+            return None
+
+        row = homes.get(home)
+
+        if not isinstance(row, dict):
+            return None
+
+        environment = row.get("env")
 
         if not isinstance(environment, dict):
             return None

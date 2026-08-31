@@ -94,10 +94,15 @@ def _get_environment_requests() -> list[dict[str, Any]]:
 def _process_environment_results(
     cmds_completed: list[dict[str, Any]],
 ) -> tuple[dict[str, Any], list[Exception]]:
-    """Process environment results into o0_users namespace.
+    """Read the environment the gather's own session was handed.
 
-    Returns raw env data — the caller is responsible for keying
-    it under the effective UID.
+    Answers with the variables themselves, which the caller reads an
+    answer about the user out of rather than publishing.  Two things
+    come of them: the locale that user gets, and a check that the
+    identity the connection claims is the identity the session says it
+    is.  The variables are not a fact about the user - an environment
+    is what a login shell built out of the files it read, and this one
+    is whatever the connection and the become left behind.
 
     :param list[dict[str, Any]] cmds_completed: Command results
     :returns tuple[dict[str, Any], list[Exception]]: Tuple of
@@ -715,10 +720,16 @@ class ActionModule(ShellsPosixActionBase, ActionBase):
                                 commands=USER_SCOPED_COMMANDS
                             ),
                         }
-                        entry[subset] = facts
-
-                        # Validate LOGNAME/USER
+                        # The variables themselves are not published
+                        # as a field of the user. An environment is
+                        # what a login shell built out of the files it
+                        # read, so it belongs to the shell and the home
+                        # that built it, which is where o0_shells files
+                        # it - per pair, for every identity a gather can
+                        # reach, rather than once for whichever one the
+                        # gather happened to be handed
                         if subset == "environment":
+                            # Validate LOGNAME/USER
                             user = self.effective_user
                             for var in ("LOGNAME", "USER"):
                                 val = facts.get(var)
@@ -737,6 +748,8 @@ class ActionModule(ShellsPosixActionBase, ActionBase):
                             if locale in ("C", "POSIX"):
                                 locale = "ASCII"
                             entry["locale"] = locale
+                        else:
+                            entry[subset] = facts
 
                         self._merge_facts(
                             all_facts, {"o0_users": {str(uid): entry}}

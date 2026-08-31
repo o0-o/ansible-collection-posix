@@ -21,8 +21,9 @@ description:
   - Gathers the kernel, hostname and architecture C(uname) reports, the
     host's timezone, its standards compliance, the configuration
     variables C(getconf) answers for, its hardware inventory, its
-    mounts and C(/etc/fstab), its users and groups, and the
-    environment and locale of the user the play connects as.
+    mounts and C(/etc/fstab), its users and groups, the login shells
+    it names and what running them produced, and the locale of the
+    user the play connects as.
   - Uses efficient shell commands and file reads where possible.
   - Does not require Python on the managed host.
 options:
@@ -102,9 +103,16 @@ notes:
   - It is designed to support bootstrapping environments where Python
     may not be available on the managed node.
   - The user-scoped subset - C(environment) - describes the user the
-    play connects as and no other. An environment is whatever that
-    user's own login files made it, so one user's answers are not
-    another's.
+    play connects as and no other. It publishes that user's
+    C(locale) and nothing else about them.
+  - The environment variables themselves are not published as a field
+    of the user. An environment is what a login shell built out of the
+    files it read, so it belongs to the shell and the home that built
+    it, which is where C(o0_shells) files it - per pair, for every
+    identity a gather can reach, rather than once for whichever one
+    the gather happened to be handed. M(o0_o.posix.env) answers the
+    variables of the session a task runs in, where that is the
+    question.
   - Resource limits are not gathered here. A limit belongs to the
     session that answered rather than to the host or the user, and it
     does not survive the task that read it, so it is asked for by
@@ -117,8 +125,8 @@ notes:
     user with C(become) and C(become_user). The entry lands under
     that user's UID in the same C(o0_users) namespace, so a play may
     gather as many users as it is willing to spend a task on. This is
-    why C(o0_users) routinely carries one entry with an
-    C(environment) on it and many without.
+    why C(o0_users) routinely carries one entry with a C(locale) on
+    it and many without.
 attributes:
   check_mode:
     description: This module supports check mode.
@@ -650,7 +658,7 @@ ansible_facts:
           C(users) describes every account C(/etc/passwd) names,
           overlaid with the host's own resolved view of them where the
           host has a C(getent) to ask; and C(environment) adds the
-          environment and locale of the one user the play connects as.
+          C(locale) of the one user the play connects as.
           M(o0_o.posix.users) publishes the same entries under the
           same names.
         - The user-scoped fields describe that one user because they
@@ -735,8 +743,8 @@ ansible_facts:
               entry they land on rather than replacing what the other
               named. The entry for the user the play connects as
               therefore names the files it was composed from and,
-              beside them, the shell its environment was read through
-              and the C(id) that said whose answers those are. That
+              beside them, the shell its locale was read through and
+              the C(id) that said whose answer that is. That
               entry may carry provenance and no name at all, on a host
               whose local users are not in C(/etc/passwd).
           returned: >-
@@ -761,22 +769,17 @@ ansible_facts:
               - /etc/passwd
             commands:
               - getent
-        environment:
-          description: >-
-            The environment variables IEEE Std 1003.1 names, as the
-            connecting user's shell reports them, keyed by variable
-            name. A variable the shell did not set is absent.
-          returned: when the environment subset is gathered
-          type: dict
-          sample:
-            HOME: /home/o0-o
-            LANG: en_US.UTF-8
-            PATH: /usr/bin:/bin
         locale:
-          description: >-
-            The locale derived from the environment - C(LC_ALL) if it
-            is set, otherwise C(LANG), and C(ASCII) where neither is
-            set or where the answer is C(C) or C(POSIX)
+          description:
+            - The locale the connecting user gets, derived from the
+              environment their session was handed - C(LC_ALL) if it
+              is set, otherwise C(LANG), and C(ASCII) where neither is
+              set or where the answer is C(C) or C(POSIX).
+            - The variables it was derived from are not published
+              here. An environment is what a login shell built out of
+              the files it read, so it belongs to the shell and the
+              home that built it, and C(o0_shells) is where each pair's
+              own C(env) is filed.
           returned: when the environment subset is gathered
           type: str
           sample: en_US.UTF-8
@@ -883,11 +886,11 @@ ansible_facts:
               it is almost never exported, so its presence here is
               itself the finding, an exported and modified C(IFS)
               breaking word splitting for everything the host runs.
-              Narrower than the environment C(o0_users) publishes, and
-              deliberately so - that fact is about a user and C(HOME),
-              C(LOGNAME), C(MAIL), C(PWD) and C(USER) belong in it,
-              while here they would only name whichever identity the
-              probe turned out to run as.
+              Narrower than the whole of what a session exports, and
+              deliberately so - C(HOME), C(LOGNAME), C(MAIL), C(PWD)
+              and C(USER) name whichever identity the probe turned out
+              to run as rather than anything about the shell.
+              M(o0_o.posix.env) is what answers for a session.
             - C(SHELL) is left out for a different reason. The entry
               key already asserts it, so publishing it inside the row
               would echo the key it was filed under.

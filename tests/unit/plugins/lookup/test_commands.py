@@ -20,6 +20,9 @@ import pytest
 
 from ansible.errors import AnsibleLookupError
 
+from ansible_collections.o0_o.posix.plugins.module_utils import (
+    SHELL_SYSTEM_HOME,
+)
 from ansible_collections.o0_o.posix.plugins.lookup.commands import (
     LookupModule,
     canonicalize,
@@ -48,14 +51,30 @@ UNSETTLED = {"type": "regular", "mode": "0755", "uid": 0, "gid": 0}
 # same silence as no field at all
 UNANSWERED = {"executable": {}}
 
-# The search path the environment subset gathers for the connecting
-# user, and the entry it nests under
+# The host's own login default: what the shell probed out of the
+# system home reported, which is what this lookup follows when the
+# caller names neither a path nor a user
 GATHERED = "/usr/local/bin:/usr/bin:/bin"
+
+# One user's own login, which is a different path built out of a
+# different home by the same shell
+USER_PATH = "/opt/o0-o/bin:/usr/bin:/bin"
+
+# The passwd entry names the pair, and the pair names the row
 USERS = {
     "1000": {
         "name": "o0-o",
         "uid": 1000,
-        "environment": {"PATH": GATHERED},
+        "shell": "/bin/sh",
+        "home": "/home/o0-o",
+    }
+}
+SHELLS = {
+    "/bin/sh": {
+        "homes": {
+            SHELL_SYSTEM_HOME: {"env": {"PATH": GATHERED}},
+            "/home/o0-o": {"env": {"PATH": USER_PATH}},
+        }
     }
 }
 
@@ -129,7 +148,9 @@ def gathered(make_lookup):
     """
 
     def _make(paths: dict[str, Any]) -> LookupModule:
-        return make_lookup(o0_paths=paths, o0_users=USERS)
+        return make_lookup(
+            o0_paths=paths, o0_shells=SHELLS, o0_users=USERS
+        )
 
     return _make
 
@@ -223,6 +244,7 @@ def test_a_term_is_templated_before_it_is_resolved(make_lookup) -> None:
     lookup = make_lookup(
         substitutions={"{{ cmd }}": "ls"},
         o0_paths={"/usr/local/bin/ls": PROBED},
+        o0_shells=SHELLS,
         o0_users=USERS,
     )
 
@@ -463,8 +485,14 @@ def test_a_search_path_with_no_entries_resolves_nothing(
 # ---------------------------------------------------------------------
 
 
-def test_the_gathered_path_is_followed_by_default(gathered) -> None:
-    """Test that the environment subset's PATH is the default."""
+def test_the_system_login_path_is_followed_by_default(gathered) -> None:
+    """Test the host's own login default is what a bare call follows.
+
+    Every POSIX host has /dev/null and none of them has it as a
+    directory, so a shell run out of it reports what a login gets
+    before anybody's dot files are read - a fact about the host rather
+    than a guess about a session.
+    """
 
     lookup = gathered(
         {"/usr/local/bin/ls": None, "/usr/bin/ls": None, "/bin/ls": None}
@@ -517,7 +545,7 @@ def test_a_supplied_path_entry_is_keyed_canonically(gathered) -> None:
 
 
 def test_path_and_user_are_mutually_exclusive(gathered) -> None:
-    """Test that a supplied path is nobody's environment."""
+    """Test that a supplied path is nobody's login."""
 
     lookup = gathered({})
 
@@ -526,64 +554,133 @@ def test_path_and_user_are_mutually_exclusive(gathered) -> None:
 
 
 @pytest.mark.parametrize("user", ["o0-o", 1000])
-def test_a_named_user_s_gathered_path_is_followed(
+def test_a_named_user_joins_their_own_login_row(
     make_lookup, user: Any
 ) -> None:
-    """Test that a user names their own PATH, by name or by UID."""
+    """Test a user's passwd pair names the row their PATH came from.
+
+    The entry says which shell they log in with and which home it
+    starts from, and the row that pair was probed at is the only place
+    that says what their login built.
+    """
 
     lookup = make_lookup(
-        o0_paths={"/opt/pg/bin/psql": INFERRED},
-        o0_users={
-            "0": {
-                "name": "root",
-                "uid": 0,
-                "environment": {"PATH": "/sbin"},
-            },
-            "1000": {
-                "name": "o0-o",
-                "uid": 1000,
-                "environment": {"PATH": "/opt/pg/bin"},
-            },
-        },
+        o0_paths={"/opt/o0-o/bin/psql": INFERRED},
+        o0_shells=SHELLS,
+        o0_users=USERS,
     )
 
     assert lookup.run(["psql"], None, user=user) == [
         {
             "command": "psql",
             "state": "resolved",
-            "path": "/opt/pg/bin/psql",
+            "path": "/opt/o0-o/bin/psql",
         }
     ]
 
 
-def test_several_gathered_paths_with_no_user_named_fail(
+def test_a_user_s_login_is_not_the_host_s_default(gathered) -> None:
+    """Test the two answers are different paths, asked two ways.
+
+    The system row is the host's login default and a user's row is
+    what their own dot files made of it, so a lookup that confused
+    them would answer one question with the other.
+    """
+
+    lookup = gathered({"/opt/o0-o/bin/psql": INFERRED})
+
+    assert lookup.run(["psql"], None)[0]["state"] == "unknown"
+    assert lookup.run(["psql"], None, user="o0-o")[0]["path"] == (
+        "/opt/o0-o/bin/psql"
+    )
+
+
+def test_system_rows_that_disagree_with_no_user_named_fail(
     make_lookup,
 ) -> None:
-    """Test that an ambiguous environment names the users it found."""
+    """Test two shells probed out of the system home name themselves.
+
+    A gather naming one shell and a later one naming another leaves
+    two answers to the question a bare call asks, and which of them a
+    command would be run under is not settled here.
+    """
 
     lookup = make_lookup(
         o0_paths={},
-        o0_users={
-            "0": {
-                "name": "root",
-                "uid": 0,
-                "environment": {"PATH": "/sbin"},
+        o0_shells={
+            "/bin/sh": {
+                "homes": {SHELL_SYSTEM_HOME: {"env": {"PATH": "/bin"}}}
             },
-            "1000": {
-                "name": "o0-o",
-                "uid": 1000,
-                "environment": {"PATH": "/bin"},
+            "/bin/ksh": {
+                "homes": {SHELL_SYSTEM_HOME: {"env": {"PATH": "/sbin"}}}
             },
         },
+        o0_users=USERS,
     )
 
     with pytest.raises(
-        AnsibleLookupError, match="Several users have a gathered PATH"
+        AnsibleLookupError, match="report different search paths"
     ) as excinfo:
         lookup.run(["ls"], None)
 
-    assert "'root'" in str(excinfo.value)
-    assert "'o0-o'" in str(excinfo.value)
+    assert "'/bin/sh'" in str(excinfo.value)
+    assert "'/bin/ksh'" in str(excinfo.value)
+
+
+def test_system_rows_that_agree_are_not_ambiguous(make_lookup) -> None:
+    """Test two shells reporting one path are one answer.
+
+    Which shell the probe ran does not enter into it where both built
+    the same search path, so there is nothing for the caller to
+    settle.
+    """
+
+    lookup = make_lookup(
+        o0_paths={"/bin/ls": INFERRED},
+        o0_shells={
+            "/bin/sh": {
+                "homes": {SHELL_SYSTEM_HOME: {"env": {"PATH": "/bin"}}}
+            },
+            "/bin/ksh": {
+                "homes": {SHELL_SYSTEM_HOME: {"env": {"PATH": "/bin"}}}
+            },
+        },
+        o0_users=USERS,
+    )
+
+    assert lookup.run(["ls"], None)[0]["path"] == "/bin/ls"
+
+
+@pytest.mark.parametrize(
+    "shells",
+    [
+        {},
+        {"/bin/sh": {}},
+        {"/bin/sh": {"homes": {}}},
+        {"/bin/sh": {"homes": {"/home/o0-o": {"env": {"PATH": "/bin"}}}}},
+        {"/bin/sh": {"homes": {SHELL_SYSTEM_HOME: {}}}},
+        {"/bin/sh": {"homes": {SHELL_SYSTEM_HOME: {"env": {}}}}},
+        {
+            "/bin/sh": {
+                "homes": {SHELL_SYSTEM_HOME: {"env": {"PATH": None}}}
+            }
+        },
+        {"/bin/sh": None},
+    ],
+)
+def test_a_namespace_with_no_probed_path_answers_unknown(
+    make_lookup, shells: dict[str, Any]
+) -> None:
+    """Test that an unprobed search path is an unknown order, not
+    an empty one."""
+
+    lookup = make_lookup(
+        o0_paths={"/bin/ls": INFERRED},
+        o0_shells=shells,
+        o0_users=USERS,
+    )
+
+    assert lookup.run(["ls"], None) == [{"command": "ls", "state": "unknown"}]
 
 
 @pytest.mark.parametrize(
@@ -591,32 +688,47 @@ def test_several_gathered_paths_with_no_user_named_fail(
     [
         {},
         {"1000": {"name": "o0-o", "uid": 1000}},
-        {"1000": {"name": "o0-o", "uid": 1000, "environment": {}}},
+        {"1000": {"name": "o0-o", "uid": 1000, "shell": "/bin/sh"}},
+        {"1000": {"name": "o0-o", "uid": 1000, "home": "/home/o0-o"}},
         {
             "1000": {
                 "name": "o0-o",
                 "uid": 1000,
-                "environment": {"PATH": None},
+                "shell": "/bin/sh",
+                "home": "/srv/nowhere",
             }
         },
         {"1000": None},
     ],
 )
-def test_a_namespace_with_no_gathered_path_answers_unknown(
+def test_a_user_with_no_probed_pair_answers_unknown(
     make_lookup, users: dict[str, Any]
 ) -> None:
-    """Test that an ungathered search path is an unknown order, not
-    an empty one."""
+    """Test a user whose pair was never probed lends no search path.
 
-    lookup = make_lookup(o0_paths={"/bin/ls": INFERRED}, o0_users=users)
+    Which is how a user with no gathered environment answered before:
+    a store cannot report what it was never asked.
+    """
 
-    assert lookup.run(["ls"], None) == [{"command": "ls", "state": "unknown"}]
+    lookup = make_lookup(
+        o0_paths={"/bin/ls": INFERRED},
+        o0_shells=SHELLS,
+        o0_users=users,
+    )
+
+    assert lookup.run(["ls"], None, user=1000) == [
+        {"command": "ls", "state": "unknown"}
+    ]
 
 
 def test_an_unknown_user_answers_unknown(make_lookup) -> None:
     """Test that a user with no entry lends no search path."""
 
-    lookup = make_lookup(o0_paths={"/bin/ls": INFERRED}, o0_users=USERS)
+    lookup = make_lookup(
+        o0_paths={"/bin/ls": INFERRED},
+        o0_shells=SHELLS,
+        o0_users=USERS,
+    )
 
     assert lookup.run(["ls"], None, user="nobody") == [
         {"command": "ls", "state": "unknown"}
@@ -648,7 +760,7 @@ def test_a_gathered_path_without_a_store_answers_unknown(
     """Test that a search order with nothing gathered along it stays
     unknown."""
 
-    lookup = make_lookup(o0_users=USERS)
+    lookup = make_lookup(o0_shells=SHELLS, o0_users=USERS)
 
     assert lookup.run(["ls"], None) == [{"command": "ls", "state": "unknown"}]
 
@@ -658,15 +770,18 @@ def test_another_host_s_facts_answer_for_it(make_lookup) -> None:
 
     lookup = make_lookup(
         o0_paths={"/bin/nft": None},
+        o0_shells=SHELLS,
         o0_users=USERS,
         hostvars={
             "firewall1": {
                 "o0_paths": {"/usr/sbin/nft": INFERRED},
-                "o0_users": {
-                    "0": {
-                        "name": "root",
-                        "uid": 0,
-                        "environment": {"PATH": "/usr/sbin"},
+                "o0_shells": {
+                    "/bin/sh": {
+                        "homes": {
+                            SHELL_SYSTEM_HOME: {
+                                "env": {"PATH": "/usr/sbin"}
+                            }
+                        }
                     }
                 },
             }
@@ -689,6 +804,7 @@ def test_a_host_that_gathered_nothing_answers_unknown(
 
     lookup = make_lookup(
         o0_paths={"/bin/nft": INFERRED},
+        o0_shells=SHELLS,
         o0_users=USERS,
         hostvars={"firewall1": {}},
     )
@@ -763,21 +879,22 @@ def test_a_stray_separator_writes_an_empty_entry(gathered, path: str) -> None:
         lookup.run(["ls"], None, path=path)
 
 
-def test_a_gathered_entry_that_keys_nothing_is_refused_too(
+def test_a_probed_entry_that_keys_nothing_is_refused_too(
     make_lookup,
 ) -> None:
-    """Test that the gathered PATH is held to the same keys as a
+    """Test that a probed PATH is held to the same keys as a
     supplied one."""
 
     lookup = make_lookup(
         o0_paths={"/bin/ls": INFERRED},
-        o0_users={
-            "1000": {
-                "name": "o0-o",
-                "uid": 1000,
-                "environment": {"PATH": "/bin:~/bin"},
+        o0_shells={
+            "/bin/sh": {
+                "homes": {
+                    SHELL_SYSTEM_HOME: {"env": {"PATH": "/bin:~/bin"}}
+                }
             }
         },
+        o0_users=USERS,
     )
 
     with pytest.raises(AnsibleLookupError, match="is not an absolute path"):
@@ -1006,7 +1123,7 @@ def test_an_o0_paths_fact_that_is_not_a_dictionary_fails(
     """Test that a store that is not a mapping is an error, not an
     unknown."""
 
-    lookup = make_lookup(o0_paths=paths, o0_users=USERS)
+    lookup = make_lookup(o0_paths=paths, o0_shells=SHELLS, o0_users=USERS)
 
     with pytest.raises(
         AnsibleLookupError,
@@ -1021,13 +1138,13 @@ def test_an_o0_users_fact_that_is_not_a_dictionary_fails(
 ) -> None:
     """Test that the users fact is held to its shape as well."""
 
-    lookup = make_lookup(o0_paths={}, o0_users=users)
+    lookup = make_lookup(o0_paths={}, o0_shells=SHELLS, o0_users=users)
 
     with pytest.raises(
         AnsibleLookupError,
         match="'o0_users' fact is not a dictionary",
     ):
-        lookup.run(["ls"], None)
+        lookup.run(["ls"], None, user="o0-o")
 
 
 @pytest.mark.parametrize("entry", ["/bin/ls", ["executable"], 1, True])

@@ -587,8 +587,13 @@ class TestBatchedExecution:
         assert "timezone" not in plugin.USER_SCOPED_SUBSETS
 
     def test_run_environment_keys_by_uid(self, monkeypatch, plugin) -> None:
-        """Test environment results keyed under the effective uid
-        with locale derived from LANG."""
+        """Test the locale is keyed under the effective uid.
+
+        The variables it was derived from are not published as a field
+        of the user. An environment is what a login shell built out of
+        the files it read, so o0_shells files it per pair rather than
+        once for whichever identity the gather was handed.
+        """
         plugin._task.args = {"gather_subset": ["!all", "environment"]}
         _mock_effective_uid(monkeypatch, 1000)
 
@@ -616,9 +621,8 @@ class TestBatchedExecution:
 
         user_facts = result["ansible_facts"]["o0_users"]["1000"]
         assert user_facts["uid"] == 1000
-        assert user_facts["environment"]["HOME"] == ("/home/testuser")
-        assert user_facts["environment"]["LANG"] == ("en_US.UTF-8")
         assert user_facts["locale"] == "en_US.UTF-8"
+        assert "environment" not in user_facts
 
     def test_id_shape_is_int_under_a_string_key(
         self, monkeypatch, plugin
@@ -1189,9 +1193,7 @@ class TestDefaultGather:
             "ffs"
         )
         assert gathered["o0_users"]["1000"]["name"] == "o0-o"
-        assert gathered["o0_users"]["0"]["environment"]["LANG"] == (
-            "en_US.UTF-8"
-        )
+        assert gathered["o0_users"]["0"]["locale"] == "en_US.UTF-8"
 
     def test_mounts_are_keyed_and_carry_capacity(self, gathered) -> None:
         """Test the gathered mounts fact is the shape the mounts

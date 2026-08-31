@@ -1,0 +1,37 @@
+# vim: ts=2:sw=2:sts=2:et:ft=yaml.ansible
+# -*- mode: yaml; yaml-indent-offset: 2; indent-tabs-mode: nil; -*-
+---
+breaking_changes:
+  - >-
+    facts - ``o0_users[uid].environment`` is retired. An environment is
+    what a login shell built out of the files it read, so it belongs to
+    the shell and the home that built it, which is where ``o0_shells``
+    files it - per pair, for every identity a gather can reach, rather
+    than once for whichever one the gather happened to be handed and
+    filed as though it were that user's. The ``environment`` subset
+    stays and still publishes that user's ``locale``, derived the same
+    way; ``o0_o.posix.env`` still answers the variables of the session
+    a task runs in
+    (https://github.com/o0-o/ansible-collection-posix/pull/XXX).
+  - >-
+    commands lookup - the search path is read from ``o0_shells``
+    instead of the retired ``o0_users[uid].environment``. ``user=``
+    joins the user's passwd pair - their shell and their home - to the
+    row that pair was probed at, and the default is the row the probe
+    ran out of ``/dev/null``, which is the host's own login default
+    rather than a guess about a session. This is wider than what it
+    replaces, not narrower: the old field described whichever single
+    identity the gather was handed, and a gather now probes the login
+    of root and of the user it connected as
+    (https://github.com/o0-o/ansible-collection-posix/pull/XXX).
+minor_changes:
+  - >-
+    commands lookup - the documentation says which session it
+    simulates. Every gathered answer is a login search path; it is not
+    what a ``become`` session would search, because ``sudo`` replaces
+    ``PATH`` with ``secure_path`` where the sudoers file sets one and
+    ``doas`` has its own rules, and neither file is gathered by
+    anything here. For the search a privileged session would really
+    do, the docs point at ``o0_o.posix.which`` and at the resolutions
+    ``o0_paths`` already holds
+    (https://github.com/o0-o/ansible-collection-posix/pull/XXX).

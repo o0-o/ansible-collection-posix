@@ -23,9 +23,9 @@
 # min is uname, environment, timezone and compliance: what a host can
 # say about itself before anything is read from a file. It is the one
 # selection that publishes o0_users without the users subset, so the
-# entry it publishes is the environment of the user the gather ran as
-# and nothing else about them.
-- name: Assert min gathers an identity's environment and no more
+# entry it publishes is the locale of the user the gather ran as and
+# nothing else about them.
+- name: Assert min gathers an identity's locale and no more
   vars:
     gathered: "{{ facts_min_reg['ansible_facts'] }}"
     entry: "{{ gathered['o0_users'][facts_uid] }}"
@@ -41,15 +41,16 @@
       - gathered['o0_os']['compliance'] is mapping
       - gathered['o0_network']['hostname'] is mapping
       - gathered['o0_hardware']['baseboard'] is mapping
-      # The environment is keyed on the uid the gather ran as
+      # The locale is keyed on the uid the gather ran as
       - gathered['o0_users'].keys() | list == [facts_uid]
       - entry['uid'] is integer
       - entry['uid'] == facts_uid | int
-      - entry['environment']['PATH'] is string
-      - entry['environment']['PATH'] | length > 0
       # Derived from LC_ALL or LANG, and never left as the C locale
       - entry['locale'] is string
       - entry['locale'] not in ['C', 'POSIX']
+      # The variables it was derived from belong to the shell and the
+      # home that built them, which is where o0_shells files them
+      - entry['environment'] is not defined
       # What min deliberately lacks: everything read from a file
       - entry['name'] is not defined
       - entry['home'] is not defined
@@ -77,7 +78,12 @@
     gather_subset: [environment]
   register: facts_env_reg
 
-- name: Assert the environment subset publishes one user and one uid
+# The subset asks a session for its environment and publishes one
+# answer about the user out of it - the locale they get. The variables
+# themselves are not a fact about the user: an environment is what a
+# login shell built out of the files it read, so o0_shells files it
+# per shell and home, for every identity a gather can reach.
+- name: Assert the environment subset publishes one user's locale
   vars:
     gathered: "{{ facts_env_reg['ansible_facts'] }}"
     entry: "{{ gathered['o0_users'][facts_uid] }}"
@@ -86,12 +92,15 @@
       - gathered.keys() | list == ['o0_users']
       - gathered['o0_users'] | length == 1
       - entry.keys() | list | sort
-        == ['environment', 'evidence', 'locale', 'origins', 'uid']
+        == ['evidence', 'locale', 'origins', 'uid']
       # This gather composed the entry, so it is the one producer the
       # entry names: no passwd line described this user
       - entry['origins'] == ['o0_o.posix.facts']
-      - entry['environment']['HOME'] is string
-      - entry['environment'] | length > 0
+      # Derived from LC_ALL or LANG, and never left as the C locale
+      - entry['locale'] is string
+      - entry['locale'] not in ['C', 'POSIX']
+      # The variables it was derived from are not published here
+      - entry['environment'] is not defined
       # A variable is asked for by a shell snippet rather than by an
       # argv of its own, so the subset names what ran it and the id
       # that says whose answers these are
@@ -99,7 +108,7 @@
       - entry['evidence']['files'] is not defined
     fail_msg: >-
       the environment subset published more than an identity's
-      environment: {{ gathered.keys() | list | sort }}
+      locale: {{ entry.keys() | list | sort }}
 
 - name: Gather what uname reported
   o0_o.posix.facts:
@@ -460,6 +469,7 @@
       - gathered['o0_paths']['/etc/shells'] is not defined
       - homes | length == 0
       # environment is still selected, and it is what keys o0_users
+      # even with no field of its own besides the locale
       - gathered['o0_users'].keys() | list == [facts_uid]
     fail_msg: >-
       ['all', '!users'] still published the users:
