@@ -34,6 +34,13 @@ options:
         privilege - C(uname), C(environment), C(timezone) and
         C(compliance).
       - Use C(storage) for C(mounts) and C(fstab) together.
+      - C(users) also runs the host's login shells and publishes
+        C(o0_shells), because C(/etc/shells) is read where the users
+        are and a shell fact without the passwd entries beside it
+        answers half the question anyone asks of it. There is no
+        C(shells) subset - a subset that silently needed another one
+        would be worse than one that does slightly more than its name
+        says. M(o0_o.posix.shells) is the door for the shells alone.
       - Use C(!subset) to exclude a subset, or C(!group) to exclude
         every subset a group names.
     type: list
@@ -102,6 +109,10 @@ notes:
     session that answered rather than to the host or the user, and it
     does not survive the task that read it, so it is asked for by
     M(o0_o.posix.limits) and answered where it was asked.
+  - The C(users) subset carries the shell probes, so C(o0_shells) is
+    published by asking for C(users). M(o0_o.posix.shells) answers
+    the same shape on its own, from the same planning and the same
+    composer, for a play that wants the shells and not the accounts.
   - To gather them for a different user, run the module again as that
     user with C(become) and C(become_user). The entry lands under
     that user's UID in the same C(o0_users) namespace, so a play may

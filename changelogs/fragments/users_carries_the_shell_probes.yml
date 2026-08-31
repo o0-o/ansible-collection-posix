@@ -1,0 +1,13 @@
+# vim: ts=2:sw=2:sts=2:et:ft=yaml.ansible
+# -*- mode: yaml; yaml-indent-offset: 2; indent-tabs-mode: nil; -*-
+---
+minor_changes:
+  - >-
+    facts - the ``users`` subset is documented as carrying the shell
+    probes, which is how ``o0_shells`` comes to be published. There is
+    no ``shells`` subset and there will not be one inside this window:
+    ``/etc/shells`` is read where the users are, and a subset that
+    silently needed another one would be worse than one that does
+    slightly more than its name says. ``o0_o.posix.shells`` is the door
+    for a play that wants the shells and not the accounts
+    (https://github.com/o0-o/ansible-collection-posix/pull/XXX).
