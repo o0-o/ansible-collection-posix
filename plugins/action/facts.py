@@ -17,11 +17,14 @@ from ansible.errors import AnsibleActionFail
 from ansible.plugins.action import ActionBase
 
 from ansible_collections.o0_o.posix.plugins.module_utils import (
+    EVIDENCE,
     POSIX_ENV_VARS,
     SHELL_DEFAULT,
     SHELL_SYSTEM_HOME,
     ReadPosixActionBase,
     batch_read,
+    commands_run,
+    compose_evidence,
     compose_homes,
     compose_mount_config,
     compose_paths,
@@ -41,6 +44,8 @@ from ansible_collections.o0_o.posix.plugins.module_utils import (
     get_pathconf_command_requests,
     get_shell_command_requests,
     get_timezone_command_requests,
+    merge_entry,
+    merge_evidence,
     parse_shells,
     process_all_compliance_command_results,
     process_dmidecode_command_results,
@@ -98,6 +103,13 @@ def _process_environment_results(
         cmds_completed, POSIX_ENV_VARS, False
     )
     return env_data, []
+
+
+# What the user-scoped probes are run with.  Each variable is asked
+# for by a command written as a shell snippet rather than as argv, so
+# it names no command of its own and the subset that ran it names what
+# ran it: a shell, plus the id(1) that says whose answers these are.
+USER_SCOPED_COMMANDS = ("id", "sh")
 
 
 def _get_limits_requests() -> list[dict[str, Any]]:
@@ -371,6 +383,16 @@ class ActionModule(ReadPosixActionBase, ActionBase):
         whose value is anything but a dict is published whole and the
         last producer to answer wins.
 
+        Evidence is the one thing a later producer adds to rather than
+        replaces.  Several subsets answer for one namespace - uname,
+        the clock and the configuration sweep all publish under
+        ``o0_os`` - and each names what it consulted, so a merge that
+        let the last of them win would publish a namespace claiming a
+        fraction of what was gathered for it.  The same holds one
+        level down, where a user's entry is composed from the files
+        and then added to by the subsets that describe the user the
+        play is running as.
+
         :param dict[str, Any] all_facts: Accumulator to merge into
         :param dict[str, Any] subset_facts: Facts to merge
         """
@@ -384,14 +406,13 @@ class ActionModule(ReadPosixActionBase, ActionBase):
             if not isinstance(all_facts.get(ns), dict):
                 all_facts[ns] = {}
             for key, value in ns_facts.items():
-                if (
-                    key in all_facts[ns]
-                    and isinstance(all_facts[ns][key], dict)
-                    and isinstance(value, dict)
-                ):
-                    all_facts[ns][key].update(value)
-                else:
+                known = all_facts[ns].get(key)
+                if not (isinstance(known, dict) and isinstance(value, dict)):
                     all_facts[ns][key] = value
+                elif key == EVIDENCE:
+                    merge_evidence(known, value)
+                else:
+                    merge_entry(known, value)
 
     def _second_batch(
         self,
@@ -449,12 +470,22 @@ class ActionModule(ReadPosixActionBase, ActionBase):
             facts["o0_storage"] = {
                 "mounts": compose_mount_config(
                     mounts, process_pathconf_command_results(run_results)
-                )
+                ),
+                # What each filesystem answers is asked of it the same
+                # way the host's own configuration is asked, and the
+                # answers are the fact rather than evidence for one
+                "evidence": compose_evidence(
+                    commands=commands_run(run_results, "getconf_pathconf")
+                ),
             }
 
         if pairs:
             shells = compose_shells(
-                None, process_shell_command_results(run_results)
+                None,
+                process_shell_command_results(run_results),
+                compose_evidence(
+                    commands=commands_run(run_results, "shell_config")
+                ),
             )
             if shells:
                 facts["o0_shells"] = shells
@@ -726,7 +757,12 @@ class ActionModule(ReadPosixActionBase, ActionBase):
                             continue
 
                         effective_uid = uid
-                        entry: dict[str, Any] = {"uid": uid}
+                        entry: dict[str, Any] = {
+                            "uid": uid,
+                            EVIDENCE: compose_evidence(
+                                commands=USER_SCOPED_COMMANDS
+                            ),
+                        }
                         if subset in self.USER_SCOPED_FIELDS:
                             entry.update(facts)
                         else:

@@ -474,6 +474,11 @@ def test_both_producers_compose_one_shape(monkeypatch, plugin) -> None:
     gathered = facts["o0_storage"]["mounts"]
     assert gathered == standalone
 
+    # One enumeration answered for every mount there is, so no mount's
+    # provenance differs from another's and the namespace names them
+    # once rather than each mount naming them over again
+    assert facts["o0_storage"]["evidence"] == {"commands": ["df", "mount"]}
+
     # The shape both now carry: keyed by mount point, capacity from df
     # and type from mount in one entry, and no redundant mount field
     assert set(gathered) == {"/", "/boot"}

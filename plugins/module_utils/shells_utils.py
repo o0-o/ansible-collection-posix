@@ -304,6 +304,7 @@ def process_shell_command_results(
 def compose_shells(
     named: Optional[Sequence[str]] = None,
     observed: Optional[dict[str, dict[str, dict[str, Any]]]] = None,
+    evidence: Optional[dict[str, Any]] = None,
 ) -> dict[str, dict[str, dict[str, Any]]]:
     """Compose the canonical shells fact from both halves.
 
@@ -313,16 +314,23 @@ def compose_shells(
     the host answered for it.
 
     Under each shell, a row per home probed, holding the ``config``
-    that combination produced.  A shell nothing was observed of keeps
-    its key with an empty mapping under it - the key is the host's
-    claim that this is a login shell, and the empty value is the
-    truthful statement that nothing has been run to find out what it
-    does.
+    that combination produced and the ``evidence`` for it.  A row is
+    where the provenance sits because a row is where a probe happened:
+    one shell may be observed out of two homes, and the fact is a fact
+    about the pair.  A shell nothing was observed of keeps its key
+    with an empty mapping under it - the key is the host's claim that
+    this is a login shell, and the empty value is the truthful
+    statement that nothing has been run to find out what it does, so
+    there is nothing for evidence to support.  That claim's own
+    provenance is the ``/etc/shells`` entry of ``o0_paths``, which
+    holds the names under its ``config``.
 
     :param Optional[Sequence[str]] named: The login shells the host
         names, as ``/etc/shells`` gave them
     :param Optional[dict[str, dict[str, dict[str, Any]]]] observed:
         What each probed combination produced, keyed by shell and home
+    :param Optional[dict[str, Any]] evidence: What the observations
+        were made with, named on every row they produced
     :returns dict[str, dict[str, dict[str, Any]]]: The shells fact
     """
     observed = observed or {}
@@ -334,7 +342,12 @@ def compose_shells(
     for shell in sorted(observed):
         rows = shells.setdefault(shell, {})
         for home in sorted(observed[shell]):
-            rows[home] = {"config": observed[shell][home]}
+            row: dict[str, Any] = {"config": observed[shell][home]}
+            if evidence is not None:
+                row["evidence"] = {
+                    kind: list(origins) for kind, origins in evidence.items()
+                }
+            rows[home] = row
 
     return shells
 

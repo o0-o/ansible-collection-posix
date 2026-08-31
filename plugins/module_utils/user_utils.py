@@ -56,6 +56,10 @@ import posixpath
 from copy import deepcopy
 from typing import Any, Callable, Optional, Sequence, Union
 
+from ansible_collections.o0_o.posix.plugins.module_utils.evidence_utils import (  # noqa: E501
+    command_name,
+    merge_evidence,
+)
 from ansible_collections.o0_o.posix.plugins.module_utils.getent_utils import (
     GETENT_COMMANDS,
 )
@@ -72,12 +76,11 @@ from ansible_collections.o0_o.posix.plugins.module_utils.path_utils import (
 Source = Union[str, dict[str, Any], list[dict[str, Any]]]
 
 # What supports an entry's record, by kind of origin: literal paths
-# under ``files``, and under ``commands`` the argv of each command,
-# which is the command as it was executed rather than a rendering of
-# it.  The third kind of the collection's vocabulary, ``config``, is
-# not one these facts are composed from, so it is absent here rather
-# than carried empty.
-Evidence = dict[str, list[Any]]
+# under ``files``, and under ``commands`` the name of each command
+# that was consulted.  The third kind of the collection's vocabulary,
+# ``config``, is not one these facts are composed from, so it is
+# absent here rather than carried empty.
+Evidence = dict[str, list[str]]
 
 # How a producer reads metadata for a list of paths: the read action's
 # result, carrying one entry per path under its ``paths`` key
@@ -90,23 +93,7 @@ def _copy_evidence(evidence: Evidence) -> Evidence:
     :param Evidence evidence: The record to copy
     :returns Evidence: A copy sharing nothing with the original
     """
-    return {
-        "files": list(evidence["files"]),
-        "commands": [list(command) for command in evidence["commands"]],
-    }
-
-
-def _merge_evidence(into: Evidence, evidence: Evidence) -> None:
-    """Fold one evidence record into another, base first and once each.
-
-    :param Evidence into: The record to add to, modified in place
-    :param Evidence evidence: The record whose origins are added
-    """
-    for kind, named in evidence.items():
-        known = into.setdefault(kind, [])
-        for origin in named:
-            if origin not in known:
-                known.append(origin)
+    return {kind: list(named) for kind, named in evidence.items()}
 
 
 def _overlay(
@@ -132,8 +119,8 @@ def _overlay(
     what it had rather than losing it to a null.
 
     Each entry's evidence names the two concretely: the path that was
-    read and the command that was run, rather than the kind of thing
-    either was.  Both kinds are always attempted, so a kind that
+    read and the command that was consulted, rather than the kind of
+    thing either was.  Both kinds are always attempted, so a kind that
     contributed nothing to an entry is empty rather than absent.
 
     :param dict[str, dict[str, Any]] files: Entries the flat file
@@ -148,9 +135,9 @@ def _overlay(
     """
     merged = {key: dict(entry) for key, entry in files.items()}
     evidence = {key: {"files": [path], "commands": []} for key in files}
+    named = [name for name in [command_name(command)] if name]
 
     for key, entry in resolved.items():
-        argv = [list(command)]
         if key in merged:
             merged[key].update(
                 {
@@ -159,10 +146,10 @@ def _overlay(
                     if value is not None
                 }
             )
-            evidence[key]["commands"] = argv
+            evidence[key]["commands"] = list(named)
         else:
             merged[key] = dict(entry)
-            evidence[key] = {"files": [], "commands": argv}
+            evidence[key] = {"files": [], "commands": list(named)}
 
     return merged, evidence
 
@@ -188,16 +175,16 @@ def compose_users_groups(
     ``evidence`` names the concrete origins the entry's own record
     came from, by kind: ``files`` holds the path of the flat file that
     named it, which is a key of ``o0_paths`` and joins against it;
-    ``commands`` holds the enumeration that resolved it, as the argv
-    it was run with rather than a string, because argv is the executed
-    form and a string implies a shell reading it.  Both kinds are
-    always present, and a kind that contributed nothing to an entry is
-    empty rather than absent, because both are always attempted - so a
-    host with no getent says ``commands: []`` rather than saying
-    nothing.  At least one origin is named across the two.  Origins
-    are listed base first where order exists.  The vocabulary's third
-    kind, ``config``, is absent: no user or group record is composed
-    from a configuration variable.
+    ``commands`` holds the name of the enumeration that resolved it,
+    which is what a consumer wants to know - what was consulted -
+    where the argv would only repeat what the entry itself answers.
+    Both kinds are always present, and a kind that contributed nothing
+    to an entry is empty rather than absent, because both are always
+    attempted - so a host with no getent says ``commands: []`` rather
+    than saying nothing.  At least one origin is named across the two,
+    and each kind is sorted and holds one of each name.  The
+    vocabulary's third kind, ``config``, is absent: no user or group
+    record is composed from a configuration variable.
 
     Membership does not enter into it: a group's evidence is where its
     own record came from, not where its members' did.  The exception
@@ -334,7 +321,7 @@ def _add_member(
         entry["members"].append(uid)
 
     if gid_str not in named:
-        _merge_evidence(entry["evidence"], evidence)
+        merge_evidence(entry["evidence"], evidence)
 
 
 def _residents_by_home(

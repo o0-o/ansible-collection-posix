@@ -59,28 +59,29 @@ SAMPLE_GETENT_GROUP = SAMPLE_GROUP
 FILES = os.path.join(os.path.dirname(__file__), "files")
 
 # The origins the composition names for the samples above, by the kind
-# of thing each one is: a path that was read, and a command as it was
-# run.  A kind that contributed nothing is empty rather than absent.
+# of thing each one is: a path that was read, and the name of a
+# command that was consulted.  A kind that contributed nothing is
+# empty rather than absent.
 FROM_PASSWD: dict[str, list[Any]] = {
     "files": ["/etc/passwd"],
     "commands": [],
 }
 FROM_PASSWD_AND_GETENT: dict[str, list[Any]] = {
     "files": ["/etc/passwd"],
-    "commands": [["getent", "passwd"]],
+    "commands": ["getent"],
 }
 FROM_GETENT_PASSWD: dict[str, list[Any]] = {
     "files": [],
-    "commands": [["getent", "passwd"]],
+    "commands": ["getent"],
 }
 FROM_GROUP: dict[str, list[Any]] = {"files": ["/etc/group"], "commands": []}
 FROM_GROUP_AND_GETENT: dict[str, list[Any]] = {
     "files": ["/etc/group"],
-    "commands": [["getent", "group"]],
+    "commands": ["getent"],
 }
 FROM_GETENT_GROUP: dict[str, list[Any]] = {
     "files": [],
-    "commands": [["getent", "group"]],
+    "commands": ["getent"],
 }
 
 
@@ -399,14 +400,11 @@ def test_both_kinds_of_origin_are_always_present() -> None:
         evidence = entry["evidence"]
         assert set(evidence) == {"files", "commands"}
         assert evidence["files"] + evidence["commands"]
-        # A path is a string, and a command is the argv it was run
-        # with rather than a rendering of it
-        assert all(isinstance(path, str) for path in evidence["files"])
-        assert all(
-            isinstance(command, list)
-            and all(isinstance(word, str) for word in command)
-            for command in evidence["commands"]
-        )
+        # A path is a string and a command is the name it is known
+        # by, each kind sorted and holding one of each
+        for kind in ("files", "commands"):
+            assert all(isinstance(name, str) for name in evidence[kind])
+            assert evidence[kind] == sorted(set(evidence[kind]))
 
 
 def test_a_file_names_the_path_it_was_actually_read_from() -> None:

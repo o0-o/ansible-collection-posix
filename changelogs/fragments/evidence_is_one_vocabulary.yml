@@ -19,23 +19,50 @@ minor_changes:
     kind, and the kinds are the same three wherever it appears.
     ``files`` holds the paths that were read, each of them a key of
     ``o0_paths`` and so a key an entry joins against. ``commands``
-    holds the commands that were run, each as the argv it was executed
-    with. Argv rather than a string because argv is the form a command
-    was executed in - the raw quoting contract's lesson, that a
-    command written as a string implies a shell reading it back - and
-    because membership answers on list elements without a consumer
-    having to parse anything. ``config`` holds the POSIX configuration
-    variables that were read, mapped to the values the host answered
-    with, keyed and typed the way ``o0_os.config`` keys and types
-    them; the value is in the evidence rather than pointed at, because
-    a producer that names a variable may run without the configuration
-    subset ever being gathered. A producer carries the subkey of every
-    kind it attempts, empty where the kind contributed nothing, and
-    leaves off the kinds it has none of - so a user entry carries
-    files and commands and a compliance verdict carries commands and
-    config. A new ``o0_o.posix.evidence`` documentation fragment is the
-    one description of the shape, and the modules that publish it
-    extend it rather than restating it
+    holds the names of the commands that were consulted - the name and
+    not the argv, because argv would say what was typed and what was
+    typed is a debugging concern rather than a fact: the configuration
+    sweep is dozens of invocations of one command and gathering a
+    directory's metadata is one invocation per file, so either would
+    bury the answer under its own repetitions. ``config`` holds the
+    POSIX configuration variables that were read, mapped to the values
+    the host answered with, keyed and typed the way ``o0_os.config``
+    keys and types them; the value is in the evidence rather than
+    pointed at, because a producer that names a variable may run
+    without the configuration subset ever being gathered. A producer
+    carries the subkey of every kind it attempts, empty where the kind
+    contributed nothing, and leaves off the kinds it has none of. A
+    new ``o0_o.posix.evidence`` documentation fragment is the one
+    description of the shape, and the modules that publish it extend
+    it rather than restating it
+    (https://github.com/o0-o/ansible-collection-posix/pull/XXX).
+  - >-
+    facts - every section names what was consulted for it, at the
+    level its provenance actually varies at. A user, a group and a
+    compliance standard carry their own, because one host names a user
+    in a file where another resolves it with a command and the
+    standards are decided by different probes. An ``o0_shells`` row
+    carries its own, because a row is one shell observed out of one
+    home. ``o0_os``, ``o0_network``, ``o0_storage`` and ``o0_hardware``
+    carry one record for the whole section, because one gather
+    produced all of it: one ``mount`` and one ``df`` answered for every
+    mount there is, and no mount's provenance differs from another's.
+    Several subsets may answer for one section, so a section's record
+    is the union of what each of them consulted rather than whichever
+    of them answered last - ``o0_os`` names ``uname`` for the kernel,
+    ``date`` for the timezone and ``getconf`` for the configuration,
+    and the three namespaces one ``uname`` answers for each say so
+    (https://github.com/o0-o/ansible-collection-posix/pull/XXX).
+  - >-
+    facts - a value appears as evidence only where it evidences
+    something else. A compliance verdict is a claim about the host that
+    a configuration variable supports, so the verdict carries the
+    variable and its value; ``o0_os.config`` publishes those same
+    variables as the fact they are, and a fact is not evidence for
+    itself. So the sections whose answer is the published fact -
+    ``o0_os.config``, what each filesystem answers about itself, the
+    ``sh_posix_compliant`` verdict - name the command that asked and
+    nothing more
     (https://github.com/o0-o/ansible-collection-posix/pull/XXX).
   - >-
     users, facts - a user or group entry's ``evidence`` names the
@@ -50,20 +77,20 @@ minor_changes:
     (https://github.com/o0-o/ansible-collection-posix/pull/XXX).
   - >-
     compliance - every verdict names what decided it. A standard
-    carries the argv of each probe that was run for it and the
-    configuration variables those probes read, valued as the host
-    answered them, so ``_XOPEN_UNIX`` reads ``1`` rather than
-    ``"1"`` and joins ``o0_os.config`` by name. A variable the host
-    would not answer is named by the command that asked for it and
-    left out of the configuration, which is what leaving one out means
-    in ``o0_os.config`` too, and replaces the null the canary form
+    carries the commands that were run for it and the configuration
+    variables those probes read, valued as the host answered them, so
+    ``_XOPEN_UNIX`` reads ``1`` rather than ``"1"`` and joins
+    ``o0_os.config`` by name. A variable the host would not answer is
+    named by the command that asked for it and left out of the
+    configuration, which is what leaving one out means in
+    ``o0_os.config`` too, and replaces the null the canary form
     published. POSIX and SUS probe nothing of their own, so each names
     the evidence of the standards it is composed of and a consumer
     reads a verdict and its support together. The namespace's own
-    verdict, ``sh_posix_compliant``, names the shell probe that
-    decided it in a ``compliance.evidence`` beside it - a command and
-    nothing else, since that probe's answer is the published verdict
-    rather than a variable it read
+    verdict, ``sh_posix_compliant``, names the shell probe that decided
+    it in a ``compliance.evidence`` beside it - a command and nothing
+    else, since that probe's answer is the published verdict rather
+    than a variable it read
     (https://github.com/o0-o/ansible-collection-posix/pull/XXX).
   - >-
     compliance - the utilities a standard requires and the host did

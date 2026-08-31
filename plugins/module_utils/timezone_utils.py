@@ -25,6 +25,11 @@ from ansible_collections.o0_o.core.plugins.module_utils import (
     process_command_spec,
 )
 
+from ansible_collections.o0_o.posix.plugins.module_utils.evidence_utils import (  # noqa: E501
+    commands_run,
+    compose_evidence,
+)
+
 
 def parse_timezone_offset(offset: str) -> timezone:
     """Parse a UTC offset string like '-0400' or '+0530'.
@@ -104,6 +109,10 @@ def process_timezone_command_results(
 ) -> tuple[dict[str, Any], list[Exception]]:
     """Process timezone command results into structured facts.
 
+    The namespace names what was consulted for it, so a gather that
+    read the clock and a gather that read the standards both say
+    which commands answered for the o0_os facts they published.
+
     :param list[dict[str, Any]] cmds_completed: Command results
     :returns tuple[dict[str, Any], list[Exception]]: Tuple of
         (facts_dict, errors) where facts_dict has o0_os namespace
@@ -121,4 +130,11 @@ def process_timezone_command_results(
     if not tz_data:
         return {}, errors
 
-    return {"o0_os": {"timezone": tz_data}}, errors
+    return {
+        "o0_os": {
+            "timezone": tz_data,
+            "evidence": compose_evidence(
+                commands=commands_run(cmds_completed, "timezone")
+            ),
+        }
+    }, errors

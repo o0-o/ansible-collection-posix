@@ -233,21 +233,21 @@ class TestProcessAllComplianceCommandResults:
             "_POSIX2_VERSION": 200809,
         }
 
-    def test_every_probe_names_the_argv_it_ran(self) -> None:
-        """Test a standard names the commands that decided it as the
-        argv they were executed with - the getconf invocations that
-        dated and decided it, and the lookup of each utility it
-        records as missing."""
+    def test_every_probe_names_the_command_it_consulted(self) -> None:
+        """Test a standard names the commands that decided it, and
+        names them rather than spelling them out: XSI is asked for two
+        variables and looks for four utilities, and one name answers
+        for every invocation of one command."""
         compliance = _process_fabricated_host()["o0_os"]["compliance"]
 
-        assert compliance["xsh"]["evidence"]["commands"] == [
-            ["getconf", "_POSIX_VERSION"],
-        ]
+        assert compliance["xsh"]["evidence"]["commands"] == ["getconf"]
         assert compliance["xsi"]["evidence"]["commands"] == [
-            ["getconf", "_XOPEN_UNIX"],
-            ["getconf", "_XOPEN_VERSION"],
-            ["command", "-v", "pax"],
+            "command",
+            "getconf",
         ]
+        # XCU found every utility it requires, so nothing but the
+        # version probe decided it
+        assert compliance["xcu"]["evidence"]["commands"] == ["getconf"]
 
     def test_a_derived_standard_borrows_what_derives_it(self) -> None:
         """Test POSIX and SUS, which probe nothing of their own, name
@@ -257,16 +257,18 @@ class TestProcessAllComplianceCommandResults:
         compliance = _process_fabricated_host()["o0_os"]["compliance"]
 
         assert compliance["posix"]["evidence"] == {
-            "commands": [
-                ["getconf", "_POSIX_VERSION"],
-                ["getconf", "_POSIX2_VERSION"],
-            ],
+            "commands": ["getconf"],
             "config": {"_POSIX_VERSION": 200809, "_POSIX2_VERSION": 200809},
         }
-        assert compliance["sus"]["evidence"]["commands"] == (
-            compliance["posix"]["evidence"]["commands"]
-            + compliance["xsi"]["evidence"]["commands"]
-        )
+        assert compliance["sus"]["evidence"] == {
+            "commands": ["command", "getconf"],
+            "config": {
+                "_POSIX_VERSION": 200809,
+                "_POSIX2_VERSION": 200809,
+                "_XOPEN_UNIX": 1,
+                "_XOPEN_VERSION": 700,
+            },
+        }
 
     def test_the_sh_verdict_names_its_probe(self) -> None:
         """Test the namespace's own verdict names the probe that
@@ -275,15 +277,7 @@ class TestProcessAllComplianceCommandResults:
         configuration variable it read."""
         compliance = _process_fabricated_host()["o0_os"]["compliance"]
 
-        assert compliance["evidence"] == {
-            "commands": [
-                [
-                    "sh",
-                    "-c",
-                    'x=1; [ "$x" = 1 ] && printf "posix sh"',
-                ],
-            ],
-        }
+        assert compliance["evidence"] == {"commands": ["sh"]}
 
     def test_the_missing_list_outlives_the_probes(self) -> None:
         """Test the missing list seeded for the standards that require
@@ -313,8 +307,6 @@ class TestProcessAllComplianceCommandResults:
             evidence = compliance[standard]["evidence"]
             assert set(evidence) == {"commands", "config"}
             assert all(
-                isinstance(argv, list) and all(
-                    isinstance(arg, str) for arg in argv
-                )
-                for argv in evidence["commands"]
+                isinstance(name, str) for name in evidence["commands"]
             )
+            assert evidence["commands"] == sorted(set(evidence["commands"]))

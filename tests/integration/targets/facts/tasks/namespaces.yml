@@ -38,6 +38,33 @@
       - tz['abbr'] is not defined
     fail_msg: 'o0_os.timezone is not the shape date composes: {{ tz }}'
 
+# Several subsets answer under one namespace, and each names what it
+# consulted, so the namespace's evidence is the union of theirs rather
+# than whichever of them answered last.
+- name: Assert every namespace names what was consulted for it
+  vars:
+    facts: "{{ facts_all_reg['ansible_facts'] }}"
+  ansible.builtin.assert:
+    that:
+      # uname answers for three namespaces and each of the three says
+      # so; the clock and the configuration sweep answer for o0_os
+      # beside it
+      - facts['o0_os']['evidence']['commands']
+        == ['date', 'getconf', 'uname']
+      - facts['o0_network']['evidence']['commands'] == ['uname']
+      - facts['o0_hardware']['evidence']['commands'] is sequence
+      - "'uname' in facts['o0_hardware']['evidence']['commands']"
+      # Compliance keeps its own, one per standard, because that is
+      # the level a compliance verdict's provenance varies at
+      - facts['o0_os']['compliance']['xsh']['evidence'] is mapping
+      # No namespace reads a file or publishes a variable as evidence
+      # for itself
+      - facts['o0_os']['evidence']['files'] is not defined
+      - facts['o0_os']['evidence']['config'] is not defined
+    fail_msg: >-
+      a namespace does not name what was consulted for it:
+      {{ facts['o0_os']['evidence'] | default('none') }}
+
 - name: Assert every standard the compliance subset reads is named
   vars:
     compliance: >-
@@ -69,10 +96,11 @@
         | list | length == 0
       - standards | selectattr('evidence.files', 'defined')
         | list | length == 0
-      # A command origin is argv - the command as executed - never a
-      # string that would imply a shell reading it back
+      # A command origin is the name a command is known by: XSI is
+      # asked two variables and looks for four utilities, and one
+      # name answers for every invocation of one command
       - standards | map(attribute='evidence.commands')
-        | flatten(levels=1) | select('string') | list | length == 0
+        | flatten | reject('string') | list | length == 0
       # Each of the two standards with required commands says which
       # of them the host did not have, empty where it had them all
       - compliance['xcu']['missing'] is sequence
@@ -82,8 +110,7 @@
       # The one behavioral probe publishes its verdict beside them,
       # and the namespace names the probe beside the verdict
       - compliance['sh_posix_compliant'] is boolean
-      - compliance['evidence']['commands'] | length == 1
-      - compliance['evidence']['commands'][0][0] == 'sh'
+      - compliance['evidence']['commands'] == ['sh']
     fail_msg: >-
       o0_os.compliance does not name the standards it read, or one of
       them will not say whether it is supported: {{ supports }}
@@ -361,13 +388,18 @@
 # mounted now; what the host is configured to mount is the config of
 # the file that configures it.
 - name: Assert the storage namespace holds live state alone
+  vars:
+    storage: "{{ facts_all_reg['ansible_facts']['o0_storage'] }}"
   ansible.builtin.assert:
     that:
-      - facts_all_reg['ansible_facts']['o0_storage'].keys() | list
-        == ['mounts']
+      - storage.keys() | list | sort == ['evidence', 'mounts']
+      # The enumerations that named the mounts, and the interface each
+      # filesystem was asked about itself through
+      - storage['evidence']['commands']
+        == ['df', 'getconf', 'mount']
     fail_msg: >-
-      o0_storage carries something besides what is mounted:
-      {{ facts_all_reg['ansible_facts']['o0_storage'].keys() | list }}
+      o0_storage carries something besides what is mounted and what
+      named it: {{ storage.keys() | list }}
 
 # Three subsets answer under o0_users and the merge keys all of them
 # on the uid. The environment and limits subsets know an identity by
@@ -512,11 +544,11 @@
       # two files a gather reads users out of
       - named_files | reject('in', ['/etc/passwd', '/etc/group'])
         | list | length == 0
-      # A command origin is argv - the command as executed - never a
-      # string that would imply a shell reading it back
-      - named_commands | select('string') | list | length == 0
-      - named_commands | reject('in', [['getent', 'passwd'],
-        ['getent', 'group']]) | list | length == 0
+      # A command origin is the name a command is known by, and one
+      # command answers for both databases a gather enumerates - the
+      # argv would only repeat what the entry itself says
+      - named_commands | reject('string') | list | length == 0
+      - named_commands | reject('in', ['getent']) | list | length == 0
     fail_msg: >-
       an entry of o0_users or o0_groups does not name its origins
 
@@ -542,7 +574,7 @@
       - not facts_has_getent | bool
         or users['0']['evidence']['files'] == ['/etc/passwd']
       - not facts_has_getent | bool
-        or users['0']['evidence']['commands'] == [['getent', 'passwd']]
+        or users['0']['evidence']['commands'] == ['getent']
     fail_msg: >-
       o0_users names a getent enumeration on a host that has none, or
       omits it on a host that has one: has_getent
@@ -611,6 +643,34 @@
     fail_msg: >-
       o0_shells is not keyed by shell path, or does not carry the
       shells /etc/shells named: {{ shells.keys() | list }}
+
+# A row is where a probe happened, so a row is where the provenance
+# sits: one shell observed out of two homes is two observations. A
+# shell nothing was run for keeps its key and carries nothing, because
+# there is no observation for evidence to support - the host's claim
+# that it is a login shell is the /etc/shells entry of o0_paths.
+- name: Assert every shell observation names the probe that made it
+  vars:
+    shells: "{{ facts_all_reg['ansible_facts']['o0_shells'] }}"
+    rows: >-
+      {{ shells | dict2items | map(attribute='value')
+         | map('dict2items') | flatten | map(attribute='value')
+         | list }}
+  ansible.builtin.assert:
+    that:
+      - rows | length > 0
+      - rows | rejectattr('evidence', 'defined') | list | length == 0
+      - rows | map(attribute='evidence.commands') | flatten
+        | reject('eq', 'env') | list | length == 0
+      # A shell is run, not read, and it reads no variable the fact
+      # does not already publish under config
+      - rows | selectattr('evidence.files', 'defined')
+        | list | length == 0
+      - rows | selectattr('evidence.config', 'defined')
+        | list | length == 0
+    fail_msg: >-
+      an o0_shells observation does not name what produced it:
+      {{ rows }}
 
 # The system layer: the shell the task named, run out of the one home
 # every POSIX host has and none of them has as a directory, so that

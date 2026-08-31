@@ -334,6 +334,10 @@ def test_the_captured_sweep_composes_the_os_config_fact(
     assert "_NPROCESSORS_ONLN" in config
     assert ("NPROCESSORS_ONLN" in config) == (platform == "macos")
 
+    # These variables are the fact rather than evidence for one, so
+    # the namespace names what was consulted and nothing more
+    assert facts["o0_os"]["evidence"] == {"commands": ["getconf"]}
+
 
 def test_a_host_with_no_getconf_publishes_no_namespace() -> None:
     """Test a sweep that answered nothing leaves o0_os unpublished."""

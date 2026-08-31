@@ -883,12 +883,12 @@ class TestGatherUsers:
 
         assert facts["o0_users"]["1000"]["evidence"] == {
             "files": ["/etc/passwd"],
-            "commands": [["getent", "passwd"]],
+            "commands": ["getent"],
         }
         assert facts["o0_users"]["4000"]["name"] == "ldap"
         assert facts["o0_users"]["4000"]["evidence"] == {
             "files": [],
-            "commands": [["getent", "passwd"]],
+            "commands": ["getent"],
         }
 
     def test_both_producers_compose_one_shape(
@@ -1178,8 +1178,9 @@ class TestDefaultGather:
             gathered["o0_paths"]["/etc/shells"]["config"]
         )
         # What the host is configured to mount is a fact about the
-        # file that configures it; o0_storage holds live state
-        assert set(gathered["o0_storage"]) == {"mounts"}
+        # file that configures it; o0_storage holds live state, and
+        # says beside it what was consulted to learn it
+        assert set(gathered["o0_storage"]) == {"mounts", "evidence"}
 
     def test_two_producers_share_one_user(self, gathered) -> None:
         """Test the environment subset and /etc/passwd meet in one

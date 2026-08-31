@@ -182,8 +182,12 @@ compliance:
               vocabulary this collection speaks. The C(evidence) notes
               on this module document its kinds; every standard below
               names its own in the same shape.
-            - C(commands) names the probes that were run, each as the
-              argv it was executed with rather than as a string.
+            - C(commands) names the probes that were consulted, by
+              the name each is known by rather than by the argv it was
+              run with. XSI is asked for two variables and looks for
+              four utilities, and one name answers for every
+              invocation of one command, because what each of them was
+              asked is already in C(config) and in C(missing).
             - C(config) maps each POSIX configuration variable those
               probes read to the value the host answered with, typed
               the way C(o0_os.config) types one - an integer where the
@@ -199,10 +203,12 @@ compliance:
           type: dict
           contains:
             commands:
-              description: The probes that were run, each as argv
+              description: >-
+                The probes that were consulted, by the name each is
+                known by
               type: list
-              elements: list
-              sample: [["getconf", "_POSIX_VERSION"]]
+              elements: str
+              sample: ["getconf"]
             config:
               description: >-
                 The configuration variables the probes read, mapped to
@@ -212,8 +218,7 @@ compliance:
                 _POSIX_VERSION: 200809
           sample:
             commands:
-              - - getconf
-                - _POSIX_VERSION
+              - getconf
             config:
               _POSIX_VERSION: 200809
     xcu:
@@ -262,16 +267,16 @@ compliance:
         evidence:
           description: >-
             What decided the answer, in the shape C(xsh) names it: the
-            C(getconf) probe that dated the standard, and the lookup
-            of each utility C(missing) records. Where the host has no
+            C(getconf) probe that dated the standard, and the
+            C(command) each utility C(missing) records was looked for
+            with. Where the host has no
             C(_POSIX2_VERSION) to answer - POSIX.2 was merged into
             POSIX.1, so glibc does not - the probe named here is the
             C(_POSIX_VERSION) one that answered in its place.
           type: dict
           sample:
             commands:
-              - - getconf
-                - _POSIX2_VERSION
+              - getconf
             config:
               _POSIX2_VERSION: 200809
     xsi:
@@ -325,16 +330,13 @@ compliance:
             What decided the answer, in the shape C(xsh) names it. XSI
             is probed twice, so C(config) carries both the
             C(_XOPEN_UNIX) that decided support and the
-            C(_XOPEN_VERSION) that dated it, and C(commands) names
-            both invocations along with the lookup of each utility
-            C(missing) records.
+            C(_XOPEN_VERSION) that dated it, while C(commands) names
+            C(getconf) once for the two of them, and C(command) beside
+            it wherever C(missing) records a utility.
           type: dict
           sample:
             commands:
-              - - getconf
-                - _XOPEN_UNIX
-              - - getconf
-                - _XOPEN_VERSION
+              - getconf
             config:
               _XOPEN_UNIX: 1
               _XOPEN_VERSION: 700
@@ -371,10 +373,7 @@ compliance:
           type: dict
           sample:
             commands:
-              - - getconf
-                - _POSIX_VERSION
-              - - getconf
-                - _POSIX2_VERSION
+              - getconf
             config:
               _POSIX_VERSION: 200809
               _POSIX2_VERSION: 200809
@@ -444,9 +443,7 @@ compliance:
       type: dict
       sample:
         commands:
-          - - sh
-            - -c
-            - 'x=1; [ "$x" = 1 ] && printf "posix sh"'
+          - sh
 paths:
   description: >-
     What the probes observed about the paths they touched, keyed by

@@ -197,6 +197,29 @@ ansible_facts:
         gathered
       type: dict
       contains:
+        evidence:
+          description: >-
+            What was consulted for this namespace, in the collection's
+            one provenance vocabulary - the C(evidence) notes on this
+            module document its kinds. Several subsets answer here and
+            the record is the union of what each of them consulted:
+            C(uname) for the kernel, C(date) for the timezone,
+            C(getconf) for the configuration. Those variables are the
+            fact rather than evidence for one, so no C(config) kind
+            appears here. C(compliance) is not folded in either - its
+            standards are decided by different probes, so each of them
+            carries its own.
+          returned: >-
+            when the uname, timezone or config subset is gathered
+          type: dict
+          contains:
+            commands:
+              description: >-
+                The commands that were consulted, by the name each is
+                known by
+              type: list
+              elements: str
+              sample: ["date", "getconf", "uname"]
         config:
           description:
             - What C(getconf) answers about the host, keyed by the
@@ -289,6 +312,15 @@ ansible_facts:
       returned: when the uname subset is gathered
       type: dict
       contains:
+        evidence:
+          description: >-
+            What was consulted for this namespace. One C(uname) answers
+            for three namespaces and each of the three says so, rather
+            than leaving a consumer of one of them to know that.
+          type: dict
+          sample:
+            commands:
+              - uname
         hostname:
           description: The node name C(uname) reported.
           type: dict
@@ -312,6 +344,14 @@ ansible_facts:
       returned: when the uname or dmidecode subset is gathered
       type: dict
       contains:
+        evidence:
+          description: >-
+            What was consulted for this namespace, the union of what
+            each subset that answered here ran.
+          type: dict
+          sample:
+            commands:
+              - uname
         make:
           description: System manufacturer
           returned: when dmidecode named one
@@ -465,6 +505,22 @@ ansible_facts:
       returned: when the mounts subset is gathered
       type: dict
       contains:
+        evidence:
+          description: >-
+            What was consulted for this namespace - the enumerations
+            that named the mounts, and the interface each filesystem
+            was asked about itself through. One enumeration answered
+            for every mount there is, so no mount's provenance differs
+            from another's and the namespace names them once rather
+            than every entry repeating the same answer. What each
+            filesystem answered is the C(config) of its own entry
+            rather than evidence for one.
+          type: dict
+          sample:
+            commands:
+              - df
+              - getconf
+              - mount
         mounts:
           description: >-
             What is mounted, keyed by mount point. Composed from C(df)
@@ -635,10 +691,11 @@ ansible_facts:
             - C(files) names the paths that were read. Each is a key
               of C(o0_paths), so an entry joins against the file it
               came out of.
-            - C(commands) names the enumerations that were run, each
-              as the argv it was run with rather than as a string.
-              Argv is the form a command was executed in, and a string
-              would imply a shell reading it back.
+            - C(commands) names the enumerations that were
+              consulted, by the name each is known by rather than by
+              the argv it was run with. The name says what was
+              consulted, which is what a consumer has to know; what it
+              said is the entry itself.
             - Both kinds are always present, because both are always
               attempted. A kind that contributed nothing to the entry
               is empty rather than absent, so a host with no
@@ -656,7 +713,17 @@ ansible_facts:
               may be absent from C(o0_users) even though the host
               resolves them by name. This field names what answered,
               not what exists.
-          returned: when the users subset is gathered
+            - Three subsets answer under C(o0_users) and every one of
+              them adds to the entry it lands on rather than replacing
+              what the others named. The entry for the user the play
+              connects as therefore names the files it was composed
+              from and, beside them, the shell its environment, limits
+              and mask were read through and the C(id) that said whose
+              answers those are. That entry may carry provenance and
+              no name at all, on a host whose local users are not in
+              C(/etc/passwd).
+          returned: >-
+            when the users, environment or limits subset is gathered
           type: dict
           contains:
             files:
@@ -666,16 +733,17 @@ ansible_facts:
               elements: str
               sample: ["/etc/passwd"]
             commands:
-              description: The commands that were run, each as argv
+              description: >-
+                The commands that were consulted, by the name each is
+                known by
               type: list
-              elements: list
-              sample: [["getent", "passwd"]]
+              elements: str
+              sample: ["getent"]
           sample:
             files:
               - /etc/passwd
             commands:
-              - - getent
-                - passwd
+              - getent
         environment:
           description: >-
             The environment variables IEEE Std 1003.1 names, as the
@@ -764,8 +832,7 @@ ansible_facts:
             files:
               - /etc/group
             commands:
-              - - getent
-                - group
+              - getent
     o0_shell_files:
       description: >-
         The login shells users actually hold, keyed by path, each with
@@ -821,6 +888,17 @@ ansible_facts:
             C(locale) it reported. A field the shell would not answer
             is left out rather than nulled.
           type: dict
+        evidence:
+          description: >-
+            What produced the row. Provenance sits on the row because
+            the row is where a probe happened - one shell observed out
+            of two homes is two observations - and it names the
+            command the shell was run through. A shell with an empty
+            mapping under it carries none, because nothing was run for
+            it and there is no observation for evidence to support;
+            the host's claim that it is a login shell is the
+            C(/etc/shells) entry of C(o0_paths).
+          type: dict
       sample:
         /bin/bash: {}
         /bin/sh:
@@ -831,12 +909,18 @@ ansible_facts:
               umask: '0022'
               locale:
                 language: en_US.UTF-8
+            evidence:
+              commands:
+                - env
           /home/o0-o:
             config:
               env:
                 HOME: /home/o0-o
                 PATH: /home/o0-o/bin:/usr/bin:/bin
               umask: '0077'
+            evidence:
+              commands:
+                - env
     o0_paths:
       description:
         - What the gather observed about the paths it touched, keyed

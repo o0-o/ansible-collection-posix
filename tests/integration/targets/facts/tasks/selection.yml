@@ -84,9 +84,15 @@
     that:
       - gathered.keys() | list == ['o0_users']
       - gathered['o0_users'] | length == 1
-      - entry.keys() | list | sort == ['environment', 'locale', 'uid']
+      - entry.keys() | list | sort
+        == ['environment', 'evidence', 'locale', 'uid']
       - entry['environment']['HOME'] is string
       - entry['environment'] | length > 0
+      # A variable is asked for by a shell snippet rather than by an
+      # argv of its own, so the subset names what ran it and the id
+      # that says whose answers these are
+      - entry['evidence']['commands'] == ['id', 'sh']
+      - entry['evidence']['files'] is not defined
     fail_msg: >-
       the environment subset published more than an identity's
       environment: {{ gathered.keys() | list | sort }}
@@ -105,11 +111,18 @@
     that:
       - gathered.keys() | list | sort
         == ['o0_hardware', 'o0_network', 'o0_os']
-      - gathered['o0_os'].keys() | list == ['kernel']
-      - gathered['o0_network'].keys() | list == ['hostname']
-      - gathered['o0_hardware'].keys() | list == ['baseboard']
+      - gathered['o0_os'].keys() | list | sort == ['evidence', 'kernel']
+      - gathered['o0_network'].keys() | list | sort
+        == ['evidence', 'hostname']
+      - gathered['o0_hardware'].keys() | list | sort
+        == ['baseboard', 'evidence']
       - gathered['o0_hardware']['baseboard']['architecture'] is string
       - gathered['o0_users'] is not defined
+      # One command answered for all three, and each of the three
+      # says so rather than leaving a reader to know it
+      - gathered['o0_os']['evidence']['commands'] == ['uname']
+      - gathered['o0_network']['evidence']['commands'] == ['uname']
+      - gathered['o0_hardware']['evidence']['commands'] == ['uname']
     fail_msg: >-
       uname did not publish the kernel, the hostname and the
       architecture alone: {{ gathered }}
@@ -125,10 +138,11 @@
   ansible.builtin.assert:
     that:
       - gathered.keys() | list == ['o0_os']
-      - gathered['o0_os'].keys() | list == ['timezone']
+      - gathered['o0_os'].keys() | list | sort == ['evidence', 'timezone']
       - gathered['o0_os']['timezone']['abbreviation'] is string
       - gathered['o0_os']['timezone']['offset']
         is match('^[+-][0-9]{4}$')
+      - gathered['o0_os']['evidence']['commands'] == ['date']
     fail_msg: >-
       the timezone subset published something else: {{ gathered }}
 
@@ -146,9 +160,13 @@
   ansible.builtin.assert:
     that:
       - gathered.keys() | list == ['o0_os']
-      - gathered['o0_os'].keys() | list == ['config']
+      - gathered['o0_os'].keys() | list | sort == ['config', 'evidence']
       - gathered['o0_os']['config']['ARG_MAX'] is integer
       - gathered['o0_os']['config']['PATH'] is string
+      # These variables are the fact, not evidence for one, so the
+      # namespace names what was consulted and nothing more
+      - gathered['o0_os']['evidence']['commands'] == ['getconf']
+      - gathered['o0_os']['evidence']['config'] is not defined
     fail_msg: >-
       the config subset published something else: {{ gathered }}
 
@@ -168,7 +186,9 @@
     that:
       - gathered.keys() | list == ['o0_users']
       - gathered['o0_users'].keys() | list == [facts_uid]
-      - entry.keys() | list | sort == ['limits', 'uid', 'umask']
+      - entry.keys() | list | sort
+        == ['evidence', 'limits', 'uid', 'umask']
+      - entry['evidence']['commands'] == ['id', 'sh']
       - entry['uid'] == facts_uid | int
       - entry['umask'] is match('^0[0-7]{3}$')
       - entry['limits'] is mapping
@@ -287,8 +307,14 @@
   ansible.builtin.assert:
     that:
       - gathered.keys() | list == ['o0_storage']
-      - gathered['o0_storage'].keys() | list == ['mounts']
+      - gathered['o0_storage'].keys() | list | sort
+        == ['evidence', 'mounts']
       - gathered['o0_storage']['mounts']['/'] is mapping
+      # One enumeration answered for every mount there is, so the
+      # namespace names it once rather than each mount naming it over,
+      # and beside it the interface each filesystem was asked through
+      - gathered['o0_storage']['evidence']['commands']
+        == ['df', 'getconf', 'mount']
     fail_msg: >-
       the mounts subset published something else: {{ gathered }}
 
@@ -311,7 +337,8 @@
   ansible.builtin.assert:
     that:
       - gathered.keys() | list | sort == expected | sort
-      - gathered['o0_storage'].keys() | list == ['mounts']
+      - gathered['o0_storage'].keys() | list | sort
+        == ['evidence', 'mounts']
       - not facts_has_fstab | bool or
         gathered['o0_paths']['/etc/fstab']['config'] is sequence
     fail_msg: >-

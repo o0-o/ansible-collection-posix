@@ -17,8 +17,8 @@ X/Open, and SUS compliance information.
 Every verdict this publishes names what decided it, in the one
 provenance vocabulary the collection speaks: ``evidence``, keyed by
 kind of origin.  Compliance reads no files, so it carries the two
-kinds it attempts - ``commands``, the argv of each probe as it was
-executed, and ``config``, the POSIX configuration variables it read
+kinds it attempts - ``commands``, the names of the probes it
+consulted, and ``config``, the POSIX configuration variables it read
 and the values they answered with, keyed and typed the way
 ``o0_os.config`` keys and types them.  A value lives in the evidence
 rather than being pointed at, because a compliance gather can run
@@ -45,6 +45,10 @@ from ansible_collections.o0_o.posix.plugins.module_utils.command_spec import (
 )
 from ansible_collections.o0_o.posix.plugins.module_utils.command_utils import (
     process_command_lookups,
+)
+from ansible_collections.o0_o.posix.plugins.module_utils.evidence_utils import (  # noqa: E501
+    command_name,
+    merge_evidence,
 )
 from ansible_collections.o0_o.posix.plugins.module_utils.getconf_utils import (
     _answered,
@@ -242,24 +246,22 @@ def missing_commands(compliance: dict[str, Any]) -> list[str]:
 
 @typechecked
 def _name_command(evidence: dict[str, Any], command: Any) -> None:
-    """Name one probe on an evidence record, as executed and once.
+    """Name one probe on an evidence record, once.
 
-    A command is argv, so a spec that names its command as a string -
-    a shell reading it back, which is a different thing from a command
-    being run - names no argv and is left unnamed rather than
-    published as one.  Nothing in the compliance sweep is written that
-    way.
+    What is named is the command, not the invocation: XSI is asked for
+    two variables and XCU looks for ninety utilities, and a record
+    that spelled every one of those out would bury the answer under
+    its own repetitions.  What was asked is in ``config`` and what was
+    missing is in ``missing``; this says what was consulted.
 
     :param dict[str, Any] evidence: The record to add to, edited in
         place
     :param Any command: The command as the request carried it
     """
-    if not isinstance(command, (list, tuple)) or not command:
-        return
-
-    argv = [str(arg) for arg in command]
-    if argv not in evidence["commands"]:
-        evidence["commands"].append(argv)
+    name = command_name(command)
+    if name is not None and name not in evidence["commands"]:
+        evidence["commands"].append(name)
+        evidence["commands"].sort()
 
 
 @typechecked
@@ -268,11 +270,12 @@ def _record_probe(standard: dict[str, Any], result: dict[str, Any]) -> None:
 
     The probe is a command and what it read is a POSIX configuration
     variable, so both kinds of the one record are written here: the
-    argv that ran, and the variable it answered with under the value
-    it answered.  The value is typed the way ``o0_os.config`` types
-    it - an integer where the host printed a number - because the two
-    are the same fact read at two moments and a consumer joining them
-    by variable name has to find one answer, not two spellings of it.
+    command that ran, and the variable it answered with under the
+    value it answered.  The value is typed the way ``o0_os.config``
+    types it - an integer where the host printed a number - because
+    the two are the same fact read at two moments and a consumer
+    joining them by variable name has to find one answer, not two
+    spellings of it.
 
     A variable the host would not answer is named by the command that
     asked for it and left out of the configuration, which is what
@@ -307,22 +310,15 @@ def _borrow_evidence(
     standards it is composed of, so whatever decided those decided it,
     and it names their evidence as its own.  That is what lets a
     consumer read one standard's support and the support for it
-    without knowing which other standards add up to it.  Origins are
-    laid down in the order the composition names them and once each.
+    without knowing which other standards add up to it.
 
     :param dict[str, Any] standard: The derived standard, edited in
         place
     :param dict[str, Any] decided_by: The standards it is composed of,
         in composition order
     """
-    evidence = standard["evidence"]
     for source in decided_by:
-        borrowed = source["evidence"]
-        for argv in borrowed["commands"]:
-            if argv not in evidence["commands"]:
-                evidence["commands"].append(argv)
-        for variable, value in borrowed["config"].items():
-            evidence["config"].setdefault(variable, value)
+        merge_evidence(standard["evidence"], source["evidence"])
 
 
 @typechecked
@@ -346,7 +342,7 @@ def process_all_compliance_command_results(
     list back out.
 
     Every verdict names what decided it in ``evidence``.  A standard
-    probed by getconf names the argv that asked and the variable it
+    probed by getconf names the command that asked and the variable it
     answered; a standard that records a utility as missing names the
     lookup that missed it; and POSIX and SUS, which probe nothing of
     their own, name the evidence of the standards they are composed
@@ -393,9 +389,8 @@ def process_all_compliance_command_results(
     lookup_results = processed_results["lookup_command"]
     paths, missing, errors = process_command_lookups(lookup_results)
 
-    # The argv each utility was looked for with, as it was executed,
-    # so a standard names the lookup that decided a miss rather than
-    # a rendering of it
+    # What each utility was looked for with, so a standard names the
+    # lookup that decided a miss rather than a spelling of it
     lookups = {
         (result.get("args") or {}).get("cmd"): result.get("command")
         for result in lookup_results

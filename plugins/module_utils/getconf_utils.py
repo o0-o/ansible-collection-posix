@@ -54,6 +54,11 @@ from ansible_collections.o0_o.core.plugins.module_utils import (
     process_command_spec,
 )
 
+from ansible_collections.o0_o.posix.plugins.module_utils.evidence_utils import (  # noqa: E501
+    commands_run,
+    compose_evidence,
+)
+
 # The variables the sweep asks for: the sysconf limits, the confstr
 # strings and the standard versions, which is the whole host-invariant
 # class.  Both spellings of the ones that have two are asked, because
@@ -344,7 +349,17 @@ def process_getconf_command_results(
     if not config:
         return {}, []
 
-    return {"o0_os": {"config": config}}, []
+    # The namespace names what was consulted, and nothing more: these
+    # variables are the fact here rather than evidence for one, and a
+    # fact is not evidence for itself.
+    return {
+        "o0_os": {
+            "config": config,
+            "evidence": compose_evidence(
+                commands=commands_run(cmds_completed, "getconf_sysconf")
+            ),
+        }
+    }, []
 
 
 __all__ = [

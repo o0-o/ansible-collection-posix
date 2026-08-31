@@ -336,6 +336,43 @@ def test_a_shell_named_and_observed_carries_its_rows() -> None:
     assert shells["/bin/zsh"] == {}
 
 
+def test_a_row_names_the_probe_that_made_it() -> None:
+    """Test provenance sits on the row, because the row is where a
+    probe happened: one shell observed out of two homes is two
+    observations. A shell nothing was run for carries nothing, since
+    there is no observation for evidence to support.
+    """
+    shells = compose_shells(
+        ["/bin/sh", "/bin/zsh"],
+        {
+            "/bin/sh": {
+                SHELL_SYSTEM_HOME: {"umask": "0022"},
+                "/home/o0-o": {"umask": "0077"},
+            }
+        },
+        {"commands": ["env"]},
+    )
+
+    for home in ("/dev/null", "/home/o0-o"):
+        assert shells["/bin/sh"][home]["evidence"] == {"commands": ["env"]}
+
+    assert shells["/bin/zsh"] == {}
+
+    # Each row's record is its own rather than one record shared
+    shells["/bin/sh"]["/dev/null"]["evidence"]["commands"].append("sh")
+    assert shells["/bin/sh"]["/home/o0-o"]["evidence"]["commands"] == ["env"]
+
+
+def test_a_row_composed_without_a_probe_named_carries_none() -> None:
+    """Test a caller that names nothing gets a row with no evidence
+    rather than a row claiming an origin it was never given."""
+    shells = compose_shells(
+        None, {"/bin/sh": {SHELL_SYSTEM_HOME: {"umask": "0022"}}}
+    )
+
+    assert shells["/bin/sh"]["/dev/null"] == {"config": {"umask": "0022"}}
+
+
 def test_a_host_that_named_no_shells_and_ran_none_composes_nothing() -> None:
     """Test an empty answer is empty rather than invented."""
     assert compose_shells() == {}

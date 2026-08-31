@@ -36,6 +36,10 @@ from ansible_collections.o0_o.core.plugins.module_utils import (
     process_command_spec,
 )
 
+from ansible_collections.o0_o.posix.plugins.module_utils.evidence_utils import (  # noqa: E501
+    commands_run,
+    compose_evidence,
+)
 from ansible_collections.o0_o.posix.plugins.module_utils.filter_utils import (
     decode_declared_content,
     normalize_source,
@@ -536,7 +540,10 @@ def process_mount_command_results(
     """Process df and mount results into the mounts fact.
 
     Both commands feed one fact, composed the way the mounts module
-    composes it, so a gather and a standalone run answer alike.
+    composes it, so a gather and a standalone run answer alike.  The
+    namespace names them together rather than each mount naming them
+    over again: one enumeration answered for every mount there is, so
+    there is no mount whose provenance differs from another's.
 
     :param list[dict[str, Any]] cmds_completed: List of command
         result dicts from run plugin
@@ -566,4 +573,11 @@ def process_mount_command_results(
 
     mounts, _notes = compose_mounts(df_entries, mount_entries)
 
-    return {"o0_storage": {"mounts": mounts}}, errors
+    return {
+        "o0_storage": {
+            "mounts": mounts,
+            "evidence": compose_evidence(
+                commands=commands_run(cmds_completed, "df", "mount")
+            ),
+        }
+    }, errors

@@ -75,15 +75,14 @@
     standards: >-
       {{ ['posix', 'sus', 'xcu', 'xsh', 'xsi']
          | map('extract', compliance) | list }}
-    argvs: >-
-      {{ standards | map(attribute='evidence.commands')
-         | flatten(levels=1) }}
-    lookups: >-
-      {{ argvs | selectattr('0', 'eq', 'command')
-         | map(attribute='2') | unique | sort }}
+    consulted: >-
+      {{ standards | map(attribute='evidence.commands') | flatten }}
     read: >-
       {{ standards | map(attribute='evidence.config')
          | map('dict2items') | flatten }}
+    # The two standards that require utilities, and whether either
+    # records a miss at all
+    missed: "{{ compliance_result_reg['missing_commands'] }}"
   ansible.builtin.assert:
     that:
       # Both kinds compliance attempts, on every standard; the kind it
@@ -94,8 +93,15 @@
         | list | length == 0
       - standards | selectattr('evidence.files', 'defined')
         | list | length == 0
-      # A command is argv, never a string a shell would read back
-      - argvs | select('string') | list | length == 0
+      # A command is the name it is known by, sorted and once each -
+      # the getconf that asked, and the command -v that missed
+      - consulted | reject('string') | list | length == 0
+      - consulted | reject('in', ['command', 'getconf'])
+        | list | length == 0
+      - compliance['xsi']['evidence']['commands']
+        == compliance['xsi']['evidence']['commands'] | unique | sort
+      # A lookup is named where a miss was recorded and nowhere else
+      - ('command' in consulted) == (missed | length > 0)
       # A configuration variable is named as getconf names it, and
       # valued as o0_os.config values one - nothing coerced on the way
       # in, and a limit is never a flag
@@ -105,15 +111,13 @@
         | list | length == 0
       - read | map(attribute='value') | reject('integer')
         | reject('string') | reject('none') | list | length == 0
-      # The lookups a standard names are exactly the misses it records
-      - lookups == compliance_result_reg['missing_commands']
       # The namespace's own verdict names its own probe
       - compliance['sh_posix_compliant'] is boolean
-      - compliance['evidence']['commands'] | length == 1
-      - compliance['evidence']['commands'][0][0] == 'sh'
+      - compliance['evidence']['commands'] == ['sh']
       - compliance['evidence']['config'] is not defined
     fail_msg: >-
-      a compliance verdict does not name what decided it: {{ argvs }}
+      a compliance verdict does not name what decided it:
+      {{ consulted }}
 
 # A name that cannot be a file names no candidate path, so only a
 # miss of something a directory could hold has a null to file.

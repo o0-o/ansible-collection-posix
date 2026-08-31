@@ -25,6 +25,10 @@ from ansible_collections.o0_o.core.plugins.module_utils import (
     process_command_spec,
 )
 
+from ansible_collections.o0_o.posix.plugins.module_utils.evidence_utils import (  # noqa: E501
+    commands_run,
+    compose_evidence,
+)
 from ansible_collections.o0_o.posix.plugins.module_utils.jc_utils import (
     jc_parse,
 )
@@ -207,6 +211,13 @@ def process_uname_command_results(
 
     :param list[dict[str, Any]] cmds_completed: List of command
         result dicts from run plugin
+    One command answers for three namespaces, so each of the three
+    names it: a consumer reading any one of them reads what was
+    consulted for it without having to know the other two came out of
+    the same invocation.
+
+    :param list[dict[str, Any]] cmds_completed: List of command
+        result dicts from run plugin
     :returns tuple[dict[str, Any], list[Exception]]: Tuple of
         (facts_dict, errors) where facts_dict has o0_os, o0_network,
         and o0_hardware namespace keys
@@ -218,6 +229,7 @@ def process_uname_command_results(
 
     # Map uname fields to fact namespaces
     facts = {}
+    evidence = compose_evidence(commands=commands_run(cmds_completed, "uname"))
 
     if "kernel" in uname_facts:
         facts.setdefault("o0_os", {})["kernel"] = uname_facts["kernel"]
@@ -231,5 +243,12 @@ def process_uname_command_results(
         facts.setdefault("o0_hardware", {}).setdefault("baseboard", {})[
             "architecture"
         ] = uname_facts["architecture"]
+
+    # Each namespace's record is its own, so a consumer writing to one
+    # of them cannot rewrite another's
+    for namespace in facts.values():
+        namespace["evidence"] = {
+            kind: list(origins) for kind, origins in evidence.items()
+        }
 
     return facts, errors

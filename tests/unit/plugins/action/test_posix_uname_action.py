@@ -118,6 +118,21 @@ def test_gather_sorts_the_same_fields_into_namespaces() -> None:
     assert facts["o0_hardware"]["baseboard"]["architecture"] == "x86_64"
 
 
+def test_each_namespace_names_the_command_that_answered_for_it() -> None:
+    """Test one command answers for three namespaces and each of the
+    three says so, rather than leaving a consumer of one of them to
+    know the other two came out of the same invocation."""
+    facts, _errors = process_uname_command_results(_answer(UNAME_A))
+
+    for namespace in ("o0_os", "o0_network", "o0_hardware"):
+        assert facts[namespace]["evidence"] == {"commands": ["uname"]}
+
+    # Each namespace's record is its own, so writing to one of them
+    # cannot rewrite another's
+    facts["o0_os"]["evidence"]["commands"].append("date")
+    assert facts["o0_network"]["evidence"]["commands"] == ["uname"]
+
+
 def test_run_emits_warnings_on_errors(monkeypatch, plugin) -> None:
     """Test that a host whose uname says nothing warns."""
     monkeypatch.setattr(plugin, "_run", lambda commands, **kw: _answer(""))

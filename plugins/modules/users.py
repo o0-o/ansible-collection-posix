@@ -174,10 +174,10 @@ o0_users:
         - C(files) names the paths that were read. Each is a key of
           C(o0_paths), so an entry joins against the file it came out
           of.
-        - C(commands) names the enumerations that were run, each as
-          the argv it was run with rather than as a string. Argv is
-          the form a command was executed in, and a string would imply
-          a shell reading it back.
+        - C(commands) names the enumerations that were consulted, by
+          the name each is known by rather than by the argv it was run
+          with. The name says what was consulted, which is what a
+          consumer has to know; what it said is the entry itself.
         - Both kinds are always present, because both are always
           attempted. A kind that contributed nothing to the entry is
           empty rather than absent, so a host with no C(getent)
@@ -193,16 +193,17 @@ o0_users:
           elements: str
           sample: ["/etc/passwd"]
         commands:
-          description: The commands that were run, each as argv
+          description: >-
+            The commands that were consulted, by the name each is
+            known by
           type: list
-          elements: list
-          sample: [["getent", "passwd"]]
+          elements: str
+          sample: ["getent"]
       sample:
         files:
           - /etc/passwd
         commands:
-          - - getent
-            - passwd
+          - getent
 o0_groups:
   description: >-
     Mapping of groups keyed by stringified GID. Each entry includes the
@@ -228,8 +229,7 @@ o0_groups:
         files:
           - /etc/group
         commands:
-          - - getent
-            - group
+          - getent
 o0_shell_files:
   description: >-
     Mapping of the login shell paths users actually hold to their file
