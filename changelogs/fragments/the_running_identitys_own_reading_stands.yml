@@ -1,0 +1,12 @@
+# vim: ts=2:sw=2:sts=2:et:ft=yaml.ansible
+# -*- mode: yaml; yaml-indent-offset: 2; indent-tabs-mode: nil; -*-
+---
+bugfixes:
+  - >-
+    cron - the running identity's own crontab, read with ``crontab -l``,
+    stands where the spool sweep names that identity too. A root run
+    finds root's own crontab in the spool, and that file used to
+    displace the reading the module documents for whoever is asking,
+    leaving root's entry naming a spool file and ``cat`` where every
+    other identity's names ``crontab``
+    (https://github.com/o0-o/ansible-collection-posix/pull/XXX).

@@ -854,7 +854,10 @@ def compose_cron_holdings(
     The drop-in files join the ones the survey read, and each spool
     file is filed under the uid the host said owns it - asked with
     ``id``, so that nothing here depends on a passwd file this has not
-    read.
+    read.  The running identity's own reading stands where the sweep
+    names it too: root's spool file is root's crontab read a second
+    way, and the first way - ``crontab -l``, the command POSIX defines
+    for it - is the one the module documents for whoever is asking.
 
     Once everything is read, each crontab is held against the cron the
     host's kernel runs, and every job that cron would refuse earns a
@@ -924,6 +927,11 @@ def compose_cron_holdings(
 
         uid = uids.get(path.rsplit("/", 1)[-1])
         if uid is None:
+            continue
+
+        # The survey already answered for this uid by the command POSIX
+        # defines, and the spool file is that crontab read a second way
+        if str(uid) in views:
             continue
 
         views[str(uid)] = {

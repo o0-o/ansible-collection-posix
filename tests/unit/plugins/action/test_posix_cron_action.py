@@ -265,6 +265,38 @@ def test_the_running_identity_reads_its_own_with_crontab(
     assert len(entry["crontab"]["jobs"]) == 6
 
 
+def test_the_running_identitys_own_reading_stands_over_the_spools(
+    monkeypatch, plugin
+) -> None:
+    """Test root's spool file does not displace root's own reading.
+
+    A root run sweeps the spools and finds its own crontab there too.
+    That file is the same crontab read a second way, and the first way
+    - crontab -l, the command POSIX defines for it - is the one the
+    module documents for whoever is asking, so it is the one that
+    stands and the one the evidence names.
+    """
+    _answer(
+        monkeypatch,
+        plugin,
+        held={"/var/spool/cron/root": ALICE},
+        dropins=[],
+        holders=["root"],
+        own=ALICE,
+        uid="0",
+    )
+    UIDS["root"] = 0
+    try:
+        result = plugin.run(task_vars={})
+    finally:
+        del UIDS["root"]
+
+    entry = result["o0_users"]["0"]
+    assert entry["evidence"] == {"commands": ["crontab"]}
+    assert len(entry["crontab"]["jobs"]) == 6
+    assert list(result["o0_users"]) == ["0"]
+
+
 def test_a_user_holding_no_crontab_is_null_and_not_absent(
     monkeypatch, plugin
 ) -> None:
