@@ -427,7 +427,10 @@ class ActionModule(ShellsPosixActionBase, ActionBase):
 
         Each is composed where every producer of its fact composes it,
         so the mounts module, the users module and the cron module
-        attach the same answers to the same entries.
+        attach the same answers to the same entries.  The crontabs are
+        also held against the host's cron here, once everything that
+        was read is in hand, and a job it would refuse is warned about
+        the way the cron module warns about it.
 
         :param dict[str, Any] mounts: The composed mounts fact, or an
             empty mapping where the mounts subset did not run
@@ -452,22 +455,28 @@ class ActionModule(ShellsPosixActionBase, ActionBase):
                 )
             )
 
-        if not requests:
+        # A batch with nothing to ask is not sent. The cron verdict
+        # below does not wait on one: a host with no drop-ins and no
+        # spools still has a system crontab and a crontab of its own to
+        # hold against its cron, and holding them is done once, here,
+        # where everything that was read is in hand.
+        run_results: list[dict[str, Any]] = []
+        if requests:
+            self._display.vvv(
+                f"Asking {len(requests)} command(s) of"
+                f" {len(mounts)} mountpoint(s) and"
+                f" {len(shells)} shell context(s)"
+            )
+
+            run_results = self._run(
+                requests,
+                parallel=True,
+                fail_fast=False,
+                task_vars=task_vars,
+                check_mode=False,
+            )
+        elif answers is None:
             return {}
-
-        self._display.vvv(
-            f"Asking {len(requests)} command(s) of"
-            f" {len(mounts)} mountpoint(s) and"
-            f" {len(shells)} shell context(s)"
-        )
-
-        run_results = self._run(
-            requests,
-            parallel=True,
-            fail_fast=False,
-            task_vars=task_vars,
-            check_mode=False,
-        )
 
         facts: dict[str, Any] = {}
 
@@ -494,6 +503,11 @@ class ActionModule(ShellsPosixActionBase, ActionBase):
 
             for err in held["errors"]:
                 self._display.warning(f"[{self.inventory_hostname}] {err}")
+
+            # A job the host's cron would refuse is warned about and
+            # published as written, as the cron module does
+            for warning in held["warnings"]:
+                self._display.warning(f"[{self.inventory_hostname}] {warning}")
 
             paths = compose_cron_paths(
                 held["files"], answers["dropins"], held["there"]

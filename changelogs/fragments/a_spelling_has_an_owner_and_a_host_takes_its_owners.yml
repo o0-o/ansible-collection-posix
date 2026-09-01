@@ -1,0 +1,38 @@
+# vim: ts=2:sw=2:sts=2:et:ft=yaml.ansible
+# -*- mode: yaml; yaml-indent-offset: 2; indent-tabs-mode: nil; -*-
+---
+minor_changes:
+  - >-
+    cron - every crontab read is held against the cron the host's
+    kernel runs, and a job that cron would refuse earns a warning
+    naming the file or the user, the line and the spelling. The fact
+    still carries the job as written: a warning is not an exclusion at
+    the fact layer, and a consumer reading the file sees the file. The
+    same warning is given by the ``cron`` subset of ``facts``
+    (https://github.com/o0-o/ansible-collection-posix/pull/XXX).
+  - >-
+    cron - whose spellings a host's cron takes is decided by the kernel
+    and no further. POSIX spells a field as a number, a range, a comma
+    list or ``*``; the steps, the names, a weekday of ``7`` and the
+    eight special strings are Vixie's, which every supported cron
+    takes; ``~`` is OpenBSD's; ``@every_minute`` and ``@every_second``
+    are FreeBSD's. Linux is held to the Vixie family - cronie, Debian's
+    cron and busybox's are all of it or a subset, and the kernel does
+    not say which - so on Linux only a spelling outside the family
+    warns. A kernel the collection does not know gets no verdict rather
+    than a wrong one
+    (https://github.com/o0-o/ansible-collection-posix/pull/XXX).
+  - >-
+    cron - the kernel is asked with ``uname -s`` in the same batch as
+    the crontabs, so the verdict rides no extra round trip and needs no
+    fact to have been gathered first - a gather of ``cron`` alone, or a
+    raw-lane run with no facts at all, still has it
+    (https://github.com/o0-o/ansible-collection-posix/pull/XXX).
+  - >-
+    cron_utils - the dialect layer is a library surface. An OS
+    collection that knows which cron its hosts run holds a crontab to
+    that cron with the same functions - ``field_dialects``,
+    ``schedule_dialects``, ``schedule_refusal``, ``invalid_cron_jobs``,
+    ``cron_refusals`` - passing its own dialect set where the kernel
+    alone would under-decide it
+    (https://github.com/o0-o/ansible-collection-posix/pull/XXX).

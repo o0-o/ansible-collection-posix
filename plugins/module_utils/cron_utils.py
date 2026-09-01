@@ -45,6 +45,17 @@ rewriting any into another spelling would claim a file the host does
 not have.  What they mean in wall-clock terms is a question for
 whoever asks it, not an answer to store.
 
+Kept as written is not the same as taken everywhere.  Each spelling
+has an owner, and a host's cron takes its owner's spellings and no
+others: a ``~`` in a Linux drop-in is a line cronie will log a
+complaint about and skip, and a crontab holding one describes a job
+the host will never run.  The dialect layer below says whose each
+spelling is and what the cron on each kernel takes, so that a
+producer can warn about a job the host will refuse, and the schedule
+lookup can leave it out the way cron does.  The fact itself publishes
+the line as written either way: a warning is not an exclusion at the
+fact layer, and a consumer reading the file sees the file.
+
 The parse is not routed through jc, and the reason is on record so
 that nobody has to find it out again.  jc 1.25.7 ships ``crontab`` and
 ``crontab-u`` parsers, and every corpus in the unit suite was run
@@ -79,7 +90,7 @@ from __future__ import annotations
 
 import re
 
-from typing import Any, Optional
+from typing import Any, Iterator, Optional
 
 from ansible_collections.o0_o.posix.plugins.module_utils.evidence_utils import (  # noqa: E501
     EVIDENCE,
@@ -212,6 +223,64 @@ CRON_DROPIN_DIR = "/etc/cron.d"
 # What reading a file is done with, here as everywhere
 FILE_READ_COMMANDS = ("cat",)
 
+# --- Whose spelling a schedule is written in -------------------------
+#
+# POSIX defines the five fields and spells each as a number, a range, a
+# comma list or a ``*`` that is the whole field.  Everything else is an
+# extension with an owner: the steps, the names, a weekday of 7 and the
+# eight special strings are Vixie's, and every supported cron takes
+# them; ``~`` is OpenBSD's; ``@every_minute`` and ``@every_second`` are
+# FreeBSD's.  A spelling is classified by whose it is so that a host
+# can be asked whether its cron takes it.
+POSIX = "posix"
+VIXIE = "vixie"
+OPENBSD = "openbsd"
+FREEBSD = "freebsd"
+CRON_DIALECTS = (POSIX, VIXIE, OPENBSD, FREEBSD)
+
+# How each owner is written in a message about its spelling
+CRON_DIALECT_NAMES = {
+    POSIX: "POSIX",
+    VIXIE: "Vixie",
+    OPENBSD: "OpenBSD",
+    FREEBSD: "FreeBSD",
+}
+
+# What the cron on each kernel takes, keyed by the kernel's name the
+# way ``o0_os.kernel.name`` folds it.  The kernel decides this much and
+# no more.  Linux runs cronie, Debian's Vixie or busybox's, all of them
+# the Vixie family or a subset of it, and which one is not derivable
+# from the kernel - so Linux is held to the family and a spelling
+# outside it is what earns a warning there.  A kernel not named here
+# runs a cron nothing here knows, and gets no verdict.
+CRON_KERNEL_DIALECTS: dict[str, frozenset[str]] = {
+    "linux": frozenset((POSIX, VIXIE)),
+    "darwin": frozenset((POSIX, VIXIE)),
+    "netbsd": frozenset((POSIX, VIXIE)),
+    "freebsd": frozenset((POSIX, VIXIE, FREEBSD)),
+    "openbsd": frozenset((POSIX, VIXIE, OPENBSD)),
+}
+
+# The special strings by owner
+VIXIE_SPECIALS = CRON_SPECIALS[:8]
+FREEBSD_SPECIALS = CRON_SPECIALS[8:]
+
+# What each field counts from and to.  Vixie takes 7 for Sunday beside
+# 0, which POSIX does not, so a weekday of 7 is a spelling of Vixie's
+# rather than a number out of range.
+CRON_FIELD_BOUNDS = {
+    "minute": (0, 59),
+    "hour": (0, 23),
+    "day": (1, 31),
+    "month": (1, 12),
+    "weekday": (0, 7),
+}
+POSIX_WEEKDAY_TOP = 6
+
+# What asks the host which kernel it is, which is the one thing about
+# its cron the kernel does decide
+CRON_KERNEL_COMMANDS = ("uname",)
+
 
 def _unquoted(value: str) -> str:
     """Strip one matching pair of quotes, the way cron does.
@@ -294,6 +363,23 @@ def _parse_job(
     return job if job["command"] else None
 
 
+def _crontab_lines(text: Optional[str]) -> Iterator[tuple[int, str]]:
+    """The lines of a crontab that configure something.
+
+    Blank lines and comments are what a crontab ignores, so they are
+    passed over here; everything else is numbered the way the file
+    numbers it, which is how a message about a line names it.
+
+    :param Optional[str] text: The file's contents
+    :returns Iterator[tuple[int, str]]: Each line's number and its
+        text, stripped
+    """
+    for number, line in enumerate((text or "").splitlines(), start=1):
+        if not line.strip() or line.lstrip().startswith("#"):
+            continue
+        yield number, line.strip()
+
+
 def parse_crontab(
     text: str,
     user_column: bool = False,
@@ -311,16 +397,13 @@ def parse_crontab(
     environment: dict[str, str] = {}
     jobs: list[dict[str, Any]] = []
 
-    for number, line in enumerate((text or "").splitlines(), start=1):
-        if not line.strip() or line.lstrip().startswith("#"):
-            continue
-
-        job = _parse_job(line.strip(), user_column)
+    for number, line in _crontab_lines(text):
+        job = _parse_job(line, user_column)
         if job is not None:
             jobs.append(job)
             continue
 
-        found = CRON_ASSIGNMENT.match(line.strip())
+        found = CRON_ASSIGNMENT.match(line)
         if found is not None:
             environment[found.group("name")] = _unquoted(found.group("value"))
             continue
@@ -331,6 +414,28 @@ def parse_crontab(
         )
 
     return {"environment": environment, "jobs": jobs}
+
+
+def cron_job_lines(
+    text: Optional[str],
+    user_column: bool = False,
+) -> list[int]:
+    """Which lines of a crontab are its jobs.
+
+    In the order ``parse_crontab`` answers the jobs, so the two line up
+    by position and a job read out of a parsed crontab can be named by
+    the line it came from without the parse carrying line numbers into
+    the fact.
+
+    :param Optional[str] text: The file's contents
+    :param bool user_column: Whether rows here name the user to run as
+    :returns list[int]: The line numbers, as the file numbers them
+    """
+    return [
+        number
+        for number, line in _crontab_lines(text)
+        if _parse_job(line, user_column) is not None
+    ]
 
 
 def _parse_crontab_file(
@@ -443,12 +548,54 @@ def _parse_spool_names(
     return (names or None), None
 
 
+def _fold_kernel(name: str) -> str:
+    """Fold a kernel's name the way ``o0_os.kernel.name`` folds it.
+
+    :param str name: The name as uname prints it
+    :returns str: The name lowered, with spaces made underscores
+    """
+    return name.strip().lower().replace(" ", "_")
+
+
+def _parse_kernel_name(
+    rc: int,
+    output: str,
+    e_prefix: str,
+) -> tuple[Optional[str], Optional[list[Exception]]]:
+    """Canonical COMMAND_SPEC parser for the kernel probe.
+
+    ``uname -s`` prints the one word that decides which cron's
+    spellings a host takes.  A host that would not answer - no uname,
+    which POSIX does not permit but the batch survives - gets no
+    verdict rather than a wrong one.
+
+    :param int rc: The exit status, which says whether it answered
+    :param str output: Raw stdout of ``uname -s``
+    :param str e_prefix: Error prefix for context
+    :returns tuple[Optional[str], Optional[list[Exception]]]: The
+        kernel's name folded, or None, and never an error
+    """
+    del e_prefix  # not answering is not a fault
+
+    if rc != 0:
+        return None, None
+
+    lines = (output or "").strip().splitlines()
+
+    return (_fold_kernel(lines[0]) if lines else None), None
+
+
 def get_cron_survey_requests() -> list[dict[str, Any]]:
     """Build the batch that asks a host what it schedules.
 
-    Four questions that need no answer from each other: what the
+    Five questions that need no answer from each other: what the
     system crontab says, which drop-in files exist, whose crontabs the
-    spools hold, and what the running identity's own crontab is.
+    spools hold, what the running identity's own crontab is, and which
+    kernel this is.  The last rides here rather than being read off a
+    fact because a fact may not have been gathered - a gather of cron
+    alone, or a raw-lane run with no facts at all - and a verdict
+    about a crontab should come from the host the crontab was read
+    off, in the same batch.
 
     :returns list[dict[str, Any]]: Command requests for run plugin
     """
@@ -478,7 +625,12 @@ def get_cron_survey_requests() -> list[dict[str, Any]]:
         )
     )
 
-    for cmd_type in ("crontab_dropins", "crontab_spools", "crontab_self"):
+    for cmd_type in (
+        "crontab_dropins",
+        "crontab_spools",
+        "crontab_self",
+        "crontab_kernel",
+    ):
         asked = process_command_spec(CRON_COMMAND_SPEC, cmd_type=cmd_type)
         if cmd_type == "crontab_self":
             # A crontab is what answers here, whatever shell read the
@@ -545,11 +697,16 @@ def cron_survey_answers(
     batch the same way: the module that asks on its own and the gather
     that asks beside everything else.
 
+    A view carries the crontab's text under ``content`` beside what it
+    parses to.  The text is not published - a user's entry carries
+    what the crontab schedules, not its bytes - but a warning about a
+    line in it names the line, and the number is read off the text.
+
     :param list[dict[str, Any]] cmds_completed: Command results
     :returns dict[str, Any]: The files it read keyed by path, the user
         views it settled keyed by stringified uid, the drop-in paths
-        and crontab holders it named, and the errors a crontab it
-        could not read raised
+        and crontab holders it named, the kernel the host said it is,
+        and the errors a crontab it could not read raised
     """
     from ansible_collections.o0_o.posix.plugins.module_utils.file_utils import (  # noqa: E501
         process_file_command_results,
@@ -632,10 +789,27 @@ def cron_survey_answers(
 
         if not unaskable:
             view["crontab"] = own.get("parsed")
+            if view["crontab"] is not None:
+                view["content"] = next(
+                    (
+                        result["stdout"]
+                        for result in asked
+                        if isinstance(result.get("stdout"), str)
+                    ),
+                    None,
+                )
         views[str(uid)] = view
 
         for err in own.get("errors") or []:
             errors.append(err)
+
+    # Which kernel this is, which is what decides whose spellings its
+    # cron takes.  A probe that did not answer leaves it None, and None
+    # is no verdict rather than a wrong one.
+    kernel = None
+    probe = processed.get("crontab_kernel")
+    if isinstance(probe, dict) and isinstance(probe.get("parsed"), str):
+        kernel = probe["parsed"]
 
     return {
         "files": files,
@@ -643,6 +817,7 @@ def cron_survey_answers(
         "there": there,
         "dropins": named("crontab_dropins"),
         "holders": named("crontab_spools"),
+        "kernel": kernel,
         "errors": errors,
     }
 
@@ -676,10 +851,18 @@ def compose_cron_holdings(
     ``id``, so that nothing here depends on a passwd file this has not
     read.
 
+    Once everything is read, each crontab is held against the cron the
+    host's kernel runs, and every job that cron would refuse earns a
+    warning naming the crontab, the line and the spelling.  The job is
+    published as written all the same: the fact says what the file
+    says, and leaving a refused job out of a schedule is the schedule
+    lookup's business, where cron's own behaviour is being replicated.
+
     :param dict[str, Any] answers: What the survey settled and named
     :param list[dict[str, Any]] cmds_completed: The read batch's
         results
-    :returns dict[str, Any]: The files, the user views and the errors
+    :returns dict[str, Any]: The files, the user views, the kernel, the
+        warnings and the errors
     """
     from ansible_collections.o0_o.posix.plugins.module_utils.file_utils import (  # noqa: E501
         process_file_command_results,
@@ -740,15 +923,52 @@ def compose_cron_holdings(
 
         views[str(uid)] = {
             "crontab": config,
+            "content": files[path].get("parsed"),
             EVIDENCE: compose_evidence(
                 files=[path], commands=FILE_READ_COMMANDS
             ),
         }
 
+    kernel = answers.get("kernel")
+    warnings: list[str] = []
+
+    for path in sorted(files):
+        # A spool file is warned about as its owner's crontab, below
+        if path in spools:
+            continue
+        answered = files[path]
+        if answered.get("config") is None:
+            continue
+        warnings.extend(
+            cron_refusals(
+                answered["config"],
+                kernel,
+                path,
+                content=answered.get("parsed"),
+                user_column=True,
+            )
+        )
+
+    for uid in sorted(views, key=int):
+        view = views[uid]
+        if not isinstance(view.get("crontab"), dict):
+            continue
+        read = (view.get(EVIDENCE) or {}).get("files") or []
+        label = f"uid {uid}'s crontab"
+        if read:
+            label += f" ({read[0]})"
+        warnings.extend(
+            cron_refusals(
+                view["crontab"], kernel, label, content=view.get("content")
+            )
+        )
+
     return {
         "files": files,
         "views": views,
         "there": answers.get("there") or {},
+        "kernel": kernel,
+        "warnings": warnings,
         "errors": errors,
     }
 
@@ -872,9 +1092,428 @@ def compose_cron_users(
     return entries
 
 
+# --- The dialect layer -----------------------------------------------
+#
+# A library surface as much as a module's: an OS collection that knows
+# which cron its hosts run holds a crontab to that cron's dialects
+# with the same functions, passing its own set where the kernel alone
+# would under-decide it.
+
+
+def _atom_dialects(field: str, atom: str) -> Optional[set[str]]:
+    """Whose spelling one number or name in a field is.
+
+    :param str field: Which field, by the name the schedule uses
+    :param str atom: One number or name, as the file wrote it
+    :returns Optional[set[str]]: The dialects it draws on, or None
+        where no cron reads it
+    """
+    low, high = CRON_FIELD_BOUNDS[field]
+
+    if atom.isdigit():
+        value = int(atom)
+        if value < low or value > high:
+            return None
+        if field == "weekday" and value > POSIX_WEEKDAY_TOP:
+            return {VIXIE}
+        return {POSIX}
+
+    names = CRON_FIELD_NAMES[CRON_FIELDS.index(field)]
+    if atom.isalpha() and atom.lower() in names:
+        return {VIXIE}
+
+    return None
+
+
+def _element_dialects(
+    field: str,
+    element: str,
+    alone: bool,
+) -> Optional[set[str]]:
+    """Whose spelling one comma-separated element of a field is.
+
+    :param str field: Which field, by the name the schedule uses
+    :param str element: One element, as the file wrote it
+    :param bool alone: Whether the element is the whole field
+    :returns Optional[set[str]]: The dialects it draws on, or None
+        where no cron reads it
+    """
+    dialects: set[str] = set()
+
+    base, slash, step = element.partition("/")
+    if slash:
+        # A step is Vixie's, and a step of nothing is nobody's
+        if not step.isdigit() or int(step) == 0:
+            return None
+        dialects.add(VIXIE)
+
+    if base == "*":
+        # POSIX spells every value as a star that is the whole field;
+        # a star inside a list or under a step is Vixie's reading
+        dialects.add(POSIX if alone and not slash else VIXIE)
+        return dialects
+
+    if "~" in base:
+        # OpenBSD's random value: within a range, or within the whole
+        # field where an end is left off
+        low, _, high = base.partition("~")
+        for end in (low, high):
+            if not end:
+                continue
+            found = _atom_dialects(field, end)
+            if found is None:
+                return None
+            dialects |= found
+        dialects.add(OPENBSD)
+        return dialects
+
+    if "-" in base:
+        low, _, high = base.partition("-")
+        if not low or not high:
+            return None
+        for end in (low, high):
+            found = _atom_dialects(field, end)
+            if found is None:
+                return None
+            dialects |= found
+        return dialects
+
+    found = _atom_dialects(field, base)
+    if found is None:
+        return None
+
+    return dialects | found
+
+
+def field_dialects(field: str, value: Any) -> Optional[frozenset[str]]:
+    """Whose spelling one schedule field is written in.
+
+    :param str field: Which field, by the name the schedule uses
+    :param Any value: The field as the file wrote it
+    :returns Optional[frozenset[str]]: The dialects the spelling draws
+        on, or None where no cron reads it
+    """
+    if field not in CRON_FIELD_BOUNDS:
+        return None
+    if not isinstance(value, str) or not value:
+        return None
+
+    elements = value.split(",")
+    dialects: set[str] = set()
+
+    for element in elements:
+        found = _element_dialects(field, element, alone=len(elements) == 1)
+        if found is None:
+            return None
+        dialects |= found
+
+    return frozenset(dialects)
+
+
+def special_dialects(special: Any) -> Optional[frozenset[str]]:
+    """Whose form one special string is.
+
+    :param Any special: The name after the ``@``
+    :returns Optional[frozenset[str]]: The dialect that names it, or
+        None where no cron does
+    """
+    if special in VIXIE_SPECIALS:
+        return frozenset((VIXIE,))
+    if special in FREEBSD_SPECIALS:
+        return frozenset((FREEBSD,))
+
+    return None
+
+
+def schedule_dialects(schedule: Any) -> Optional[frozenset[str]]:
+    """Whose spellings a schedule is written in.
+
+    A schedule is POSIX where every field is, Vixie where any field
+    steps or names or a special string is used, and OpenBSD's or
+    FreeBSD's where it uses theirs; the set names every owner it
+    draws on.
+
+    :param Any schedule: A schedule as ``parse_crontab`` answers one
+    :returns Optional[frozenset[str]]: The dialects it draws on, or
+        None where a field of it is no cron's
+    """
+    if not isinstance(schedule, dict):
+        return None
+
+    if "special" in schedule:
+        if set(schedule) != {"special"}:
+            return None
+        return special_dialects(schedule["special"])
+
+    if set(schedule) != set(CRON_FIELDS):
+        return None
+
+    dialects: set[str] = set()
+    for field in CRON_FIELDS:
+        found = field_dialects(field, schedule[field])
+        if found is None:
+            return None
+        dialects |= found
+
+    return frozenset(dialects)
+
+
+def cron_dialects(kernel: Any) -> Optional[frozenset[str]]:
+    """What the cron a kernel runs takes.
+
+    :param Any kernel: The kernel's name, as uname prints it or as
+        ``o0_os.kernel.name`` folds it
+    :returns Optional[frozenset[str]]: The dialects its cron takes, or
+        None where the kernel is not one whose cron this knows
+    """
+    if not isinstance(kernel, str) or not kernel.strip():
+        return None
+
+    return CRON_KERNEL_DIALECTS.get(_fold_kernel(kernel))
+
+
+def schedule_refusal(
+    schedule: Any,
+    dialects: frozenset[str],
+) -> Optional[dict[str, Any]]:
+    """Why a cron taking these dialects would refuse a schedule.
+
+    Cron stops at the first field it cannot read, and so does this: the
+    answer names that field, the spelling found there, and whose
+    spelling it is - None where it is nobody's, a number out of range
+    or a name in a field that takes none.
+
+    :param Any schedule: A schedule as ``parse_crontab`` answers one
+    :param frozenset[str] dialects: What the host's cron takes, as
+        ``cron_dialects`` answers
+    :returns Optional[dict[str, Any]]: The ``field``, ``spelling`` and
+        ``dialect`` refused, or None where the schedule would be taken
+    """
+
+    def refused(
+        field: str, spelling: Any, found: Optional[frozenset[str]]
+    ) -> Optional[dict[str, Any]]:
+        if found is None:
+            return {"field": field, "spelling": spelling, "dialect": None}
+        foreign = found - dialects
+        if foreign:
+            return {
+                "field": field,
+                "spelling": spelling,
+                "dialect": sorted(foreign)[0],
+            }
+        return None
+
+    if not isinstance(schedule, dict):
+        return refused("schedule", schedule, None)
+
+    if "special" in schedule:
+        special = schedule["special"]
+        found = (
+            special_dialects(special)
+            if set(schedule) == {"special"}
+            else None
+        )
+        return refused("special", f"@{special}", found)
+
+    for field in CRON_FIELDS:
+        spelling = schedule.get(field)
+        verdict = refused(field, spelling, field_dialects(field, spelling))
+        if verdict is not None:
+            return verdict
+
+    # Every field read, and something beside them that is not one
+    if set(schedule) != set(CRON_FIELDS):
+        return refused("schedule", schedule, None)
+
+    return None
+
+
+def invalid_cron_jobs(
+    config: Any,
+    dialects: frozenset[str],
+) -> list[dict[str, Any]]:
+    """The jobs a cron taking these dialects would refuse.
+
+    Each carries the ``job``, its ``index`` among the crontab's jobs,
+    and the refusal as ``schedule_refusal`` states it.
+
+    :param Any config: What a crontab configures, as ``parse_crontab``
+        answers
+    :param frozenset[str] dialects: What the host's cron takes, as
+        ``cron_dialects`` answers
+    :returns list[dict[str, Any]]: The refused jobs, in file order
+    """
+    found: list[dict[str, Any]] = []
+
+    if not isinstance(config, dict):
+        return found
+    jobs = config.get("jobs")
+    if not isinstance(jobs, list):
+        return found
+
+    for index, job in enumerate(jobs):
+        if not isinstance(job, dict):
+            continue
+        refusal = schedule_refusal(job.get("schedule"), dialects)
+        if refusal is not None:
+            found.append({"index": index, "job": job, **refusal})
+
+    return found
+
+
+def cron_kernel_name(variables: Any) -> Optional[str]:
+    """The kernel a variable namespace names, folded as ``o0_os`` does.
+
+    ``o0_os.kernel.name`` is read first, under ``ansible_facts`` and at
+    the top level where facts are injected as variables.
+    ``ansible_system`` - the setup module's word for the same uname
+    field - is read where no o0_o gather has run.  Nothing else is
+    consulted: a distribution name is not a kernel, and a kernel is
+    the one thing about a cron the kernel decides.
+
+    :param Any variables: A host's variables, as task_vars or hostvars
+        hold them
+    :returns Optional[str]: The folded kernel name, or None where
+        nothing names one
+    """
+    if not isinstance(variables, dict):
+        return None
+
+    facts = variables.get("ansible_facts")
+    facts = facts if isinstance(facts, dict) else {}
+
+    for namespace in (facts.get("o0_os"), variables.get("o0_os")):
+        if not isinstance(namespace, dict):
+            continue
+        kernel = namespace.get("kernel")
+        if not isinstance(kernel, dict):
+            continue
+        name = kernel.get("name")
+        if isinstance(name, str) and name.strip():
+            return _fold_kernel(name)
+
+    for name in (variables.get("ansible_system"), facts.get("system")):
+        if isinstance(name, str) and name.strip():
+            return _fold_kernel(name)
+
+    return None
+
+
+def render_cron_job(job: Any) -> str:
+    """One job as the crontab line it came from, for a message about it.
+
+    Wherever the file is at hand the line is quoted as the file wrote
+    it; this is for a job read back out of a fact, which carries no
+    file, and it renders the same fields in the same order.
+
+    :param Any job: A job as ``parse_crontab`` answers one, or a
+        schedule lookup row
+    :returns str: The line
+    """
+    if not isinstance(job, dict):
+        return str(job)
+
+    schedule = job.get("schedule")
+    if isinstance(schedule, dict) and "special" in schedule:
+        head = f"@{schedule['special']}"
+    elif isinstance(schedule, dict):
+        head = " ".join(str(schedule.get(field, "")) for field in CRON_FIELDS)
+    else:
+        head = str(schedule)
+
+    words = [head]
+    if job.get("user") is not None:
+        words.append(str(job["user"]))
+    words.append(str(job.get("command", "")))
+
+    return " ".join(words)
+
+
+def describe_refusal(refusal: dict[str, Any], kernel: Optional[str]) -> str:
+    """Say why a kernel's cron refuses a spelling.
+
+    :param dict[str, Any] refusal: What ``schedule_refusal`` answered
+    :param Optional[str] kernel: The kernel whose cron refuses it
+    :returns str: One clause, naming the field, the spelling and whose
+        it is
+    """
+    field = refusal.get("field")
+    spelling = refusal.get("spelling")
+    dialect = refusal.get("dialect")
+
+    what = f"{spelling!r}" if field == "special" else f"{field} {spelling!r}"
+
+    if dialect is None:
+        return f"{what} is not a spelling any cron takes"
+
+    owner = CRON_DIALECT_NAMES.get(dialect, str(dialect))
+    article = "an" if owner[:1].upper() in "AEIOU" else "a"
+    whose = f"{kernel}'s cron" if kernel else "this host's cron"
+
+    return f"{what} is {article} {owner} spelling and {whose} does not take it"
+
+
+def cron_refusals(
+    config: Any,
+    kernel: Optional[str],
+    label: str,
+    content: Optional[str] = None,
+    user_column: bool = False,
+) -> list[str]:
+    """What a kernel's cron would refuse in one crontab, one per job.
+
+    Each names the crontab as the caller labels it, the line where the
+    file is at hand and the job's position where it is not, the
+    spelling and whose it is, and the line itself.  Nothing is said
+    where the kernel is unknown: no verdict rather than a wrong one.
+
+    :param Any config: What the crontab configures
+    :param Optional[str] kernel: The kernel the host said it is
+    :param str label: How to name the crontab - its path, or whose
+    :param Optional[str] content: The crontab's text, where the caller
+        has it, so that a line can be named by number and quoted as
+        written
+    :param bool user_column: Whether the crontab's rows name a user
+    :returns list[str]: The warnings, in file order
+    """
+    dialects = cron_dialects(kernel)
+    if dialects is None:
+        return []
+
+    found = invalid_cron_jobs(config, dialects)
+    if not found:
+        return []
+
+    written = (content or "").splitlines()
+    numbers = cron_job_lines(content, user_column) if content else []
+
+    messages: list[str] = []
+    for refusal in found:
+        index = refusal["index"]
+        if index < len(numbers) and numbers[index] <= len(written):
+            number = numbers[index]
+            where = f"{label} line {number}"
+            text = written[number - 1].strip()
+        else:
+            where = f"{label} job {index + 1}"
+            text = render_cron_job(refusal["job"])
+        messages.append(
+            f"{where}: {describe_refusal(refusal, kernel)}, so the job"
+            f" will not run: {text}"
+        )
+
+    return messages
+
+
 __all__ = [
     "CRON_ASSIGNMENT",
     "CRON_COMMANDS",
+    "CRON_DIALECTS",
+    "CRON_DIALECT_NAMES",
+    "CRON_FIELD_BOUNDS",
+    "CRON_KERNEL_COMMANDS",
+    "CRON_KERNEL_DIALECTS",
     "CRON_RCS",
     "CRON_DROPIN_DIR",
     "CRON_FIXED_PATHS",
@@ -887,13 +1526,30 @@ __all__ = [
     "CRON_SPECIAL",
     "CRON_SPECIALS",
     "FQCN",
+    "FREEBSD",
+    "FREEBSD_SPECIALS",
+    "OPENBSD",
+    "POSIX",
     "SYSTEM_CRONTAB",
+    "VIXIE",
+    "VIXIE_SPECIALS",
     "compose_cron_holdings",
     "compose_cron_paths",
+    "cron_dialects",
+    "cron_job_lines",
+    "cron_kernel_name",
+    "cron_refusals",
     "cron_survey_answers",
     "compose_cron_users",
+    "describe_refusal",
+    "field_dialects",
     "get_cron_read_requests",
     "get_cron_survey_requests",
+    "invalid_cron_jobs",
+    "render_cron_job",
+    "schedule_dialects",
+    "schedule_refusal",
+    "special_dialects",
     "spool_paths",
     "parse_crontab",
 ]

@@ -31,6 +31,13 @@ description:
     P(o0_o.posix.schedule#lookup) lookup is what joins them - a
     derived view rather than a third copy that could disagree with the
     two it came from.
+  - Every crontab read is held against the cron the host's kernel
+    runs, and a job that cron would refuse earns a warning naming the
+    file or the user, the line and the spelling. The fact still
+    carries the job as written - a warning is not an exclusion at the
+    fact layer, and a consumer reading the file sees the file. The
+    P(o0_o.posix.schedule#lookup) lookup is where a refused job is
+    left out, the way cron leaves it out at runtime.
   - C(anacron) is not read, and that is a boundary rather than an
     omission. Its table is a period, a delay, a job identifier and a
     command, with no user column and no schedule in cron's sense, and
@@ -82,6 +89,19 @@ notes:
     left unmentioned. A read alone cannot tell a file that is missing
     from one that would not be read, and a host with no cron surface
     at all published no trace of the fact.
+  - >-
+    Whose spellings a host's cron takes is decided by the kernel and
+    no further, and the kernel is asked with C(uname -s) in the same
+    batch as the crontabs, so the verdict rides no extra round trip
+    and needs no fact to have been gathered first. POSIX spells a
+    field as a number, a range, a comma list or C(*); the steps, the
+    names, a weekday of C(7) and the eight special strings are
+    Vixie's, which every supported cron takes; C(~) is OpenBSD's;
+    C(@every_minute) and C(@every_second) are FreeBSD's. Linux is
+    held to the Vixie family - cronie, Debian's cron and busybox's are
+    all of it or a subset, and the kernel does not say which - so on
+    Linux only a spelling outside the family warns. A kernel this
+    does not know gets no verdict rather than a wrong one.
 """
 
 EXAMPLES = r"""
@@ -154,6 +174,10 @@ o0_paths:
           but the crons hosts run do. The two shapes are structurally
           distinct, so a consumer needing POSIX-portable schedules
           can select for the five-field form.
+        - A schedule is published as written whether or not the
+          host's cron takes the spelling; a job the host's cron would
+          refuse is warned about at read time and left out by the
+          P(o0_o.posix.schedule#lookup) lookup, never by this fact.
       type: dict
   sample:
     /etc/cron.d/zz-example:

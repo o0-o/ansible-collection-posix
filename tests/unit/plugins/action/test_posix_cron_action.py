@@ -17,6 +17,8 @@ what the fabricated host answers with is what a real one answered.
 
 from __future__ import annotations
 
+import re
+
 from pathlib import Path
 from typing import Any, Generator
 
@@ -70,6 +72,7 @@ def _answer(
     holders: list = None,
     own: str = None,
     uid: str = "0",
+    kernel: str = "Linux",
 ) -> list[list[dict[str, Any]]]:
     """Answer the survey and the reads the way a real host would.
 
@@ -80,6 +83,8 @@ def _answer(
     :param list holders: What the spool sweep names
     :param str own: The running identity's own crontab, or None
     :param str uid: What the host says the effective uid is
+    :param str kernel: What uname -s prints, or None for a host whose
+        uname does not answer
     :returns list[list[dict[str, Any]]]: The batches issued
     """
     files = HELD if held is None else held
@@ -145,6 +150,15 @@ def _answer(
                 )
             elif kind == "effective_uid":
                 answered.append({**request, "rc": 0, "stdout": uid})
+            elif kind == "crontab_kernel":
+                answered.append(
+                    {
+                        **request,
+                        "rc": 0 if kernel else 127,
+                        "stdout": kernel or "",
+                        "stderr": "" if kernel else "sh: uname: not found",
+                    }
+                )
         return answered
 
     monkeypatch.setattr(plugin, "_run", mock_run)
@@ -282,6 +296,7 @@ def test_the_spools_are_swept_rather_than_the_passwd_file(
     assert sorted(set(surveyed)) == [
         "crontab_dropins",
         "crontab_exists",
+        "crontab_kernel",
         "crontab_self",
         "crontab_spools",
         "effective_uid",
@@ -572,3 +587,196 @@ def test_a_crontab_that_will_not_parse_warns_and_is_left_out(
     assert "/etc/cron.d/0hourly" not in result["o0_paths"]
     assert "/etc/crontab" in result["o0_paths"]
     assert plugin._display.warning.called
+
+
+# A drop-in spelled the OpenBSD way, which is a line cronie will log a
+# complaint about and skip
+RANDOM_DROPIN = (
+    "SHELL=/bin/sh\n"
+    "# rotate at a random minute\n"
+    "~ 2 * * 6 root /bin/sh /etc/weekly\n"
+)
+BSD = (FILES / "crontab_user_bsd.txt").read_text()
+
+
+def _warnings(plugin: ActionModule) -> list[str]:
+    """Every warning the plugin displayed, as text."""
+    return [
+        str(call.args[0]) for call in plugin._display.warning.call_args_list
+    ]
+
+
+def test_a_job_the_hosts_cron_would_refuse_is_warned_about_and_kept(
+    monkeypatch, plugin
+) -> None:
+    """Test a spelling the host's cron does not take earns a warning.
+
+    A ~ in a Linux drop-in is a line cronie will skip and complain
+    about, so the operator hears about it here, by file, line and
+    spelling. The fact still carries the job as written: a warning is
+    not an exclusion at the fact layer.
+    """
+    _answer(
+        monkeypatch,
+        plugin,
+        held={"/etc/crontab": SYSTEM, "/etc/cron.d/random": RANDOM_DROPIN},
+        dropins=["/etc/cron.d/random"],
+        holders=[],
+        kernel="Linux",
+    )
+
+    result = plugin.run(task_vars={})
+    warned = _warnings(plugin)
+
+    assert len(warned) == 1
+    assert warned[0].startswith("[localhost] /etc/cron.d/random line 3: ")
+    assert "minute '~' is an OpenBSD spelling" in warned[0]
+    assert "linux's cron does not take it" in warned[0]
+    assert warned[0].endswith("~ 2 * * 6 root /bin/sh /etc/weekly")
+
+    job = result["o0_paths"]["/etc/cron.d/random"]["config"]["jobs"][0]
+    assert job["schedule"]["minute"] == "~"
+    assert job["user"] == "root"
+
+
+def test_a_users_crontab_is_held_to_the_same_cron(
+    monkeypatch, plugin
+) -> None:
+    """Test the running identity's own crontab is warned about by uid.
+
+    The line is named by number even though a user's entry publishes
+    no bytes, because the text was in hand when it was read.
+    """
+    _answer(
+        monkeypatch,
+        plugin,
+        held={},
+        dropins=[],
+        holders=[],
+        own=BSD,
+        uid="501",
+        kernel="Darwin",
+    )
+
+    result = plugin.run(task_vars={})
+    warned = _warnings(plugin)
+
+    assert [w.split(": ")[0] for w in warned] == [
+        "[localhost] uid 501's crontab line 16",
+        "[localhost] uid 501's crontab line 17",
+        "[localhost] uid 501's crontab line 20",
+        "[localhost] uid 501's crontab line 21",
+    ]
+    assert "'@every_second' is a FreeBSD spelling" in warned[3]
+    assert "darwin's cron does not take it" in warned[3]
+    # And every job is still there, as written
+    assert len(result["o0_users"]["501"]["crontab"]["jobs"]) == 7
+
+
+def test_a_spool_crontab_is_warned_about_as_its_owners(
+    monkeypatch, plugin
+) -> None:
+    """Test a spool file is named once, as the crontab of its owner.
+
+    It is read like any file, but what it says is a fact about the
+    user, so the warning says whose it is and where it was read from
+    rather than filing it as a path.
+    """
+    _answer(
+        monkeypatch,
+        plugin,
+        held={"/var/spool/cron/alice": BSD},
+        dropins=[],
+        holders=["alice"],
+        kernel="Linux",
+    )
+
+    plugin.run(task_vars={})
+    warned = _warnings(plugin)
+
+    assert len(warned) == 4
+    assert all(
+        w.startswith("[localhost] uid 1000's crontab (/var/spool/cron/alice)")
+        for w in warned
+    )
+
+
+@pytest.mark.parametrize(
+    "kernel, refused",
+    [
+        ("OpenBSD", ["@every_minute", "@every_second"]),
+        ("FreeBSD", ["30~45", "~"]),
+        ("NetBSD", ["30~45", "~", "@every_minute", "@every_second"]),
+    ],
+)
+def test_a_spelling_the_hosts_cron_takes_is_not_warned_about(
+    monkeypatch, plugin, kernel, refused
+) -> None:
+    """Test each kernel is held to its own cron's spellings.
+
+    OpenBSD takes its ~ and not FreeBSD's names; FreeBSD the reverse;
+    NetBSD neither.
+    """
+    _answer(
+        monkeypatch,
+        plugin,
+        held={},
+        dropins=[],
+        holders=[],
+        own=BSD,
+        uid="501",
+        kernel=kernel,
+    )
+
+    plugin.run(task_vars={})
+
+    spelled = [
+        re.search(r"'([^']+)' is an? ", w).group(1) for w in _warnings(plugin)
+    ]
+    assert spelled == refused
+
+
+@pytest.mark.parametrize("kernel", ["SunOS", None])
+def test_a_kernel_this_does_not_know_gets_no_verdict(
+    monkeypatch, plugin, kernel
+) -> None:
+    """Test an unknown kernel, or none, earns no warning.
+
+    No verdict is better than a wrong one: a cron nothing here knows
+    may well take the spelling.
+    """
+    _answer(
+        monkeypatch,
+        plugin,
+        held={"/etc/cron.d/random": RANDOM_DROPIN},
+        dropins=["/etc/cron.d/random"],
+        holders=[],
+        own=BSD,
+        uid="501",
+        kernel=kernel,
+    )
+
+    result = plugin.run(task_vars={})
+
+    assert _warnings(plugin) == []
+    assert "/etc/cron.d/random" in result["o0_paths"]
+
+
+def test_the_kernel_is_asked_in_the_survey_batch(monkeypatch, plugin) -> None:
+    """Test the verdict costs no round trip of its own.
+
+    uname -s rides the batch the crontabs come back in, so a gather of
+    cron alone, or a raw-lane run with no facts, still has it.
+    """
+    batches = _answer(monkeypatch, plugin)
+
+    plugin.run(task_vars={})
+
+    asked = [
+        request
+        for request in batches[0]
+        if request["type"] == "crontab_kernel"
+    ]
+    assert len(asked) == 1
+    assert list(asked[0]["command"])[:2] == ["uname", "-s"]
+    assert len(batches) == 2

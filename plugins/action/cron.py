@@ -52,6 +52,11 @@ class ActionModule(PosixActionBase, ActionBase):
     somebody else's means reading the spool, which is root's to read,
     so a run that is not root reports itself and says nothing about
     anyone else - rather than reporting that nobody else has one.
+
+    Every crontab read is held against the cron the host's kernel
+    runs, and a job that cron would refuse is warned about by file or
+    user, line and spelling.  The fact carries the job as written all
+    the same: a warning is not an exclusion at the fact layer.
     """
 
     TRANSFERS_FILES = False
@@ -155,6 +160,12 @@ class ActionModule(PosixActionBase, ActionBase):
 
         for err in held["errors"]:
             self._display.warning(f"[{self.inventory_hostname}] {err}")
+
+        # A job the host's cron would refuse is warned about and
+        # published as written: the fact says what the file says, and
+        # leaving the job out is the schedule lookup's business
+        for warning in held["warnings"]:
+            self._display.warning(f"[{self.inventory_hostname}] {warning}")
 
         paths = compose_paths(
             None,

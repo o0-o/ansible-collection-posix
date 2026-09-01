@@ -70,6 +70,7 @@ from ansible_collections.o0_o.posix.plugins.module_utils.cron_utils import (
     CRON_SPOOLS,
     _parse_crontab_file,
     _parse_exists,
+    _parse_kernel_name,
     _parse_owner_uid,
     _parse_spool_names,
 )
@@ -234,6 +235,16 @@ CRON_COMMAND_SPEC = {
         "crontab_owner": {
             "command": ("id", "-u", "{user}"),
             "parser": _parse_owner_uid,
+            "non_error_codes": CRON_RCS,
+        },
+        # Which kernel this is, which is the one thing about a cron the
+        # kernel does decide: whose spellings it takes. Asked here
+        # rather than read off a fact so that the verdict rides the
+        # batch the crontabs came back in, whether or not anything
+        # was gathered first.
+        "crontab_kernel": {
+            "command": ("uname", "-s"),
+            "parser": _parse_kernel_name,
             "non_error_codes": CRON_RCS,
         },
     },

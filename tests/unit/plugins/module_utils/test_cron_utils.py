@@ -35,7 +35,21 @@ from pathlib import Path
 import pytest
 
 from ansible_collections.o0_o.posix.plugins.module_utils.cron_utils import (
+    CRON_KERNEL_DIALECTS,
+    FREEBSD,
+    OPENBSD,
+    POSIX,
+    VIXIE,
+    cron_dialects,
+    cron_job_lines,
+    cron_kernel_name,
+    cron_refusals,
+    field_dialects,
+    invalid_cron_jobs,
     parse_crontab,
+    render_cron_job,
+    schedule_dialects,
+    schedule_refusal,
 )
 
 FILES = Path(__file__).parent / "files"
@@ -292,3 +306,370 @@ def test_the_bsd_spellings_are_forms_of_their_own() -> None:
         if "special" in j["schedule"] and j["schedule"]["special"] != "weekly"
     )
     assert named == ["every_minute", "every_second"]
+
+
+# --- Whose spelling a schedule is written in ---------------------------
+
+
+@pytest.mark.parametrize(
+    "field, value",
+    [
+        ("minute", "*"),
+        ("minute", "0"),
+        ("hour", "10-11,22"),
+        ("day", "1,15"),
+        ("month", "12"),
+        ("weekday", "0-6"),
+    ],
+)
+def test_a_posix_spelling_is_a_number_a_range_a_list_or_a_star(
+    field: str, value: str
+) -> None:
+    """Test the spellings the standard defines are filed as its own."""
+    assert field_dialects(field, value) == {POSIX}
+
+
+@pytest.mark.parametrize(
+    "field, value, expected",
+    [
+        ("minute", "*/5", {VIXIE}),
+        ("minute", "0-30/5", {POSIX, VIXIE}),
+        ("minute", "*,5", {POSIX, VIXIE}),
+        ("month", "jan,feb", {VIXIE}),
+        ("weekday", "mon", {VIXIE}),
+        ("weekday", "mon-fri", {VIXIE}),
+        ("weekday", "MON", {VIXIE}),
+        ("weekday", "7", {VIXIE}),
+        ("weekday", "0-7", {POSIX, VIXIE}),
+    ],
+)
+def test_a_vixie_spelling_is_a_step_a_name_or_a_seventh_day(
+    field: str, value: str, expected: set
+) -> None:
+    """Test Vixie's extensions are filed as Vixie's.
+
+    A star inside a list and a weekday of 7 are Vixie's readings too,
+    though neither looks like an extension: POSIX spells every value
+    as a star that is the whole field, and counts the week 0 to 6.
+    """
+    assert field_dialects(field, value) == expected
+
+
+@pytest.mark.parametrize(
+    "field, value, expected",
+    [
+        ("minute", "~", {OPENBSD}),
+        ("minute", "30~45", {OPENBSD, POSIX}),
+        ("minute", "~30", {OPENBSD, POSIX}),
+        ("minute", "30~", {OPENBSD, POSIX}),
+        ("minute", "30~45/5", {OPENBSD, POSIX, VIXIE}),
+    ],
+)
+def test_the_openbsd_spelling_is_a_tilde(
+    field: str, value: str, expected: set
+) -> None:
+    """Test the random-value forms are filed as OpenBSD's."""
+    assert field_dialects(field, value) == expected
+
+
+def test_the_special_strings_have_owners() -> None:
+    """Test the eight are Vixie's and the two are FreeBSD's."""
+    assert schedule_dialects({"special": "reboot"}) == {VIXIE}
+    assert schedule_dialects({"special": "midnight"}) == {VIXIE}
+    assert schedule_dialects({"special": "every_minute"}) == {FREEBSD}
+    assert schedule_dialects({"special": "every_second"}) == {FREEBSD}
+
+
+@pytest.mark.parametrize(
+    "field, value",
+    [
+        ("minute", "60"),
+        ("hour", "24"),
+        ("day", "0"),
+        ("day", "32"),
+        ("month", "13"),
+        ("weekday", "8"),
+        ("weekday", "monday"),
+        ("minute", "jan"),
+        ("minute", "*/0"),
+        ("minute", "1,,2"),
+        ("minute", "5-"),
+        ("minute", "-5"),
+        ("minute", ""),
+        ("minute", None),
+        ("second", "0"),
+    ],
+)
+def test_a_spelling_no_cron_takes_is_nobodys(field: str, value) -> None:
+    """Test a number out of range or a name in the wrong field is None.
+
+    None is not a dialect: it is the answer that no cron at all reads
+    the field, which is a different thing from a spelling this host's
+    cron does not take.
+    """
+    assert field_dialects(field, value) is None
+
+
+@pytest.mark.parametrize(
+    "schedule",
+    [
+        {"special": "nosuch"},
+        {"special": "reboot", "minute": "0"},
+        {"minute": "0", "hour": "0"},
+        {"minute": "0", "hour": "0", "day": "*", "month": "*",
+         "weekday": "*", "second": "0"},
+        "0 0 * * *",
+        None,
+    ],
+)
+def test_a_schedule_that_is_not_one_is_nobodys(schedule) -> None:
+    """Test the shape is checked before the spelling."""
+    assert schedule_dialects(schedule) is None
+
+
+def test_a_schedule_draws_on_every_owner_it_uses() -> None:
+    """Test the set names each dialect a schedule leans on."""
+    assert schedule_dialects(
+        {
+            "minute": "~",
+            "hour": "*/2",
+            "day": "*",
+            "month": "*",
+            "weekday": "mon",
+        }
+    ) == {OPENBSD, POSIX, VIXIE}
+    assert schedule_dialects(
+        {"minute": "0", "hour": "0", "day": "*", "month": "*", "weekday": "*"}
+    ) == {POSIX}
+
+
+# --- What each kernel's cron takes ---------------------------------------
+
+
+@pytest.mark.parametrize(
+    "kernel, expected",
+    [
+        ("Linux", {POSIX, VIXIE}),
+        ("linux", {POSIX, VIXIE}),
+        ("Darwin", {POSIX, VIXIE}),
+        ("NetBSD", {POSIX, VIXIE}),
+        ("FreeBSD", {POSIX, VIXIE, FREEBSD}),
+        ("OpenBSD", {POSIX, VIXIE, OPENBSD}),
+    ],
+)
+def test_a_kernel_names_what_its_cron_takes(kernel: str, expected) -> None:
+    """Test the kernel is folded and looked up the way o0_os names it.
+
+    Every supported kernel runs a Vixie-descended cron; the two that
+    extended it take their own spellings and nobody else's.
+    """
+    assert cron_dialects(kernel) == expected
+
+
+@pytest.mark.parametrize("kernel", ["SunOS", "GNU", "", "  ", None, 7])
+def test_a_kernel_this_does_not_know_gets_no_verdict(kernel) -> None:
+    """Test an unknown kernel is None, which is no verdict at all."""
+    assert cron_dialects(kernel) is None
+
+
+def test_linux_is_held_to_the_family_and_no_further() -> None:
+    """Test Linux does not warn on any Vixie spelling.
+
+    cronie, Debian's cron and busybox's are all the Vixie family or a
+    subset of it, and the kernel does not say which, so a spelling
+    inside the family is never Linux's to refuse.
+    """
+    assert CRON_KERNEL_DIALECTS["linux"] == {POSIX, VIXIE}
+    assert (
+        invalid_cron_jobs(parsed("user_cronie"), cron_dialects("Linux")) == []
+    )
+
+
+# --- What a host's cron would refuse -------------------------------------
+
+
+@pytest.mark.parametrize("name", LIVE)
+@pytest.mark.parametrize("kernel", sorted(CRON_KERNEL_DIALECTS))
+def test_every_live_corpus_is_taken_by_every_known_cron(
+    name: str, kernel: str
+) -> None:
+    """Test the stock files hold nothing any supported cron refuses."""
+    assert invalid_cron_jobs(parsed(name), cron_dialects(kernel)) == []
+
+
+@pytest.mark.parametrize(
+    "kernel, refused",
+    [
+        ("Linux", ["30~45", "~", "@every_minute", "@every_second"]),
+        ("Darwin", ["30~45", "~", "@every_minute", "@every_second"]),
+        ("NetBSD", ["30~45", "~", "@every_minute", "@every_second"]),
+        ("FreeBSD", ["30~45", "~"]),
+        ("OpenBSD", ["@every_minute", "@every_second"]),
+    ],
+)
+def test_the_bsd_corpus_is_held_to_each_kernel(
+    kernel: str, refused: list
+) -> None:
+    """Test each kernel refuses the other BSD's spellings and not its own."""
+    found = invalid_cron_jobs(parsed("user_bsd"), cron_dialects(kernel))
+
+    assert [f["spelling"] for f in found] == refused
+    assert all(f["dialect"] in (OPENBSD, FREEBSD) for f in found)
+    # And each refusal carries the job it is about, in file order
+    assert [f["index"] for f in found] == sorted(f["index"] for f in found)
+    assert all(f["job"]["schedule"] is not None for f in found)
+
+
+def test_cron_stops_at_the_first_field_it_cannot_read() -> None:
+    """Test a refusal names one field, the first, the way cron does."""
+    refusal = schedule_refusal(
+        {
+            "minute": "~",
+            "hour": "24",
+            "day": "*",
+            "month": "*",
+            "weekday": "*",
+        },
+        cron_dialects("Linux"),
+    )
+
+    assert refusal == {"field": "minute", "spelling": "~", "dialect": OPENBSD}
+
+    nobodys = schedule_refusal(
+        {
+            "minute": "0",
+            "hour": "24",
+            "day": "*",
+            "month": "*",
+            "weekday": "*",
+        },
+        cron_dialects("Linux"),
+    )
+    assert nobodys == {"field": "hour", "spelling": "24", "dialect": None}
+
+    assert schedule_refusal({"special": "nosuch"}, cron_dialects("Linux")) == {
+        "field": "special",
+        "spelling": "@nosuch",
+        "dialect": None,
+    }
+    assert (
+        schedule_refusal({"special": "reboot"}, cron_dialects("Linux")) is None
+    )
+
+
+def test_a_config_that_is_not_one_refuses_nothing() -> None:
+    """Test the lib surface is safe to hand a fact of any shape."""
+    dialects = cron_dialects("Linux")
+
+    assert invalid_cron_jobs(None, dialects) == []
+    assert invalid_cron_jobs({"jobs": "not a list"}, dialects) == []
+    assert invalid_cron_jobs({"jobs": [None, "x"]}, dialects) == []
+
+
+# --- Naming the kernel, the line and the spelling ------------------------
+
+
+@pytest.mark.parametrize(
+    "variables, expected",
+    [
+        ({"ansible_facts": {"o0_os": {"kernel": {"name": "linux"}}}}, "linux"),
+        ({"o0_os": {"kernel": {"name": "darwin"}}}, "darwin"),
+        ({"ansible_system": "FreeBSD"}, "freebsd"),
+        ({"ansible_facts": {"system": "OpenBSD"}}, "openbsd"),
+        # o0_os is preferred over the setup module's word for it
+        (
+            {"o0_os": {"kernel": {"name": "linux"}}, "ansible_system": "X"},
+            "linux",
+        ),
+        ({"o0_os": {"kernel": {"pretty": "Linux"}}}, None),
+        ({"o0_os": "not a mapping"}, None),
+        ({}, None),
+        (None, None),
+    ],
+)
+def test_a_variable_namespace_names_its_kernel(variables, expected) -> None:
+    """Test the kernel is read from where a play would have put it.
+
+    o0_os.kernel.name first, under ansible_facts and injected at the
+    top; ansible_system where no o0_o gather has run; nothing else,
+    because a distribution is not a kernel.
+    """
+    assert cron_kernel_name(variables) == expected
+
+
+@pytest.mark.parametrize("name", LIVE + CONSTRUCTED)
+def test_the_job_lines_line_up_with_the_parsed_jobs(name: str) -> None:
+    """Test every job can be named by the line it came from."""
+    lines = cron_job_lines(corpus(name), user_column=USER_COLUMN[name])
+
+    assert len(lines) == len(parsed(name)["jobs"])
+    assert lines == sorted(lines)
+
+
+def test_the_bsd_corpus_job_lines_are_the_files() -> None:
+    """Test the numbers are the file's, comments and blanks counted."""
+    assert cron_job_lines(corpus("user_bsd")) == [10, 11, 12, 16, 17, 20, 21]
+
+
+def test_a_refusal_names_the_crontab_the_line_and_the_spelling() -> None:
+    """Test a warning is one edit away from the fix.
+
+    It names the crontab as the caller labels it, the line by the
+    file's numbering, the field and the spelling, whose spelling it is
+    and whose cron refuses it, and quotes the line as written.
+    """
+    text = corpus("user_bsd")
+    warned = cron_refusals(
+        parse_crontab(text), "linux", "uid 501's crontab", content=text
+    )
+
+    assert len(warned) == 4
+    assert warned[0] == (
+        "uid 501's crontab line 16: minute '30~45' is an OpenBSD spelling"
+        " and linux's cron does not take it, so the job will not run:"
+        " 30~45\t1\t*\t*\t*\t/bin/sh /etc/daily"
+    )
+    assert warned[3] == (
+        "uid 501's crontab line 21: '@every_second' is a FreeBSD spelling"
+        " and linux's cron does not take it, so the job will not run:"
+        " @every_second /usr/local/bin/tick"
+    )
+
+
+def test_a_refusal_without_the_file_names_the_job_and_renders_it() -> None:
+    """Test a job read back out of a fact is still named and quoted."""
+    config = parse_crontab(
+        "~ 2 * * 6 root /bin/sh /etc/weekly", user_column=True
+    )
+    warned = cron_refusals(config, "linux", "/etc/cron.d/random")
+
+    assert warned == [
+        "/etc/cron.d/random job 1: minute '~' is an OpenBSD spelling and"
+        " linux's cron does not take it, so the job will not run:"
+        " ~ 2 * * 6 root /bin/sh /etc/weekly"
+    ]
+
+
+@pytest.mark.parametrize("kernel", ["SunOS", None])
+def test_an_unknown_kernel_earns_no_warning(kernel) -> None:
+    """Test no verdict is given where none can be."""
+    assert cron_refusals(parsed("user_bsd"), kernel, "x") == []
+
+
+def test_a_job_is_rendered_as_the_line_it_would_be() -> None:
+    """Test the rendering has the same words in the same order."""
+    assert render_cron_job(
+        {"schedule": {"special": "reboot"}, "user": "root", "command": "/x"}
+    ) == "@reboot root /x"
+    assert render_cron_job(
+        {
+            "schedule": {
+                "minute": "~",
+                "hour": "2",
+                "day": "*",
+                "month": "*",
+                "weekday": "6",
+            },
+            "command": "/bin/sh /etc/weekly",
+        }
+    ) == "~ 2 * * 6 /bin/sh /etc/weekly"
