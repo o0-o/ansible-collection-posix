@@ -54,7 +54,7 @@ import posixpath
 from copy import deepcopy
 from typing import Any, Callable, Optional, Sequence, Union
 
-from ansible_collections.o0_o.posix.plugins.module_utils.evidence_utils import (  # noqa: E501
+from ansible_collections.o0_o.core.plugins.module_utils.evidence_utils import (  # noqa: E501
     command_name,
     merge_evidence,
     name_origins,

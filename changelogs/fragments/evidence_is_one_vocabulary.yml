@@ -32,7 +32,7 @@ minor_changes:
     without the configuration subset ever being gathered. A producer
     carries the subkey of every kind it attempts, empty where the kind
     contributed nothing, and leaves off the kinds it has none of. A
-    new ``o0_o.posix.evidence`` documentation fragment is the one
+    ``o0_o.core.evidence`` documentation fragment is the one
     description of the shape, and the modules that publish it extend
     it rather than restating it
     (https://github.com/o0-o/ansible-collection-posix/pull/XXX).

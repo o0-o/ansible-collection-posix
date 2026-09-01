@@ -15,10 +15,12 @@ from typing import Any, Optional
 
 from ansible.plugins.action import ActionBase
 
-from ansible_collections.o0_o.posix.plugins.module_utils import (
+from ansible_collections.o0_o.core.plugins.module_utils import (
     EVIDENCE,
-    PosixActionBase,
     compose_evidence,
+)
+from ansible_collections.o0_o.posix.plugins.module_utils import (
+    PosixActionBase,
     get_limits_command_requests,
     process_effective_uid_results,
     process_limits_command_results,

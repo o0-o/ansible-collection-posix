@@ -16,11 +16,13 @@ from typing import Any, Optional
 from ansible.errors import AnsibleActionFail
 from ansible.plugins.action import ActionBase
 
-from ansible_collections.o0_o.posix.plugins.module_utils import (
+from ansible_collections.o0_o.core.plugins.module_utils import (
     EVIDENCE,
+    compose_evidence,
+)
+from ansible_collections.o0_o.posix.plugins.module_utils import (
     SYSCTL_MISSING_RCS,
     PosixActionBase,
-    compose_evidence,
     get_sysctl_assignment_requests,
     get_sysctl_key_requests,
     get_sysctl_listing_requests,

@@ -15,17 +15,19 @@ from typing import Any, Optional
 
 from ansible.plugins.action import ActionBase
 
-from ansible_collections.o0_o.posix.plugins.module_utils import (
+from ansible_collections.o0_o.core.plugins.module_utils import (
     EVIDENCE,
+    compose_evidence,
+    name_origins,
+)
+from ansible_collections.o0_o.posix.plugins.module_utils import (
     SHELL_DEFAULT,
     ShellsPosixActionBase,
-    compose_evidence,
     compose_paths,
     compose_shell_paths,
     compose_shells,
     get_effective_uid_command_requests,
     get_file_command_requests,
-    name_origins,
     name_shell_binaries,
     parse_shells,
     process_effective_uid_results,

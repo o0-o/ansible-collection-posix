@@ -219,7 +219,7 @@ notes:
   - Child entries are only expanded for the paths named in I(paths), not
     for directories added by I(parents).
 extends_documentation_fragment:
-  - o0_o.posix.evidence
+  - o0_o.core.evidence
 seealso:
   - module: ansible.builtin.stat
     description: Retrieve file or file system status

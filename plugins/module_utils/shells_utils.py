@@ -62,7 +62,7 @@ from ansible_collections.o0_o.posix.plugins.module_utils.command_utils import (
     format_command,
 )
 
-from ansible_collections.o0_o.posix.plugins.module_utils.evidence_utils import (  # noqa: E501
+from ansible_collections.o0_o.core.plugins.module_utils.evidence_utils import (  # noqa: E501
     EVIDENCE,
     command_names,
     compose_evidence,

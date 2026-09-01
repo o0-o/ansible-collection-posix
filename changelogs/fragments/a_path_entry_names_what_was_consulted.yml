@@ -34,7 +34,7 @@ minor_changes:
     other field is replaced whole. Two producers that both described a
     path both consulted something, and a merge that let the later one
     win would publish an entry claiming half of what put it there. The
-    ``o0_o.posix.evidence`` documentation fragment is extended by
+    ``o0_o.core.evidence`` documentation fragment is extended by
     C(read) and C(which) as the other publishing modules already
     extend it
     (https://github.com/o0-o/ansible-collection-posix/pull/XXX).

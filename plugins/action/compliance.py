@@ -19,12 +19,14 @@ from ansible_collections.o0_o.utils.plugins.module_utils.typeguard_compat import
     typechecked,
 )
 
+from ansible_collections.o0_o.core.plugins.module_utils import (
+    name_origins,
+)
 from ansible_collections.o0_o.posix.plugins.module_utils import (
     PosixActionBase,
     compose_paths,
     get_compliance_command_requests,
     missing_commands,
-    name_origins,
     process_all_compliance_command_results,
 )
 

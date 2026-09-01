@@ -91,7 +91,7 @@ options:
     default: /bin/sh
     version_added: "2.0.0"
 extends_documentation_fragment:
-  - o0_o.posix.evidence
+  - o0_o.core.evidence
 author:
   - oØ.o (@o0-o)
 seealso:

@@ -300,7 +300,7 @@ def get_limits_command_requests() -> list[dict[str, Any]]:
     from ansible_collections.o0_o.posix.plugins.module_utils.command_spec import (  # noqa: E501
         LIMITS_COMMAND_SPEC,
     )
-    from ansible_collections.o0_o.posix.plugins.module_utils.evidence_utils import (  # noqa: E501
+    from ansible_collections.o0_o.core.plugins.module_utils.evidence_utils import (  # noqa: E501
         EVIDENCE,
     )
     from ansible_collections.o0_o.posix.plugins.module_utils.id_utils import (

@@ -37,7 +37,7 @@ from ansible_collections.o0_o.posix.plugins.module_utils.command_spec import (
     SHELL_COMMAND_SPEC,
     SHELL_PROBE_SCRIPT,
 )
-from ansible_collections.o0_o.posix.plugins.module_utils.evidence_utils import (  # noqa: E501
+from ansible_collections.o0_o.core.plugins.module_utils.evidence_utils import (  # noqa: E501
     name_origins,
 )
 from ansible_collections.o0_o.posix.plugins.module_utils.shells_utils import (

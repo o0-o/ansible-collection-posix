@@ -1,0 +1,17 @@
+---
+breaking_changes:
+  - >-
+    The provenance vocabulary - ``evidence``, ``origins`` and the
+    helpers that compose, merge and name them - moves to o0_o.core,
+    and every module here that extended the ``o0_o.posix.evidence``
+    documentation fragment extends ``o0_o.core.evidence`` instead. The
+    ladder runs utils, core, posix, and a fact core publishes about the
+    controller or the connection has to name its provenance in the
+    same words a posix fact does, which it could not while the words
+    lived a rung above it. Nothing about the vocabulary changes; this
+    collection imports it from where it lives, and its own copy is
+    gone, tests included. The fragment name and the module_utils path
+    never appeared in a release, so both are removed inside the 2.0.0
+    window. A collection pinning posix needs core >=1.2.0, the release
+    that carries the vocabulary
+    (https://github.com/o0-o/ansible-collection-posix/pull/XXX).

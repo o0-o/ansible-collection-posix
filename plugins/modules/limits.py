@@ -29,7 +29,7 @@ description:
     C(become_user) select it - and ask twice to have two answers.
 options: {}
 extends_documentation_fragment:
-  - o0_o.posix.evidence
+  - o0_o.core.evidence
 author:
   - oØ.o (@o0-o)
 notes:

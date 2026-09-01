@@ -16,14 +16,19 @@ from typing import Any, Optional
 from ansible.errors import AnsibleActionFail
 from ansible.plugins.action import ActionBase
 
-from ansible_collections.o0_o.posix.plugins.module_utils import (
+from ansible_collections.o0_o.core.plugins.module_utils import (
     EVIDENCE,
     ORIGINS,
+    commands_run,
+    compose_evidence,
+    merge_entry,
+    merge_evidence,
+    name_origins,
+)
+from ansible_collections.o0_o.posix.plugins.module_utils import (
     SHELL_DEFAULT,
     ShellsPosixActionBase,
     batch_read,
-    commands_run,
-    compose_evidence,
     compose_homes,
     compose_mount_config,
     compose_paths,
@@ -40,9 +45,6 @@ from ansible_collections.o0_o.posix.plugins.module_utils import (
     get_mount_command_requests,
     get_pathconf_command_requests,
     get_timezone_command_requests,
-    merge_entry,
-    merge_evidence,
-    name_origins,
     name_shell_binaries,
     parse_shells,
     process_all_compliance_command_results,

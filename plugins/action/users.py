@@ -16,18 +16,20 @@ from typing import Any, Optional
 from ansible.errors import AnsibleActionFail
 from ansible.plugins.action import ActionBase
 
-from ansible_collections.o0_o.posix.plugins.module_utils import (
+from ansible_collections.o0_o.core.plugins.module_utils import (
     EVIDENCE,
+    compose_evidence,
+    name_origins,
+)
+from ansible_collections.o0_o.posix.plugins.module_utils import (
     ReadPosixActionBase,
     batch_read,
-    compose_evidence,
     compose_homes,
     compose_paths,
     compose_shell_paths,
     compose_shells,
     compose_users_groups,
     get_file_command_requests,
-    name_origins,
     name_shell_binaries,
     get_getent_command_requests,
     parse_shells,

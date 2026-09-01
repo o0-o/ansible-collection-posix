@@ -15,10 +15,12 @@ from typing import Any, Optional
 
 from ansible.plugins.action import ActionBase
 
+from ansible_collections.o0_o.core.plugins.module_utils import (
+    name_origins,
+)
 from ansible_collections.o0_o.posix.plugins.module_utils import (
     PosixActionBase,
     compose_paths,
-    name_origins,
 )
 from ansible_collections.o0_o.posix.plugins.module_utils.cron_utils import (
     FQCN,

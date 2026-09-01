@@ -23,18 +23,6 @@ from ansible_collections.o0_o.posix.plugins.module_utils.env_utils import (
     get_env_command_requests,
     process_env_command_results,
 )
-from ansible_collections.o0_o.posix.plugins.module_utils.evidence_utils import (  # noqa: E501
-    EVIDENCE,
-    EVIDENCE_KINDS,
-    ORIGINS,
-    command_name,
-    command_names,
-    commands_run,
-    compose_evidence,
-    merge_entry,
-    merge_evidence,
-    name_origins,
-)
 from ansible_collections.o0_o.posix.plugins.module_utils.dmidecode_utils import (  # noqa: E501
     get_dmidecode_command_requests,
     process_dmidecode_command_results,
@@ -198,21 +186,11 @@ from ansible_collections.o0_o.posix.plugins.module_utils.command_utils import (
 )
 
 __all__ = [
-    "EVIDENCE",
-    "EVIDENCE_KINDS",
-    "ORIGINS",
     "PosixActionBase",
     "ReadPosixActionBase",
     "SYSCTL_MISSING_RCS",
     "ShellsPosixActionBase",
     "WritePosixActionBase",
-    "command_name",
-    "command_names",
-    "commands_run",
-    "compose_evidence",
-    "merge_entry",
-    "merge_evidence",
-    "name_origins",
     "get_compliance_command_requests",
     "missing_commands",
     "process_all_compliance_command_results",

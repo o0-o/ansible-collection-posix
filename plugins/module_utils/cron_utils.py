@@ -93,7 +93,7 @@ import re
 
 from typing import Any, Iterator, Optional
 
-from ansible_collections.o0_o.posix.plugins.module_utils.evidence_utils import (  # noqa: E501
+from ansible_collections.o0_o.core.plugins.module_utils.evidence_utils import (  # noqa: E501
     EVIDENCE,
     compose_evidence,
 )
