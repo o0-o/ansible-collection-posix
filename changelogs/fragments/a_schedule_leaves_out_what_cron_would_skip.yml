@@ -1,0 +1,24 @@
+# vim: ts=2:sw=2:sts=2:et:ft=yaml.ansible
+# -*- mode: yaml; yaml-indent-offset: 2; indent-tabs-mode: nil; -*-
+---
+minor_changes:
+  - >-
+    schedule lookup - where the host's kernel is known, a job its cron
+    would refuse is left out of the schedule and a warning names it by
+    host, crontab, field, spelling and line. This deliberately
+    replicates what cron does at runtime with a line it cannot read -
+    skip it and complain to syslog - because a schedule listing a job
+    the host will never run describes a host that does not exist. The
+    facts underneath still carry the job as written; the exclusion is
+    the lookup's, not the fact's. The kernel is read from
+    ``o0_os.kernel.name``, with the setup module's ``ansible_system``
+    as the fallback where no o0_o gather has run, and a host naming
+    neither gets every row and no verdict
+    (https://github.com/o0-o/ansible-collection-posix/pull/XXX).
+  - >-
+    schedule lookup - this lookup is the POSIX and Vixie-family
+    baseline. An OS collection with a scheduler of its own - systemd
+    timers, launchd - extends or replaces it with a schedule filter of
+    its own, in this row shape, that knows the implementation the
+    kernel does not name. Those filters live in the OS collections
+    (https://github.com/o0-o/ansible-collection-posix/pull/XXX).

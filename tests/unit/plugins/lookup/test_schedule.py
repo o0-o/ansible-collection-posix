@@ -360,3 +360,176 @@ def test_nothing_here_claims_when_a_job_will_next_run(
         for row in rows
     )
     assert all("next" not in row for row in rows)
+
+
+# --- What the host's cron would refuse is left out -----------------------
+
+# A drop-in spelled the OpenBSD way, and a user who names a FreeBSD
+# schedule, on hosts whose crons take one, the other, or neither
+RANDOM_DROPIN = {
+    "/etc/cron.d/random": {
+        "config": {
+            "environment": {},
+            "jobs": [
+                {
+                    "schedule": {
+                        "minute": "~",
+                        "hour": "2",
+                        "day": "*",
+                        "month": "*",
+                        "weekday": "6",
+                    },
+                    "user": "root",
+                    "command": "/bin/sh /etc/weekly",
+                }
+            ],
+        }
+    }
+}
+TICKER = {
+    "1002": {
+        "uid": 1002,
+        "name": "carol",
+        "crontab": {
+            "environment": {},
+            "jobs": [
+                {
+                    "schedule": {"special": "every_second"},
+                    "command": "/usr/local/bin/tick",
+                }
+            ],
+        },
+    }
+}
+
+
+def _warnings(lookup: LookupModule) -> list[str]:
+    """Every warning the lookup displayed, as text."""
+    return [
+        str(call.args[0]) for call in lookup._display.warning.call_args_list
+    ]
+
+
+def test_a_job_the_hosts_cron_would_refuse_is_left_out(make_lookup) -> None:
+    """Test a row cron would skip at runtime is skipped here too.
+
+    A ~ on Linux is a line cronie logs a complaint about and does not
+    run, so a schedule that listed it would describe a host that does
+    not exist. The warning replaces the syslog complaint.
+    """
+    lookup = make_lookup(
+        o0_paths={**PATHS, **RANDOM_DROPIN},
+        o0_users={**USERS, **TICKER},
+        o0_os={"kernel": {"name": "linux"}},
+        inventory_hostname="db1",
+    )
+
+    rows = lookup.run([], None)
+    warned = _warnings(lookup)
+
+    assert len(rows) == 5
+    assert "/bin/sh /etc/weekly" not in _commands(rows)
+    assert "/usr/local/bin/tick" not in _commands(rows)
+    assert len(warned) == 2
+    assert warned[0].startswith("[db1] /etc/cron.d/random: minute '~' is an")
+    assert "left out of the schedule" in warned[0]
+    assert warned[0].endswith("~ 2 * * 6 root /bin/sh /etc/weekly")
+    assert warned[1].startswith("[db1] uid 1002's crontab: '@every_second'")
+
+
+def test_without_a_kernel_every_row_stands(make_lookup) -> None:
+    """Test no kernel means no verdict, and no warning either."""
+    lookup = make_lookup(
+        o0_paths={**PATHS, **RANDOM_DROPIN}, o0_users={**USERS, **TICKER}
+    )
+
+    rows = lookup.run([], None)
+
+    assert len(rows) == 7
+    assert _warnings(lookup) == []
+
+
+def test_ansible_system_names_the_kernel_where_no_gather_ran(
+    make_lookup,
+) -> None:
+    """Test the setup module's word for the kernel is read as a fallback.
+
+    OpenBSD takes its own ~ and not FreeBSD's names, so one row stays
+    and the other goes.
+    """
+    lookup = make_lookup(
+        o0_paths={**PATHS, **RANDOM_DROPIN},
+        o0_users={**USERS, **TICKER},
+        ansible_system="OpenBSD",
+    )
+
+    rows = lookup.run([], None)
+
+    assert "/bin/sh /etc/weekly" in _commands(rows)
+    assert "/usr/local/bin/tick" not in _commands(rows)
+    assert len(_warnings(lookup)) == 1
+
+
+def test_o0_os_is_read_under_ansible_facts_too(make_lookup) -> None:
+    """Test a gather that was not injected as variables still counts."""
+    lookup = make_lookup(
+        o0_paths={**PATHS, **RANDOM_DROPIN},
+        ansible_facts={"o0_os": {"kernel": {"name": "freebsd"}}},
+    )
+
+    rows = lookup.run([], None)
+
+    assert "/bin/sh /etc/weekly" not in _commands(rows)
+    assert len(rows) == 2
+
+
+def test_a_kernel_this_does_not_know_gets_no_verdict(make_lookup) -> None:
+    """Test an unknown kernel leaves every row standing."""
+    lookup = make_lookup(
+        o0_paths={**PATHS, **RANDOM_DROPIN},
+        o0_os={"kernel": {"name": "sunos"}},
+    )
+
+    assert len(lookup.run([], None)) == 3
+    assert _warnings(lookup) == []
+
+
+def test_only_rows_that_would_be_answered_are_held_to_the_verdict(
+    make_lookup,
+) -> None:
+    """Test asking about one user does not warn about another's crontab."""
+    lookup = make_lookup(
+        o0_paths={**PATHS, **RANDOM_DROPIN},
+        o0_users={**USERS, **TICKER},
+        o0_os={"kernel": {"name": "linux"}},
+    )
+
+    rows = lookup.run(["alice"], None)
+
+    assert _commands(rows) == [
+        "/usr/local/bin/alice-boot",
+        "/usr/bin/alice-ten",
+    ]
+    assert _warnings(lookup) == []
+
+    assert lookup.run(["carol"], None) == []
+    assert len(_warnings(lookup)) == 1
+
+
+def test_the_verdict_follows_the_host_asked_about(make_lookup) -> None:
+    """Test another host's rows are held to that host's kernel."""
+    lookup = make_lookup(
+        hostvars={
+            "bsd1": {
+                "o0_paths": RANDOM_DROPIN,
+                "o0_users": TICKER,
+                "o0_os": {"kernel": {"name": "freebsd"}},
+                "inventory_hostname": "bsd1",
+            }
+        }
+    )
+
+    rows = lookup.run([], None, host="bsd1")
+
+    assert _commands(rows) == ["/usr/local/bin/tick"]
+    assert _warnings(lookup)[0].startswith("[bsd1] /etc/cron.d/random:")

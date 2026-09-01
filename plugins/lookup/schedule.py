@@ -36,11 +36,33 @@ description:
     per-user crontab has none, because the spool it sits in answers
     that - so a row from one names the user only where C(o0_users)
     also carries a C(name) for that uid.
-  - Only cron is joined here. C(systemd) timers are a Linux thing and
-    belong to a Linux collection, and this lookup's row shape is the
-    extension point for one - a collection that can enumerate timers
-    can answer in this nomenclature and a play that reads schedules
-    will not know the difference.
+  - Where the host's kernel is known, a job its cron would refuse is
+    left out, and a warning names it. This deliberately replicates
+    what cron does at runtime with a line it cannot read - skip it and
+    complain to syslog - because a schedule listing a job the host will
+    never run describes a host that does not exist. The facts
+    underneath still carry the job as written. The exclusion is the
+    lookup's, not the fact's, and M(o0_o.posix.cron) warns about the
+    same job at the moment it is read.
+  - Whose spellings a host's cron takes is decided by the kernel and
+    no further. POSIX spells a field as a number, a range, a comma list
+    or C(*); the steps, the names, a weekday of C(7) and the eight
+    special strings are Vixie's, which every supported cron takes;
+    C(~) is OpenBSD's; C(@every_minute) and C(@every_second) are
+    FreeBSD's. Linux is held to the Vixie family - cronie, Debian's
+    cron and busybox's are all of it or a subset, and the kernel does
+    not say which - so on Linux only a spelling outside the family is
+    left out. The kernel is read from C(o0_os.kernel.name), with the
+    setup module's C(ansible_system) as the fallback where no o0_o
+    gather has run; a host naming neither gets every row and no
+    verdict.
+  - Only cron is joined here, and this lookup is the POSIX and
+    Vixie-family baseline. An OS collection with a scheduler of its
+    own - C(systemd) timers, C(launchd) - extends or replaces it with a
+    schedule filter of its own, in this row shape, that knows the
+    implementation the kernel does not name. Those filters live in the
+    OS collections, and a play that reads schedules through them will
+    not know the difference.
 options:
   _terms:
     description:
@@ -69,6 +91,12 @@ notes:
   - The lookup does fail when C(o0_paths) or C(o0_users) is present
     but is not a dictionary, which is a namespace that cannot be read
     rather than one with nothing in it.
+  - A row left out for a spelling the host's cron does not take is
+    warned about once, naming the host, the crontab it came from by
+    path or by uid, the field, the spelling, whose spelling it is, and
+    the line - so the fix is one edit away. Only rows that would
+    otherwise have been answered are held to the verdict, so asking
+    about one user does not warn about another's crontab.
 seealso:
   - module: o0_o.posix.cron
     description: Read the crontabs this lookup joins
@@ -223,6 +251,13 @@ from ansible_collections.o0_o.core.plugins.module_utils import (
 from ansible_collections.o0_o.posix.plugins.module_utils import (
     lookup_user,
 )
+from ansible_collections.o0_o.posix.plugins.module_utils.cron_utils import (
+    cron_dialects,
+    cron_kernel_name,
+    describe_refusal,
+    render_cron_job,
+    schedule_refusal,
+)
 
 # Which of the two joined facts a row came from
 FILE = "file"
@@ -245,7 +280,8 @@ class LookupModule(LookupBase, VarsLookupBase):
         :param list terms: Users to answer for, by UID or username;
             none for every scheduled job there is
         :param dict variables: Available Ansible variables
-        :returns list: One row per scheduled job
+        :returns list: One row per scheduled job the host's cron would
+            run
         :raises AnsibleLookupError: If a fact is not the shape it has
             to be
         """
@@ -257,10 +293,69 @@ class LookupModule(LookupBase, VarsLookupBase):
         rows = self._file_rows(paths)
         rows.extend(self._user_rows(users))
 
-        if wanted is None:
+        if wanted is not None:
+            rows = [row for row in rows if self._names(row, wanted)]
+
+        return self._runnable(rows, **kwargs)
+
+    def _kernel(self, **kwargs: Any) -> Optional[str]:
+        """The kernel the host's variables name, or None.
+
+        :returns Optional[str]: The kernel name folded the way o0_os
+            folds it, from o0_os.kernel.name or ansible_system
+        """
+        return cron_kernel_name(
+            {
+                name: self.lookup_var(name, default=None, **kwargs)
+                for name in ("o0_os", "ansible_facts", "ansible_system")
+            }
+        )
+
+    def _runnable(
+        self,
+        rows: list[dict[str, Any]],
+        **kwargs: Any,
+    ) -> list[dict[str, Any]]:
+        """The rows the host's cron would run.
+
+        Where the kernel is known, a row its cron would refuse is left
+        out and warned about, which is what cron does with the line at
+        runtime: skip it, and complain to syslog.  Where the kernel is
+        not known every row stands, because no verdict is better than
+        a wrong one.
+
+        :param list[dict[str, Any]] rows: The rows that would be
+            answered
+        :returns list[dict[str, Any]]: Those of them the host's cron
+            takes
+        """
+        kernel = self._kernel(**kwargs)
+        dialects = cron_dialects(kernel)
+        if dialects is None:
             return rows
 
-        return [row for row in rows if self._names(row, wanted)]
+        host = self.lookup_var("inventory_hostname", default=None, **kwargs)
+        prefix = f"[{host}] " if isinstance(host, str) and host else ""
+
+        kept: list[dict[str, Any]] = []
+        for row in rows:
+            refusal = schedule_refusal(row.get("schedule"), dialects)
+            if refusal is None:
+                kept.append(row)
+                continue
+
+            source = (
+                row["path"]
+                if row.get("source") == FILE
+                else f"uid {row.get('uid')}'s crontab"
+            )
+            self._display.warning(
+                f"{prefix}{source}: {describe_refusal(refusal, kernel)},"
+                f" so the job is left out of the schedule:"
+                f" {render_cron_job(row)}"
+            )
+
+        return kept
 
     def _mapping(self, name: str, **kwargs: Any) -> dict[str, Any]:
         """Read one fact, holding it to being a mapping.
