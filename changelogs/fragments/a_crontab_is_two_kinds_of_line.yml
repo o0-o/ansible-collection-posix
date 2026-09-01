@@ -1,0 +1,25 @@
+# vim: ts=2:sw=2:sts=2:et:ft=yaml.ansible
+# -*- mode: yaml; yaml-indent-offset: 2; indent-tabs-mode: nil; -*-
+---
+minor_changes:
+  - >-
+    cron - a crontab parser reads the two kinds of line a crontab
+    holds, distinctly: the assignments that set a variable for every
+    job below them, and the jobs themselves. Rows carry a user column
+    where the file is a system crontab or lives under ``/etc/cron.d``
+    and do not where it is a per-user crontab, and the caller says
+    which it asked for rather than the parser guessing. Cron's named
+    schedules - ``@reboot`` and its calendar siblings - are a form of
+    their own rather than a fallback, and a line that is none of these
+    fails the parse: a crontab quietly missing a job reads as a host
+    that does not run it
+    (https://github.com/o0-o/ansible-collection-posix/pull/XXX).
+  - >-
+    cron - schedule fields are kept as the file wrote them. ``*/5``,
+    ``1-5``, ``1,15``, ``jan,feb`` and ``mon`` are all cron's own
+    spellings and none is more canonical than another. Letters are read
+    only in the two fields cron names - the month and the weekday -
+    because a minute is counted rather than called something, which is
+    what tells a schedule from five words of a command that landed
+    where one belongs
+    (https://github.com/o0-o/ansible-collection-posix/pull/XXX).

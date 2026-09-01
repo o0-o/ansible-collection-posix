@@ -1,0 +1,9 @@
+SHELL=/bin/bash
+MAILTO=tester@example.com
+# a comment
+@reboot /usr/local/bin/boot-job --flag
+@daily /usr/local/bin/daily-job
+*/5 * * * * /usr/bin/every-five
+0 2 * * 1-5 /usr/bin/weekday-two
+15 3 1,15 * * /usr/bin/first-and-fifteenth
+0 0 * jan,feb mon /usr/bin/named-fields
