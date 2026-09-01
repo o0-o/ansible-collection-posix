@@ -15,11 +15,12 @@ Four of the five corpora are live captures off running Linux, taken
 from containers because the host this suite usually proves against has
 no cron installed at all:
 
-``crontab_etc_debian.txt`` is Debian stable's own ``/etc/crontab`` with
-the ``cron`` package installed. ``crontab_etc_fedora.txt`` and
-``crontab_cron_d_fedora.txt`` are Fedora's, with ``cronie``.
-``crontab_user_cronie.txt`` is a per-user crontab installed into a real
-cronie spool and read back with ``crontab -l``.
+``crontab_etc_debian.txt`` is the ``/etc/crontab`` that
+``docker.io/library/debian:stable`` ships once the ``cron`` package is
+installed. ``crontab_etc_fedora.txt`` and ``crontab_cron_d_fedora.txt``
+are ``registry.fedoraproject.org/fedora:latest``'s, with ``cronie``.
+``crontab_user_cronie.txt`` is a per-user crontab installed into that
+same image's real cronie spool and read back with ``crontab -l``.
 
 ``crontab_user_bsd.txt`` is written by hand in the form Vixie cron
 writes on the BSDs and macOS, including the three header lines it

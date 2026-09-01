@@ -238,13 +238,30 @@
     fail_msg: >-
       the module and the subset disagree about what is scheduled
 
+# A POSIX host need not run cron at all, and a systemd-timer host
+# routinely does not. Every probe exits non-zero having printed
+# nothing, and the absence discipline every sweep here follows applies:
+# no error, a null for the crontab that was asked about and is not
+# there, and evidence naming what was attempted.
 - name: Assert a host with no cron is described rather than failed
   when: not (cron_have | bool)
+  vars:
+    entry: "{{ cron_reg['o0_users'][cron_uid] }}"
   ansible.builtin.assert:
     that:
+      - cron_reg is not changed
       - cron_reg['o0_paths'] == {}
+      # Asked about and not there, which is not the same as unasked
+      - cron_uid in cron_reg['o0_users']
+      - entry['crontab'] is none
+      - entry['uid'] == cron_uid | int
+      # And the record says what was attempted, which is the whole of
+      # what a host with no cron can be said to have been asked
+      - entry['evidence']['commands'] == ['crontab']
+      - entry['evidence']['files'] is not defined
       - >-
         cron_reg['o0_users'] | dict2items
         | rejectattr('value.crontab', 'none') | list | length == 0
     fail_msg: >-
-      a host with no cron reported something scheduled
+      a host with no cron did not describe itself as having none:
+      {{ cron_reg }}

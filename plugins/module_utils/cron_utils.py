@@ -44,6 +44,10 @@ column and no schedule in cron's sense, and its ``@monthly`` sits in
 the period field rather than replacing a schedule.  It shares a
 neighbourhood with cron and not a format, so reading it through this
 would produce confident nonsense.
+
+That is a boundary and not a gap.  ``anacron`` is cronie and Debian
+territory, so a parser for it belongs to an OS collection, which can
+answer in the row shape the ``schedule`` lookup already joins.
 """
 
 from __future__ import annotations

@@ -328,14 +328,52 @@ def test_gather_publishes_the_names_a_gather_publishes(
     assert facts["o0_users"] == result["o0_users"]
 
 
-def test_a_host_with_no_cron_schedules_nothing(
+def test_a_host_with_no_cron_at_all_schedules_nothing(
     monkeypatch, plugin
 ) -> None:
-    """Test a host holding none of it answers empty rather than failing.
+    """Test a host without even the command answers rather than failing.
 
-    A POSIX host need not run cron at all, and one that does not is
-    described by saying so.
+    This is what a systemd-timer host really answers: no crontab
+    command, no /etc/crontab, no /etc/cron.d and no spool, every probe
+    exiting non-zero having printed nothing. The absence discipline
+    every sweep here follows applies - no error, a null for the
+    crontab that was asked about and is not there, and evidence naming
+    what was attempted.
+
+    The shape below is what casa answered, verbatim.
     """
+
+    def mock_run(commands: Any, **kwargs: Any) -> list[dict[str, Any]]:
+        return [
+            {
+                **request,
+                "rc": 0 if request["type"] == "effective_uid" else 127,
+                "stdout": "0" if request["type"] == "effective_uid" else "",
+                "stderr": "sh: crontab: command not found",
+            }
+            for request in commands
+        ]
+
+    monkeypatch.setattr(plugin, "_run", mock_run)
+
+    result = plugin.run(task_vars={})
+
+    assert result["changed"] is False
+    assert result["o0_paths"] == {}
+    assert result["o0_users"] == {
+        "0": {
+            "uid": 0,
+            "crontab": None,
+            "evidence": {"commands": ["crontab"]},
+            "origins": ["o0_o.posix.cron"],
+        }
+    }
+
+
+def test_a_host_with_cron_and_nothing_scheduled_says_so(
+    monkeypatch, plugin
+) -> None:
+    """Test cron present and holding nothing is its own answer."""
     _answer(
         monkeypatch, plugin, held={}, dropins=[], holders=[], own=None
     )

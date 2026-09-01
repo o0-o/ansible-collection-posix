@@ -31,10 +31,16 @@ description:
     P(o0_o.posix.schedule#lookup) lookup is what joins them - a
     derived view rather than a third copy that could disagree with the
     two it came from.
-  - C(anacron) is not read. Its table is a period, a delay, a job
-    identifier and a command, with no user column and no schedule in
-    cron's sense, so it shares a neighbourhood with cron and not a
-    format.
+  - C(anacron) is not read, and that is a boundary rather than an
+    omission. Its table is a period, a delay, a job identifier and a
+    command, with no user column and no schedule in cron's sense, and
+    its C(@monthly) sits in the period field rather than replacing a
+    schedule - so it shares a neighbourhood with cron and not a
+    format. Reading it is per-OS work - it is C(cronie) and Debian
+    territory, and an OS collection's own module is where a parser for
+    it belongs, answering in the row shape
+    P(o0_o.posix.schedule#lookup) already joins so that a play reading
+    schedules does not know the difference.
 options:
   gather:
     description:
