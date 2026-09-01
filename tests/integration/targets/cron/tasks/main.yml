@@ -38,22 +38,29 @@
   vars:
     paths: "{{ cron_reg['o0_paths'] }}"
     users: "{{ cron_reg['o0_users'] }}"
+    # A path that was read; one that is not there is a null and one
+    # that would not be read carries provenance and nothing else
+    described: >-
+      {{ paths | dict2items | rejectattr('value', 'none')
+         | selectattr('value.content', 'defined') | list }}
   ansible.builtin.assert:
     that:
       - cron_reg is not changed
       - paths is mapping
       - users is mapping
-      # A crontab file is a fact about that file, so every entry it
-      # published carries its bytes and what they schedule
+      # Every fixed path is answered for, one way or another: asked
+      # about and absent is a null, never a silence
+      - "'/etc/crontab' in paths"
+      - "'/etc/cron.d' in paths"
+      # A crontab file is a fact about that file, so every entry that
+      # was read carries its bytes and what they schedule
       - >-
-        paths | dict2items | rejectattr('value.content', 'defined')
-        | list | length == 0
-      - >-
-        paths | dict2items | rejectattr('value.config', 'defined')
-        | list | length == 0
-      - >-
-        paths | dict2items | map(attribute='value.config')
+        described | map(attribute='value.config')
         | rejectattr('jobs', 'defined') | list | length == 0
+      # And the drop-in directory holds the names of what is in it
+      - >-
+        paths['/etc/cron.d'] is none
+        or paths['/etc/cron.d']['config'] is sequence
       # No spool file is a path entry: what one says is a fact about
       # the user who owns it
       - >-
@@ -255,6 +262,9 @@
       - cron_uid in cron_reg['o0_users']
       - entry['crontab'] is none
       - entry['uid'] == cron_uid | int
+      # And the cron surface it does not have is filed as absent
+      # rather than left unmentioned
+      - cron_reg['o0_paths']['/etc/crontab'] is none
       # And the record says what was attempted, which is the whole of
       # what a host with no cron can be said to have been asked
       - entry['evidence']['commands'] == ['crontab']

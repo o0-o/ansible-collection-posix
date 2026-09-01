@@ -69,6 +69,7 @@ from ansible_collections.o0_o.posix.plugins.module_utils.cron_utils import (
     CRON_RCS,
     CRON_SPOOLS,
     _parse_crontab_file,
+    _parse_exists,
     _parse_owner_uid,
     _parse_spool_names,
 )
@@ -217,6 +218,16 @@ CRON_COMMAND_SPEC = {
             ),
             "parser": _parse_spool_names,
             "non_error_codes": CRON_RCS,
+        },
+        # Whether a path a caller names rather than discovers is
+        # there. A sweep that finds nothing cannot say whether there
+        # was nothing to find or nothing to look in, and the store's
+        # word for asked-about-and-not-there is a null somebody has to
+        # be able to write.
+        "crontab_exists": {
+            "command": ("test", "-e", "{path}"),
+            "parser": _parse_exists,
+            "non_error_codes": [0, 1],
         },
         # Whose crontab a spool file is, asked of the host rather than
         # inferred from a passwd file this subset does not read

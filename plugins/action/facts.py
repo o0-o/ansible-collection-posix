@@ -101,7 +101,13 @@ def _process_cron_results(
 
     facts: dict[str, Any] = {}
 
-    paths = compose_cron_paths(answers["files"], [])
+    # The drop-in files are not read yet, but the directory's own
+    # entry needs only their names, which the sweep has already
+    # answered with. A host with nothing to read in the next batch
+    # would otherwise never get one, that batch not running at all.
+    paths = compose_cron_paths(
+        answers["files"], answers["dropins"], answers["there"]
+    )
     if paths:
         facts["o0_paths"] = paths
 
@@ -489,7 +495,9 @@ class ActionModule(ShellsPosixActionBase, ActionBase):
             for err in held["errors"]:
                 self._display.warning(f"[{self.inventory_hostname}] {err}")
 
-            paths = compose_cron_paths(held["files"], answers["dropins"])
+            paths = compose_cron_paths(
+                held["files"], answers["dropins"], held["there"]
+            )
             if paths:
                 facts["o0_paths"] = paths
 

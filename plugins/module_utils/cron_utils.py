@@ -157,6 +157,23 @@ CRON_COMMANDS = ("crontab",)
 # The one crontab every implementation keeps at the same place
 SYSTEM_CRONTAB = "/etc/crontab"
 
+# What a host answers where the crontab command is not there to run.
+# A user with no crontab and a host with no crontab command are two
+# different answers, and only the status tells them apart.
+CRON_MISSING_RCS = (126, 127)
+
+# What the fixed paths are asked about with.  A sweep that finds
+# nothing cannot say whether there was nothing to find or nothing to
+# look in, so each path a caller names rather than discovers is asked
+# about directly - which is what lets an absence be filed as one.
+CRON_FIXED_PATHS = ("/etc/crontab", "/etc/cron.d")
+
+# What asks whether a path is there
+CRON_EXISTS_COMMANDS = ("test",)
+
+# What names the files a directory holds
+CRON_LIST_COMMANDS = ("ls",)
+
 # Where the drop-in crontabs live, each its own file with a user column
 CRON_DROPIN_DIR = "/etc/cron.d"
 
@@ -316,6 +333,28 @@ def _parse_crontab_file(
         return None, [ValueError(f"{e_prefix}{err}")]
 
 
+def _parse_exists(
+    rc: int,
+    output: str,
+    e_prefix: str,
+) -> tuple[Optional[bool], Optional[list[Exception]]]:
+    """Canonical COMMAND_SPEC parser for an existence probe.
+
+    ``test -e`` says one thing with its status and nothing with its
+    output, so the status is the answer: there, or asked about and not
+    there.
+
+    :param int rc: The exit status, which is the answer
+    :param str output: Raw stdout, which is empty
+    :param str e_prefix: Error prefix for context
+    :returns tuple[Optional[bool], Optional[list[Exception]]]: Whether
+        the path is there, and never an error
+    """
+    del output, e_prefix  # the status is the whole of the answer
+
+    return (rc == 0), None
+
+
 def _parse_owner_uid(
     rc: int,
     output: str,
@@ -396,6 +435,16 @@ def get_cron_survey_requests() -> list[dict[str, Any]]:
     )
 
     requests = get_file_command_requests([SYSTEM_CRONTAB])
+
+    # Whether each fixed path is there at all, so that a path which is
+    # not can be filed as absent rather than left unmentioned
+    requests.extend(
+        process_command_spec(
+            CRON_COMMAND_SPEC,
+            cmd_type="crontab_exists",
+            path=list(CRON_FIXED_PATHS),
+        )
+    )
 
     for cmd_type in ("crontab_dropins", "crontab_spools", "crontab_self"):
         asked = process_command_spec(CRON_COMMAND_SPEC, cmd_type=cmd_type)
@@ -511,21 +560,55 @@ def cron_survey_answers(
         except ValueError as err:
             errors.append(ValueError(f"{path}: {err}"))
 
+    # What each fixed path answered about its own existence, which is
+    # what tells a path that is not there from one that would not be
+    # read
+    there: dict[str, bool] = {}
+    probes = processed.get("crontab_exists")
+    if isinstance(probes, dict):
+        probes = [probes]
+    for probe in probes or []:
+        if not isinstance(probe, dict):
+            continue
+        path = (probe.get("args") or {}).get("path")
+        if path is not None and isinstance(probe.get("parsed"), bool):
+            there[path] = probe["parsed"]
+
     views: dict[str, dict[str, Any]] = {}
     own = processed.get("crontab_self")
     uid = process_effective_uid_results(cmds_completed)
 
     if uid is not None and isinstance(own, dict):
-        views[str(uid)] = {
-            "crontab": own.get("parsed"),
-            EVIDENCE: compose_evidence(commands=CRON_COMMANDS),
+        view: dict[str, Any] = {
+            EVIDENCE: compose_evidence(commands=CRON_COMMANDS)
         }
+        # A host with no crontab command was never able to answer the
+        # question, which is not the same as answering that there is
+        # no crontab.  The key is left off - the store's word for
+        # never asked - and the record still names what was attempted.
+        # The status is read off the raw result, the processed one
+        # carrying what was parsed rather than how it exited
+        asked = [
+            result
+            for result in cmds_completed
+            if isinstance(result, dict)
+            and result.get("type") == "crontab_self"
+        ]
+        unaskable = any(
+            result.get("rc") in CRON_MISSING_RCS for result in asked
+        )
+
+        if not unaskable:
+            view["crontab"] = own.get("parsed")
+        views[str(uid)] = view
+
         for err in own.get("errors") or []:
             errors.append(err)
 
     return {
         "files": files,
         "views": views,
+        "there": there,
         "dropins": named("crontab_dropins"),
         "holders": named("crontab_spools"),
         "errors": errors,
@@ -630,12 +713,18 @@ def compose_cron_holdings(
             ),
         }
 
-    return {"files": files, "views": views, "errors": errors}
+    return {
+        "files": files,
+        "views": views,
+        "there": answers.get("there") or {},
+        "errors": errors,
+    }
 
 
 def compose_cron_paths(
     files: dict[str, Any],
     dropins: list[str],
+    there: Optional[dict[str, bool]] = None,
 ) -> dict[str, Any]:
     """Compose the crontab entries of the o0_paths store.
 
@@ -643,34 +732,81 @@ def compose_cron_paths(
     file: the bytes under ``content`` and what they schedule under
     ``config``, the way /etc/fstab carries the filesystems it names.
 
+    Three states, because a path answers three ways and the store has
+    a word for each.  A path that is not there is ``null`` - asked
+    about and absent.  A path that is there and was read carries what
+    it says.  A path that is there and would not be read carries an
+    entry naming what was consulted and nothing else, which is the
+    truthful statement that it exists and nothing was learned about
+    it - the same entry the compliance sweep leaves for the shell it
+    ran the probes with.
+
+    Telling the first from the third is what the existence probe is
+    for.  A ``cat`` that failed cannot say whether the file is missing
+    or unreadable, which is why this used to leave both unmentioned
+    and a host with no cron published no trace of the fact.
+
+    ``/etc/cron.d`` is filed as the directory it is: its ``config`` is
+    the drop-in files it holds, the way ``/etc/shells`` carries the
+    shells it names, so a directory that is there and empty is a list
+    with nothing in it and a directory that is not there is null.
+
     Only the files whose rows carry a user column land here. A spool
     file is a crontab too, and it is read, but what it says is a fact
     about the user who owns it rather than about a path a play would
     ever name.
 
-    A file that would not be read is left out rather than filed as a
-    null, because a cat that failed cannot tell a file that is not
-    there from one it could not read.
-
     :param dict[str, Any] files: What the reads answered, keyed by path
     :param list[str] dropins: The drop-in files the sweep named
+    :param Optional[dict[str, bool]] there: Whether each fixed path is
+        there, as the existence probes answered
     :returns dict[str, Any]: The crontab entries, keyed by path
     """
     entries: dict[str, Any] = {}
+    exists = there or {}
 
     for path in [SYSTEM_CRONTAB] + sorted(dropins):
         answered = files.get(path) or {}
         content = answered.get("parsed")
         config = answered.get("config")
 
-        if content is None or config is None:
+        if content is not None and config is not None:
+            entries[path] = {
+                "content": content,
+                "config": config,
+                EVIDENCE: compose_evidence(commands=FILE_READ_COMMANDS),
+            }
             continue
 
-        entries[path] = {
-            "content": content,
-            "config": config,
-            EVIDENCE: compose_evidence(commands=FILE_READ_COMMANDS),
-        }
+        if exists.get(path) is False:
+            entries[path] = None
+            continue
+
+        if path in exists:
+            # There, and nothing learned about it. A refused read is
+            # not an absence and saying nothing at all would read as
+            # one
+            entries[path] = {
+                EVIDENCE: compose_evidence(
+                    commands=sorted(
+                        {*FILE_READ_COMMANDS, *CRON_EXISTS_COMMANDS}
+                    )
+                ),
+            }
+
+    if CRON_DROPIN_DIR in exists:
+        entries[CRON_DROPIN_DIR] = (
+            {
+                "config": sorted(dropins),
+                EVIDENCE: compose_evidence(
+                    commands=sorted(
+                        {*CRON_LIST_COMMANDS, *CRON_EXISTS_COMMANDS}
+                    )
+                ),
+            }
+            if exists[CRON_DROPIN_DIR]
+            else None
+        )
 
     return entries
 
@@ -689,14 +825,19 @@ def compose_cron_users(
         says and what was consulted for it, keyed by stringified uid
     :returns dict[str, Any]: The o0_users entries
     """
-    return {
-        uid: {
-            "uid": int(uid),
-            "crontab": view.get("crontab"),
-            EVIDENCE: view[EVIDENCE],
-        }
-        for uid, view in sorted(views.items())
-    }
+    entries: dict[str, Any] = {}
+
+    for uid, view in sorted(views.items()):
+        entry: dict[str, Any] = {"uid": int(uid)}
+        # A question that could not be put is not a question answered
+        # in the negative, so the key is there only where something
+        # asked it
+        if "crontab" in view:
+            entry["crontab"] = view["crontab"]
+        entry[EVIDENCE] = view[EVIDENCE]
+        entries[uid] = entry
+
+    return entries
 
 
 __all__ = [
@@ -704,6 +845,8 @@ __all__ = [
     "CRON_COMMANDS",
     "CRON_RCS",
     "CRON_DROPIN_DIR",
+    "CRON_FIXED_PATHS",
+    "CRON_MISSING_RCS",
     "CRON_SPOOLS",
     "CRON_FIELD",
     "CRON_FIELDS",

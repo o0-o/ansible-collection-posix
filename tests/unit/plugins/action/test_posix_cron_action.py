@@ -135,6 +135,14 @@ def _answer(
                         "stderr": "",
                     }
                 )
+            elif kind == "crontab_exists":
+                path = request["args"]["path"]
+                here = path in files or (
+                    path == "/etc/cron.d" and bool(named)
+                )
+                answered.append(
+                    {**request, "rc": 0 if here else 1, "stdout": ""}
+                )
             elif kind == "effective_uid":
                 answered.append({**request, "rc": 0, "stdout": uid})
         return answered
@@ -218,8 +226,14 @@ def test_a_spool_crontab_is_not_also_a_path_entry(
 
     assert "/var/spool/cron/alice" not in result["o0_paths"]
     assert sorted(result["o0_paths"]) == [
+        "/etc/cron.d",
         "/etc/cron.d/0hourly",
         "/etc/crontab",
+    ]
+    # The directory is filed as the directory it is, holding the names
+    # of what is in it rather than a crontab of its own
+    assert result["o0_paths"]["/etc/cron.d"]["config"] == [
+        "/etc/cron.d/0hourly"
     ]
 
 
@@ -265,13 +279,17 @@ def test_the_spools_are_swept_rather_than_the_passwd_file(
     plugin.run(task_vars={})
 
     surveyed = [request["type"] for request in batches[0]]
-    assert sorted(surveyed) == [
+    assert sorted(set(surveyed)) == [
         "crontab_dropins",
+        "crontab_exists",
         "crontab_self",
         "crontab_spools",
         "effective_uid",
         "file",
     ]
+    # One existence probe per fixed path, so a path that is not there
+    # can be filed as absent rather than left unmentioned
+    assert surveyed.count("crontab_exists") == 2
     # And nothing in the survey reads a passwd file
     assert all(
         request["args"]["path"] == "/etc/crontab"
@@ -328,19 +346,109 @@ def test_gather_publishes_the_names_a_gather_publishes(
     assert facts["o0_users"] == result["o0_users"]
 
 
-def test_a_host_with_no_cron_at_all_schedules_nothing(
+def test_a_path_that_is_not_there_is_filed_as_not_there(
     monkeypatch, plugin
 ) -> None:
-    """Test a host without even the command answers rather than failing.
+    """Test an absent crontab is a null rather than a silence.
 
-    This is what a systemd-timer host really answers: no crontab
-    command, no /etc/crontab, no /etc/cron.d and no spool, every probe
-    exiting non-zero having printed nothing. The absence discipline
-    every sweep here follows applies - no error, a null for the
-    crontab that was asked about and is not there, and evidence naming
-    what was attempted.
+    The store's word for asked-about-and-not-there is null, and a
+    host that published no trace of its cron surface left a consumer
+    unable to tell "no /etc/crontab" from "nobody looked".
+    """
+    _answer(monkeypatch, plugin, held={}, dropins=[], holders=[])
 
-    The shape below is what casa answered, verbatim.
+    result = plugin.run(task_vars={})
+
+    assert result["o0_paths"]["/etc/crontab"] is None
+    assert result["o0_paths"]["/etc/cron.d"] is None
+
+
+def test_a_directory_that_is_there_and_empty_says_so(
+    monkeypatch, plugin
+) -> None:
+    """Test an empty drop-in directory is a list with nothing in it.
+
+    Exists-and-empty and does-not-exist are two different answers,
+    which is the question a reader actually has about /etc/cron.d.
+    """
+
+    def mock_run(commands: Any, **kwargs: Any) -> list[dict[str, Any]]:
+        answered = []
+        for request in commands:
+            kind = request["type"]
+            if kind == "crontab_exists":
+                # The directory is there; the system crontab is not
+                here = request["args"]["path"] == "/etc/cron.d"
+                answered.append(
+                    {**request, "rc": 0 if here else 1, "stdout": ""}
+                )
+            elif kind == "effective_uid":
+                answered.append({**request, "rc": 0, "stdout": "0"})
+            else:
+                answered.append(
+                    {**request, "rc": 1, "stdout": "", "stderr": "no"}
+                )
+        return answered
+
+    monkeypatch.setattr(plugin, "_run", mock_run)
+
+    result = plugin.run(task_vars={})
+
+    assert result["o0_paths"]["/etc/cron.d"]["config"] == []
+    assert result["o0_paths"]["/etc/crontab"] is None
+
+
+def test_a_file_that_is_there_and_would_not_be_read_is_not_a_null(
+    monkeypatch, plugin
+) -> None:
+    """Test a refused read keeps its entry and names what was asked.
+
+    It exists, so it is not absent; nothing was learned about it, so
+    the entry says exactly that and no more - the same entry the
+    compliance sweep leaves for a path it could not describe.
+    """
+
+    def mock_run(commands: Any, **kwargs: Any) -> list[dict[str, Any]]:
+        answered = []
+        for request in commands:
+            kind = request["type"]
+            if kind == "crontab_exists":
+                answered.append({**request, "rc": 0, "stdout": ""})
+            elif kind == "file":
+                answered.append(
+                    {
+                        **request,
+                        "rc": 1,
+                        "stdout": "",
+                        "stderr": "cat: Permission denied",
+                    }
+                )
+            elif kind == "effective_uid":
+                answered.append({**request, "rc": 0, "stdout": "1000"})
+            else:
+                answered.append({**request, "rc": 1, "stdout": ""})
+        return answered
+
+    monkeypatch.setattr(plugin, "_run", mock_run)
+
+    result = plugin.run(task_vars={})
+    entry = result["o0_paths"]["/etc/crontab"]
+
+    assert entry is not None
+    assert "content" not in entry
+    assert "config" not in entry
+    assert entry["evidence"] == {"commands": ["cat", "test"]}
+
+
+def test_no_crontab_command_is_never_asked_rather_than_none(
+    monkeypatch, plugin
+) -> None:
+    """Test an unaskable question is not answered with a null.
+
+    A user with no crontab and a host with no crontab command are two
+    different things. The first is asked and answered; the second was
+    never able to be put, so the key is left off and the record still
+    names what was attempted.
     """
 
     def mock_run(commands: Any, **kwargs: Any) -> list[dict[str, Any]]:
@@ -357,13 +465,63 @@ def test_a_host_with_no_cron_at_all_schedules_nothing(
     monkeypatch.setattr(plugin, "_run", mock_run)
 
     result = plugin.run(task_vars={})
+    entry = result["o0_users"]["0"]
+
+    assert "crontab" not in entry
+    assert entry["evidence"] == {"commands": ["crontab"]}
+
+
+def test_a_host_with_no_cron_at_all_schedules_nothing(
+    monkeypatch, plugin
+) -> None:
+    """Test a host without even the command answers rather than failing.
+
+    This is what a systemd-timer host really answers: no crontab
+    command, no /etc/crontab, no /etc/cron.d and no spool, every probe
+    exiting non-zero having printed nothing. The absence discipline
+    every sweep here follows applies - no error, a null for the
+    crontab that was asked about and is not there, and evidence naming
+    what was attempted.
+
+    The shape below is what casa answered, verbatim.
+    """
+
+    def mock_run(commands: Any, **kwargs: Any) -> list[dict[str, Any]]:
+        answered = []
+        for request in commands:
+            kind = request["type"]
+            if kind == "effective_uid":
+                answered.append({**request, "rc": 0, "stdout": "0"})
+            elif kind == "crontab_exists":
+                # test is a shell builtin, so it answers even here -
+                # and what it answers is that the path is not there
+                answered.append({**request, "rc": 1, "stdout": ""})
+            else:
+                answered.append(
+                    {
+                        **request,
+                        "rc": 127,
+                        "stdout": "",
+                        "stderr": "sh: crontab: command not found",
+                    }
+                )
+        return answered
+
+    monkeypatch.setattr(plugin, "_run", mock_run)
+
+    result = plugin.run(task_vars={})
 
     assert result["changed"] is False
-    assert result["o0_paths"] == {}
+    # The cron surface was asked about and is not there, which the
+    # store says with a null rather than with silence
+    assert result["o0_paths"] == {
+        "/etc/crontab": None,
+        "/etc/cron.d": None,
+    }
+    # And the one question that could not be put is not answered
     assert result["o0_users"] == {
         "0": {
             "uid": 0,
-            "crontab": None,
             "evidence": {"commands": ["crontab"]},
             "origins": ["o0_o.posix.cron"],
         }
@@ -373,14 +531,21 @@ def test_a_host_with_no_cron_at_all_schedules_nothing(
 def test_a_host_with_cron_and_nothing_scheduled_says_so(
     monkeypatch, plugin
 ) -> None:
-    """Test cron present and holding nothing is its own answer."""
+    """Test cron present and holding nothing is its own answer.
+
+    The command answered, so the user's crontab is a null; the paths
+    were asked about and are not there, so each of them is one too.
+    """
     _answer(
         monkeypatch, plugin, held={}, dropins=[], holders=[], own=None
     )
 
     result = plugin.run(task_vars={})
 
-    assert result["o0_paths"] == {}
+    assert result["o0_paths"] == {
+        "/etc/crontab": None,
+        "/etc/cron.d": None,
+    }
     assert result["o0_users"]["0"]["crontab"] is None
 
 

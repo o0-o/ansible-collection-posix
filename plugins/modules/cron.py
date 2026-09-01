@@ -74,7 +74,14 @@ notes:
   - >-
     A user asked about who holds no crontab carries C(null), which is
     this collection's word for asked about and not there. A user
-    nobody asked about is absent.
+    nobody asked about is absent, and a host with no C(crontab)
+    command to ask with leaves the key off entirely.
+  - >-
+    Each fixed path is asked about with C(test) as well as read, so
+    that a path which is not there can be filed as absent rather than
+    left unmentioned. A read alone cannot tell a file that is missing
+    from one that would not be read, and a host with no cron surface
+    at all published no trace of the fact.
 """
 
 EXAMPLES = r"""

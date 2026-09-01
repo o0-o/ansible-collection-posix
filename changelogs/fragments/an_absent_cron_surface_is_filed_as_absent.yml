@@ -1,0 +1,36 @@
+# vim: ts=2:sw=2:sts=2:et:ft=yaml.ansible
+# -*- mode: yaml; yaml-indent-offset: 2; indent-tabs-mode: nil; -*-
+---
+bugfixes:
+  - >-
+    cron - a cron surface that is not there is filed as not there.
+    ``/etc/crontab`` and ``/etc/cron.d`` are asked about with ``test``
+    as well as read, so a path that is absent lands in ``o0_paths`` as
+    a null - the store's word for asked about and not there - instead
+    of being left unmentioned. A host with no cron published no trace
+    of the fact, leaving a consumer unable to tell "no crontab file"
+    from "nobody looked"
+    (https://github.com/o0-o/ansible-collection-posix/pull/XXX).
+  - >-
+    cron - a crontab that exists and would not be read is neither a
+    null nor a silence. It carries an entry naming what was consulted
+    and nothing else, which is the truthful statement that it is there
+    and nothing was learned about it - the same entry the compliance
+    sweep leaves for a path it could not describe
+    (https://github.com/o0-o/ansible-collection-posix/pull/XXX).
+  - >-
+    cron - a host with no ``crontab`` command leaves the running
+    identity's ``crontab`` key off entirely rather than reporting
+    null. The question could not be put, which is not the same as
+    putting it and being told there is none, and the record still
+    names what was attempted
+    (https://github.com/o0-o/ansible-collection-posix/pull/XXX).
+minor_changes:
+  - >-
+    cron - ``/etc/cron.d`` is filed as the directory it is, its
+    ``config`` holding the drop-in files it contains the way
+    ``/etc/shells`` carries the shells it names. A directory that is
+    there and empty is a list with nothing in it and one that is not
+    there is null, which is the difference between a host with no
+    drop-ins and a host with nowhere to put them
+    (https://github.com/o0-o/ansible-collection-posix/pull/XXX).

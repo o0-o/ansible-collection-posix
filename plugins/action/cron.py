@@ -158,7 +158,9 @@ class ActionModule(PosixActionBase, ActionBase):
 
         paths = compose_paths(
             None,
-            compose_cron_paths(held["files"], answers["dropins"]),
+            compose_cron_paths(
+                held["files"], answers["dropins"], held["there"]
+            ),
             origin=FQCN,
         )
 
