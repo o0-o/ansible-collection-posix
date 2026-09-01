@@ -1169,7 +1169,7 @@ def _element_dialects(
     if "~" in base:
         # OpenBSD's random value: within a range, or within the whole
         # field where an end is left off
-        low, _, high = base.partition("~")
+        low, high = base.split("~", 1)
         for end in (low, high):
             if not end:
                 continue
@@ -1181,7 +1181,7 @@ def _element_dialects(
         return dialects
 
     if "-" in base:
-        low, _, high = base.partition("-")
+        low, high = base.split("-", 1)
         if not low or not high:
             return None
         for end in (low, high):
