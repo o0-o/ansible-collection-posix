@@ -24,11 +24,20 @@
   check_mode: false
   register: cron_id_reg
 
+- name: Ask the host which kernel it runs
+  o0_o.posix.command:
+    argv:
+      - uname
+      - -s
+  check_mode: false
+  register: cron_kernel_reg
+
 - name: Name what the gates can assert
   ansible.builtin.set_fact:
     cron_have: "{{ cron_which_reg['path'] is defined
                    and cron_which_reg['path'] is not none }}"
     cron_uid: "{{ cron_id_reg['stdout'] | trim }}"
+    cron_kernel: "{{ cron_kernel_reg['stdout'] | trim | lower }}"
 
 - name: Ask what this host schedules
   o0_o.posix.cron:
@@ -180,6 +189,58 @@
         fail_msg: >-
           a crontab was left installed: {{ cron_after_reg['stdout'] }}
 
+# On the BSD-descended crons the per-user path is immune to a spelling
+# the cron does not take, because crontab(1) refuses to install the
+# file: a ~ is OpenBSD's, and macOS, FreeBSD and NetBSD reject it at the
+# door. That is why the module's warning about such a line can only be
+# about a system file there, and this proves the door is shut. Linux is
+# not gated in: cronie and Debian's cron take the tilde, and busybox's
+# crontab validates nothing on install - which is why the module holds
+# Linux to what every one of its crons takes.
+- name: Assert crontab refuses a spelling its cron does not take
+  when:
+    - cron_have | bool
+    - cron_kernel in ['darwin', 'freebsd', 'netbsd']
+  block:
+    - name: Offer crontab a line spelled the OpenBSD way
+      ansible.builtin.command:
+        cmd: crontab -
+        stdin: |
+          ~ 2 * * 6 /usr/local/bin/integration-random
+      register: cron_refused_reg
+      failed_when: false
+      changed_when: cron_refused_reg['rc'] == 0
+
+    - name: Assert it was refused at the door
+      ansible.builtin.assert:
+        that:
+          - cron_refused_reg['rc'] != 0
+        fail_msg: >-
+          crontab installed a ~ line on {{ cron_kernel }}, whose cron
+          does not take one: {{ cron_refused_reg }}
+
+    - name: Ask whether anything was installed regardless
+      ansible.builtin.command:
+        cmd: crontab -l
+      register: cron_refused_after_reg
+      failed_when: false
+      changed_when: false
+
+    - name: Assert nothing was
+      ansible.builtin.assert:
+        that:
+          - cron_refused_after_reg['rc'] != 0
+            or '~' not in cron_refused_after_reg['stdout']
+        fail_msg: >-
+          a refused crontab was installed anyway:
+          {{ cron_refused_after_reg['stdout'] }}
+  always:
+    - name: Take any crontab back off, whatever happened
+      ansible.builtin.command:
+        cmd: crontab -r
+      failed_when: false
+      changed_when: true
+
 # A crontab this identity holds none of is a crontab it was asked
 # about and does not have, which is not the same as never asking.
 - name: Assert a user holding no crontab is null rather than absent
@@ -244,6 +305,82 @@
         | list | length == 0
     fail_msg: >-
       the module and the subset disagree about what is scheduled
+
+# The one path a spelling the host's cron does not take can reach the
+# host by is a system file, which nothing checks on the way in: cron
+# finds the line at runtime, complains to syslog and skips it. Only root
+# can write one, and only where the drop-in directory is there, so this
+# is gated on both and skips everywhere else - a real host with cron
+# will log one complaint about the file while it exists.
+- name: Assert a drop-in the host's cron would refuse is read as written
+  when:
+    - cron_uid == '0'
+    - cron_reg['o0_paths']['/etc/cron.d'] is not none
+  vars:
+    cron_dropin: /etc/cron.d/o0-posix-integration
+  block:
+    - name: Write a drop-in spelled the OpenBSD way and the FreeBSD way
+      o0_o.posix.write:
+        dest: "{{ cron_dropin }}"
+        content: |
+          # written by the o0_o.posix cron integration target
+          ~ 2 * * 6 root /usr/local/bin/integration-random
+          @every_second root /usr/local/bin/integration-tick
+
+    - name: Ask again, publishing the answer for the lookup to read
+      o0_o.posix.facts:
+        gather_subset: [uname, cron]
+      register: cron_dropin_reg
+
+    - name: Assert the fact carries the lines as written
+      vars:
+        entry: >-
+          {{ cron_dropin_reg['ansible_facts']['o0_paths'][cron_dropin] }}
+        jobs: "{{ entry['config']['jobs'] }}"
+      ansible.builtin.assert:
+        that:
+          # A warning is not an exclusion at the fact layer: the file
+          # says ~ and @every_second, so the fact says ~ and
+          # @every_second
+          - jobs | length == 2
+          - jobs[0]['schedule']['minute'] == '~'
+          - jobs[0]['user'] == 'root'
+          - jobs[0]['command'] == '/usr/local/bin/integration-random'
+          - "jobs[1]['schedule'] == {'special': 'every_second'}"
+          - jobs[1]['command'] == '/usr/local/bin/integration-tick'
+          - >-
+            cron_dropin in
+            cron_dropin_reg['ansible_facts']['o0_paths']['/etc/cron.d']['config']
+        fail_msg: >-
+          the drop-in was not published as written: {{ entry }}
+
+    - name: Assert the lookup leaves out what this kernel's cron refuses
+      vars:
+        rows: >-
+          {{ lookup('o0_o.posix.schedule', wantlist=True)
+             | selectattr('path', 'defined')
+             | selectattr('path', 'eq', cron_dropin)
+             | map(attribute='command') | list }}
+        # OpenBSD's cron takes its own ~, and so do cronie and Debian's
+        # cron, so Linux is held to what all of its crons take; only
+        # FreeBSD's cron names @every_second. Every other supported
+        # cron skips the line, and so does the schedule.
+        expected: >-
+          {{ (['/usr/local/bin/integration-random']
+              if cron_kernel in ['openbsd', 'linux'] else [])
+             + (['/usr/local/bin/integration-tick']
+                if cron_kernel == 'freebsd' else []) }}
+      ansible.builtin.assert:
+        that:
+          - rows == expected
+        fail_msg: >-
+          the schedule on {{ cron_kernel }} answered {{ rows }} for the
+          drop-in, expected {{ expected }}
+  always:
+    - name: Take the drop-in back off, whatever happened
+      o0_o.posix.write:
+        dest: "{{ cron_dropin }}"
+        state: absent
 
 # A POSIX host need not run cron at all, and a systemd-timer host
 # routinely does not. Every probe exits non-zero having printed
