@@ -47,7 +47,10 @@ description:
     territory, and an OS collection's own module is where a parser for
     it belongs, answering in the row shape
     P(o0_o.posix.schedule#lookup) already joins so that a play reading
-    schedules does not know the difference.
+    schedules does not know the difference. C(cronie)'s C(crontab -T),
+    a validator that installs nothing, sits on the same side of that
+    boundary - it is cronie's alone, so it is a Linux collection's tool
+    rather than this one's.
 options:
   gather:
     description:
@@ -104,6 +107,15 @@ notes:
     running - so on Linux only FreeBSD's names warn, and an OS
     collection that knows its cron narrows the verdict. A kernel this
     does not know gets no verdict rather than a wrong one.
+  - >-
+    A per-user crontab is immune to a spelling the host's cron does
+    not take only where C(crontab(1)) parses the file before
+    installing it, which the Vixie-descended crontabs on macOS,
+    FreeBSD and NetBSD do - a C(~) is refused at the door there, so
+    the warning can only ever be about a system file. Linux is not
+    immune: cronie and Debian's cron take the tilde, and busybox's
+    C(crontab) validates nothing on install, leaving its C(crond) to
+    complain and skip the line at load.
 """
 
 EXAMPLES = r"""

@@ -36,9 +36,10 @@ dropped: a crontab quietly missing a job reads as a host that does
 not run it.
 
 Fields are kept as the file wrote them.  POSIX spells a field as a
-number, a range, a comma list or ``*``; the ``*/5`` steps and the
-``jan``/``mon`` names are Vixie's spellings on top of that; the ``~``
-random ranges are OpenBSD's, written into its own stock root crontab;
+number, a range, a comma list or ``*``; the ``*/5`` steps, the
+``jan``/``mon`` names and a weekday of ``7`` are Vixie's spellings on
+top of that; the ``~`` random ranges are OpenBSD's, written into its
+own stock root crontab;
 ``@every_minute`` and ``@every_second`` are FreeBSD's.  All of them
 are published as a reader would find them in the file, because
 rewriting any into another spelling would claim a file the host does
@@ -250,13 +251,28 @@ CRON_DIALECT_NAMES = {
 # way ``o0_os.kernel.name`` folds it.  The kernel decides this much and
 # no more.  Linux runs cronie, Debian's cron or busybox's, and which
 # one is not derivable from the kernel, so Linux is held to the union
-# of what all of them take: cronie since 1.7 and Debian's cron both
-# take OpenBSD's ``~`` - probed at the door of each, in containers -
-# and busybox takes neither that nor a weekday of 7.  A spelling
-# outside the union is the only one no Linux cron runs, so it is the
-# only one that warns there; an OS collection that knows which cron
-# its hosts run narrows the set through the library surface below.  A
-# kernel not named here runs a cron nothing here knows, and gets no
+# of what all of them take.  A spelling outside the union is the only
+# one no Linux cron runs, so it is the only one that warns there.  An
+# OS collection that knows which cron its hosts run narrows the set
+# through the library surface below: cronie takes the whole union,
+# tilde included; busybox takes neither the tilde nor a weekday of 7.
+#
+# The union was probed at the door of each cron, in containers, so
+# that the map is defensible from this file and nobody re-derives it:
+#
+# - cronie 1.7.2 (Fedora).  ``crontab -T`` - a validator that installs
+#   nothing - reports no syntax issue for ``~``, ``30~45``, ``~30`` and
+#   ``30~``, and refuses a tilde under a step (``30~45/5``: bad
+#   minute), ``@every_minute`` and ``@every_second`` (bad time
+#   specifier), ``*/0`` (bad minute) and an hour of 24 (bad hour).
+# - Debian cron 3.0pl1-197.  ``crontab -`` installs ``~ 2 * * 6`` and
+#   ``30~45/5 1 * * *`` and reads them back, and refuses
+#   ``@every_second`` (bad time specifier).
+# - busybox 1.38.  ``crontab -`` installs anything at all; crond logs
+#   "parse error at ~", "parse error at 7" and "parse error at 24"
+#   when it loads the file, skips those lines and runs the rest.
+#
+# A kernel not named here runs a cron nothing here knows, and gets no
 # verdict.
 CRON_KERNEL_DIALECTS: dict[str, frozenset[str]] = {
     "linux": frozenset((POSIX, VIXIE, OPENBSD)),
