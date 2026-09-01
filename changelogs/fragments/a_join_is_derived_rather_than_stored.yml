@@ -1,0 +1,30 @@
+# vim: ts=2:sw=2:sts=2:et:ft=yaml.ansible
+# -*- mode: yaml; yaml-indent-offset: 2; indent-tabs-mode: nil; -*-
+---
+minor_changes:
+  - >-
+    schedule lookup - a new lookup joins the crontab files in
+    ``o0_paths`` against the per-user crontabs in ``o0_users`` and
+    answers with one row per scheduled job, in one nomenclature,
+    running nothing on the host. It is why there is no stored schedule
+    fact: the join is derived at the moment it is asked rather than
+    kept as a third copy that could drift from the two it came from
+    (https://github.com/o0-o/ansible-collection-posix/pull/XXX).
+  - >-
+    schedule lookup - every row says where it was read from, a
+    ``path`` for a file row and a ``uid`` for a user row, and nothing
+    else about a row depends on which it was. The ``user`` a job runs
+    as comes from the file's user column where there is one and from
+    the name ``o0_users`` gives the uid otherwise, and is absent where
+    nothing says - a per-user crontab names no user, because the spool
+    it sits in answers that. The environment the containing crontab
+    set rides on each row, because a command means something different
+    under a different ``PATH``
+    (https://github.com/o0-o/ansible-collection-posix/pull/XXX).
+  - >-
+    schedule lookup - only cron is joined. systemd timers are a Linux
+    thing and belong to a Linux collection, and the row shape is the
+    extension point for one: a collection that can enumerate timers
+    can answer in this nomenclature and a play that reads schedules
+    will not know the difference
+    (https://github.com/o0-o/ansible-collection-posix/pull/XXX).
