@@ -49,10 +49,11 @@ description:
     or C(*); the steps, the names, a weekday of C(7) and the eight
     special strings are Vixie's, which every supported cron takes;
     C(~) is OpenBSD's; C(@every_minute) and C(@every_second) are
-    FreeBSD's. Linux is held to the Vixie family - cronie, Debian's
-    cron and busybox's are all of it or a subset, and the kernel does
-    not say which - so on Linux only a spelling outside the family is
-    left out. The kernel is read from C(o0_os.kernel.name), with the
+    FreeBSD's. Linux is held to the union of what its crons take -
+    cronie since 1.7 and Debian's cron both take OpenBSD's C(~),
+    busybox takes neither that nor a weekday of C(7), and the kernel
+    does not say which is running - so on Linux only FreeBSD's names
+    are left out. The kernel is read from C(o0_os.kernel.name), with the
     setup module's C(ansible_system) as the fallback where no o0_o
     gather has run; a host naming neither gets every row and no
     verdict.

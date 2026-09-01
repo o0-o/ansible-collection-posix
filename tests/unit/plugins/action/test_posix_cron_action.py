@@ -589,8 +589,14 @@ def test_a_crontab_that_will_not_parse_warns_and_is_left_out(
     assert plugin._display.warning.called
 
 
-# A drop-in spelled the OpenBSD way, which is a line cronie will log a
-# complaint about and skip
+# A drop-in naming a FreeBSD schedule, which is a line cronie logs a
+# complaint about and skips; and one spelled the OpenBSD way, which
+# cronie and Debian's cron both take and busybox does not
+TICK_DROPIN = (
+    "SHELL=/bin/sh\n"
+    "# poll as fast as cron will go\n"
+    "@every_second root /usr/local/bin/tick\n"
+)
 RANDOM_DROPIN = (
     "SHELL=/bin/sh\n"
     "# rotate at a random minute\n"
@@ -611,16 +617,16 @@ def test_a_job_the_hosts_cron_would_refuse_is_warned_about_and_kept(
 ) -> None:
     """Test a spelling the host's cron does not take earns a warning.
 
-    A ~ in a Linux drop-in is a line cronie will skip and complain
-    about, so the operator hears about it here, by file, line and
-    spelling. The fact still carries the job as written: a warning is
-    not an exclusion at the fact layer.
+    An @every_second in a Linux drop-in is a line cronie will skip and
+    complain about, so the operator hears about it here, by file, line
+    and spelling. The fact still carries the job as written: a warning
+    is not an exclusion at the fact layer.
     """
     _answer(
         monkeypatch,
         plugin,
-        held={"/etc/crontab": SYSTEM, "/etc/cron.d/random": RANDOM_DROPIN},
-        dropins=["/etc/cron.d/random"],
+        held={"/etc/crontab": SYSTEM, "/etc/cron.d/tick": TICK_DROPIN},
+        dropins=["/etc/cron.d/tick"],
         holders=[],
         kernel="Linux",
     )
@@ -629,14 +635,39 @@ def test_a_job_the_hosts_cron_would_refuse_is_warned_about_and_kept(
     warned = _warnings(plugin)
 
     assert len(warned) == 1
-    assert warned[0].startswith("[localhost] /etc/cron.d/random line 3: ")
-    assert "minute '~' is an OpenBSD spelling" in warned[0]
+    assert warned[0].startswith("[localhost] /etc/cron.d/tick line 3: ")
+    assert "'@every_second' is a FreeBSD spelling" in warned[0]
     assert "linux's cron does not take it" in warned[0]
-    assert warned[0].endswith("~ 2 * * 6 root /bin/sh /etc/weekly")
+    assert warned[0].endswith("@every_second root /usr/local/bin/tick")
 
+    job = result["o0_paths"]["/etc/cron.d/tick"]["config"]["jobs"][0]
+    assert job["schedule"] == {"special": "every_second"}
+    assert job["user"] == "root"
+
+
+def test_linux_takes_the_tilde_because_some_of_its_crons_do(
+    monkeypatch, plugin
+) -> None:
+    """Test a ~ drop-in on Linux is not warned about.
+
+    cronie since 1.7 and Debian's cron both take it, busybox does not,
+    and the kernel does not say which is running - so Linux is held to
+    what all of them take, and a wrong verdict is worse than none.
+    """
+    _answer(
+        monkeypatch,
+        plugin,
+        held={"/etc/cron.d/random": RANDOM_DROPIN},
+        dropins=["/etc/cron.d/random"],
+        holders=[],
+        kernel="Linux",
+    )
+
+    result = plugin.run(task_vars={})
+
+    assert _warnings(plugin) == []
     job = result["o0_paths"]["/etc/cron.d/random"]["config"]["jobs"][0]
     assert job["schedule"]["minute"] == "~"
-    assert job["user"] == "root"
 
 
 def test_a_users_crontab_is_held_to_the_same_cron(
@@ -694,7 +725,8 @@ def test_a_spool_crontab_is_warned_about_as_its_owners(
     plugin.run(task_vars={})
     warned = _warnings(plugin)
 
-    assert len(warned) == 4
+    # Linux takes the corpus's tildes and not FreeBSD's two names
+    assert len(warned) == 2
     assert all(
         w.startswith("[localhost] uid 1000's crontab (/var/spool/cron/alice)")
         for w in warned
@@ -705,8 +737,10 @@ def test_a_spool_crontab_is_warned_about_as_its_owners(
     "kernel, refused",
     [
         ("OpenBSD", ["@every_minute", "@every_second"]),
+        ("Linux", ["@every_minute", "@every_second"]),
         ("FreeBSD", ["30~45", "~"]),
         ("NetBSD", ["30~45", "~", "@every_minute", "@every_second"]),
+        ("Darwin", ["30~45", "~", "@every_minute", "@every_second"]),
     ],
 )
 def test_a_spelling_the_hosts_cron_takes_is_not_warned_about(
@@ -714,8 +748,9 @@ def test_a_spelling_the_hosts_cron_takes_is_not_warned_about(
 ) -> None:
     """Test each kernel is held to its own cron's spellings.
 
-    OpenBSD takes its ~ and not FreeBSD's names; FreeBSD the reverse;
-    NetBSD neither.
+    OpenBSD takes its ~ and not FreeBSD's names, and so does Linux,
+    whose cronie and Debian cron took the tilde up; FreeBSD the
+    reverse; NetBSD and Darwin neither.
     """
     _answer(
         monkeypatch,

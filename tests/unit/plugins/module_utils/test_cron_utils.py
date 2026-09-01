@@ -449,8 +449,8 @@ def test_a_schedule_draws_on_every_owner_it_uses() -> None:
 @pytest.mark.parametrize(
     "kernel, expected",
     [
-        ("Linux", {POSIX, VIXIE}),
-        ("linux", {POSIX, VIXIE}),
+        ("Linux", {POSIX, VIXIE, OPENBSD}),
+        ("linux", {POSIX, VIXIE, OPENBSD}),
         ("Darwin", {POSIX, VIXIE}),
         ("NetBSD", {POSIX, VIXIE}),
         ("FreeBSD", {POSIX, VIXIE, FREEBSD}),
@@ -472,17 +472,23 @@ def test_a_kernel_this_does_not_know_gets_no_verdict(kernel) -> None:
     assert cron_dialects(kernel) is None
 
 
-def test_linux_is_held_to_the_family_and_no_further() -> None:
-    """Test Linux does not warn on any Vixie spelling.
+def test_linux_is_held_to_what_every_linux_cron_takes() -> None:
+    """Test Linux warns only on a spelling no Linux cron runs.
 
-    cronie, Debian's cron and busybox's are all the Vixie family or a
-    subset of it, and the kernel does not say which, so a spelling
-    inside the family is never Linux's to refuse.
+    cronie since 1.7 and Debian's cron take OpenBSD's ~; busybox takes
+    neither that nor a weekday of 7; and the kernel does not say which
+    is running. So the tilde is not Linux's to refuse and FreeBSD's
+    names are the only spellings that warn there.
     """
-    assert CRON_KERNEL_DIALECTS["linux"] == {POSIX, VIXIE}
+    assert CRON_KERNEL_DIALECTS["linux"] == {POSIX, VIXIE, OPENBSD}
     assert (
         invalid_cron_jobs(parsed("user_cronie"), cron_dialects("Linux")) == []
     )
+    refused = invalid_cron_jobs(parsed("user_bsd"), cron_dialects("Linux"))
+    assert [f["spelling"] for f in refused] == [
+        "@every_minute",
+        "@every_second",
+    ]
 
 
 # --- What a host's cron would refuse -------------------------------------
@@ -500,7 +506,7 @@ def test_every_live_corpus_is_taken_by_every_known_cron(
 @pytest.mark.parametrize(
     "kernel, refused",
     [
-        ("Linux", ["30~45", "~", "@every_minute", "@every_second"]),
+        ("Linux", ["@every_minute", "@every_second"]),
         ("Darwin", ["30~45", "~", "@every_minute", "@every_second"]),
         ("NetBSD", ["30~45", "~", "@every_minute", "@every_second"]),
         ("FreeBSD", ["30~45", "~"]),
@@ -530,7 +536,7 @@ def test_cron_stops_at_the_first_field_it_cannot_read() -> None:
             "month": "*",
             "weekday": "*",
         },
-        cron_dialects("Linux"),
+        cron_dialects("Darwin"),
     )
 
     assert refusal == {"field": "minute", "spelling": "~", "dialect": OPENBSD}
@@ -620,18 +626,18 @@ def test_a_refusal_names_the_crontab_the_line_and_the_spelling() -> None:
     """
     text = corpus("user_bsd")
     warned = cron_refusals(
-        parse_crontab(text), "linux", "uid 501's crontab", content=text
+        parse_crontab(text), "darwin", "uid 501's crontab", content=text
     )
 
     assert len(warned) == 4
     assert warned[0] == (
         "uid 501's crontab line 16: minute '30~45' is an OpenBSD spelling"
-        " and linux's cron does not take it, so the job will not run:"
+        " and darwin's cron does not take it, so the job will not run:"
         " 30~45\t1\t*\t*\t*\t/bin/sh /etc/daily"
     )
     assert warned[3] == (
         "uid 501's crontab line 21: '@every_second' is a FreeBSD spelling"
-        " and linux's cron does not take it, so the job will not run:"
+        " and darwin's cron does not take it, so the job will not run:"
         " @every_second /usr/local/bin/tick"
     )
 
@@ -639,14 +645,14 @@ def test_a_refusal_names_the_crontab_the_line_and_the_spelling() -> None:
 def test_a_refusal_without_the_file_names_the_job_and_renders_it() -> None:
     """Test a job read back out of a fact is still named and quoted."""
     config = parse_crontab(
-        "~ 2 * * 6 root /bin/sh /etc/weekly", user_column=True
+        "@every_second root /usr/local/bin/tick", user_column=True
     )
-    warned = cron_refusals(config, "linux", "/etc/cron.d/random")
+    warned = cron_refusals(config, "linux", "/etc/cron.d/tick")
 
     assert warned == [
-        "/etc/cron.d/random job 1: minute '~' is an OpenBSD spelling and"
+        "/etc/cron.d/tick job 1: '@every_second' is a FreeBSD spelling and"
         " linux's cron does not take it, so the job will not run:"
-        " ~ 2 * * 6 root /bin/sh /etc/weekly"
+        " @every_second root /usr/local/bin/tick"
     ]
 
 

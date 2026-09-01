@@ -47,9 +47,9 @@ whoever asks it, not an answer to store.
 
 Kept as written is not the same as taken everywhere.  Each spelling
 has an owner, and a host's cron takes its owner's spellings and no
-others: a ``~`` in a Linux drop-in is a line cronie will log a
-complaint about and skip, and a crontab holding one describes a job
-the host will never run.  The dialect layer below says whose each
+others: an ``@every_second`` in a Linux drop-in is a line cronie will
+log a complaint about and skip, and a crontab holding one describes a
+job the host will never run.  The dialect layer below says whose each
 spelling is and what the cron on each kernel takes, so that a
 producer can warn about a job the host will refuse, and the schedule
 lookup can leave it out the way cron does.  The fact itself publishes
@@ -248,13 +248,18 @@ CRON_DIALECT_NAMES = {
 
 # What the cron on each kernel takes, keyed by the kernel's name the
 # way ``o0_os.kernel.name`` folds it.  The kernel decides this much and
-# no more.  Linux runs cronie, Debian's Vixie or busybox's, all of them
-# the Vixie family or a subset of it, and which one is not derivable
-# from the kernel - so Linux is held to the family and a spelling
-# outside it is what earns a warning there.  A kernel not named here
-# runs a cron nothing here knows, and gets no verdict.
+# no more.  Linux runs cronie, Debian's cron or busybox's, and which
+# one is not derivable from the kernel, so Linux is held to the union
+# of what all of them take: cronie since 1.7 and Debian's cron both
+# take OpenBSD's ``~`` - probed at the door of each, in containers -
+# and busybox takes neither that nor a weekday of 7.  A spelling
+# outside the union is the only one no Linux cron runs, so it is the
+# only one that warns there; an OS collection that knows which cron
+# its hosts run narrows the set through the library surface below.  A
+# kernel not named here runs a cron nothing here knows, and gets no
+# verdict.
 CRON_KERNEL_DIALECTS: dict[str, frozenset[str]] = {
-    "linux": frozenset((POSIX, VIXIE)),
+    "linux": frozenset((POSIX, VIXIE, OPENBSD)),
     "darwin": frozenset((POSIX, VIXIE)),
     "netbsd": frozenset((POSIX, VIXIE)),
     "freebsd": frozenset((POSIX, VIXIE, FREEBSD)),

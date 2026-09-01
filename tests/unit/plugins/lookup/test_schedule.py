@@ -413,14 +413,14 @@ def _warnings(lookup: LookupModule) -> list[str]:
 def test_a_job_the_hosts_cron_would_refuse_is_left_out(make_lookup) -> None:
     """Test a row cron would skip at runtime is skipped here too.
 
-    A ~ on Linux is a line cronie logs a complaint about and does not
-    run, so a schedule that listed it would describe a host that does
-    not exist. The warning replaces the syslog complaint.
+    Neither a ~ nor an @every_second is anything Darwin's cron reads,
+    so a schedule that listed them would describe a host that does not
+    exist. The warning replaces the syslog complaint.
     """
     lookup = make_lookup(
         o0_paths={**PATHS, **RANDOM_DROPIN},
         o0_users={**USERS, **TICKER},
-        o0_os={"kernel": {"name": "linux"}},
+        o0_os={"kernel": {"name": "darwin"}},
         inventory_hostname="db1",
     )
 
@@ -435,6 +435,26 @@ def test_a_job_the_hosts_cron_would_refuse_is_left_out(make_lookup) -> None:
     assert "left out of the schedule" in warned[0]
     assert warned[0].endswith("~ 2 * * 6 root /bin/sh /etc/weekly")
     assert warned[1].startswith("[db1] uid 1002's crontab: '@every_second'")
+
+
+def test_linux_keeps_the_tilde_and_not_freebsds_names(make_lookup) -> None:
+    """Test Linux is held to what every Linux cron takes.
+
+    cronie and Debian's cron take the tilde and busybox does not, and
+    the kernel does not say which is running, so the tilde row stands
+    and only FreeBSD's name goes.
+    """
+    lookup = make_lookup(
+        o0_paths={**PATHS, **RANDOM_DROPIN},
+        o0_users={**USERS, **TICKER},
+        o0_os={"kernel": {"name": "linux"}},
+    )
+
+    rows = lookup.run([], None)
+
+    assert "/bin/sh /etc/weekly" in _commands(rows)
+    assert "/usr/local/bin/tick" not in _commands(rows)
+    assert len(_warnings(lookup)) == 1
 
 
 def test_without_a_kernel_every_row_stands(make_lookup) -> None:

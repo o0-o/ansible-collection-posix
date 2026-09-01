@@ -98,9 +98,11 @@ notes:
     names, a weekday of C(7) and the eight special strings are
     Vixie's, which every supported cron takes; C(~) is OpenBSD's;
     C(@every_minute) and C(@every_second) are FreeBSD's. Linux is
-    held to the Vixie family - cronie, Debian's cron and busybox's are
-    all of it or a subset, and the kernel does not say which - so on
-    Linux only a spelling outside the family warns. A kernel this
+    held to the union of what its crons take - cronie since 1.7 and
+    Debian's cron both take OpenBSD's C(~), busybox takes neither that
+    nor a weekday of C(7), and the kernel does not say which is
+    running - so on Linux only FreeBSD's names warn, and an OS
+    collection that knows its cron narrows the verdict. A kernel this
     does not know gets no verdict rather than a wrong one.
 """
 
