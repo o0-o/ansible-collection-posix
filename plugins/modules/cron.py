@@ -149,8 +149,11 @@ o0_paths:
         - A job carries its C(schedule), the C(user) it runs as, and
           the C(command). A schedule is the five fields C(minute),
           C(hour), C(day), C(month) and C(weekday) as the file wrote
-          them, or C(special) naming one of cron's own - C(reboot),
-          C(daily) and their siblings.
+          them, or C(special) naming a Vixie form - C(reboot),
+          C(daily) and their siblings - which POSIX does not define
+          but the crons hosts run do. The two shapes are structurally
+          distinct, so a consumer needing POSIX-portable schedules
+          can select for the five-field form.
       type: dict
   sample:
     /etc/cron.d/zz-example:

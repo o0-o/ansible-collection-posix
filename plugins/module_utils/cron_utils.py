@@ -25,18 +25,23 @@ guesses which it is reading: the caller knows which file it asked for
 and says so.
 
 A schedule is five fields or one special string.  The special strings
-are a form cron defines - ``@reboot`` and its calendar siblings - and
-not a fallback for a line that would not parse.  A line that is
-neither blank, a comment, an assignment, nor a schedule and a command
-is a line this does not understand, and it fails rather than being
-dropped: a crontab quietly missing a job reads as a host that does not
-run it.
+- ``@reboot`` and its calendar siblings - are a Vixie cron form that
+POSIX does not define, recognized here because the crons hosts
+actually run are Vixie-descended and their files hold them: the read
+side describes the host, the way getent is read without being POSIX.
+They are a closed set and not a fallback - a line that is neither
+blank, a comment, an assignment, nor a schedule and a command is a
+line this does not understand, and it fails rather than being
+dropped: a crontab quietly missing a job reads as a host that does
+not run it.
 
-Fields are kept as the file wrote them.  ``*/5``, ``1-5``, ``1,15``,
-``jan,feb`` and ``mon`` are all cron's own spellings of a schedule and
-none of them is more canonical than another, so what is published is
-what a reader would find in the file.  What they mean in wall-clock
-terms is a question for whoever asks it, not an answer to store.
+Fields are kept as the file wrote them.  POSIX spells a field as a
+number, a range, a comma list or ``*``; the ``*/5`` steps and the
+``jan``/``mon`` names are Vixie's spellings on top of that.  All of
+them are published as a reader would find them in the file, because
+rewriting any into another spelling would claim a file the host does
+not have.  What they mean in wall-clock terms is a question for
+whoever asks it, not an answer to store.
 
 ``anacron`` is deliberately not read here.  Its table is four fields -
 a period, a delay, a job identifier and a command - with no user
