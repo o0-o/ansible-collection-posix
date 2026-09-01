@@ -1,0 +1,33 @@
+# vim: ts=2:sw=2:sts=2:et:ft=yaml.ansible
+# -*- mode: yaml; yaml-indent-offset: 2; indent-tabs-mode: nil; -*-
+---
+minor_changes:
+  - >-
+    compliance - the conformance lists are complete. All 160 utilities
+    POSIX.1-2017 defines were read off the standard's own SYNOPSIS
+    markers, one at a time: 104 carry no option marker over their own
+    name and are required of every host, and 56 belong to an option
+    group and are required of nobody who does not claim it. The
+    partition is total and a test says so, which is what keeps it
+    complete rather than letting it drift back into a sample
+    (https://github.com/o0-o/ansible-collection-posix/pull/XXX).
+bugfixes:
+  - >-
+    compliance - ``bg``, ``fg`` and ``jobs`` are no longer required of
+    every host. They belong to the User Portability Utilities option,
+    so a conformant host without them was reading as failing
+    (https://github.com/o0-o/ansible-collection-posix/pull/XXX).
+  - >-
+    compliance - ``type`` and ``ulimit`` move to the XSI list, whose
+    marker covers them in the standard, and the XSI list grows from
+    five utilities to the twenty-four the marker really covers - the
+    SCCS set, ``cflow``, ``cxref``, ``compress`` and its siblings among
+    them. A host claiming XSI is now held to the option rather than to
+    a sample of it
+    (https://github.com/o0-o/ansible-collection-posix/pull/XXX).
+  - >-
+    compliance - the mandatory base grows from the sample it was to
+    the whole of it, so gaps that were passing are named. A host
+    without ``bc``, ``ed``, ``lp``, ``uudecode`` or ``uuencode`` is not
+    a conformant POSIX system and now reports as one that is not
+    (https://github.com/o0-o/ansible-collection-posix/pull/XXX).

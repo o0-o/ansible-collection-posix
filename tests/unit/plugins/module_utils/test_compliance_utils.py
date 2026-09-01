@@ -503,15 +503,61 @@ def test_the_xsi_list_is_what_the_xsi_marker_covers() -> None:
     host lacking one has an XCU gap; reading it as an XSI gap named
     the wrong standard for a real defect.
     """
-    assert XSI_REQUIRED_COMMANDS == {
-        "fuser",
-        "ipcrm",
-        "ipcs",
-        "link",
-        "unlink",
-    }
+    for utility in ("fuser", "ipcrm", "ipcs", "link", "unlink", "sccs"):
+        assert utility in XSI_REQUIRED_COMMANDS
+
     assert "getconf" not in XSI_REQUIRED_COMMANDS
     assert "pax" not in XSI_REQUIRED_COMMANDS
+    # Every one of them is an option-group utility rather than a
+    # mandatory one, which is what makes it XSI's to require
+    assert XSI_REQUIRED_COMMANDS <= POSIX_OPTIONAL_UTILITIES
+
+
+def test_every_utility_the_standard_names_is_accounted_for() -> None:
+    """Test the partition is total, which is what makes it complete.
+
+    Every utility POSIX defines is either required of every host or
+    belongs to an option group, and none is both. A utility that fell
+    out of both lists would be one nothing here has an opinion about,
+    which is how a list becomes a sample again.
+    """
+    # [ is documented on the test page rather than indexed separately
+    named = XCU_REQUIRED_UTILITIES - {"["}
+
+    assert named | POSIX_OPTIONAL_UTILITIES == POSIX_UTILITIES
+    assert not (named & POSIX_OPTIONAL_UTILITIES)
+
+
+def test_the_base_is_the_whole_base() -> None:
+    """Test the mandatory set is the size the standard makes it.
+
+    104 of the 160 utilities carry no option marker over their own
+    name. Pinning the count is what catches a utility quietly leaving
+    the required list, which under-reports a gap rather than
+    announcing itself.
+    """
+    assert len(XCU_REQUIRED_UTILITIES - {"["}) == 104
+    assert len(POSIX_OPTIONAL_UTILITIES) == 56
+
+
+def test_the_option_groups_are_the_standard_s_own() -> None:
+    """Test each optional group is there, by a member of each.
+
+    The groups are User Portability, Software Development, C-language
+    Development, UUCP, FORTRAN and the Batch Environment, plus XSI.
+    """
+    for utility in (
+        "vi",  # User Portability
+        "make",  # Software Development
+        "c99",  # C-language Development
+        "uucp",  # UUCP
+        "asa",  # FORTRAN Runtime
+        "fort77",  # FORTRAN Development
+        "qsub",  # Batch Environment Services
+        "ipcs",  # X/Open System Interfaces
+    ):
+        assert utility in POSIX_OPTIONAL_UTILITIES
+        assert utility not in XCU_REQUIRED_COMMANDS
 
 
 def test_the_two_lists_do_not_overlap() -> None:

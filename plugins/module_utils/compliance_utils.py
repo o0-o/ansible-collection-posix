@@ -141,30 +141,42 @@ POSIX_UTILITIES = frozenset(
 )
 
 # The utilities that belong to an option group rather than to the
-# mandatory base.  A conformant system need not have any of these, so
-# requiring one would report a conforming host as failing - which is
-# exactly what requiring tar did.  Membership is the standard's own
-# option grouping, and macOS, a certified UNIX, lacks the SCCS, the
-# FORTRAN and the batch sets entirely.
+# mandatory base, and the group each belongs to.  A conformant system
+# need not have any of these, so requiring one would report a
+# conforming host as failing - which is exactly what requiring tar did.
+#
+# Membership is read off each utility's own SYNOPSIS in the standard,
+# where a marker that opens the option region before the utility's
+# name covers the whole utility and one that does not annotates
+# options inside an otherwise mandatory utility.  That distinction is
+# the whole of the method: ls and df carry an XSI marker over some of
+# their options and are required all the same, while link and ipcs are
+# XSI entire.  Every one of the 160 utilities was read this way.
+#
+# Corroborated by macOS, a certified UNIX, which ships none of the
+# utilities below and every one of the mandatory base.
 POSIX_OPTIONAL_UTILITIES = frozenset(
     {
-        # Batch Environment Services
-        "qalter", "qdel", "qhold", "qmove", "qmsg", "qrerun",
-        "qrls", "qselect", "qsig", "qstat", "qsub",
-        # Source Code Control System
-        "admin", "delta", "get", "prs", "rmdel", "sact", "sccs",
-        "unget", "val", "what",
-        # C-language and FORTRAN development
-        "ar", "asa", "c99", "ctags", "fort77", "lex", "make", "nm",
-        "strip", "yacc",
-        # UUCP
-        "uucp", "uustat", "uux",
+        # X/Open System Interfaces, which the XSI list requires of
+        # a host claiming that option and this list does not
+        "admin", "cal", "cflow", "compress", "cxref", "delta", "fuser", "get",
+        "ipcrm", "ipcs", "link", "nl", "prs", "rmdel", "sact", "sccs", "type",
+        "ulimit", "uncompress", "unget", "unlink", "val", "what", "zcat",
         # User Portability Utilities
-        "ex", "man", "mesg", "more", "talk", "vi",
-        # X/Open System Interfaces, which the XSI list below requires
-        # of a host claiming that option and this list does not
-        "cflow", "cxref", "fuser", "gencat", "ipcrm", "ipcs",
-        "link", "unlink",
+        "bg", "ex", "fc", "fg", "jobs", "more", "talk", "vi",
+        # Software Development Utilities
+        "ar", "ctags", "make", "nm", "strip",
+        # C-Language Development Utilities
+        "c99", "lex", "yacc",
+        # UUCP Utilities
+        "uucp", "uustat", "uux",
+        # FORTRAN Runtime Utilities
+        "asa",
+        # FORTRAN Development Utilities, obsolescent
+        "fort77",
+        # Batch Environment Services, obsolescent
+        "qalter", "qdel", "qhold", "qmove", "qmsg", "qrerun", "qrls",
+        "qselect", "qsig", "qstat", "qsub",
     }
 )
 
@@ -191,39 +203,31 @@ XCU_RESERVED_WORDS = frozenset(
     }
 )
 
-# The utilities a conformant host must have, every one of them in
-# POSIX_UTILITIES and none of them in an option group.  ``[`` is here
-# under its own name because the standard documents it on the ``test``
-# page rather than indexing it separately.
+# The utilities a conformant host must have: the whole mandatory base,
+# every one of them read off the standard's own SYNOPSIS markers.
+# ``[`` is here under its own name because the standard documents it
+# on the ``test`` page rather than indexing it separately.
 #
-# This is a subset of the mandatory base rather than the whole of it:
-# every name here has been checked against the standard's own index
-# and against its option markers, and a utility whose option-group
-# membership has not been checked is left out.  Leaving one out
-# under-reports a gap; putting one in wrongly reports a conformant
-# host as failing, which is what requiring tar did.
+# Some of these are routinely shell built-ins rather than files -
+# alias, cd, command, false, getopts, hash, kill, pwd, read, true,
+# umask, unalias and wait among them - and ``command -v`` answers for
+# a built-in as readily as for a path, which is what lets one sweep
+# ask about all of them.
 XCU_REQUIRED_UTILITIES = frozenset(
     {
-        # Regular built-in utilities
-        "alias", "bg", "cd", "command", "false", "fg", "getopts",
-        "hash", "jobs", "kill", "pwd", "read", "true", "type",
-        "ulimit", "umask", "unalias", "wait",
-        # File utilities
-        "basename", "cat", "chmod", "chown", "cp", "dd", "df",
-        "dirname", "du", "ln", "ls", "mkdir", "mv", "rm", "rmdir",
-        "touch",
-        # Text processing
-        "awk", "cut", "diff", "grep", "head", "paste", "sed", "sort",
-        "tail", "tr", "uniq", "wc",
-        # Other utilities
-        "[", "env", "expr", "id", "printf", "test", "tty", "uname",
-        "xargs",
-        # Base utilities the earlier sample left out. at, batch and
-        # crontab carry no option marker over their synopsis, so a
-        # host without them is not conformant; pax is the standard's
-        # archiver and getconf is how a host answers for its own
-        # configuration, and both were wrongly filed under XSI.
-        "at", "batch", "crontab", "getconf", "pax",
+        "[", "alias", "at", "awk", "basename", "batch", "bc", "cat", "cd",
+        "chgrp", "chmod", "chown", "cksum", "cmp", "comm", "command", "cp",
+        "crontab", "csplit", "cut", "date", "dd", "df", "diff", "dirname",
+        "du", "echo", "ed", "env", "expand", "expr", "false", "file", "find",
+        "fold", "gencat", "getconf", "getopts", "grep", "hash", "head",
+        "iconv", "id", "join", "kill", "ln", "locale", "localedef", "logger",
+        "logname", "lp", "ls", "m4", "mailx", "man", "mesg", "mkdir", "mkfifo",
+        "mv", "newgrp", "nice", "nohup", "od", "paste", "patch", "pathchk",
+        "pax", "pr", "printf", "ps", "pwd", "read", "renice", "rm", "rmdir",
+        "sed", "sh", "sleep", "sort", "split", "strings", "stty", "tabs",
+        "tail", "tee", "test", "time", "touch", "tput", "tr", "true", "tsort",
+        "tty", "umask", "unalias", "uname", "unexpand", "uniq", "uudecode",
+        "uuencode", "wait", "wc", "who", "write", "xargs",
     }
 )
 
@@ -236,19 +240,17 @@ XCU_REQUIRED_COMMANDS = frozenset(
 )
 
 # Required commands for XSI (X/Open System Interfaces) compliance.
-# Each of these carries the [XSI] marker over its whole synopsis in
-# the standard, which is what makes it required of a host claiming the
-# option and of no other host.  getconf and pax were here and are not
-# XSI at all - both are mandatory base utilities, so a host lacking
-# one has an XCU gap and reading it as an XSI gap named the wrong
-# standard.
+# Each of these carries an option marker that opens before its own
+# name in the standard, which is what makes it required of a host
+# claiming the option and of no other host.  getconf and pax were
+# here and are not XSI at all - both are mandatory base utilities, so
+# a host lacking one has an XCU gap and reading it as an XSI gap named
+# the wrong standard.
 XSI_REQUIRED_COMMANDS = frozenset(
     {
-        "fuser",
-        "ipcrm",
-        "ipcs",
-        "link",
-        "unlink",
+        "admin", "cal", "cflow", "compress", "cxref", "delta", "fuser", "get",
+        "ipcrm", "ipcs", "link", "nl", "prs", "rmdel", "sact", "sccs", "type",
+        "ulimit", "uncompress", "unget", "unlink", "val", "what", "zcat",
     }
 )
 
