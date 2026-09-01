@@ -13,14 +13,21 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Optional
 
 from ansible_collections.o0_o.posix.plugins.module_utils.compliance_utils import (  # noqa: E501
+    POSIX_OPTIONAL_UTILITIES,
+    POSIX_UTILITIES,
     SUS,
     POSIX,
+    XCU_REQUIRED_COMMANDS,
+    XCU_REQUIRED_UTILITIES,
+    XCU_RESERVED_WORDS,
+    XCU_SPECIAL_BUILTINS,
     XSH,
     XCU,
     XSI,
+    XSI_REQUIRED_COMMANDS,
     get_compliance_command_requests,
     missing_commands,
     process_all_compliance_command_results,
@@ -37,7 +44,11 @@ GETCONF_ANSWERS = {
 # Everything else it has as a path; these it answers otherwise
 BUILTIN_COMMANDS = {".", ":", "[", "cd", "exec"}
 ALIASED_COMMANDS = {"ls": "ls --color=auto"}
-MISSING_COMMANDS = {"pax"}
+# What the fabricated host lacks. ipcs is an XSI utility, so the host
+# is a conformant POSIX system that does not claim the XSI option in
+# full - which is what lets the tests below read the base standards as
+# clean while one option group is partial.
+MISSING_COMMANDS = {"ipcs"}
 
 # Whose answers the sweep's lookups are. command -v names a pathname
 # the shell running it would run, so the claim is keyed by the uid
@@ -54,7 +65,10 @@ RESOLVED = {
 }
 
 
-def _answer(request: dict[str, Any]) -> dict[str, Any]:
+def _answer(
+    request: dict[str, Any],
+    missing: Optional[set[str]] = None,
+) -> dict[str, Any]:
     """Answer one compliance request the way the run plugin does.
 
     The run plugin merges each request dict with the return code and
@@ -62,11 +76,15 @@ def _answer(request: dict[str, Any]) -> dict[str, Any]:
     request plus those keys.
 
     :param dict[str, Any] request: A compliance command request
+    :param Optional[set[str]] missing: What this host lacks, for a
+        test that needs a different gap than the default one
     :returns dict[str, Any]: The request merged with its result
     """
+    lacking = MISSING_COMMANDS if missing is None else missing
+
     if request["type"] == "lookup_command":
         cmd = request["args"]["cmd"]
-        if cmd in MISSING_COMMANDS:
+        if cmd in lacking:
             return dict(
                 request,
                 rc=1,
@@ -98,12 +116,17 @@ def _answer(request: dict[str, Any]) -> dict[str, Any]:
     )
 
 
-def _process_fabricated_host() -> dict[str, Any]:
+def _process_fabricated_host(
+    missing: Optional[set[str]] = None,
+) -> dict[str, Any]:
     """Run every compliance request through the shared processor.
 
+    :param Optional[set[str]] missing: What this host lacks
     :returns dict[str, Any]: The facts the processor publishes
     """
-    results = [_answer(r) for r in get_compliance_command_requests()]
+    results = [
+        _answer(r, missing) for r in get_compliance_command_requests()
+    ]
     facts, errors = process_all_compliance_command_results(results)
     assert errors == []
     return facts
@@ -247,6 +270,23 @@ class TestProcessAllComplianceCommandResults:
         assert xsi["supported"] == "partial"
         assert xsi["missing"] == sorted(MISSING_COMMANDS)
 
+    def test_a_missing_base_utility_downgrades_the_base(self) -> None:
+        """Test a gap in the mandatory base is named as one.
+
+        Which standard a miss lands under is the whole point of
+        keeping the two lists right. pax is a mandatory base utility,
+        so a host without it is not a conformant POSIX system - and
+        while pax sat in the XSI list, such a host read as fully
+        conformant with one optional extension missing.
+        """
+        facts = _process_fabricated_host(missing={"pax"})
+        compliance = facts["o0_os"]["compliance"]
+
+        assert compliance["xcu"]["missing"] == ["pax"]
+        assert compliance["xcu"]["supported"] == "partial"
+        assert compliance["posix"]["supported"] == "partial"
+        assert compliance["xsi"]["missing"] == []
+
     def test_every_probe_names_what_it_read(self) -> None:
         """Test a probe adds to what the earlier probes left rather
         than replacing it, so the _XOPEN_UNIX answer that decided XSI
@@ -378,3 +418,140 @@ class TestOriginsNameTheSweep:
 
         assert "origins" not in compliance["xsh"]["version"]
         assert "origins" not in compliance["xsi"]["evidence"]
+
+
+# ---------------------------------------------------------------------
+# What the conformance lists are allowed to contain
+# ---------------------------------------------------------------------
+
+
+def test_the_index_is_the_standard_s_own() -> None:
+    """Test the utility index is the whole of what POSIX defines.
+
+    It is the authority every other list here is held to, so its size
+    is pinned: a name that falls out of it silently would take a
+    conformance claim with it.
+    """
+    assert len(POSIX_UTILITIES) == 160
+    for utility in ("awk", "pax", "crontab", "at", "batch", "getconf"):
+        assert utility in POSIX_UTILITIES
+
+
+def test_a_required_utility_is_one_the_standard_names() -> None:
+    """Test nothing is required that POSIX never asked for.
+
+    This is the guard against the defect that put tar in the list: a
+    utility the standard does not define cannot be a conformance
+    requirement, however common it is.
+    """
+    # [ is documented on the test page rather than indexed separately
+    named = XCU_REQUIRED_UTILITIES - {"["}
+
+    assert named <= POSIX_UTILITIES
+    assert XSI_REQUIRED_COMMANDS <= POSIX_UTILITIES
+
+
+def test_tar_is_not_a_posix_utility() -> None:
+    """Test the archiver POSIX names is pax and tar is not required.
+
+    tar was dropped from the standard in POSIX.1-2001 and pax took its
+    place. A conformant host without tar was reading as non-conformant.
+    """
+    assert "tar" not in POSIX_UTILITIES
+    assert "tar" not in XCU_REQUIRED_COMMANDS
+    assert "pax" in XCU_REQUIRED_UTILITIES
+
+
+def test_stat_is_not_a_posix_utility_either() -> None:
+    """Test the other common-but-not-standard name is gone too.
+
+    stat is on every host anybody runs and is not in the standard, so
+    requiring it asserted something POSIX never did.
+    """
+    assert "stat" not in POSIX_UTILITIES
+    assert "stat" not in XCU_REQUIRED_COMMANDS
+
+
+def test_nothing_optional_is_required_of_every_host() -> None:
+    """Test an option group's utilities are not demanded of the base.
+
+    A conformant system need not ship SCCS, FORTRAN or the batch
+    utilities, and macOS - a certified UNIX - ships none of them.
+    """
+    assert not (XCU_REQUIRED_UTILITIES & POSIX_OPTIONAL_UTILITIES)
+    for optional in ("sccs", "fort77", "qsub", "make", "vi", "uucp"):
+        assert optional in POSIX_OPTIONAL_UTILITIES
+        assert optional not in XCU_REQUIRED_COMMANDS
+
+
+def test_the_scheduling_utilities_are_required_of_every_host() -> None:
+    """Test at, batch and crontab are base rather than optional.
+
+    Their synopses carry no option marker, so a host without them is
+    not conformant - and the sweep that did not ask about them let a
+    host with no cron at all read as clean.
+    """
+    for utility in ("at", "batch", "crontab"):
+        assert utility in XCU_REQUIRED_UTILITIES
+        assert utility not in XSI_REQUIRED_COMMANDS
+
+
+def test_the_xsi_list_is_what_the_xsi_marker_covers() -> None:
+    """Test XSI requires the utilities marked XSI and no others.
+
+    getconf and pax were here and are mandatory base utilities, so a
+    host lacking one has an XCU gap; reading it as an XSI gap named
+    the wrong standard for a real defect.
+    """
+    assert XSI_REQUIRED_COMMANDS == {
+        "fuser",
+        "ipcrm",
+        "ipcs",
+        "link",
+        "unlink",
+    }
+    assert "getconf" not in XSI_REQUIRED_COMMANDS
+    assert "pax" not in XSI_REQUIRED_COMMANDS
+
+
+def test_the_two_lists_do_not_overlap() -> None:
+    """Test a utility is required by one standard or the other.
+
+    A command the host does not have is recorded once, in the list of
+    the standard that requires it, so an overlap would name it twice.
+    """
+    assert not (XCU_REQUIRED_COMMANDS & XSI_REQUIRED_COMMANDS)
+
+
+def test_the_shell_s_own_words_are_asked_about_as_what_they_are(
+) -> None:
+    """Test grammar and built-ins are kept apart from utilities.
+
+    A special built-in is a command no PATH search finds and a
+    reserved word is not a command at all, so neither is held to the
+    utility index - and command -v answers for both, which is why the
+    sweep works on them.
+    """
+    assert "export" in XCU_SPECIAL_BUILTINS
+    assert "while" in XCU_RESERVED_WORDS
+    assert not (XCU_SPECIAL_BUILTINS & POSIX_UTILITIES)
+    assert not (XCU_RESERVED_WORDS & XCU_REQUIRED_UTILITIES)
+    # And all of them are still swept for
+    assert XCU_SPECIAL_BUILTINS <= XCU_REQUIRED_COMMANDS
+    assert XCU_RESERVED_WORDS <= XCU_REQUIRED_COMMANDS
+
+
+def test_both_lists_are_nonempty_and_the_sweep_asks_for_all_of_them(
+) -> None:
+    """Test every required command is actually looked up."""
+    assert XCU_REQUIRED_COMMANDS
+    assert XSI_REQUIRED_COMMANDS
+
+    asked = {
+        request["args"]["cmd"]
+        for request in get_compliance_command_requests()
+        if request.get("type") == "lookup_command"
+    }
+
+    assert XCU_REQUIRED_COMMANDS <= asked
+    assert XSI_REQUIRED_COMMANDS <= asked

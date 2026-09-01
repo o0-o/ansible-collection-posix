@@ -1,0 +1,43 @@
+# vim: ts=2:sw=2:sts=2:et:ft=yaml.ansible
+# -*- mode: yaml; yaml-indent-offset: 2; indent-tabs-mode: nil; -*-
+---
+bugfixes:
+  - >-
+    compliance - ``tar`` and ``stat`` are no longer required. Neither
+    is a POSIX utility: ``tar`` was dropped from the standard in
+    POSIX.1-2001 and ``pax`` took its place, and ``stat`` was never in
+    it at all. A conformant host without them was reading as
+    non-conformant against requirements POSIX never made
+    (https://github.com/o0-o/ansible-collection-posix/pull/XXX).
+  - >-
+    compliance - ``getconf`` and ``pax`` move from the XSI list to the
+    XCU one. Both are mandatory base utilities whose synopses carry no
+    option marker, so a host lacking one has a gap in the base standard
+    rather than in an optional extension - and while ``pax`` sat under
+    XSI, such a host read as fully POSIX conformant with one extension
+    missing
+    (https://github.com/o0-o/ansible-collection-posix/pull/XXX).
+  - >-
+    compliance - ``at``, ``batch`` and ``crontab`` are required. They
+    are mandatory base utilities and the sweep never asked about them,
+    so a host running no cron at all read as XCU conformant. A
+    systemd-timer host now reports the gap it has
+    (https://github.com/o0-o/ansible-collection-posix/pull/XXX).
+  - >-
+    compliance - the XSI list is the utilities the standard marks XSI
+    over their whole synopsis, verified one by one, rather than the
+    four-name sample it was
+    (https://github.com/o0-o/ansible-collection-posix/pull/XXX).
+minor_changes:
+  - >-
+    compliance - the utilities POSIX.1-2017 defines are published as
+    ``POSIX_UTILITIES``, taken from the standard's own index, and every
+    required utility is held to it. That is the guard against the class
+    of defect ``tar`` was: a name the standard does not define cannot
+    be a conformance requirement, however common it is. The option
+    groups a conformant host need not have are named in
+    ``POSIX_OPTIONAL_UTILITIES`` beside it, and the shell's special
+    built-ins and reserved words are kept in lists of their own,
+    because neither is a utility and both are cited to a different
+    section of the standard
+    (https://github.com/o0-o/ansible-collection-posix/pull/XXX).

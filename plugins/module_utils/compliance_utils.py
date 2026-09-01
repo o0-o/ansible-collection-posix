@@ -101,113 +101,154 @@ XSI = {
     "description": "SUS X/Open System Interfaces (UNIX extensions to POSIX)",
 }
 
-# Required commands for XCU (Shell & Utilities) compliance
-XCU_REQUIRED_COMMANDS = frozenset(
+# Every utility POSIX.1-2017 defines, as its own index lists them.
+# This is the authority for whether a name is a POSIX utility at all,
+# and the required lists below are held to it - which is what stops a
+# conformance list from asserting something the standard never asked
+# for.  Source: IEEE Std 1003.1-2017, Shell and Utilities volume,
+# Utilities index
+# <https://pubs.opengroup.org/onlinepubs/9699919799/idx/utilities.html>
+POSIX_UTILITIES = frozenset(
     {
-        # Shell
-        "sh",
-        # Special built-in utilities (XCU 2.14)
-        ":",
-        ".",
-        "break",
-        "continue",
-        "eval",
-        "exec",
-        "exit",
-        "export",
-        "readonly",
-        "return",
-        "set",
-        "shift",
-        "times",
-        "trap",
-        "unset",
-        # Regular built-in utilities
-        "alias",
-        "bg",
-        "cd",
-        "command",
-        "false",
-        "fg",
-        "getopts",
-        "hash",
-        "jobs",
-        "kill",
-        "pwd",
-        "read",
-        "true",
-        "type",
-        "ulimit",
-        "umask",
-        "unalias",
-        "wait",
-        # Reserved words (XCU 2.4)
-        "case",
-        "do",
-        "done",
-        "elif",
-        "else",
-        "esac",
-        "fi",
-        "for",
-        "if",
-        "in",
-        "then",
-        "until",
-        "while",
-        # File utilities
-        "basename",
-        "cat",
-        "chmod",
-        "chown",
-        "cp",
-        "dd",
-        "df",
-        "dirname",
-        "du",
-        "ln",
-        "ls",
-        "mkdir",
-        "mv",
-        "rm",
-        "rmdir",
-        "stat",
-        "touch",
-        # Text processing
-        "awk",
-        "cut",
-        "diff",
-        "grep",
-        "head",
-        "paste",
-        "sed",
-        "sort",
-        "tail",
-        "tr",
-        "uniq",
-        "wc",
-        # Other utilities
-        "[",
-        "env",
-        "expr",
-        "id",
-        "printf",
-        "test",
-        "tty",
-        "uname",
-        "xargs",
-        # Archiving
-        "tar",
+        "admin", "alias", "ar", "asa", "at", "awk",
+        "basename", "batch", "bc", "bg", "c99", "cal",
+        "cat", "cd", "cflow", "chgrp", "chmod", "chown",
+        "cksum", "cmp", "comm", "command", "compress", "cp",
+        "crontab", "csplit", "ctags", "cut", "cxref", "date",
+        "dd", "delta", "df", "diff", "dirname", "du",
+        "echo", "ed", "env", "ex", "expand", "expr",
+        "false", "fc", "fg", "file", "find", "fold",
+        "fort77", "fuser", "gencat", "get", "getconf", "getopts",
+        "grep", "hash", "head", "iconv", "id", "ipcrm",
+        "ipcs", "jobs", "join", "kill", "lex", "link",
+        "ln", "locale", "localedef", "logger", "logname", "lp",
+        "ls", "m4", "mailx", "make", "man", "mesg",
+        "mkdir", "mkfifo", "more", "mv", "newgrp", "nice",
+        "nl", "nm", "nohup", "od", "paste", "patch",
+        "pathchk", "pax", "pr", "printf", "prs", "ps",
+        "pwd", "qalter", "qdel", "qhold", "qmove", "qmsg",
+        "qrerun", "qrls", "qselect", "qsig", "qstat", "qsub",
+        "read", "renice", "rm", "rmdel", "rmdir", "sact",
+        "sccs", "sed", "sh", "sleep", "sort", "split",
+        "strings", "strip", "stty", "tabs", "tail", "talk",
+        "tee", "test", "time", "touch", "tput", "tr",
+        "true", "tsort", "tty", "type", "ulimit", "umask",
+        "unalias", "uname", "uncompress", "unexpand", "unget", "uniq",
+        "unlink", "uucp", "uudecode", "uuencode", "uustat", "uux",
+        "val", "vi", "wait", "wc", "what", "who",
+        "write", "xargs", "yacc", "zcat",
     }
 )
 
-# Required commands for XSI (X/Open System Interfaces) compliance
+# The utilities that belong to an option group rather than to the
+# mandatory base.  A conformant system need not have any of these, so
+# requiring one would report a conforming host as failing - which is
+# exactly what requiring tar did.  Membership is the standard's own
+# option grouping, and macOS, a certified UNIX, lacks the SCCS, the
+# FORTRAN and the batch sets entirely.
+POSIX_OPTIONAL_UTILITIES = frozenset(
+    {
+        # Batch Environment Services
+        "qalter", "qdel", "qhold", "qmove", "qmsg", "qrerun",
+        "qrls", "qselect", "qsig", "qstat", "qsub",
+        # Source Code Control System
+        "admin", "delta", "get", "prs", "rmdel", "sact", "sccs",
+        "unget", "val", "what",
+        # C-language and FORTRAN development
+        "ar", "asa", "c99", "ctags", "fort77", "lex", "make", "nm",
+        "strip", "yacc",
+        # UUCP
+        "uucp", "uustat", "uux",
+        # User Portability Utilities
+        "ex", "man", "mesg", "more", "talk", "vi",
+        # X/Open System Interfaces, which the XSI list below requires
+        # of a host claiming that option and this list does not
+        "cflow", "cxref", "fuser", "gencat", "ipcrm", "ipcs",
+        "link", "unlink",
+    }
+)
+
+# The special built-in utilities, which a conformant shell provides
+# itself and which no PATH search can find.  Source: IEEE Std
+# 1003.1-2017, Shell and Utilities volume, section 2.14.
+XCU_SPECIAL_BUILTINS = frozenset(
+    {
+        ":", ".", "break", "continue", "eval", "exec", "exit",
+        "export", "readonly", "return", "set", "shift", "times",
+        "trap", "unset",
+    }
+)
+
+# The shell's reserved words, which are grammar rather than utilities.
+# A shell that does not know them is not a POSIX shell, and
+# ``command -v`` answers for them, so they are worth asking about -
+# but they are asked about as what they are.  Source: IEEE Std
+# 1003.1-2017, Shell and Utilities volume, section 2.4.
+XCU_RESERVED_WORDS = frozenset(
+    {
+        "case", "do", "done", "elif", "else", "esac", "fi", "for",
+        "if", "in", "then", "until", "while",
+    }
+)
+
+# The utilities a conformant host must have, every one of them in
+# POSIX_UTILITIES and none of them in an option group.  ``[`` is here
+# under its own name because the standard documents it on the ``test``
+# page rather than indexing it separately.
+#
+# This is a subset of the mandatory base rather than the whole of it:
+# every name here has been checked against the standard's own index
+# and against its option markers, and a utility whose option-group
+# membership has not been checked is left out.  Leaving one out
+# under-reports a gap; putting one in wrongly reports a conformant
+# host as failing, which is what requiring tar did.
+XCU_REQUIRED_UTILITIES = frozenset(
+    {
+        # Regular built-in utilities
+        "alias", "bg", "cd", "command", "false", "fg", "getopts",
+        "hash", "jobs", "kill", "pwd", "read", "true", "type",
+        "ulimit", "umask", "unalias", "wait",
+        # File utilities
+        "basename", "cat", "chmod", "chown", "cp", "dd", "df",
+        "dirname", "du", "ln", "ls", "mkdir", "mv", "rm", "rmdir",
+        "touch",
+        # Text processing
+        "awk", "cut", "diff", "grep", "head", "paste", "sed", "sort",
+        "tail", "tr", "uniq", "wc",
+        # Other utilities
+        "[", "env", "expr", "id", "printf", "test", "tty", "uname",
+        "xargs",
+        # Base utilities the earlier sample left out. at, batch and
+        # crontab carry no option marker over their synopsis, so a
+        # host without them is not conformant; pax is the standard's
+        # archiver and getconf is how a host answers for its own
+        # configuration, and both were wrongly filed under XSI.
+        "at", "batch", "crontab", "getconf", "pax",
+    }
+)
+
+# Required commands for XCU (Shell & Utilities) compliance
+XCU_REQUIRED_COMMANDS = frozenset(
+    {"sh"}
+    | XCU_SPECIAL_BUILTINS
+    | XCU_RESERVED_WORDS
+    | XCU_REQUIRED_UTILITIES
+)
+
+# Required commands for XSI (X/Open System Interfaces) compliance.
+# Each of these carries the [XSI] marker over its whole synopsis in
+# the standard, which is what makes it required of a host claiming the
+# option and of no other host.  getconf and pax were here and are not
+# XSI at all - both are mandatory base utilities, so a host lacking
+# one has an XCU gap and reading it as an XSI gap named the wrong
+# standard.
 XSI_REQUIRED_COMMANDS = frozenset(
     {
-        "getconf",
-        "ipcs",
+        "fuser",
         "ipcrm",
-        "pax",
+        "ipcs",
+        "link",
+        "unlink",
     }
 )
 

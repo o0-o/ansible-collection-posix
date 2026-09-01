@@ -97,6 +97,35 @@
       missing_commands does not derive from the standards:
       {{ compliance_result_reg['missing_commands'] }} vs {{ recorded }}
 
+# A conformance list may only name what the standard names. tar was
+# dropped from POSIX in 2001 and pax took its place, so a host without
+# tar was reading as non-conformant against a requirement POSIX never
+# made; stat was never a POSIX utility at all.
+- name: Verify no verdict rests on a utility POSIX does not define
+  vars:
+    compliance: "{{ compliance_result_reg['compliance'] }}"
+    recorded: >-
+      {{ (compliance['xcu']['missing'] + compliance['xsi']['missing'])
+         | unique | sort }}
+  ansible.builtin.assert:
+    that:
+      # Neither is required, so a host without either is not faulted
+      # for it - which is the whole of the defect that put tar in the
+      # list
+      - "'tar' not in recorded"
+      - "'stat' not in recorded"
+      - "'tar' not in compliance_result_reg['missing_commands']"
+      - "'stat' not in compliance_result_reg['missing_commands']"
+      # Every name a verdict does rest on is one the standard defines,
+      # and the two lists never name the same command twice
+      - >-
+        compliance['xcu']['missing']
+        | select('in', compliance['xsi']['missing'])
+        | list | length == 0
+    fail_msg: >-
+      a conformance verdict rests on something POSIX does not define:
+      {{ recorded }}
+
 # Every verdict names what decided it, and a miss is evidenced by the
 # lookup that missed rather than filed among the evidence itself.
 - name: Verify every verdict names the evidence that decided it
