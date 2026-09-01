@@ -65,6 +65,13 @@ from ansible_collections.o0_o.posix.plugins.module_utils.shells_utils import (
     SHELL_UMASK_MARKER,
     _parse_shell_config,
 )
+from ansible_collections.o0_o.posix.plugins.module_utils.cron_utils import (
+    CRON_RCS,
+    CRON_SPOOLS,
+    _parse_crontab_file,
+    _parse_owner_uid,
+    _parse_spool_names,
+)
 from ansible_collections.o0_o.posix.plugins.module_utils.sysctl_utils import (
     SYSCTL_RCS,
     _parse_sysctl,
@@ -166,6 +173,57 @@ SYSCTL_COMMAND_SPEC = {
             "command": ("sysctl", "{assignment}"),
             "parser": _parse_sysctl,
             "non_error_codes": SYSCTL_RCS,
+        },
+    },
+}
+
+# Cron spec — what a host is configured to run on a schedule.  A
+# crontab that is not there and a crontab command that will not answer
+# both exit non-zero having printed nothing, which is the answer rather
+# than a fault: a user with no crontab has no crontab.
+CRON_COMMAND_SPEC = {
+    "posix": {
+        # The running identity's own crontab, which is the one reading
+        # POSIX defines. -u is a Vixie extension and is not used here.
+        "crontab_self": {
+            "command": ("crontab", "-l"),
+            "parser": _parse_crontab_file,
+            "non_error_codes": CRON_RCS,
+        },
+        # Who holds a crontab at all, asked of the spools rather than
+        # of the passwd file, so this costs one command whatever the
+        # host's user count and needs no other subset to have run
+        "crontab_spools": {
+            "command": (
+                "sh",
+                "-c",
+                "for d in " + " ".join(CRON_SPOOLS) + "; do "
+                '[ -d "$d" ] || continue; '
+                'for f in "$d"/*; do '
+                '[ -f "$f" ] && basename "$f"; '
+                "done; done",
+            ),
+            "parser": _parse_spool_names,
+            "non_error_codes": CRON_RCS,
+        },
+        # The drop-in files, named rather than guessed at: what is in
+        # /etc/cron.d is whatever a package put there
+        "crontab_dropins": {
+            "command": (
+                "sh",
+                "-c",
+                '[ -d /etc/cron.d ] && for f in /etc/cron.d/*; do '
+                '[ -f "$f" ] && printf "%s\n" "$f"; done',
+            ),
+            "parser": _parse_spool_names,
+            "non_error_codes": CRON_RCS,
+        },
+        # Whose crontab a spool file is, asked of the host rather than
+        # inferred from a passwd file this subset does not read
+        "crontab_owner": {
+            "command": ("id", "-u", "{user}"),
+            "parser": _parse_owner_uid,
+            "non_error_codes": CRON_RCS,
         },
     },
 }

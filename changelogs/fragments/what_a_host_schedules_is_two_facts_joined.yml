@@ -1,0 +1,30 @@
+# vim: ts=2:sw=2:sts=2:et:ft=yaml.ansible
+# -*- mode: yaml; yaml-indent-offset: 2; indent-tabs-mode: nil; -*-
+---
+minor_changes:
+  - >-
+    cron - a new module reads the crontabs a host holds. The files a
+    play could name - ``/etc/crontab`` and whatever is under
+    ``/etc/cron.d`` - land in ``o0_paths`` beside their bytes, the way
+    ``/etc/fstab`` carries the filesystems it names, and a per-user
+    crontab lands under its owner's uid in ``o0_users``. There is no
+    schedule namespace: what a host runs on a schedule is those two
+    read together, and the ``schedule`` lookup is what reads them
+    (https://github.com/o0-o/ansible-collection-posix/pull/XXX).
+  - >-
+    cron - whose crontabs are read depends on who is asking. Any
+    identity reads its own with ``crontab -l``, which is the reading
+    POSIX defines; reading somebody else's means reading the spool,
+    which is root's to read, so a run that is not root reports itself
+    and says nothing about anyone else rather than reporting that
+    nobody else has one. Who holds a crontab at all is asked of the
+    spools rather than of the passwd file, which costs one command
+    whatever the host's user count and needs no other subset to have
+    run first. ``crontab -u`` is not used - it is a Vixie extension
+    rather than POSIX, and a spool file is the crontab itself
+    (https://github.com/o0-o/ansible-collection-posix/pull/XXX).
+  - >-
+    facts - a ``cron`` gather subset publishes the same two namespaces
+    from the same reading, so the module and a gather cannot disagree
+    about what a host schedules
+    (https://github.com/o0-o/ansible-collection-posix/pull/XXX).

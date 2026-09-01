@@ -1,0 +1,250 @@
+# vim: ts=2:sw=2:sts=2:et:ft=yaml.ansible
+# -*- mode: yaml; yaml-indent-offset: 2; indent-tabs-mode: nil; -*-
+---
+# GNU General Public License v3.0+
+# SPDX-License-Identifier: GPL-3.0-or-later
+# (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
+#
+# Copyright (c) 2025 oØ.o (@o0-o)
+#
+# This file is part of the o0_o.posix Ansible Collection.
+
+# A POSIX host need not run cron, so the gates below say what they are
+# asserting about rather than assuming a crontab command is there.
+- name: Ask whether this host has a crontab command at all
+  o0_o.posix.which:
+    command: crontab
+  register: cron_which_reg
+
+- name: Ask the host which identity this run is
+  o0_o.posix.command:
+    argv:
+      - id
+      - -u
+  check_mode: false
+  register: cron_id_reg
+
+- name: Name what the gates can assert
+  ansible.builtin.set_fact:
+    cron_have: "{{ cron_which_reg['path'] is defined
+                   and cron_which_reg['path'] is not none }}"
+    cron_uid: "{{ cron_id_reg['stdout'] | trim }}"
+
+- name: Ask what this host schedules
+  o0_o.posix.cron:
+  register: cron_reg
+
+- name: Assert the answer is the shape the module documents
+  vars:
+    paths: "{{ cron_reg['o0_paths'] }}"
+    users: "{{ cron_reg['o0_users'] }}"
+  ansible.builtin.assert:
+    that:
+      - cron_reg is not changed
+      - paths is mapping
+      - users is mapping
+      # A crontab file is a fact about that file, so every entry it
+      # published carries its bytes and what they schedule
+      - >-
+        paths | dict2items | rejectattr('value.content', 'defined')
+        | list | length == 0
+      - >-
+        paths | dict2items | rejectattr('value.config', 'defined')
+        | list | length == 0
+      - >-
+        paths | dict2items | map(attribute='value.config')
+        | rejectattr('jobs', 'defined') | list | length == 0
+      # No spool file is a path entry: what one says is a fact about
+      # the user who owns it
+      - >-
+        paths.keys() | select('search', '^/var/spool/|^/var/cron/|^/usr/lib/cron/')
+        | list | length == 0
+      # Every user entry is keyed by the uid it carries
+      - >-
+        users | dict2items | map(attribute='key') | sort
+        == users | dict2items | map(attribute='value.uid')
+        | map('string') | sort
+      # And names what was consulted for it
+      - >-
+        users | dict2items | rejectattr('value.evidence', 'defined')
+        | list | length == 0
+      - >-
+        users | dict2items
+        | rejectattr('value.origins', 'contains', 'o0_o.posix.cron')
+        | list | length == 0
+    fail_msg: >-
+      the cron module did not answer the shape it documents:
+      {{ cron_reg }}
+
+# Any identity may read its own crontab, which is the reading POSIX
+# defines, so this is the one enumeration path every host can prove.
+- name: Assert the running identity's own crontab is read
+  when: cron_have | bool
+  block:
+    - name: Install a crontab for this run to read back
+      ansible.builtin.command:
+        cmd: crontab -
+        stdin: |
+          MAILTO=""
+          @reboot /usr/local/bin/integration-boot
+          */7 * * * * /usr/bin/integration-seven
+      changed_when: true
+
+    - name: Ask again now that there is something to find
+      o0_o.posix.cron:
+        gather: true
+      register: cron_held_reg
+
+    - name: Assert the crontab came back as the crontab it is
+      vars:
+        entry: "{{ cron_held_reg['o0_users'][cron_uid] }}"
+        jobs: "{{ entry['crontab']['jobs'] }}"
+      ansible.builtin.assert:
+        that:
+          - entry['uid'] == cron_uid | int
+          # Read by the command POSIX defines for it, not out of a
+          # spool this identity may have no business in
+          - entry['evidence']['commands'] == ['crontab']
+          - entry['evidence']['files'] is not defined
+          # What the crontab set for every job in it
+          - entry['crontab']['environment']['MAILTO'] == ''
+          - jobs | length == 2
+          # A named schedule is a form of its own
+          - "jobs[0]['schedule'] == {'special': 'reboot'}"
+          - jobs[0]['command'] == '/usr/local/bin/integration-boot'
+          # And a five-field one is kept as it was written
+          - jobs[1]['schedule']['minute'] == '*/7'
+          - jobs[1]['schedule']['weekday'] == '*'
+          - jobs[1]['command'] == '/usr/bin/integration-seven'
+          # A per-user crontab names no user: the spool answers that
+          - jobs | selectattr('user', 'defined') | list | length == 0
+        fail_msg: >-
+          the crontab was not read back as it was written:
+          {{ entry }}
+
+    - name: Assert the lookup joins what the module published
+      vars:
+        rows: "{{ lookup('o0_o.posix.schedule', wantlist=True) }}"
+        mine: >-
+          {{ rows | selectattr('uid', 'defined')
+             | selectattr('uid', 'eq', cron_uid | int) | list }}
+      ansible.builtin.assert:
+        that:
+          - rows | length >= 2
+          # Every row reads the same way whichever fact it came from
+          - >-
+            rows | rejectattr('schedule', 'defined')
+            | list | length == 0
+          - >-
+            rows | rejectattr('command', 'defined')
+            | list | length == 0
+          - >-
+            rows | rejectattr('environment', 'defined')
+            | list | length == 0
+          - rows | map(attribute='source') | unique | reject('in',
+            ['file', 'user']) | list | length == 0
+          # A row from a user's crontab names the uid it came from
+          - mine | length == 2
+          - >-
+            mine | map(attribute='command') | sort
+            == ['/usr/bin/integration-seven',
+                '/usr/local/bin/integration-boot']
+          - mine | selectattr('path', 'defined') | list | length == 0
+        fail_msg: >-
+          the lookup did not join what the module published
+  always:
+    - name: Take the crontab back off, whatever happened
+      ansible.builtin.command:
+        cmd: crontab -r
+      failed_when: false
+      changed_when: true
+
+    - name: Assert nothing was left behind
+      ansible.builtin.command:
+        cmd: crontab -l
+      register: cron_after_reg
+      failed_when: false
+      changed_when: false
+
+    - name: Assert the host is as it was found
+      ansible.builtin.assert:
+        that:
+          - cron_after_reg['rc'] != 0
+        fail_msg: >-
+          a crontab was left installed: {{ cron_after_reg['stdout'] }}
+
+# A crontab this identity holds none of is a crontab it was asked
+# about and does not have, which is not the same as never asking.
+- name: Assert a user holding no crontab is null rather than absent
+  when: cron_have | bool
+  vars:
+    entry: "{{ cron_reg['o0_users'][cron_uid] }}"
+  ansible.builtin.assert:
+    that:
+      - cron_uid in cron_reg['o0_users']
+      - entry['crontab'] is none
+    fail_msg: >-
+      a user with no crontab was not reported as having none:
+      {{ cron_reg['o0_users'] }}
+
+- name: Ask again and publish the answer as facts
+  o0_o.posix.cron:
+    gather: true
+  register: cron_gathered_reg
+
+- name: Assert the gather publishes the names a gather publishes
+  vars:
+    gathered: "{{ cron_gathered_reg['ansible_facts'] }}"
+  ansible.builtin.assert:
+    that:
+      - cron_gathered_reg is not changed
+      - >-
+        gathered.keys() | reject('in', ['o0_paths', 'o0_users'])
+        | list | length == 0
+      - >-
+        gathered['o0_users'] | default({})
+        == cron_gathered_reg['o0_users']
+    fail_msg: >-
+      the gathered namespaces are not what the module returned:
+      {{ gathered.keys() | list }}
+
+- name: Assert the module and the subset answer the same thing
+  o0_o.posix.facts:
+    gather_subset: [cron]
+  register: cron_subset_reg
+
+- name: Assert one reading means one shape under one name
+  vars:
+    gathered: "{{ cron_subset_reg['ansible_facts'] }}"
+  ansible.builtin.assert:
+    that:
+      # The same users, and the same crontabs under them
+      - >-
+        gathered['o0_users'] | default({}) | dict2items
+        | map(attribute='key') | sort
+        == cron_reg['o0_users'] | dict2items
+        | map(attribute='key') | sort
+      - >-
+        gathered['o0_paths'] | default({}) | dict2items
+        | map(attribute='key') | sort
+        == cron_reg['o0_paths'] | dict2items
+        | map(attribute='key') | sort
+      # Each names the module that composed it, and the gather names
+      # itself
+      - >-
+        gathered['o0_users'] | default({}) | dict2items
+        | rejectattr('value.origins', 'contains', 'o0_o.posix.facts')
+        | list | length == 0
+    fail_msg: >-
+      the module and the subset disagree about what is scheduled
+
+- name: Assert a host with no cron is described rather than failed
+  when: not (cron_have | bool)
+  ansible.builtin.assert:
+    that:
+      - cron_reg['o0_paths'] == {}
+      - >-
+        cron_reg['o0_users'] | dict2items
+        | rejectattr('value.crontab', 'none') | list | length == 0
+    fail_msg: >-
+      a host with no cron reported something scheduled

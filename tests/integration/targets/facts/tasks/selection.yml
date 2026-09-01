@@ -440,9 +440,18 @@
       - gathered['o0_groups'] is not defined
       - gathered['o0_paths']['/etc/shells'] is not defined
       - homes | length == 0
-      # No subset besides users answers under o0_users now, so taking
-      # users out takes the namespace with it
-      - gathered['o0_users'] is not defined
+      # o0_users is still here, because cron answers under it too -
+      # but with nothing a passwd line composes, which is what taking
+      # the users subset out means
+      - >-
+        gathered['o0_users'] | dict2items
+        | selectattr('value.name', 'defined') | list | length == 0
+      - >-
+        gathered['o0_users'] | dict2items
+        | selectattr('value.shell', 'defined') | list | length == 0
+      - >-
+        gathered['o0_users'] | dict2items
+        | rejectattr('value.crontab', 'defined') | list | length == 0
       # o0_shells is still here, carrying the builtins the compliance
       # sweep named and no row from running a shell out of a home
       - >-

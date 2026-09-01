@@ -55,6 +55,15 @@ from ansible_collections.o0_o.posix.plugins.module_utils import (
     process_pathconf_command_results,
     process_timezone_command_results,
 )
+from ansible_collections.o0_o.posix.plugins.module_utils.cron_utils import (
+    compose_cron_holdings,
+    compose_cron_paths,
+    compose_cron_users,
+    cron_survey_answers,
+    get_cron_read_requests,
+    get_cron_survey_requests,
+    spool_paths,
+)
 from ansible_collections.o0_o.posix.plugins.module_utils.uname_utils import (
     get_uname_command_requests,
     process_uname_command_results,
@@ -72,6 +81,35 @@ FSTAB_PATH = "/etc/fstab"
 GROUP_PATH = "/etc/group"
 PASSWD_PATH = "/etc/passwd"
 SHELLS_PATH = "/etc/shells"
+
+
+def _process_cron_results(
+    cmds_completed: list[dict[str, Any]],
+) -> tuple[dict[str, Any], list[Exception]]:
+    """Read what the cron survey could answer on its own.
+
+    The system crontab and the running identity's own crontab are
+    answered by the survey itself.  What the drop-in files and the
+    spools hold is asked at paths and names the survey had to answer
+    with first, so it waits for the batch after this one.
+
+    :param list[dict[str, Any]] cmds_completed: Command results
+    :returns tuple[dict[str, Any], list[Exception]]: Tuple of
+        (facts_dict, errors)
+    """
+    answers = cron_survey_answers(cmds_completed)
+
+    facts: dict[str, Any] = {}
+
+    paths = compose_cron_paths(answers["files"], [])
+    if paths:
+        facts["o0_paths"] = paths
+
+    users = compose_cron_users(answers["views"])
+    if users:
+        facts["o0_users"] = users
+
+    return facts, answers["errors"]
 
 
 def _get_fstab_requests() -> list[dict[str, Any]]:
@@ -234,6 +272,7 @@ class ActionModule(ShellsPosixActionBase, ActionBase):
         },
         "all": {
             "uname",
+            "cron",
             "timezone",
             "dmidecode",
             "compliance",
@@ -270,6 +309,10 @@ class ActionModule(ShellsPosixActionBase, ActionBase):
         "timezone": {
             "requests": get_timezone_command_requests,
             "processor": process_timezone_command_results,
+        },
+        "cron": {
+            "requests": get_cron_survey_requests,
+            "processor": _process_cron_results,
         },
         "fstab": {
             "requests": _get_fstab_requests,
@@ -362,32 +405,46 @@ class ActionModule(ShellsPosixActionBase, ActionBase):
         self,
         mounts: dict[str, Any],
         shells: list[dict[str, Any]],
+        surveyed: Optional[list[dict[str, Any]]] = None,
         task_vars: Optional[dict[str, Any]] = None,
     ) -> dict[str, Any]:
         """Ask everything that had to wait for the first batch.
 
-        Two questions are asked at paths the first batch answered
-        with, so neither could have ridden it: what each mounted
-        filesystem says about itself, asked at its mountpoint, and
+        Three questions are asked at paths and names the first batch
+        answered with, so none of them could have ridden it: what each
+        mounted filesystem says about itself, asked at its mountpoint;
         what each login shell produces, asked by running it out of a
-        home.  They are asked together because they are asked at the
-        same moment for the same reason, and one round trip answers
-        both.
+        home; and what the drop-in and spool crontabs hold, asked at
+        the paths the sweeps named.  They are asked together because
+        they are asked at the same moment for the same reason, and one
+        round trip answers all three.
 
-        Each is composed where both producers of its fact compose it,
-        so the mounts module and the users module attach the same
-        answers to the same entries.
+        Each is composed where every producer of its fact composes it,
+        so the mounts module, the users module and the cron module
+        attach the same answers to the same entries.
 
         :param dict[str, Any] mounts: The composed mounts fact, or an
             empty mapping where the mounts subset did not run
         :param list[dict[str, Any]] shells: The shell probes to run
+        :param Optional[list[dict[str, Any]]] surveyed: The cron
+            survey's results, where the cron subset ran
         :param Optional[dict[str, Any]] task_vars: Task variables
         :returns dict[str, Any]: The namespaces the answers compose
         """
+        answers = cron_survey_answers(surveyed) if surveyed else None
+
         requests = []
         if mounts:
             requests.extend(get_pathconf_command_requests(sorted(mounts)))
         requests.extend(shells)
+        if answers is not None:
+            requests.extend(
+                get_cron_read_requests(
+                    answers["dropins"],
+                    spool_paths(answers["holders"]),
+                    answers["holders"],
+                )
+            )
 
         if not requests:
             return {}
@@ -425,6 +482,20 @@ class ActionModule(ShellsPosixActionBase, ActionBase):
             observed = self._composed_shells(run_results)
             if observed:
                 facts["o0_shells"] = observed
+
+        if answers is not None:
+            held = compose_cron_holdings(answers, run_results)
+
+            for err in held["errors"]:
+                self._display.warning(f"[{self.inventory_hostname}] {err}")
+
+            paths = compose_cron_paths(held["files"], answers["dropins"])
+            if paths:
+                facts["o0_paths"] = paths
+
+            users = compose_cron_users(held["views"])
+            if users:
+                facts["o0_users"] = users
 
         return facts
 
@@ -607,6 +678,7 @@ class ActionModule(ShellsPosixActionBase, ActionBase):
         all_facts = {}
         user_facts: dict[str, Any] = {}
         effective_uid: Optional[int] = None
+        surveyed: list[dict[str, Any]] = []
 
         # Phase 1: Aggregate and execute every selected subset
         if selected_subsets:
@@ -632,6 +704,10 @@ class ActionModule(ShellsPosixActionBase, ActionBase):
                 task_vars=task_vars,
                 check_mode=False,
             )
+
+            # Kept for the batch that reads what this one named
+            if "cron" in selected_subsets:
+                surveyed = run_results
 
             for subset in selected_subsets:
                 spec = self.SUBSETS[subset]
@@ -662,9 +738,10 @@ class ActionModule(ShellsPosixActionBase, ActionBase):
 
         # Phase 2: Ask about the paths the batch had to answer with
         # before they could be asked about - the mountpoints df named,
-        # and the shells the task and the passwd entries named. The
-        # shells belong to the users subset, which is where /etc/shells
-        # is read, so that min stays the one round trip it promises.
+        # the shells the task and the passwd entries named, and the
+        # crontabs the drop-in and spool sweeps named. The shells
+        # belong to the users subset, which is where /etc/shells is
+        # read, so that min stays the one round trip it promises.
         self._merge_facts(
             all_facts,
             self._second_batch(
@@ -676,6 +753,7 @@ class ActionModule(ShellsPosixActionBase, ActionBase):
                     if "users" in selected_subsets
                     else []
                 ),
+                surveyed,
                 task_vars,
             ),
         )

@@ -52,6 +52,7 @@ options:
       - uname
       - compliance
       - config
+      - cron
       - timezone
       - dmidecode
       - mounts
@@ -63,6 +64,7 @@ options:
       - '!uname'
       - '!compliance'
       - '!config'
+      - '!cron'
       - '!timezone'
       - '!dmidecode'
       - '!mounts'
@@ -108,6 +110,13 @@ notes:
   - M(o0_o.posix.env) answers the environment of the session a task
     runs in, where that is the question. It is a session's answer and
     says so, rather than a fact about a user.
+  - The C(cron) subset reads what the host is configured to run on a
+    schedule, into C(o0_paths) for the crontab files and C(o0_users)
+    for the crontabs users hold. M(o0_o.posix.cron) answers the same
+    shape on its own, and the P(o0_o.posix.schedule#lookup) lookup
+    joins the two into one view. There is no schedule namespace,
+    because a stored join is a copy that can drift from what it was
+    copied out of.
   - Resource limits are not gathered here. A limit belongs to the
     session that answered rather than to the host or the user, and it
     does not survive the task that read it, so it is asked for by
@@ -1116,6 +1125,7 @@ def main() -> None:
                 "uname",
                 "compliance",
                 "config",
+                "cron",
                 "timezone",
                 "dmidecode",
                 "mounts",
@@ -1127,6 +1137,7 @@ def main() -> None:
                 "!uname",
                 "!compliance",
                 "!config",
+                "!cron",
                 "!timezone",
                 "!dmidecode",
                 "!mounts",
