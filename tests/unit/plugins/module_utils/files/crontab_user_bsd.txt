@@ -10,3 +10,12 @@ HOME=/home/operator
 30	4	*	*	*	/usr/local/sbin/rotate-logs --quiet
 @weekly /usr/local/sbin/prune-archives
 0,30 * * * * /usr/local/bin/heartbeat >/dev/null 2>&1
+
+# OpenBSD randomizes its own maintenance windows with ~ ranges, and
+# writes them into the stock root crontab
+30~45	1	*	*	*	/bin/sh /etc/daily
+~	2	*	*	6	/bin/sh /etc/weekly
+
+# FreeBSD names two schedules of its own
+@every_minute /usr/local/bin/poll-sensor
+@every_second /usr/local/bin/tick

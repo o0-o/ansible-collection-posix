@@ -266,3 +266,29 @@ def test_five_words_are_not_a_schedule_by_being_five() -> None:
         "month": "dec",
         "weekday": "sun",
     }
+
+
+def test_the_bsd_spellings_are_forms_of_their_own() -> None:
+    """Test the schedules the BSDs added parse as themselves.
+
+    OpenBSD writes ~ random ranges into its own stock root crontab,
+    so a parser refusing them fails a supported platform in factory
+    state; FreeBSD names @every_minute and @every_second. Each is
+    kept as the file wrote it, like every other spelling.
+    """
+    jobs = parsed("user_bsd")["jobs"]
+
+    daily = [j for j in jobs if j["command"] == "/bin/sh /etc/daily"]
+    assert daily[0]["schedule"]["minute"] == "30~45"
+    assert daily[0]["schedule"]["hour"] == "1"
+
+    weekly = [j for j in jobs if j["command"] == "/bin/sh /etc/weekly"]
+    assert weekly[0]["schedule"]["minute"] == "~"
+    assert weekly[0]["schedule"]["weekday"] == "6"
+
+    named = sorted(
+        j["schedule"]["special"]
+        for j in jobs
+        if "special" in j["schedule"] and j["schedule"]["special"] != "weekly"
+    )
+    assert named == ["every_minute", "every_second"]

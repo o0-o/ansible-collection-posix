@@ -1,0 +1,13 @@
+# vim: ts=2:sw=2:sts=2:et:ft=yaml.ansible
+# -*- mode: yaml; yaml-indent-offset: 2; indent-tabs-mode: nil; -*-
+---
+bugfixes:
+  - >-
+    cron - the schedule spellings the BSDs added parse as themselves.
+    OpenBSD's ``~`` random ranges were refused by the field pattern,
+    and stock OpenBSD writes them into its own root crontab, so a
+    supported platform in factory state failed the parse; FreeBSD's
+    ``@every_minute`` and ``@every_second`` were outside the closed
+    special set. Both are recognized now and kept as the file wrote
+    them, like every other spelling
+    (https://github.com/o0-o/ansible-collection-posix/pull/XXX).

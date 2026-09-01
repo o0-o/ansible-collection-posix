@@ -37,8 +37,10 @@ not run it.
 
 Fields are kept as the file wrote them.  POSIX spells a field as a
 number, a range, a comma list or ``*``; the ``*/5`` steps and the
-``jan``/``mon`` names are Vixie's spellings on top of that.  All of
-them are published as a reader would find them in the file, because
+``jan``/``mon`` names are Vixie's spellings on top of that; the ``~``
+random ranges are OpenBSD's, written into its own stock root crontab;
+``@every_minute`` and ``@every_second`` are FreeBSD's.  All of them
+are published as a reader would find them in the file, because
 rewriting any into another spelling would claim a file the host does
 not have.  What they mean in wall-clock terms is a question for
 whoever asks it, not an answer to store.
@@ -76,7 +78,10 @@ CRON_ASSIGNMENT = re.compile(
 
 # The schedules cron names instead of spelling.  A form of its own
 # rather than a fallback, so a line naming one is understood and a
-# line naming something else is not.
+# line naming something else is not.  The first eight are Vixie's and
+# every supported platform takes them; the last two are FreeBSD's own,
+# recognized because FreeBSD is a supported platform and its crontabs
+# may hold them.
 CRON_SPECIALS = (
     "reboot",
     "yearly",
@@ -86,18 +91,22 @@ CRON_SPECIALS = (
     "daily",
     "midnight",
     "hourly",
+    "every_minute",
+    "every_second",
 )
 CRON_SPECIAL = re.compile(
     r"^@(?P<special>" + "|".join(CRON_SPECIALS) + r")(?:\s+(?P<rest>.*))?$"
 )
 
 # What a schedule field may be written with.  Digits and the
-# punctuation cron gives them: a list, a range, a step, and the star
-# that means every one of them.  The set is checked rather than the
-# meaning, because a field naming an hour that does not exist is
-# cron's complaint to make, while a command that landed in a field
-# position is this parser's.
-CRON_FIELD = re.compile(r"^[0-9A-Za-z*,/-]+$")
+# punctuation cron gives them: a list, a range, a step, the star that
+# means every one of them, and OpenBSD's ~ - a random value within a
+# range, which stock OpenBSD writes into its own root crontab, so a
+# parser refusing it fails a supported platform in factory state.
+# The set is checked rather than the meaning, because a field naming
+# an hour that does not exist is cron's complaint to make, while a
+# command that landed in a field position is this parser's.
+CRON_FIELD = re.compile(r"^[0-9A-Za-z*,/~-]+$")
 
 # Any run of letters in a field, which is only ever a month or a day
 # spelled out
