@@ -45,6 +45,24 @@ rewriting any into another spelling would claim a file the host does
 not have.  What they mean in wall-clock terms is a question for
 whoever asks it, not an answer to store.
 
+The parse is not routed through jc, and the reason is on record so
+that nobody has to find it out again.  jc 1.25.7 ships ``crontab`` and
+``crontab-u`` parsers, and every corpus in the unit suite was run
+through both against this parser.  The three system-form corpora came
+back identical.  The two per-user corpora did not, and the losses were
+structural rather than cosmetic: jc pops every ``@`` line out and
+appends them after the five-field rows in reverse file order, so
+"jobs in the order the file wrote them" cannot be rebuilt from its
+output without re-walking the raw lines - which is the parser; a
+quoted assignment keeps its quotes, so ``MAILTO=""`` comes back as two
+quote characters; nothing is refused, so a sentence of five words is
+a schedule, a line with four fields puts its command in the weekday,
+``@nosuch`` is a special string and a bare ``@reboot`` raises
+IndexError; and a ``~``-leading OpenBSD line whose command carries an
+``=`` is filed as a variable named ``~ 2 * * 6 FOO``.  What jc
+contributes net of all that is a whitespace split, so the parse stays
+here where the strictness is.
+
 ``anacron`` is deliberately not read here.  Its table is four fields -
 a period, a delay, a job identifier and a command - with no user
 column and no schedule in cron's sense, and its ``@monthly`` sits in
