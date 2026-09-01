@@ -132,11 +132,15 @@ shells:
   type: dict
   contains:
     homes:
-      description: >-
-        What running this shell out of each home produced, keyed by
-        home - the C(env) it had set, the C(umask) it would create
-        files under, the C(locale) it reported and the C(aliases) it
-        had defined. A field the shell would not answer is left out.
+      description:
+        - What running this shell out of each home produced, keyed by
+          home - the C(env) it had set, the C(umask) it would create
+          files under, the C(locale) it reported and the C(aliases) it
+          had defined. A field the shell would not answer is left out.
+        - Every variable C(env) watches is answered on every probed
+          row - its value where the shell exported one, C(null) where
+          it did not - because C(env) prints the whole exported
+          environment and so the answer is known either way.
       type: dict
     builtins:
       description: >-
@@ -184,7 +188,13 @@ shells:
       homes:
         /dev/null:
           env:
+            IFS: null
+            LANG: en_US.UTF-8
+            LC_CTYPE: null
+            NLSPATH: null
             PATH: /usr/bin:/bin
+            TERM: xterm
+            TZ: null
           umask: '0022'
       origins:
         - o0_o.posix.shells

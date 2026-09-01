@@ -1,0 +1,20 @@
+# vim: ts=2:sw=2:sts=2:et:ft=yaml.ansible
+# -*- mode: yaml; yaml-indent-offset: 2; indent-tabs-mode: nil; -*-
+---
+minor_changes:
+  - >-
+    facts, shells - every variable the shell probes watch is answered
+    on every probed row of ``o0_shells``: its value where the shell
+    exported one, and ``null`` where it did not. ``env`` prints the
+    whole exported environment, so for each watched name the answer is
+    known either way, and the row now says which - the convention
+    ``o0_paths`` already follows for a path asked about and not there.
+    ``IFS`` is the live case: ``null`` is the healthy reading and a
+    value is the finding
+    (https://github.com/o0-o/ansible-collection-posix/pull/XXX).
+  - >-
+    facts, shells - a row's keys are the questions that were put to it.
+    A watched name missing from a row therefore means a gather taken
+    before that name was watched, which a consumer of cached facts can
+    tell from a name checked and found unset
+    (https://github.com/o0-o/ansible-collection-posix/pull/XXX).

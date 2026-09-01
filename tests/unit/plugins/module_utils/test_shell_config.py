@@ -42,9 +42,9 @@ from ansible_collections.o0_o.posix.plugins.module_utils.evidence_utils import (
 )
 from ansible_collections.o0_o.posix.plugins.module_utils.shells_utils import (
     SHELL_DEFAULT,
-    SHELL_ENV_VARS,
     SHELL_RCS,
     SHELL_SYSTEM_HOME,
+    SHELL_ENV_VARS,
     _parse_shell_config,
     compose_shells,
     get_shell_command_requests,
@@ -119,6 +119,51 @@ def test_a_login_run_answers_a_mask_and_an_environment(shell: str) -> None:
     assert parsed["env"]["PATH"]
     # The placement the filer reads and removes travels beside them
     assert set(parsed) <= {"env", "umask", "locale", "_filing"}
+
+
+@pytest.mark.parametrize("shell", SHELLS)
+def test_every_watched_variable_is_answered_for(shell: str) -> None:
+    """Test a row says what it was asked, not only what it found.
+
+    ``env`` prints the whole exported environment, so for every name
+    on the list the answer is known - a value, or a confirmed absence.
+    The row says which, the way the path store says null for a path
+    asked about and not there.
+    """
+    environment = config(shell)["env"]
+
+    assert set(environment) == set(SHELL_ENV_VARS)
+    assert all(
+        value is None or isinstance(value, str)
+        for value in environment.values()
+    )
+
+
+@pytest.mark.parametrize("shell", SHELLS)
+def test_a_variable_the_shell_did_not_export_is_null(shell: str) -> None:
+    """Test IFS reads null on a host where nothing is wrong with it.
+
+    IFS is watched for the opposite reason to the rest: a value is the
+    finding. Null is the healthy answer and says the question was put,
+    which an absent key could not.
+    """
+    assert config(shell)["env"]["IFS"] is None
+
+
+def test_a_row_that_answered_nothing_claims_nothing() -> None:
+    """Test an empty block is not every variable confirmed unset.
+
+    A login shell always exports something, so a block that printed
+    nothing is a probe that did not answer - and a row of nulls would
+    claim seven questions were put that never were.
+    """
+    parsed, errors = _parse_shell_config(
+        0, "@UMASK@\n0022\n@ENV@\n@LOCALE@\n@END@\n", "test: "
+    )
+
+    assert errors is None
+    assert "env" not in parsed
+    assert parsed["umask"] == "0022"
 
 
 @pytest.mark.parametrize("shell", SHELLS)

@@ -47,6 +47,17 @@
         rows | map(attribute='env') | map('list') | flatten
         | reject('in', ['IFS', 'LANG', 'LC_CTYPE', 'NLSPATH', 'PATH',
         'TERM', 'TZ']) | list | length == 0
+      # And every watched variable is answered on every probed row,
+      # its value where the shell set one and null where it did not
+      - >-
+        rows | map(attribute='env') | map('list') | map('sort')
+        | reject('eq', ['IFS', 'LANG', 'LC_CTYPE', 'NLSPATH', 'PATH',
+        'TERM', 'TZ']) | list | length == 0
+      # IFS is watched for the opposite reason to the rest: null is
+      # the healthy answer and a value is the finding
+      - >-
+        rows | map(attribute='env') | selectattr('IFS', 'defined')
+        | list | length == rows | length
       # The keys a row was filed under are not fields of it
       - >-
         rows | map(attribute='env') | selectattr('HOME', 'defined')

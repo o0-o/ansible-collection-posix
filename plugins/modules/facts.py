@@ -861,12 +861,21 @@ ansible_facts:
               field the shell would not answer is left out rather than
               nulled.
             - C(env) is what describes the shell rather than whoever
-              ran the probe - C(LANG), C(LC_CTYPE), C(PATH), C(TERM),
-              and C(TZ) and C(NLSPATH) where a login file set them.
-              C(IFS) is watched for the opposite reason to the rest -
-              it is almost never exported, so its presence here is
-              itself the finding, an exported and modified C(IFS)
-              breaking word splitting for everything the host runs.
+              ran the probe - C(IFS), C(LANG), C(LC_CTYPE), C(NLSPATH),
+              C(PATH), C(TERM) and C(TZ).
+            - Every one of them is answered on every probed row - its
+              value where the shell exported one, C(null) where it did
+              not. C(env) prints the whole exported environment, so the
+              answer is known either way and the row says which, as
+              C(o0_paths) says C(null) for a path asked about and not
+              there. It also makes a row say which questions were put
+              to it, so a key that is absent from a cached gather is
+              one taken before the name was watched.
+            - C(IFS) is watched for the opposite reason to the rest -
+              it is almost never exported, so C(null) is the healthy
+              answer and a value is itself the finding, an exported and
+              modified C(IFS) breaking word splitting for everything
+              the host runs.
               Narrower than the whole of what a session exports, and
               deliberately so - C(HOME), C(LOGNAME), C(MAIL), C(PWD)
               and C(USER) name whichever identity the probe turned out
@@ -925,7 +934,13 @@ ansible_facts:
           homes:
             /dev/null:
               env:
+                IFS: null
+                LANG: en_US.UTF-8
+                LC_CTYPE: null
+                NLSPATH: null
                 PATH: /usr/bin:/bin
+                TERM: xterm
+                TZ: null
               umask: '0022'
               locale:
                 language: en_US.UTF-8

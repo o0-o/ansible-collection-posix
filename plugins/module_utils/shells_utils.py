@@ -94,11 +94,18 @@ SHELL_DEFAULT = "/bin/sh"
 # two POSIX variables a login file plausibly sets that name no user.
 #
 # IFS is here for the opposite reason to the rest.  It is almost never
-# exported, so on a healthy host it is simply absent; its presence in
-# a probed login environment is itself the finding, because an
-# exported and modified IFS breaks word splitting for everything that
-# host runs.  OPTIND stays out: it is getopts iteration state, always
-# 1 in a fresh login, bookkeeping rather than configuration.
+# exported, so on a healthy host its answer is null; a value is itself
+# the finding, because an exported and modified IFS breaks word
+# splitting for everything that host runs.  OPTIND stays out: it is
+# getopts iteration state, always 1 in a fresh login, bookkeeping
+# rather than configuration.
+#
+# Every name here is answered on every row that was probed - a value
+# where the shell exported one, null where it did not - because ``env``
+# prints the whole exported environment and so the answer is known
+# either way.  That also makes a row say which questions were put to
+# it: a key that is there was asked about, and a key that is not
+# belongs to a gather taken before the name was on this list.
 #
 # Narrower than the environment ``o0_users`` publishes, deliberately.
 # That fact is about a user and HOME, LOGNAME, MAIL, PWD and USER
@@ -221,7 +228,8 @@ def parse_shells(data: Union[str, Sequence[str], dict[str, Any]]) -> list[str]:
 def _parse_env_block(
     text: str,
     keep: Sequence[str],
-) -> dict[str, str]:
+    complete: bool = False,
+) -> dict[str, Optional[str]]:
     """Read an ``env`` block into the variables it printed.
 
     A value may hold newlines, and ``env`` prints them as newlines, so
@@ -233,10 +241,25 @@ def _parse_env_block(
     reason to copy them into a fact - which is why the caller says
     what it is observing rather than taking what it is handed.
 
+    Asked for a complete answer, every name the caller named is
+    published: its value where the shell exported one and null where
+    the block confirmed it did not.  ``env`` prints the whole exported
+    environment, so a name missing from a block that printed anything
+    is a name the shell did not export - which is knowledge, and the
+    store's word for it is null.
+
+    A block that printed nothing is the other thing entirely.  A login
+    shell always exports something, so an empty block is a probe that
+    did not answer, and nothing is known: it yields no variables at
+    all rather than a row of nulls claiming every one was checked.
+
     :param str text: The block between the env and locale markers
     :param Sequence[str] keep: The variables worth keeping, in the
         order a fact publishes them
-    :returns dict[str, str]: The variables the shell had set
+    :param bool complete: Whether to answer for every name asked
+        about rather than only the ones that were set
+    :returns dict[str, Optional[str]]: The variables the shell had
+        set, and where complete, nulls for the ones it had not
     """
     values: dict[str, str] = {}
     current: Optional[str] = None
@@ -248,6 +271,9 @@ def _parse_env_block(
             values[name] = value
         elif current is not None:
             values[current] += "\n" + line
+
+    if complete:
+        return {name: values.get(name) for name in keep} if values else {}
 
     return {name: values[name] for name in keep if name in values}
 
@@ -361,7 +387,7 @@ def _parse_shell_config(
     # PWD, USER - describe whoever the probe turned out to be rather
     # than the shell being asked, and the home this row is filed under
     # is the key it is filed under
-    env = _parse_env_block(env_text, SHELL_ENV_VARS)
+    env = _parse_env_block(env_text, SHELL_ENV_VARS, complete=True)
     if env:
         config["env"] = env
 

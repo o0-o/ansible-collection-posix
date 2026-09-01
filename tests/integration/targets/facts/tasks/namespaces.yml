@@ -955,6 +955,12 @@
         config['env'].keys()
         | reject('in', ['IFS', 'LANG', 'LC_CTYPE', 'NLSPATH', 'PATH',
         'TERM', 'TZ']) | list | length == 0
+      # And every one of them is answered, because env prints the
+      # whole exported environment: a value where the shell set one
+      # and null where it did not
+      - >-
+        config['env'].keys() | sort
+        == ['IFS', 'LANG', 'LC_CTYPE', 'NLSPATH', 'PATH', 'TERM', 'TZ']
       # IFS is almost never exported, so its presence is the finding
       # rather than the norm; OPTIND is iteration state, not config
       - "'OPTIND' not in config['env']"
