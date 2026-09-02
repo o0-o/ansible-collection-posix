@@ -756,7 +756,7 @@ def test_a_spool_crontab_is_warned_about_as_its_owners(
     [
         ("OpenBSD", ["@every_minute", "@every_second"]),
         ("Linux", ["@every_minute", "@every_second"]),
-        ("FreeBSD", ["30~45", "~"]),
+        ("FreeBSD", []),
         ("NetBSD", ["30~45", "~", "@every_minute", "@every_second"]),
         ("Darwin", ["30~45", "~", "@every_minute", "@every_second"]),
     ],

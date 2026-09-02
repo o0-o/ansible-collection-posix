@@ -497,8 +497,9 @@ def test_o0_os_is_read_under_ansible_facts_too(make_lookup) -> None:
 
     rows = lookup.run([], None)
 
-    assert "/bin/sh /etc/weekly" not in _commands(rows)
-    assert len(rows) == 2
+    # FreeBSD took up the tilde, so the random drop-in's job stands
+    assert "/bin/sh /etc/weekly" in _commands(rows)
+    assert len(rows) == 3
 
 
 def test_a_kernel_this_does_not_know_gets_no_verdict(make_lookup) -> None:
@@ -541,7 +542,7 @@ def test_the_verdict_follows_the_host_asked_about(make_lookup) -> None:
             "bsd1": {
                 "o0_paths": RANDOM_DROPIN,
                 "o0_users": TICKER,
-                "o0_os": {"kernel": {"name": "freebsd"}},
+                "o0_os": {"kernel": {"name": "darwin"}},
                 "inventory_hostname": "bsd1",
             }
         }
@@ -549,5 +550,9 @@ def test_the_verdict_follows_the_host_asked_about(make_lookup) -> None:
 
     rows = lookup.run([], None, host="bsd1")
 
-    assert _commands(rows) == ["/usr/local/bin/tick"]
+    # macOS's cron takes neither the tilde nor FreeBSD's names, so
+    # both rows are left out and both are complained about, the file
+    # first
+    assert _commands(rows) == []
+    assert len(_warnings(lookup)) == 2
     assert _warnings(lookup)[0].startswith("[bsd1] /etc/cron.d/random:")
