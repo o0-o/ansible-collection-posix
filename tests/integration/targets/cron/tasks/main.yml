@@ -395,14 +395,22 @@
   ansible.builtin.assert:
     that:
       - cron_reg is not changed
-      - cron_reg['o0_paths'] == {}
+      # No crontab command says nothing about the files: a host can
+      # lack the command and still ship drop-ins (Ubuntu's e2fsprogs
+      # installs /etc/cron.d/e2scrub_all with no cron to run it), so
+      # the path store is asked the same question either way - every
+      # fixed path answered for, absent as null, present as an entry
+      - "'/etc/crontab' in cron_reg['o0_paths']"
+      - "'/etc/cron.d' in cron_reg['o0_paths']"
+      - >-
+        cron_reg['o0_paths'] | dict2items | rejectattr('value', 'none')
+        | selectattr('value.content', 'defined')
+        | map(attribute='value.config')
+        | rejectattr('jobs', 'defined') | list | length == 0
       # Asked about and not there, which is not the same as unasked
       - cron_uid in cron_reg['o0_users']
       - entry['crontab'] is none
       - entry['uid'] == cron_uid | int
-      # And the cron surface it does not have is filed as absent
-      # rather than left unmentioned
-      - cron_reg['o0_paths']['/etc/crontab'] is none
       # And the record says what was attempted, which is the whole of
       # what a host with no cron can be said to have been asked
       - entry['evidence']['commands'] == ['crontab']
