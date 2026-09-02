@@ -657,9 +657,13 @@
       # key of the same store, described as the file it is
       - shells | length > 0
       - shells | reject('in', paths.keys() | list) | list | length == 0
+      # A shell a passwd entry names and the disk does not hold is a
+      # null, the store's word for asked about and not there - Rocky's
+      # container names /sbin/halt for the halt account and ships no
+      # such file - and a shell that is there is described with a type
       - >-
-        shells | map('extract', paths) | selectattr('type', 'defined')
-        | list | length == shells | length
+        shells | map('extract', paths) | reject('none')
+        | rejectattr('type', 'defined') | list | length == 0
     fail_msg: >-
       the homes or the shells in o0_paths are not keyed by path
 
