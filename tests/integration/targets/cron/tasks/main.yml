@@ -453,17 +453,18 @@
         | selectattr('value.content', 'defined')
         | map(attribute='value.config')
         | rejectattr('jobs', 'defined') | list | length == 0
-      # Asked about and not there, which is not the same as unasked
+      # With no crontab command the question could not be put, which
+      # is not asked-and-none: the identity is named, its crontab key
+      # is left off rather than nulled, and the record says what was
+      # attempted
       - cron_uid in cron_reg['o0_users']
-      - entry['crontab'] is none
+      - "'crontab' not in entry"
       - entry['uid'] == cron_uid | int
-      # And the record says what was attempted, which is the whole of
-      # what a host with no cron can be said to have been asked
       - entry['evidence']['commands'] == ['crontab']
       - entry['evidence']['files'] is not defined
       - >-
         cron_reg['o0_users'] | dict2items
-        | rejectattr('value.crontab', 'none') | list | length == 0
+        | selectattr('value.crontab', 'defined') | list | length == 0
     fail_msg: >-
       a host with no cron did not describe itself as having none:
       {{ cron_reg }}
