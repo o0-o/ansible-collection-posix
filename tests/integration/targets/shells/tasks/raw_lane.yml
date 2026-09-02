@@ -12,7 +12,17 @@
 # This target's entry into the raw lane, per Running CI. A shell is
 # run and a file is read the same way with no interpreter on the host,
 # so the module reaches the same answer either way and the entry is
-# main.yml under no vars of its own.
+# main.yml, with only the two namespaces below pinned.
 
+# The raw lane runs every target in one play, so what an earlier
+# target published as facts is still in scope here - and the shells
+# module consults the path store it is handed rather than reading a
+# shell that store already describes. ansible-test gives each target a
+# play of its own with nothing published before it; the two namespaces
+# are pinned empty to hand this run the same, so the return it is held
+# to is the one it composed itself.
 - name: Ask a host with no interpreter what its login shells do
   ansible.builtin.include_tasks: main.yml
+  vars:
+    o0_paths: {}
+    o0_users: {}
