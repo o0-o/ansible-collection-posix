@@ -19,6 +19,13 @@
     sysctl_read_only: >-
       {{ 'kernel.ostype' if ansible_system == 'Linux'
          else 'kern.ostype' }}
+    # Escalation is named per platform because the guest lane hands
+    # ansible-test a bare ssh target, and the inventory that knows
+    # OpenBSD escalates through doas never reaches it. OpenBSD ships
+    # no sudo; asking for one returns a shell's complaint where a
+    # module's JSON should be, and the batch cannot be read at all.
+    sysctl_become_method: >-
+      {{ 'doas' if ansible_system == 'OpenBSD' else 'sudo' }}
 
 - name: Ask the host for every tunable it prints
   o0_o.posix.sysctl:
@@ -104,6 +111,7 @@
     # written as a template in task args is not templated
     values: "{{ {sysctl_key: held} }}"
   become: true
+  become_method: "{{ sysctl_become_method }}"
   register: sysctl_noop_reg
 
 - name: Assert the compare came first, so nothing was set
@@ -123,6 +131,7 @@
   o0_o.posix.sysctl:
     values: "{{ {sysctl_key: proposed} }}"
   become: true
+  become_method: "{{ sysctl_become_method }}"
   check_mode: true
   diff: true
   register: sysctl_proposed_reg
@@ -156,6 +165,7 @@
       o0_o.posix.sysctl:
         values: "{{ {sysctl_read_only: 'nonsense'} }}"
       become: true
+      become_method: "{{ sysctl_become_method }}"
       register: sysctl_refused_reg
 
     - name: Assert the refusal did not read as success
