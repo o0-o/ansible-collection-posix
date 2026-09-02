@@ -46,8 +46,10 @@
 # blocks run only where there is nothing to lose.
 - name: Ask whether this identity already holds a crontab
   when: cron_have | bool
-  ansible.builtin.command:
-    cmd: crontab -l
+  o0_o.posix.command:
+    argv:
+      - crontab
+      - -l
   check_mode: false
   register: cron_held_before_reg
   failed_when: false
@@ -120,8 +122,10 @@
     - not (cron_held | bool)
   block:
     - name: Install a crontab for this run to read back
-      ansible.builtin.command:
-        cmd: crontab -
+      o0_o.posix.command:
+        argv:
+          - crontab
+          - '-'
         stdin: |
           MAILTO=""
           @reboot /usr/local/bin/integration-boot
@@ -192,14 +196,18 @@
           the lookup did not join what the module published
   always:
     - name: Take the crontab back off, whatever happened
-      ansible.builtin.command:
-        cmd: crontab -r
+      o0_o.posix.command:
+        argv:
+          - crontab
+          - -r
       failed_when: false
       changed_when: true
 
     - name: Assert nothing was left behind
-      ansible.builtin.command:
-        cmd: crontab -l
+      o0_o.posix.command:
+        argv:
+          - crontab
+          - -l
       register: cron_after_reg
       failed_when: false
       changed_when: false
@@ -228,8 +236,10 @@
     - cron_kernel in ['darwin', 'netbsd']
   block:
     - name: Offer crontab a line spelled the OpenBSD way
-      ansible.builtin.command:
-        cmd: crontab -
+      o0_o.posix.command:
+        argv:
+          - crontab
+          - '-'
         stdin: |
           ~ 2 * * 6 /usr/local/bin/integration-random
       register: cron_refused_reg
@@ -245,8 +255,10 @@
           does not take one: {{ cron_refused_reg }}
 
     - name: Ask whether anything was installed regardless
-      ansible.builtin.command:
-        cmd: crontab -l
+      o0_o.posix.command:
+        argv:
+          - crontab
+          - -l
       register: cron_refused_after_reg
       failed_when: false
       changed_when: false
@@ -261,8 +273,10 @@
           {{ cron_refused_after_reg['stdout'] }}
   always:
     - name: Take any crontab back off, whatever happened
-      ansible.builtin.command:
-        cmd: crontab -r
+      o0_o.posix.command:
+        argv:
+          - crontab
+          - -r
       failed_when: false
       changed_when: true
 
