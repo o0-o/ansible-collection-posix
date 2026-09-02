@@ -737,13 +737,15 @@
         | list | length == 0
       # Every entry names this gather, because this gather published
       # the store; the composers that described a path name themselves
-      # beside it, so nothing here is a name from another collection
+      # beside it - the read that described a home, the sweep that
+      # resolved a utility, the cron subset that read a crontab file -
+      # so nothing here is a name from another collection
       - >-
         described | selectattr('value.origins', 'defined')
         | rejectattr('value.origins', 'contains', 'o0_o.posix.facts')
         | list | length == 0
       - >-
-        named | reject('in', ['o0_o.posix.compliance',
+        named | reject('in', ['o0_o.posix.compliance', 'o0_o.posix.cron',
         'o0_o.posix.facts', 'o0_o.posix.read'])
         | list | length == 0
       # The read that described a home named itself beside the gather
