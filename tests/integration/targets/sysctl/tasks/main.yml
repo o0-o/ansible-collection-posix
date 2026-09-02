@@ -11,13 +11,29 @@
 
 # A key's name is the kernel's, so the one key every host in this
 # matrix answers for is named per platform rather than assumed.
+# The kernel is asked for rather than read from a fact, because the raw
+# lane gathers none: a host with no interpreter has no ansible_system,
+# and this target had never reached that lane until a stock OpenBSD
+# guest ran the whole of it and fell here.
+- name: Ask the host which kernel it runs
+  o0_o.posix.command:
+    argv:
+      - uname
+      - -s
+  check_mode: false
+  register: sysctl_kernel_reg
+
+- name: Name the kernel the gates read
+  ansible.builtin.set_fact:
+    sysctl_system: "{{ sysctl_kernel_reg['stdout'] | trim }}"
+
 - name: Name a key this kernel is known to answer for
   ansible.builtin.set_fact:
     sysctl_key: >-
-      {{ 'kernel.hostname' if ansible_system == 'Linux'
+      {{ 'kernel.hostname' if sysctl_system == 'Linux'
          else 'kern.hostname' }}
     sysctl_read_only: >-
-      {{ 'kernel.ostype' if ansible_system == 'Linux'
+      {{ 'kernel.ostype' if sysctl_system == 'Linux'
          else 'kern.ostype' }}
     # Escalation is named per platform because the guest lane hands
     # ansible-test a bare ssh target, and the inventory that knows
@@ -25,7 +41,7 @@
     # no sudo; asking for one returns a shell's complaint where a
     # module's JSON should be, and the batch cannot be read at all.
     sysctl_become_method: >-
-      {{ 'doas' if ansible_system == 'OpenBSD' else 'sudo' }}
+      {{ 'doas' if sysctl_system == 'OpenBSD' else 'sudo' }}
 
 - name: Ask the host for every tunable it prints
   o0_o.posix.sysctl:
