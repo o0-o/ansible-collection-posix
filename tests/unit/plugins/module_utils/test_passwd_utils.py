@@ -133,3 +133,23 @@ def test_passwd_info_handles_empty(monkeypatch: pytest.MonkeyPatch) -> None:
     )
 
     assert passwd_info({"stdout": ""}) == {}
+
+
+def test_a_second_name_for_a_uid_is_an_alias_of_the_first() -> None:
+    """Two passwd lines for one uid are one account with two names.
+
+    FreeBSD ships toor beside root, both uid 0. Keyed by uid, the
+    second line used to overwrite the first, so root read as toor.
+    The first name stands and the rest are aliases in file order.
+    """
+    text = (
+        "root:*:0:0:Charlie &:/root:/bin/sh\n"
+        "toor:*:0:0:Bourne-again Superuser:/root:\n"
+        "daemon:*:1:1:Owner of many system processes:/root:/usr/sbin/nologin\n"
+    )
+    users = passwd_info(text, key="id")
+
+    assert users["0"]["name"] == "root"
+    assert users["0"]["aliases"] == ["toor"]
+    assert users["0"]["shell"] == "/bin/sh"
+    assert "aliases" not in users["1"]

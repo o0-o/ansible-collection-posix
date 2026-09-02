@@ -1,0 +1,18 @@
+# vim: ts=2:sw=2:sts=2:et:ft=yaml.ansible
+# -*- mode: yaml; yaml-indent-offset: 2; indent-tabs-mode: nil; -*-
+---
+bugfixes:
+  - >-
+    users, facts - a second passwd or group line for one numeric ID no
+    longer overwrites the first. FreeBSD ships ``toor`` beside
+    ``root``, both UID 0, and keyed by UID the later line won, so
+    ``o0_users['0']`` read as ``toor``. The first name the database
+    gives an ID is its ``name`` and the rest are its ``aliases`` in
+    database order; a group's memberships from every line are one set
+    (https://github.com/o0-o/ansible-collection-posix/pull/XXX).
+minor_changes:
+  - >-
+    users, facts - ``o0_users`` and ``o0_groups`` entries carry
+    ``aliases`` where the database gives an ID more than one name, and
+    the user and group lookups answer a name for any of them
+    (https://github.com/o0-o/ansible-collection-posix/pull/XXX).

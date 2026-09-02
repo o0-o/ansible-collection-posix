@@ -506,7 +506,11 @@
     root: "{{ users['0'] }}"
   ansible.builtin.assert:
     that:
+      # root is the first passwd name of uid 0 on every POSIX host;
+      # FreeBSD lists toor after it, which is an alias and not the name
       - root['name'] == 'root'
+      - root['aliases'] is not defined or root['aliases'] is sequence
+      - root['aliases'] is not defined or 'root' not in root['aliases']
       - root['uid'] is integer
       - root['uid'] == 0
       - root['gid'] is integer

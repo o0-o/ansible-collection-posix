@@ -196,3 +196,17 @@ def test_group_info_leaves_comments_and_blank_lines_alone() -> None:
     result = group_info("# a comment with one : colon\n\nbin:*:7\n", key="id")
 
     assert result == {"7": {"name": "bin", "members": []}}
+
+
+def test_a_second_name_for_a_gid_is_an_alias_and_members_join() -> None:
+    """Two group lines for one gid are one group with two names."""
+    from ansible_collections.o0_o.posix.plugins.module_utils import (
+        group_info,
+    )
+
+    text = "wheel:*:0:root\nsystem:*:0:operator\n"
+    groups = group_info(text, key="id")
+
+    assert groups["0"]["name"] == "wheel"
+    assert groups["0"]["aliases"] == ["system"]
+    assert sorted(groups["0"]["members"]) == ["operator", "root"]

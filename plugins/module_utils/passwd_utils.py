@@ -78,9 +78,22 @@ def passwd_info(
         if key == "id":
             if uid is None:
                 continue
+            uid_key = str(uid)
+            if uid_key in result:
+                # A second line for a uid names the same account again
+                # - FreeBSD ships toor beside root - so the first name
+                # stands as the name and the rest are its aliases, in
+                # file order, rather than the last line overwriting
+                # everything the first one said
+                known = result[uid_key]
+                if name and name != known.get("name"):
+                    aliases = known.setdefault("aliases", [])
+                    if name not in aliases:
+                        aliases.append(name)
+                continue
             info = dict(payload)
             info["name"] = name
-            result[str(uid)] = info
+            result[uid_key] = info
         else:
             if name:
                 info = dict(payload)

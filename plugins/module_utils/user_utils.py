@@ -765,7 +765,7 @@ def lookup_user(
     """Look up a user in o0_users by UID or username.
 
     An integer is the fact's own key; a string is matched against
-    the ``name`` field of each entry.
+    the ``name`` field of each entry and the ``aliases`` beside it.
 
     :param Union[int, str] identifier: UID (int) or username (str)
     :param dict[str, dict[str, Any]] users: The o0_users mapping
@@ -781,7 +781,7 @@ def lookup_group(
     """Look up a group in o0_groups by GID or group name.
 
     An integer is the fact's own key; a string is matched against
-    the ``name`` field of each entry.
+    the ``name`` field of each entry and the ``aliases`` beside it.
 
     :param Union[int, str] identifier: GID (int) or group name (str)
     :param dict[str, dict[str, Any]] groups: The o0_groups mapping
@@ -810,7 +810,14 @@ def _lookup(
 
     if isinstance(identifier, str):
         for entry in entries.values():
-            if isinstance(entry, dict) and entry.get("name") == identifier:
+            if not isinstance(entry, dict):
+                continue
+            # A name is the entry's own or one of the aliases the
+            # database gave the same id - toor answers for uid 0 on
+            # FreeBSD the way root does
+            if identifier == entry.get("name") or identifier in (
+                entry.get("aliases") or []
+            ):
                 return entry
 
     return None

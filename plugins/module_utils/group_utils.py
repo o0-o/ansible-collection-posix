@@ -113,7 +113,21 @@ def group_info(
         if key == "id":
             if gid is None:
                 continue
-            result[str(gid)] = {"name": name, "members": members_list}
+            gid_key = str(gid)
+            if gid_key in result:
+                # A second line for a gid is the same group under
+                # another name: the first name stands, the others are
+                # aliases, and the memberships are one set
+                known = result[gid_key]
+                if name and name != known.get("name"):
+                    aliases = known.setdefault("aliases", [])
+                    if name not in aliases:
+                        aliases.append(name)
+                for member in members_list:
+                    if member not in known["members"]:
+                        known["members"].append(member)
+                continue
+            result[gid_key] = {"name": name, "members": members_list}
         else:
             if name:
                 result[name] = {"id": gid, "members": members_list}

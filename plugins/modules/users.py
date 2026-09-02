@@ -135,9 +135,21 @@ o0_users:
   type: dict
   contains:
     name:
-      description: Username
+      description:
+        - Username - the first name the passwd database gives the UID,
+          where it gives more than one.
       type: str
       sample: o0-o
+    aliases:
+      description:
+        - The other names the passwd database gives the same UID, in
+          the order it lists them. FreeBSD ships C(toor) beside
+          C(root); both are UID 0, C(root) is the name and C(toor) an
+          alias. The user lookup answers for either.
+      returned: when a UID has more than one passwd name
+      type: list
+      elements: str
+      sample: [toor]
     uid:
       description: Numeric user ID
       type: int
