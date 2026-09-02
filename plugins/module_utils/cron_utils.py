@@ -39,8 +39,8 @@ Fields are kept as the file wrote them.  POSIX spells a field as a
 number, a range, a comma list or ``*``; the ``*/5`` steps, the
 ``jan``/``mon`` names and a weekday of ``7`` are Vixie's spellings on
 top of that; the ``~`` random ranges are OpenBSD's, written into its
-own stock root crontab;
-``@every_minute`` and ``@every_second`` are FreeBSD's.  All of them
+own stock root crontab and taken up by FreeBSD; ``@every_minute`` and
+``@every_second`` are FreeBSD's.  All of them
 are published as a reader would find them in the file, because
 rewriting any into another spelling would claim a file the host does
 not have.  What they mean in wall-clock terms is a question for
@@ -271,6 +271,12 @@ CRON_DIALECT_NAMES = {
 # - busybox 1.38.  ``crontab -`` installs anything at all; crond logs
 #   "parse error at ~", "parse error at 7" and "parse error at 24"
 #   when it loads the file, skips those lines and runs the rest.
+# - FreeBSD 14, live on the CI guest.  ``crontab -`` installs
+#   ``~ 2 * * 6`` (rc 0) - FreeBSD took up OpenBSD's random ranges, so
+#   the tilde is FreeBSD's too, beside its own @every_* names.
+# - macOS, live.  ``crontab -`` refuses ``~`` ("-":0: bad minute).
+# - NetBSD is unproven: no host was reachable, and it is held to
+#   Vixie alone until one is.
 #
 # A kernel not named here runs a cron nothing here knows, and gets no
 # verdict.
@@ -278,7 +284,7 @@ CRON_KERNEL_DIALECTS: dict[str, frozenset[str]] = {
     "linux": frozenset((POSIX, VIXIE, OPENBSD)),
     "darwin": frozenset((POSIX, VIXIE)),
     "netbsd": frozenset((POSIX, VIXIE)),
-    "freebsd": frozenset((POSIX, VIXIE, FREEBSD)),
+    "freebsd": frozenset((POSIX, VIXIE, OPENBSD, FREEBSD)),
     "openbsd": frozenset((POSIX, VIXIE, OPENBSD)),
 }
 

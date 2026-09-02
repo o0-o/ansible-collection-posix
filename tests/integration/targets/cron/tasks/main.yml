@@ -213,17 +213,19 @@
 
 # On the BSD-descended crons the per-user path is immune to a spelling
 # the cron does not take, because crontab(1) refuses to install the
-# file: a ~ is OpenBSD's, and macOS, FreeBSD and NetBSD reject it at the
-# door. That is why the module's warning about such a line can only be
+# file: a ~ is OpenBSD's, and macOS and NetBSD reject it at the door.
+# That is why the module's warning about such a line can only be
 # about a system file there, and this proves the door is shut. Linux is
 # not gated in: cronie and Debian's cron take the tilde, and busybox's
 # crontab validates nothing on install - which is why the module holds
-# Linux to what every one of its crons takes.
+# Linux to what every one of its crons takes. FreeBSD is not gated in
+# either: its cron took up the tilde, which the first guest run proved
+# by installing the line this offered.
 - name: Assert crontab refuses a spelling its cron does not take
   when:
     - cron_have | bool
     - not (cron_held | bool)
-    - cron_kernel in ['darwin', 'freebsd', 'netbsd']
+    - cron_kernel in ['darwin', 'netbsd']
   block:
     - name: Offer crontab a line spelled the OpenBSD way
       ansible.builtin.command:
@@ -406,13 +408,13 @@
              | selectattr('path', 'defined')
              | selectattr('path', 'eq', cron_dropin)
              | map(attribute='command') | list }}
-        # OpenBSD's cron takes its own ~, and so do cronie and Debian's
-        # cron, so Linux is held to what all of its crons take; only
-        # FreeBSD's cron names @every_second. Every other supported
-        # cron skips the line, and so does the schedule.
+        # OpenBSD's cron takes its own ~, and so do FreeBSD's, cronie
+        # and Debian's cron, so Linux is held to what all of its crons
+        # take; only FreeBSD's cron names @every_second. Every other
+        # supported cron skips the line, and so does the schedule.
         expected: >-
           {{ (['/usr/local/bin/integration-random']
-              if cron_kernel in ['openbsd', 'linux'] else [])
+              if cron_kernel in ['openbsd', 'freebsd', 'linux'] else [])
              + (['/usr/local/bin/integration-tick']
                 if cron_kernel == 'freebsd' else []) }}
       ansible.builtin.assert:

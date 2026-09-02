@@ -110,9 +110,11 @@ notes:
   - >-
     A per-user crontab is immune to a spelling the host's cron does
     not take only where C(crontab(1)) parses the file before
-    installing it, which the Vixie-descended crontabs on macOS,
-    FreeBSD and NetBSD do - a C(~) is refused at the door there, so
-    the warning can only ever be about a system file. Linux is not
+    installing it, which the Vixie-descended crontabs on macOS and
+    NetBSD do - a C(~) is refused at the door there, so the warning
+    can only ever be about a system file. FreeBSD's crontab parses
+    too, and takes the tilde, so nothing in the BSD corpus is refused
+    there but the other BSD's names are not at issue. Linux is not
     immune: cronie and Debian's cron take the tilde, and busybox's
     C(crontab) validates nothing on install, leaving its C(crond) to
     complain and skip the line at load.

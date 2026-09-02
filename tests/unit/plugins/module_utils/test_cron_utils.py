@@ -458,7 +458,7 @@ def test_a_schedule_draws_on_every_owner_it_uses() -> None:
         ("linux", {POSIX, VIXIE, OPENBSD}),
         ("Darwin", {POSIX, VIXIE}),
         ("NetBSD", {POSIX, VIXIE}),
-        ("FreeBSD", {POSIX, VIXIE, FREEBSD}),
+        ("FreeBSD", {POSIX, VIXIE, OPENBSD, FREEBSD}),
         ("OpenBSD", {POSIX, VIXIE, OPENBSD}),
     ],
 )
@@ -514,7 +514,7 @@ def test_every_live_corpus_is_taken_by_every_known_cron(
         ("Linux", ["@every_minute", "@every_second"]),
         ("Darwin", ["30~45", "~", "@every_minute", "@every_second"]),
         ("NetBSD", ["30~45", "~", "@every_minute", "@every_second"]),
-        ("FreeBSD", ["30~45", "~"]),
+        ("FreeBSD", []),
         ("OpenBSD", ["@every_minute", "@every_second"]),
     ],
 )
