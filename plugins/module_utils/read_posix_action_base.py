@@ -13,6 +13,7 @@
 
 from __future__ import annotations
 
+
 import base64
 import shlex
 from os.path import join
@@ -2034,6 +2035,42 @@ class ReadPosixActionBase(PosixActionBase):
                 ) from e
 
         return file_data, ls_facts
+
+    def _batch_commands(
+        self, result: dict[str, Any], what: str
+    ) -> dict[str, Any]:
+        """The command results a run batch answered with, or why not.
+
+        A batch that failed comes back as a failed result rather than an
+        exception, and one that ran nothing carries no ``commands`` at
+        all. Indexing either raised a KeyError that named the missing
+        key and nothing else, which is how a stock OpenBSD guest's
+        first walk of a directory symlink reported "missing key
+        'commands'" in place of whatever actually went wrong. The
+        batch's own message is the error, and a batch that answered
+        for nothing is named as that.
+
+        :param dict[str, Any] result: What ``_run_action`` returned
+        :param str what: The batch, for the message
+        :returns dict[str, Any]: The per-command results
+        :raises RuntimeError: With the batch's own message, for the
+            action to report as the task's failure
+        """
+        # A batch whose commands answered is a batch that ran, whatever
+        # its own failed flag says: platform detection runs every
+        # variant on purpose and some of them fail on every platform
+        commands = None
+        if isinstance(result, dict):
+            commands = result.get("commands")
+        if isinstance(commands, dict):
+            return commands
+        msg = "unknown error"
+        if isinstance(result, dict) and result.get("msg"):
+            msg = str(result["msg"])
+        raise RuntimeError(
+            f"[{self.inventory_hostname}] {what} answered for no commands: "
+            f"{msg}"
+        )
 
     def _stat_permission_booleans(self, flags: str) -> dict[str, bool]:
         """Read the mode's own bits out of an ls flags string.

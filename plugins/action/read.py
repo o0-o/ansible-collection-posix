@@ -50,7 +50,10 @@ class ActionModule(ReadPosixActionBase, ActionBase):
         longest_cmd = None
         longest_elapsed = 0
 
-        for cmd_key, cmd_result in commands_result["commands"].items():
+        # A display only; a batch that failed is reported by the caller
+        for cmd_key, cmd_result in (
+            commands_result.get("commands") or {}
+        ).items():
             if "elapsed" in cmd_result:
                 elapsed = cmd_result["elapsed"].get("seconds", 0)
                 if elapsed > longest_elapsed:
@@ -408,7 +411,8 @@ class ActionModule(ReadPosixActionBase, ActionBase):
 
             # Detect platform capabilities from first path's results
             platform = self._detect_platform_from_results(
-                detection_result["commands"], first_path
+                self._batch_commands(detection_result, "platform detection"),
+                first_path,
             )
             self._display.vvv(
                 f"[{self.inventory_hostname}] Detected platform: "
@@ -422,7 +426,7 @@ class ActionModule(ReadPosixActionBase, ActionBase):
             content_counts = self._run_content_commands(
                 [first_path],
                 options,
-                detection_result["commands"],
+                self._batch_commands(detection_result, "platform detection"),
                 task_vars=task_vars,
                 commands=detection_commands,
             )
@@ -431,7 +435,9 @@ class ActionModule(ReadPosixActionBase, ActionBase):
 
             # Process first path's results
             first_file_data, first_ls_facts = self._process_read_results(
-                results=detection_result["commands"],
+                results=self._batch_commands(
+                    detection_result, "platform detection"
+                ),
                 paths=[first_path],
                 options=options,
                 commands=detection_commands,
@@ -468,7 +474,7 @@ class ActionModule(ReadPosixActionBase, ActionBase):
                 content_counts = self._run_content_commands(
                     remaining_paths,
                     options,
-                    commands_result["commands"],
+                    self._batch_commands(commands_result, "the read batch"),
                     task_vars=task_vars,
                     commands=commands,
                 )
@@ -480,7 +486,9 @@ class ActionModule(ReadPosixActionBase, ActionBase):
                     remaining_file_data,
                     remaining_ls_facts,
                 ) = self._process_read_results(
-                    results=commands_result["commands"],
+                    results=self._batch_commands(
+                        commands_result, "the read batch"
+                    ),
                     paths=remaining_paths,
                     options=options,
                     commands=commands,
@@ -589,14 +597,18 @@ class ActionModule(ReadPosixActionBase, ActionBase):
                         content_counts = self._run_content_commands(
                             new_children,
                             options,
-                            child_result["commands"],
+                            self._batch_commands(
+                                child_result, "the children batch"
+                            ),
                             task_vars=task_vars,
                             commands=child_commands,
                         )
                         total_commands += content_counts["count"]
                         total_batches += content_counts["batches"]
                         child_data, child_facts = self._process_read_results(
-                            results=child_result["commands"],
+                            results=self._batch_commands(
+                                child_result, "the children batch"
+                            ),
                             paths=new_children,
                             options=options,
                             commands=child_commands,
