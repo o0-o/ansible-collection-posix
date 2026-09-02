@@ -184,7 +184,28 @@ class PosixActionBase(CoreActionBase):
             check_mode=check_mode,
         )
 
-        return run_result.get("commands")
+        # A batch that failed comes back as a failed result rather than
+        # an exception, and a batch that was skipped carries no commands
+        # at all. Returning None for either let every caller downstream
+        # fail on a missing key - "argument cmds_completed (None) is not
+        # a list", eight subsets at once on a Darwin guest - with the
+        # batch's own message, a connection dropped mid-run on a
+        # virtual network as often as not, thrown away. The message is
+        # the error; a caller that catches per subset warns with it.
+        # The batch's own failed flag is not the signal: it is set when
+        # any one command exited non-zero, which a gather's probes do on
+        # purpose. A batch that ran answers with commands; one that did
+        # not carries none, and its message says why.
+        if not isinstance(run_result, dict):
+            raise RuntimeError("the run batch returned no result")
+        commands = run_result.get("commands")
+        if commands is None:
+            msg = str(run_result.get("msg") or "no message")
+            raise RuntimeError(
+                f"the run batch answered for no commands: {msg}"
+            )
+
+        return commands
 
     def _login_identities(self) -> list[str]:
         """Whose login environment this run is able to observe.
