@@ -92,9 +92,6 @@ def is_interpreter_missing(result: dict[str, Any]) -> bool:
     if not isinstance(result, dict):
         return False
 
-    if result.get("rc") != 127:
-        return False
-
     msg = result.get("msg", "")
     stderr = result.get("stderr", "")
     module_stderr = result.get("module_stderr", "")
@@ -109,6 +106,19 @@ def is_interpreter_missing(result: dict[str, Any]) -> bool:
             str(module_stdout) if isinstance(module_stdout, str) else "",
         ]
     ).lower()
+
+    # A present interpreter that cannot run is an absent one. Stock
+    # macOS ships /usr/bin/python3 as an xcode-select stub: discovery
+    # accepts the path, and running it prints an install prompt and
+    # exits 1 rather than the 127 a missing file gives, so the module
+    # payload is never run and Ansible reports the non-JSON it got
+    # back. Nothing but that stub writes "xcode-select:" into a module
+    # result, so the string is the canary and the exit status is not.
+    if "xcode-select:" in text_to_check:
+        return True
+
+    if result.get("rc") != 127:
+        return False
 
     # Ansible's standard error message
     canary_str = (

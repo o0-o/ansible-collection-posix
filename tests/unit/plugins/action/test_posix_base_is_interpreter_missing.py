@@ -57,3 +57,39 @@ from ansible_collections.o0_o.posix.plugins.module_utils.command_utils import (
 def test_is_interpreter_missing_canary_only(result, expected) -> None:
     """Test is_interpreter_missing detects Python errors by msg content."""
     assert is_interpreter_missing(result) is expected
+
+
+def test_a_present_interpreter_that_cannot_run_is_missing() -> None:
+    """The xcode-select stub is an absent interpreter, whatever it exits.
+
+    Stock macOS ships /usr/bin/python3 as a stub that prints an install
+    prompt and exits 1, so interpreter discovery accepts the path and
+    the payload never runs. The fallback used to watch only for 127,
+    which the stub never gives, and the raw lane's Darwin guest could
+    not pass. The stub's own words are the canary.
+    """
+    from ansible_collections.o0_o.posix.plugins.module_utils.command_utils import (  # noqa: E501
+        is_interpreter_missing,
+    )
+
+    stub = {
+        "rc": 1,
+        "msg": (
+            "Module result deserialization failed: No start of json char found"
+        ),
+        "module_stdout": (
+            "xcode-select: note: No developer tools were found, "
+            "requesting install.\n"
+        ),
+        "module_stderr": "Shared connection to 192.168.64.25 closed.\r\n",
+    }
+    assert is_interpreter_missing(stub) is True
+
+    # A module that merely crashed with rc 1 and a traceback is not an
+    # interpreter problem, and stays one the caller has to read
+    crashed = {
+        "rc": 1,
+        "msg": "MODULE FAILURE",
+        "module_stderr": "Traceback (most recent call last): ...",
+    }
+    assert is_interpreter_missing(crashed) is False
