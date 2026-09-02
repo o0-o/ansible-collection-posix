@@ -58,6 +58,7 @@ from ansible_collections.o0_o.posix.plugins.module_utils import (
     process_timezone_command_results,
 )
 from ansible_collections.o0_o.posix.plugins.module_utils.cron_utils import (
+    FQCN as CRON_FQCN,
     compose_cron_holdings,
     compose_cron_paths,
     compose_cron_users,
@@ -107,13 +108,21 @@ def _process_cron_results(
     # entry needs only their names, which the sweep has already
     # answered with. A host with nothing to read in the next batch
     # would otherwise never get one, that batch not running at all.
-    paths = compose_cron_paths(
-        answers["files"], answers["dropins"], answers["there"]
+    # What cron composed names cron, whichever door it came through:
+    # the cron module stamps its own name on what it publishes, and a
+    # gather that composes the same entries stamps the same name, so a
+    # consumer reading a full gather sees who put the crontab there
+    paths = compose_paths(
+        None,
+        compose_cron_paths(
+            answers["files"], answers["dropins"], answers["there"]
+        ),
+        origin=CRON_FQCN,
     )
     if paths:
         facts["o0_paths"] = paths
 
-    users = compose_cron_users(answers["views"])
+    users = name_origins(compose_cron_users(answers["views"]), CRON_FQCN)
     if users:
         facts["o0_users"] = users
 
@@ -511,13 +520,17 @@ class ActionModule(ShellsPosixActionBase, ActionBase):
             for warning in held["warnings"]:
                 self._display.warning(f"[{self.inventory_hostname}] {warning}")
 
-            paths = compose_cron_paths(
-                held["files"], answers["dropins"], held["there"]
+            paths = compose_paths(
+                None,
+                compose_cron_paths(
+                    held["files"], answers["dropins"], held["there"]
+                ),
+                origin=CRON_FQCN,
             )
             if paths:
                 facts["o0_paths"] = paths
 
-            users = compose_cron_users(held["views"])
+            users = name_origins(compose_cron_users(held["views"]), CRON_FQCN)
             if users:
                 facts["o0_users"] = users
 

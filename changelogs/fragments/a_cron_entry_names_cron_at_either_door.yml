@@ -1,0 +1,12 @@
+# vim: ts=2:sw=2:sts=2:et:ft=yaml.ansible
+# -*- mode: yaml; yaml-indent-offset: 2; indent-tabs-mode: nil; -*-
+---
+bugfixes:
+  - >-
+    facts - the ``cron`` subset stamps ``o0_o.posix.cron`` on the
+    entries it composes, as the cron module already did. A full gather
+    published a user's crontab view and the crontab files naming only
+    the gather in ``origins``, so a consumer could not tell which
+    producer had put them there; the two doors compose the same
+    entries and now name the same producer
+    (https://github.com/o0-o/ansible-collection-posix/pull/XXX).

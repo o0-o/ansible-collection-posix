@@ -449,9 +449,13 @@
       - >-
         gathered['o0_users'] | dict2items
         | selectattr('value.shell', 'defined') | list | length == 0
+      # Every entry left is cron's: a crontab key where the host has
+      # a crontab command to ask with, and none where it has not - so
+      # the origins are what say whose the entries are
       - >-
         gathered['o0_users'] | dict2items
-        | rejectattr('value.crontab', 'defined') | list | length == 0
+        | rejectattr('value.origins', 'contains', 'o0_o.posix.cron')
+        | list | length == 0
       # o0_shells is still here, carrying the builtins the compliance
       # sweep named and no row from running a shell out of a home
       - >-
