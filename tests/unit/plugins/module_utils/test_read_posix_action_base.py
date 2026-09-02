@@ -1074,9 +1074,7 @@ class TestParseResolution:
 
     def test_a_walk_that_did_not_run_answers_nothing(self, action) -> None:
         """Test a failed walk is a silence rather than a chain."""
-        assert (
-            action._parse_resolution({"rc": 1, "stdout": ""}, "/f") is None
-        )
+        assert action._parse_resolution({"rc": 1, "stdout": ""}, "/f") is None
 
     def test_an_empty_walk_answers_nothing(self, action) -> None:
         """Test a walk that printed nothing is not a chain of none."""
@@ -1354,9 +1352,7 @@ class TestProcessPermissionProbes:
         self, action
     ) -> None:
         """Test a row with nobody's name on it is not a row."""
-        results = {
-            "permissions_0": {"rc": 0, "stdout": "who knows\nrwx /f\n"}
-        }
+        results = {"permissions_0": {"rc": 0, "stdout": "who knows\nrwx /f\n"}}
 
         assert action._process_permission_probes(results, ["/f"]) == {}
 
@@ -1421,9 +1417,7 @@ class TestPermissionsArePublished:
 class TestEntriesNameWhatWasConsulted:
     """Tests for the evidence a read files on each entry."""
 
-    def test_an_entry_names_the_commands_asked_about_it(
-        self, action
-    ) -> None:
+    def test_an_entry_names_the_commands_asked_about_it(self, action) -> None:
         """Test what ran for a path is what that path's entry names."""
         commands = action._get_read_commands(
             ["/f"], {"attributes": True}, platform={"stat_variant": "gnu"}
@@ -1548,9 +1542,7 @@ class TestScriptProbesNameWhatTheyAsk:
 
         assert commands["/f_resolve"]["evidence"] == ["cd", "ls", "pwd"]
 
-    def test_a_declared_name_supersedes_the_derivation(
-        self, action
-    ) -> None:
+    def test_a_declared_name_supersedes_the_derivation(self, action) -> None:
         """Test the override wins where a request declares one."""
         assert action._command_evidence(
             {"command": ["sh", "-c", "test -r /f"], "evidence": ["test"]}
@@ -1565,9 +1557,12 @@ class TestScriptProbesNameWhatTheyAsk:
 
     def test_a_declared_empty_list_names_nothing(self, action) -> None:
         """Test a request may declare that it evidences nothing."""
-        assert action._command_evidence(
-            {"command": ["sh", "-c", ":"], "evidence": []}
-        ) == []
+        assert (
+            action._command_evidence(
+                {"command": ["sh", "-c", ":"], "evidence": []}
+            )
+            == []
+        )
 
     def test_the_walk_and_the_listing_share_the_ls_they_both_run(
         self, action

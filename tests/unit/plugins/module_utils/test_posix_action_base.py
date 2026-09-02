@@ -212,9 +212,7 @@ class TestLoginIdentities:
 
     def test_become_without_a_user_named_is_root(self) -> None:
         """Test the Ansible default is read as the root it is."""
-        base = self._base(
-            self._PlayContext(become=True, remote_user="o0-o")
-        )
+        base = self._base(self._PlayContext(become=True, remote_user="o0-o"))
 
         assert base._login_identities() == ["root", "o0-o"]
 

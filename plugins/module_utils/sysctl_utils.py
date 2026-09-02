@@ -136,9 +136,7 @@ def _parse_sysctl(
 
         # The Linux spelling of the same thing: the key again, once per
         # line of the one value the kernel holds
-        values[key] = (
-            f"{values[key]}\n{value}" if key in values else value
-        )
+        values[key] = f"{values[key]}\n{value}" if key in values else value
         named = key
 
     return (values or None), None
@@ -153,9 +151,7 @@ def get_sysctl_listing_requests() -> list[dict[str, Any]]:
         SYSCTL_COMMAND_SPEC,
     )
 
-    return process_command_spec(
-        SYSCTL_COMMAND_SPEC, cmd_type="sysctl_listing"
-    )
+    return process_command_spec(SYSCTL_COMMAND_SPEC, cmd_type="sysctl_listing")
 
 
 def get_sysctl_key_requests(keys: list[str]) -> list[dict[str, Any]]:

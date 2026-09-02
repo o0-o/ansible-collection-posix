@@ -531,11 +531,7 @@ class TestMergeFacts:
         and a merge that let the later one win would publish an entry
         claiming half of what put it there.
         """
-        acc = {
-            "o0_paths": {
-                "/bin/sh": {"origins": ["o0_o.posix.compliance"]}
-            }
-        }
+        acc = {"o0_paths": {"/bin/sh": {"origins": ["o0_o.posix.compliance"]}}}
         plugin._merge_facts(acc, {"o0_paths": {"/bin/sh": {"type": "link"}}})
         assert acc["o0_paths"]["/bin/sh"] == {
             "type": "link",
@@ -735,9 +731,7 @@ class TestGatherUsers:
         assert facts["o0_paths"]["/bin/zsh"]["type"] == "regular"
         assert "o0_shell_files" not in facts
 
-    def test_shells_extend_a_prior_gather(
-        self, monkeypatch, plugin
-    ) -> None:
+    def test_shells_extend_a_prior_gather(self, monkeypatch, plugin) -> None:
         """Test the accumulate-across-calls loop closes now that the
         fact it seeds from is a fact the gather publishes."""
         _no_python(monkeypatch, plugin)
@@ -797,9 +791,7 @@ class TestGatherUsers:
         # the first batch had to answer with, so it is the second
         # batch and never part of the first.
         assert len(batches) == 2
-        assert [request["type"] for request in batches[1]] == [
-            "shell_config"
-        ]
+        assert [request["type"] for request in batches[1]] == ["shell_config"]
 
     def test_a_host_without_getent_gathers_from_its_files(
         self, monkeypatch, plugin
@@ -1173,9 +1165,7 @@ class TestDefaultGather:
             "origins",
         }
 
-    def test_a_user_entry_names_both_who_composed_it(
-        self, gathered
-    ) -> None:
+    def test_a_user_entry_names_both_who_composed_it(self, gathered) -> None:
         """Test the composer and the gather both sign the entry.
 
         One subset answers under o0_users now, and two modules produce

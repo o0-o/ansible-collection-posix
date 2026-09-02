@@ -347,9 +347,7 @@ class LookupModule(LookupBase, VarsLookupBase):
             # Template the term to resolve any Jinja2 expressions
             term = self._templar.template(term)
 
-            ret.append(
-                self._answer(self._user(term, users), paths, residents)
-            )
+            ret.append(self._answer(self._user(term, users), paths, residents))
 
         return ret
 

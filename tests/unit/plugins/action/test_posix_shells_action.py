@@ -291,9 +291,5 @@ def test_one_planning_serves_both_producers() -> None:
     producers planning it differently would publish two answers to one
     question.
     """
-    assert (
-        ActionModule._shell_probes is FactsActionModule._shell_probes
-    )
-    assert (
-        ActionModule._composed_shells is FactsActionModule._composed_shells
-    )
+    assert ActionModule._shell_probes is FactsActionModule._shell_probes
+    assert ActionModule._composed_shells is FactsActionModule._composed_shells

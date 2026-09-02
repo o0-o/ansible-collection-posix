@@ -214,7 +214,7 @@ CRON_COMMAND_SPEC = {
             "command": (
                 "sh",
                 "-c",
-                '[ -d /etc/cron.d ] && for f in /etc/cron.d/*; do '
+                "[ -d /etc/cron.d ] && for f in /etc/cron.d/*; do "
                 '[ -f "$f" ] && printf "%s\n" "$f"; done',
             ),
             "parser": _parse_spool_names,

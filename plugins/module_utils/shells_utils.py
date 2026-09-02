@@ -639,9 +639,7 @@ def compose_shells(
     """
     observed = observed or {}
 
-    shells: dict[str, dict[str, Any]] = {
-        shell: {} for shell in (named or [])
-    }
+    shells: dict[str, dict[str, Any]] = {shell: {} for shell in (named or [])}
 
     for shell in sorted(observed):
         entry = shells.setdefault(shell, {})

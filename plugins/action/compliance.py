@@ -148,9 +148,7 @@ class ActionModule(PosixActionBase, ActionBase):
         compliance = facts["o0_os"]["compliance"]
         # The processor composes on this module's behalf, so this is
         # where the entries learn whose observation they are
-        facts["o0_paths"] = compose_paths(
-            None, facts["o0_paths"], origin=FQCN
-        )
+        facts["o0_paths"] = compose_paths(None, facts["o0_paths"], origin=FQCN)
         name_origins(facts, FQCN)
         result.update(
             {

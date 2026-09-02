@@ -142,9 +142,7 @@ def _answer(
                 )
             elif kind == "crontab_exists":
                 path = request["args"]["path"]
-                here = path in files or (
-                    path == "/etc/cron.d" and bool(named)
-                )
+                here = path in files or (path == "/etc/cron.d" and bool(named))
                 answered.append(
                     {**request, "rc": 0 if here else 1, "stdout": ""}
                 )
@@ -165,9 +163,7 @@ def _answer(
     return batches
 
 
-def test_a_crontab_file_is_a_fact_about_that_file(
-    monkeypatch, plugin
-) -> None:
+def test_a_crontab_file_is_a_fact_about_that_file(monkeypatch, plugin) -> None:
     """Test the files land in the path store beside their bytes."""
     _answer(monkeypatch, plugin)
 
@@ -213,9 +209,7 @@ def test_a_users_crontab_is_a_fact_about_that_user(
     entry = result["o0_users"]["1000"]
 
     assert entry["uid"] == 1000
-    assert entry["crontab"]["environment"]["MAILTO"] == (
-        "tester@example.com"
-    )
+    assert entry["crontab"]["environment"]["MAILTO"] == ("tester@example.com")
     assert entry["crontab"]["jobs"][0]["schedule"] == {"special": "reboot"}
     # A per-user row names no user, so nothing here claims one
     assert all("user" not in job for job in entry["crontab"]["jobs"])
@@ -225,9 +219,7 @@ def test_a_users_crontab_is_a_fact_about_that_user(
     }
 
 
-def test_a_spool_crontab_is_not_also_a_path_entry(
-    monkeypatch, plugin
-) -> None:
+def test_a_spool_crontab_is_not_also_a_path_entry(monkeypatch, plugin) -> None:
     """Test what a spool file says is filed once, about its owner.
 
     It is read like any file and named under evidence, but what it
@@ -345,9 +337,7 @@ def test_the_spools_are_swept_rather_than_the_passwd_file(
     )
 
 
-def test_every_spool_a_name_could_be_in_is_read(
-    monkeypatch, plugin
-) -> None:
+def test_every_spool_a_name_could_be_in_is_read(monkeypatch, plugin) -> None:
     """Test the sweep names users and the read resolves the path.
 
     Which spool a crontab is in differs by implementation, and the one
@@ -583,9 +573,7 @@ def test_a_host_with_cron_and_nothing_scheduled_says_so(
     The command answered, so the user's crontab is a null; the paths
     were asked about and are not there, so each of them is one too.
     """
-    _answer(
-        monkeypatch, plugin, held={}, dropins=[], holders=[], own=None
-    )
+    _answer(monkeypatch, plugin, held={}, dropins=[], holders=[], own=None)
 
     result = plugin.run(task_vars={})
 
@@ -702,9 +690,7 @@ def test_linux_takes_the_tilde_because_some_of_its_crons_do(
     assert job["schedule"]["minute"] == "~"
 
 
-def test_a_users_crontab_is_held_to_the_same_cron(
-    monkeypatch, plugin
-) -> None:
+def test_a_users_crontab_is_held_to_the_same_cron(monkeypatch, plugin) -> None:
     """Test the running identity's own crontab is warned about by uid.
 
     The line is named by number even though a user's entry publishes

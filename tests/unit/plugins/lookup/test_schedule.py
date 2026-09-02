@@ -132,9 +132,7 @@ def make_lookup():
     """
 
     def _make(**variables: Any) -> LookupModule:
-        lookup = LookupModule(
-            loader=None, templar=FakeTemplar(variables)
-        )
+        lookup = LookupModule(loader=None, templar=FakeTemplar(variables))
         lookup._display = MagicMock()
         return lookup
 

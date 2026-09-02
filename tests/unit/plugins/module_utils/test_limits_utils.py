@@ -57,8 +57,16 @@ SHELLS = (
 MACOS_SHELLS = ("macos", "macos_ksh", "macos_zsh")
 
 # What every capture names, whatever it calls it
-UNIVERSAL = ("core", "cpu_time", "data", "file_size", "open_files",
-             "processes", "stack", "virtual_memory")
+UNIVERSAL = (
+    "core",
+    "cpu_time",
+    "data",
+    "file_size",
+    "open_files",
+    "processes",
+    "stack",
+    "virtual_memory",
+)
 
 
 def corpus(name: str) -> str:
@@ -179,8 +187,9 @@ def test_a_label_no_shell_here_prints_keeps_its_own_words() -> None:
         "@SOFT@\nquantum flux (jiffies)   42\n@HARD@\n", "test: "
     )[0]
 
-    assert parsed == {"quantum_flux": {"soft": 42, "hard": None,
-                                       "unit": "jiffies"}}
+    assert parsed == {
+        "quantum_flux": {"soft": 42, "hard": None, "unit": "jiffies"}
+    }
 
 
 def test_two_labels_for_one_name_do_not_overwrite_each_other() -> None:

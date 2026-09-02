@@ -82,9 +82,7 @@ def test_every_implementation_s_separator_is_read(name: str) -> None:
     assert all(isinstance(key, str) for key in values)
     assert all(isinstance(value, str) for value in values.values())
     # No key carries a separator or the whitespace around one
-    assert all(
-        set(key).isdisjoint({" ", "\t", "=", ":"}) for key in values
-    )
+    assert all(set(key).isdisjoint({" ", "\t", "=", ":"}) for key in values)
 
 
 def test_a_value_carrying_the_separator_stays_whole() -> None:

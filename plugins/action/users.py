@@ -166,9 +166,7 @@ class ActionModule(ReadPosixActionBase, ActionBase):
         # the one flat path store, composed in beside everything else
         # the module observed rather than published as namespaces of
         # their own.
-        paths = compose_paths(
-            None, compose_homes(users, read), origin=FQCN
-        )
+        paths = compose_paths(None, compose_homes(users, read), origin=FQCN)
         paths = compose_paths(
             paths,
             compose_shell_paths(users, read, known_paths, named),
@@ -201,9 +199,7 @@ class ActionModule(ReadPosixActionBase, ActionBase):
             # every key is empty: what a shell's configuration does is
             # only knowable by running it, and the shells module and a
             # gather are what do that.
-            result["o0_shells"] = name_origins(
-                compose_shells(named), FQCN
-            )
+            result["o0_shells"] = name_origins(compose_shells(named), FQCN)
 
         # A shell entry points at the file its name resolves to,
         # copied from the chain the path store already walked

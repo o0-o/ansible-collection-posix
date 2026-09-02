@@ -270,9 +270,7 @@ def test_dmidecode_parses_real_output(
     assert cpu1["cores"] == {"total": 6}
     assert "threads" not in cpu1
     # Check speed - the rated maximum is the model's
-    assert cpu1["speed"] == {
-        "max": {"hertz": 4000000000, "pretty": "4 GHz"}
-    }
+    assert cpu1["speed"] == {"max": {"hertz": 4000000000, "pretty": "4 GHz"}}
     # Each socket files what it alone knows in its location
     locations = cpu1["locations"]
     assert sorted(locations) == ["cpu1", "cpu2"]

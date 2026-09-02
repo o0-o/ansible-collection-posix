@@ -184,9 +184,7 @@ class ActionModule(ShellsPosixActionBase, ActionBase):
     def _read_shells_file(
         self,
         task_vars: Optional[dict[str, Any]] = None,
-    ) -> tuple[
-        Optional[list[str]], dict[str, Any], Optional[int]
-    ]:
+    ) -> tuple[Optional[list[str]], dict[str, Any], Optional[int]]:
         """Read the file the host names its login shells in.
 
         The effective uid rides with the read, because whether a login

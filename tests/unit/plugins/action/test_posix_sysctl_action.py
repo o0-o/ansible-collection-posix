@@ -179,9 +179,9 @@ def test_naming_no_key_asks_for_all_of_them(monkeypatch, plugin) -> None:
 
     result = plugin.run(task_vars={})
 
-    assert [
-        request["type"] for batch in batches for request in batch
-    ] == ["sysctl_listing"]
+    assert [request["type"] for batch in batches for request in batch] == [
+        "sysctl_listing"
+    ]
     assert result["sysctl"]["kernel.ostype"] == "Linux"
     assert len(result["sysctl"]) > 10
 
@@ -195,9 +195,9 @@ def test_a_value_already_in_force_is_not_set(monkeypatch, plugin) -> None:
 
     assert result["changed"] is False
     assert result["sysctl"] == {"vm.swappiness": "60"}
-    assert [
-        request["type"] for batch in batches for request in batch
-    ] == ["sysctl_key"]
+    assert [request["type"] for batch in batches for request in batch] == [
+        "sysctl_key"
+    ]
 
 
 def test_a_value_that_differs_is_set(monkeypatch, plugin) -> None:
@@ -220,9 +220,7 @@ def test_a_value_that_differs_is_set(monkeypatch, plugin) -> None:
     assert issued[1]["command"] == ("sysctl", "vm.swappiness=10")
 
 
-def test_what_comes_back_is_what_the_kernel_says(
-    monkeypatch, plugin
-) -> None:
+def test_what_comes_back_is_what_the_kernel_says(monkeypatch, plugin) -> None:
     """Test the reported value is read back rather than assumed.
 
     A kernel that normalized a value on the way in has answered, and
@@ -284,9 +282,9 @@ def test_check_mode_reports_the_change_and_makes_none(
     assert result["changed"] is True
     # What the host says now, because nothing was set
     assert result["sysctl"] == {"vm.swappiness": "60"}
-    assert [
-        request["type"] for batch in batches for request in batch
-    ] == ["sysctl_key"]
+    assert [request["type"] for batch in batches for request in batch] == [
+        "sysctl_key"
+    ]
 
 
 def test_a_host_with_no_sysctl_fails_plainly(monkeypatch, plugin) -> None:

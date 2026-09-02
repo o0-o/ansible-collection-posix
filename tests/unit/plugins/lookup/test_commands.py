@@ -148,9 +148,7 @@ def gathered(make_lookup):
     """
 
     def _make(paths: dict[str, Any]) -> LookupModule:
-        return make_lookup(
-            o0_paths=paths, o0_shells=SHELLS, o0_users=USERS
-        )
+        return make_lookup(o0_paths=paths, o0_shells=SHELLS, o0_users=USERS)
 
     return _make
 
@@ -295,9 +293,7 @@ def test_a_field_holding_nobody_s_answer_is_a_silence(gathered) -> None:
         }
     )
 
-    assert lookup.run(["ls"], None) == [
-        {"command": "ls", "state": "unknown"}
-    ]
+    assert lookup.run(["ls"], None) == [{"command": "ls", "state": "unknown"}]
 
 
 # ---------------------------------------------------------------------
@@ -660,11 +656,7 @@ def test_system_rows_that_agree_are_not_ambiguous(make_lookup) -> None:
         {"/bin/sh": {"homes": {"/home/o0-o": {"env": {"PATH": "/bin"}}}}},
         {"/bin/sh": {"homes": {SHELL_SYSTEM_HOME: {}}}},
         {"/bin/sh": {"homes": {SHELL_SYSTEM_HOME: {"env": {}}}}},
-        {
-            "/bin/sh": {
-                "homes": {SHELL_SYSTEM_HOME: {"env": {"PATH": None}}}
-            }
-        },
+        {"/bin/sh": {"homes": {SHELL_SYSTEM_HOME: {"env": {"PATH": None}}}}},
         {"/bin/sh": None},
     ],
 )
@@ -778,9 +770,7 @@ def test_another_host_s_facts_answer_for_it(make_lookup) -> None:
                 "o0_shells": {
                     "/bin/sh": {
                         "homes": {
-                            SHELL_SYSTEM_HOME: {
-                                "env": {"PATH": "/usr/sbin"}
-                            }
+                            SHELL_SYSTEM_HOME: {"env": {"PATH": "/usr/sbin"}}
                         }
                     }
                 },
@@ -889,9 +879,7 @@ def test_a_probed_entry_that_keys_nothing_is_refused_too(
         o0_paths={"/bin/ls": INFERRED},
         o0_shells={
             "/bin/sh": {
-                "homes": {
-                    SHELL_SYSTEM_HOME: {"env": {"PATH": "/bin:~/bin"}}
-                }
+                "homes": {SHELL_SYSTEM_HOME: {"env": {"PATH": "/bin:~/bin"}}}
             }
         },
         o0_users=USERS,

@@ -367,9 +367,7 @@ def test_users_action_rejects_key_option(plugin) -> None:
         plugin.run(task_vars={})
 
 
-def test_users_action_files_a_home_at_its_own_key(
-    monkeypatch, plugin
-) -> None:
+def test_users_action_files_a_home_at_its_own_key(monkeypatch, plugin) -> None:
     """Test a home is an entry of the path store keyed by the path it
     is, naming this module as what composed it."""
     monkeypatch.setattr(
@@ -404,9 +402,7 @@ def test_users_action_files_a_home_at_its_own_key(
     ]
 
 
-def test_users_action_shells_extend_prior_gather(
-    monkeypatch, plugin
-) -> None:
+def test_users_action_shells_extend_prior_gather(monkeypatch, plugin) -> None:
     """Test a shell a prior gather described is not read again."""
     monkeypatch.setattr(
         plugin,

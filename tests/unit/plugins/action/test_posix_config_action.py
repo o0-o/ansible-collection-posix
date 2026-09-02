@@ -96,9 +96,7 @@ def test_a_variable_the_host_does_not_limit_is_null(
     assert result["config"]["SYMLOOP_MAX"] is None
 
 
-def test_a_variable_the_host_refused_is_left_out(
-    monkeypatch, plugin
-) -> None:
+def test_a_variable_the_host_refused_is_left_out(monkeypatch, plugin) -> None:
     """Test a refusal is absence rather than a null.
 
     Null is already spent on a variable the host has and does not

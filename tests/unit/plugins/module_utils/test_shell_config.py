@@ -467,8 +467,9 @@ def test_a_host_that_named_no_shells_and_ran_none_composes_nothing() -> None:
     assert compose_shells([]) == {}
 
 
-def test_the_canonical_home_and_shell_are_what_they_are_documented_as(
-) -> None:
+def test_the_canonical_home_and_shell_are_what_they_are_documented_as() -> (
+    None
+):
     """Test the two constants the docs name by value."""
     assert SHELL_SYSTEM_HOME == "/dev/null"
     assert SHELL_DEFAULT == "/bin/sh"
@@ -680,9 +681,7 @@ class TestShellBinaries:
         Nothing walked it, and a self-pointer would assert an answer
         nobody checked.
         """
-        shells = name_shell_binaries(
-            compose_shells(["/bin/ksh"]), self.STORE
-        )
+        shells = name_shell_binaries(compose_shells(["/bin/ksh"]), self.STORE)
 
         assert "binary" not in shells["/bin/ksh"]
 

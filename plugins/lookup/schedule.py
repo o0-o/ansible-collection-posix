@@ -371,8 +371,7 @@ class LookupModule(LookupBase, VarsLookupBase):
 
         if not isinstance(fact, dict):
             raise AnsibleLookupError(
-                f"'{name}' fact is not a dictionary, got "
-                f"{type(fact).__name__}"
+                f"'{name}' fact is not a dictionary, got {type(fact).__name__}"
             )
 
         return fact

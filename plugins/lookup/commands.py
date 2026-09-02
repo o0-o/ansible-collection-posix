@@ -542,9 +542,7 @@ class LookupModule(LookupBase, VarsLookupBase):
 
         return self._login_path(shells, lookup_user(user, users))
 
-    def _system_path(
-        self, shells: dict[str, Any]
-    ) -> Optional[list[Any]]:
+    def _system_path(self, shells: dict[str, Any]) -> Optional[list[Any]]:
         """Read the host's own login default out of the system rows.
 
         Every POSIX host has ``/dev/null`` and none of them has it as

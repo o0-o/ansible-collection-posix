@@ -100,8 +100,7 @@ def test_a_crontab_is_two_kinds_of_line(name: str) -> None:
 
     assert set(config) == {"environment", "jobs"}
     assert all(
-        isinstance(value, str)
-        for value in config["environment"].values()
+        isinstance(value, str) for value in config["environment"].values()
     )
     assert all(
         "schedule" in job and "command" in job for job in config["jobs"]
@@ -416,8 +415,14 @@ def test_a_spelling_no_cron_takes_is_nobodys(field: str, value) -> None:
         {"special": "nosuch"},
         {"special": "reboot", "minute": "0"},
         {"minute": "0", "hour": "0"},
-        {"minute": "0", "hour": "0", "day": "*", "month": "*",
-         "weekday": "*", "second": "0"},
+        {
+            "minute": "0",
+            "hour": "0",
+            "day": "*",
+            "month": "*",
+            "weekday": "*",
+            "second": "0",
+        },
         "0 0 * * *",
         None,
     ],
@@ -664,18 +669,28 @@ def test_an_unknown_kernel_earns_no_warning(kernel) -> None:
 
 def test_a_job_is_rendered_as_the_line_it_would_be() -> None:
     """Test the rendering has the same words in the same order."""
-    assert render_cron_job(
-        {"schedule": {"special": "reboot"}, "user": "root", "command": "/x"}
-    ) == "@reboot root /x"
-    assert render_cron_job(
-        {
-            "schedule": {
-                "minute": "~",
-                "hour": "2",
-                "day": "*",
-                "month": "*",
-                "weekday": "6",
-            },
-            "command": "/bin/sh /etc/weekly",
-        }
-    ) == "~ 2 * * 6 /bin/sh /etc/weekly"
+    assert (
+        render_cron_job(
+            {
+                "schedule": {"special": "reboot"},
+                "user": "root",
+                "command": "/x",
+            }
+        )
+        == "@reboot root /x"
+    )
+    assert (
+        render_cron_job(
+            {
+                "schedule": {
+                    "minute": "~",
+                    "hour": "2",
+                    "day": "*",
+                    "month": "*",
+                    "weekday": "6",
+                },
+                "command": "/bin/sh /etc/weekly",
+            }
+        )
+        == "~ 2 * * 6 /bin/sh /etc/weekly"
+    )

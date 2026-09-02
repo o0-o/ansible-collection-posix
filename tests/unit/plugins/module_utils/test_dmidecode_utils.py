@@ -282,7 +282,7 @@ def test_hardware_names_the_command_that_answered(
 
 
 def test_oem_placeholder_reads_as_absent() -> None:
-    """"To Be Filled By O.E.M." is a placeholder, not an identity.
+    """ "To Be Filled By O.E.M." is a placeholder, not an identity.
 
     A vendor that filled nothing in said nothing: the field reads as
     absent per each section's own convention, rather than publishing
@@ -334,9 +334,7 @@ def test_oem_placeholder_reads_as_absent() -> None:
 def test_bios_placeholder_vendor_is_null() -> None:
     """The BIOS section nulls an absent make, so a placeholder one
     nulls the same way."""
-    bios = _process_bios(
-        {"values": {"vendor": "To Be Filled By O.E.M."}}
-    )
+    bios = _process_bios({"values": {"vendor": "To Be Filled By O.E.M."}})
 
     assert bios["make"] is None
 

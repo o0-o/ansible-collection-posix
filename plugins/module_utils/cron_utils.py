@@ -332,9 +332,7 @@ def _named_field(value: str, names: tuple[str, ...]) -> bool:
     if not CRON_FIELD.match(value):
         return False
 
-    return all(
-        word.lower() in names for word in CRON_WORD.findall(value)
-    )
+    return all(word.lower() in names for word in CRON_WORD.findall(value))
 
 
 def _parse_job(
@@ -559,11 +557,7 @@ def _parse_spool_names(
     del rc, e_prefix  # a host with no spool to sweep is not a fault
 
     names = sorted(
-        {
-            line.strip()
-            for line in (output or "").splitlines()
-            if line.strip()
-        }
+        {line.strip() for line in (output or "").splitlines() if line.strip()}
     )
 
     return (names or None), None
@@ -855,9 +849,7 @@ def spool_paths(holders: list[str]) -> list[str]:
     :returns list[str]: The spool files to read
     """
     return [
-        f"{spool}/{name}"
-        for name in sorted(holders)
-        for spool in CRON_SPOOLS
+        f"{spool}/{name}" for name in sorted(holders) for spool in CRON_SPOOLS
     ]
 
 
@@ -904,9 +896,7 @@ def compose_cron_holdings(
     # The same discipline as the survey: only what this asked for
     wanted = set(answers["dropins"]) | spools
 
-    for path, answered in process_file_command_results(
-        cmds_completed
-    ).items():
+    for path, answered in process_file_command_results(cmds_completed).items():
         if path not in wanted:
             continue
 
@@ -1339,9 +1329,7 @@ def schedule_refusal(
     if "special" in schedule:
         special = schedule["special"]
         found = (
-            special_dialects(special)
-            if set(schedule) == {"special"}
-            else None
+            special_dialects(special) if set(schedule) == {"special"} else None
         )
         return refused("special", f"@{special}", found)
 

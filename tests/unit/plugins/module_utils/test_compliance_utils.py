@@ -124,9 +124,7 @@ def _process_fabricated_host(
     :param Optional[set[str]] missing: What this host lacks
     :returns dict[str, Any]: The facts the processor publishes
     """
-    results = [
-        _answer(r, missing) for r in get_compliance_command_requests()
-    ]
+    results = [_answer(r, missing) for r in get_compliance_command_requests()]
     facts, errors = process_all_compliance_command_results(results)
     assert errors == []
     return facts
@@ -380,9 +378,7 @@ class TestProcessAllComplianceCommandResults:
         for standard in ("xsh", "xcu", "xsi", "posix", "sus"):
             evidence = compliance[standard]["evidence"]
             assert set(evidence) == {"commands", "config"}
-            assert all(
-                isinstance(name, str) for name in evidence["commands"]
-            )
+            assert all(isinstance(name, str) for name in evidence["commands"])
             assert evidence["commands"] == sorted(set(evidence["commands"]))
 
 
@@ -569,8 +565,7 @@ def test_the_two_lists_do_not_overlap() -> None:
     assert not (XCU_REQUIRED_COMMANDS & XSI_REQUIRED_COMMANDS)
 
 
-def test_the_shell_s_own_words_are_asked_about_as_what_they_are(
-) -> None:
+def test_the_shell_s_own_words_are_asked_about_as_what_they_are() -> None:
     """Test grammar and built-ins are kept apart from utilities.
 
     A special built-in is a command no PATH search finds and a
@@ -587,8 +582,7 @@ def test_the_shell_s_own_words_are_asked_about_as_what_they_are(
     assert XCU_RESERVED_WORDS <= XCU_REQUIRED_COMMANDS
 
 
-def test_both_lists_are_nonempty_and_the_sweep_asks_for_all_of_them(
-) -> None:
+def test_both_lists_are_nonempty_and_the_sweep_asks_for_all_of_them() -> None:
     """Test every required command is actually looked up."""
     assert XCU_REQUIRED_COMMANDS
     assert XSI_REQUIRED_COMMANDS

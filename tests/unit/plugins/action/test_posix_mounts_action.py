@@ -67,9 +67,9 @@ def plugin(base) -> Generator[ActionModule, None, None]:
     yield plugin
 
 
-def _no_getconf(commands: list[dict[str, Any]], **kwargs: Any) -> list[
-    dict[str, Any]
-]:
+def _no_getconf(
+    commands: list[dict[str, Any]], **kwargs: Any
+) -> list[dict[str, Any]]:
     """Answer a batch the way a host with no getconf answers one."""
     del kwargs
     return [

@@ -73,7 +73,8 @@
       # No spool file is a path entry: what one says is a fact about
       # the user who owns it
       - >-
-        paths.keys() | select('search', '^/var/spool/|^/var/cron/|^/usr/lib/cron/')
+        paths.keys()
+        | select('search', '^/var/spool/|^/var/cron/|^/usr/lib/cron/')
         | list | length == 0
       # Every user entry is keyed by the uid it carries
       - >-
