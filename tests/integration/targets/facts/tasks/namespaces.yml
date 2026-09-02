@@ -537,14 +537,29 @@
 # subset's entries are not composed from either, so they carry no
 # evidence and are not asked for any - which is why the users below are
 # the ones a name describes.
+# What the users composer names is a claim about the users subset, so
+# it is read off a gather of that subset alone. Under the default
+# gather other subsets add their own names to the same entries by
+# design - evidence accumulates, and the cron subset files each
+# identity's crontab view under its uid, naming crontab, and as root
+# the spool files it read - so a full gather's entries legally name
+# more than the users composer does. macOS hid this: its real users
+# are not in /etc/passwd, so the one entry cron added there carried
+# no name and fell out of the filter below. OpenBSD's ci user is in
+# passwd, and its entry was the first honest one.
+- name: Gather the users subset alone, to read what it names
+  o0_o.posix.facts:
+    gather_subset: [users]
+  register: facts_users_reg
+
 - name: Assert every composed entry names its origins, legally
   vars:
     users: >-
-      {{ facts_all_reg['ansible_facts']['o0_users'] | dict2items
+      {{ facts_users_reg['ansible_facts']['o0_users'] | dict2items
          | selectattr('value.name', 'defined')
          | map(attribute='value') | list }}
     host_groups: >-
-      {{ facts_all_reg['ansible_facts']['o0_groups'].values() | list }}
+      {{ facts_users_reg['ansible_facts']['o0_groups'].values() | list }}
     composed: "{{ users + host_groups }}"
     named_files: >-
       {{ composed | map(attribute='evidence.files') | flatten }}
@@ -585,7 +600,7 @@
 # degraded one.
 - name: Assert the origins match what this host can actually resolve
   vars:
-    users: "{{ facts_all_reg['ansible_facts']['o0_users'] }}"
+    users: "{{ facts_users_reg['ansible_facts']['o0_users'] }}"
     described: >-
       {{ users | dict2items | selectattr('value.name', 'defined')
          | map(attribute='value') | list }}
