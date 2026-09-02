@@ -43,6 +43,36 @@
     sysctl_become_method: >-
       {{ 'doas' if sysctl_system == 'OpenBSD' else 'sudo' }}
 
+# Setting a tunable needs root, and root on a guest is reached by
+# escalation. The interpreter-present guest lane runs under ansible-test,
+# whose controller carries only this collection and its dependencies -
+# not community.general, whose doas plugin OpenBSD's escalation needs,
+# because a collection that reads facts has no business depending on a
+# become plugin its users configure. Where the plugin is absent the set
+# cases cannot run; the raw lane, which carries the whole collection
+# path, proves the OpenBSD set through doas, and the Linux and macOS
+# lanes prove the interpreted set path, so the one uncovered cell is
+# the intersection and it is skipped rather than failed. Escalation is
+# probed once, and its working is the gate.
+- name: Find whether this lane can escalate at all
+  block:
+    - name: Escalate for a command that changes nothing
+      o0_o.posix.command:
+        argv:
+          - 'true'
+      become: true
+      become_method: "{{ sysctl_become_method }}"
+      check_mode: false
+      changed_when: false
+  rescue:
+    - name: Note that escalation is not available here
+      ansible.builtin.set_fact:
+        sysctl_no_escalation: true
+
+- name: Name whether the set cases can run
+  ansible.builtin.set_fact:
+    sysctl_can_set: "{{ not (sysctl_no_escalation | default(false)) }}"
+
 - name: Ask the host for every tunable it prints
   o0_o.posix.sysctl:
   register: sysctl_all_reg
@@ -120,6 +150,7 @@
 # the host depends on: the value already in force is asked for, and the
 # module reports no change because it compared before it set.
 - name: Set a key to the value it already holds
+  when: sysctl_can_set | bool
   vars:
     held: "{{ sysctl_named_reg['sysctl'][sysctl_key] }}"
   o0_o.posix.sysctl:
@@ -131,6 +162,7 @@
   register: sysctl_noop_reg
 
 - name: Assert the compare came first, so nothing was set
+  when: sysctl_can_set | bool
   ansible.builtin.assert:
     that:
       - sysctl_noop_reg is not changed
@@ -142,6 +174,7 @@
 # What a real change would do, computed without doing it. Check mode is
 # the only way to exercise this against a host a suite does not own.
 - name: Propose a value the host does not hold, in check mode
+  when: sysctl_can_set | bool
   vars:
     proposed: "{{ sysctl_named_reg['sysctl'][sysctl_key] }}-x"
   o0_o.posix.sysctl:
@@ -153,11 +186,13 @@
   register: sysctl_proposed_reg
 
 - name: Ask again for what the host says now
+  when: sysctl_can_set | bool
   o0_o.posix.sysctl:
     name: ["{{ sysctl_key }}"]
   register: sysctl_after_reg
 
 - name: Assert check mode reported the change and made none
+  when: sysctl_can_set | bool
   vars:
     held: "{{ sysctl_named_reg['sysctl'][sysctl_key] }}"
   ansible.builtin.assert:
@@ -176,6 +211,7 @@
       {{ sysctl_proposed_reg }}
 
 - name: Assert a key the kernel will not let go of fails, naming it
+  when: sysctl_can_set | bool
   block:
     - name: Try to set a read-only key
       o0_o.posix.sysctl:
