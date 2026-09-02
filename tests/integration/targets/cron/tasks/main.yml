@@ -39,6 +39,25 @@
     cron_uid: "{{ cron_id_reg['stdout'] | trim }}"
     cron_kernel: "{{ cron_kernel_reg['stdout'] | trim | lower }}"
 
+# An identity that already holds a crontab is left exactly as found:
+# the blocks below install one to read back and remove it after, and
+# on a host where this identity ships with one - Alpine's root holds
+# the periodic jobs - that would replace and then delete it. Those
+# blocks run only where there is nothing to lose.
+- name: Ask whether this identity already holds a crontab
+  when: cron_have | bool
+  ansible.builtin.command:
+    cmd: crontab -l
+  check_mode: false
+  register: cron_held_before_reg
+  failed_when: false
+  changed_when: false
+
+- name: Name whether the install-and-remove blocks may run
+  ansible.builtin.set_fact:
+    cron_held: "{{ cron_have | bool
+                   and cron_held_before_reg['rc'] | default(1) == 0 }}"
+
 - name: Ask what this host schedules
   o0_o.posix.cron:
   register: cron_reg
@@ -96,7 +115,9 @@
 # Any identity may read its own crontab, which is the reading POSIX
 # defines, so this is the one enumeration path every host can prove.
 - name: Assert the running identity's own crontab is read
-  when: cron_have | bool
+  when:
+    - cron_have | bool
+    - not (cron_held | bool)
   block:
     - name: Install a crontab for this run to read back
       ansible.builtin.command:
@@ -201,6 +222,7 @@
 - name: Assert crontab refuses a spelling its cron does not take
   when:
     - cron_have | bool
+    - not (cron_held | bool)
     - cron_kernel in ['darwin', 'freebsd', 'netbsd']
   block:
     - name: Offer crontab a line spelled the OpenBSD way
@@ -245,7 +267,9 @@
 # A crontab this identity holds none of is a crontab it was asked
 # about and does not have, which is not the same as never asking.
 - name: Assert a user holding no crontab is null rather than absent
-  when: cron_have | bool
+  when:
+    - cron_have | bool
+    - not (cron_held | bool)
   vars:
     entry: "{{ cron_reg['o0_users'][cron_uid] }}"
   ansible.builtin.assert:
@@ -254,6 +278,26 @@
       - entry['crontab'] is none
     fail_msg: >-
       a user with no crontab was not reported as having none:
+      {{ cron_reg['o0_users'] }}
+
+# Where the identity ships with a crontab, the crontab it ships with
+# is the thing to read - Alpine's root carries busybox's periodic jobs
+# - and reading it as it stands is the proof, not installing another.
+- name: Assert a crontab the identity already holds is read as held
+  when:
+    - cron_have | bool
+    - cron_held | bool
+  vars:
+    entry: "{{ cron_reg['o0_users'][cron_uid] }}"
+  ansible.builtin.assert:
+    that:
+      - cron_uid in cron_reg['o0_users']
+      - entry['crontab'] is mapping
+      - entry['crontab']['jobs'] is sequence
+      - entry['crontab']['environment'] is mapping
+      - entry['evidence']['commands'] == ['crontab']
+    fail_msg: >-
+      a crontab this identity holds was not read back as one:
       {{ cron_reg['o0_users'] }}
 
 - name: Ask again and publish the answer as facts
